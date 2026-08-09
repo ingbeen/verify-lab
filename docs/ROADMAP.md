@@ -41,9 +41,10 @@
 ### Phase 0 — 부트스트랩
 
 - [x] 폴더 구조, 설정 파일(pyproject·pyright·pytest·gitignore), 하네스(`.claude/`)
-- [x] 규칙 문서 — 루트 `CLAUDE.md`, `.claude/rules/`, `docs/` 문서 골격
+- [x] 규칙 문서 — 루트 `CLAUDE.md`, 계층별 `CLAUDE.md`, `.claude/rules/`
+- [x] 참고 자산 이관 — `reference/`(읽기 전용), `storage/market/QQQ_max.csv`.
+      **저장소 밖을 참조하지 않는 상태 확보**
 - [ ] 유틸 이관 마무리 — `src/verify_lab/utils/` 의 패키지명 참조 정리, `common_constants.py` 신설
-- [ ] 계층별 `CLAUDE.md` — `scripts/`, `tests/`, `docs/research/`
 - [ ] 스모크 테스트와 `validate_project.py` 통과
 
 > 유틸 4종(`logger`·`formatting`·`cli_helpers`·`meta_manager`)은 이전 프로젝트에서 복사만 된 상태입니다.
@@ -51,11 +52,15 @@
 
 ### Phase 1 — 데이터 확보
 
-- [ ] yfinance 수집기 — 수정주가 기준, 저장 위치와 파일 규칙 확정
+- [ ] yfinance 수집기 — 수정주가 기준, `storage/market/` 저장 규칙 확정, QQQ 재수집
 - [ ] **pykrx 실측** — KODEX 200(`069500`)의 분배금 조정 여부, 초기 유동성, 괴리율, 결측·거래정지일
-- [ ] 실측 결과를 [spec/index_extreme_events.md](spec/index_extreme_events.md) "데이터 실측 기록"에 반영
+- [ ] 실측 결과를 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8 "사전 실측 기록"에 반영
 
 > yfinance의 `069500.KS`는 **사용 불가**로 확인됐습니다. 근거는 스펙 문서에 기록돼 있습니다.
+>
+> QQQ는 이전 프로젝트에서 이관한 파일이 `storage/market/QQQ_max.csv`에 이미 있습니다(2026-07-24까지).
+> 자체 수집기가 만들어지기 전에도 이 파일로 작업할 수 있습니다.
+> 착수 전 `reference/pykrx_실측기록.md`와 `reference/yfinance_downloader.py`를 읽으세요.
 
 ### Phase 2 — 공통 계층
 

@@ -59,12 +59,24 @@ verify-lab 프로젝트를 시작한다. 이 프로젝트는 다른 세션에서
 - **공통 계층을 미리 일반화하지 않는다.** 두 번째 검증에서 재사용되는지 확인한 뒤 확정한다
 - 설명은 초보자도 이해할 수 있는 쉬운 한국어로. 전문 통계 용어 대신 구체적인 날짜·가격·표를 쓴다
 
-## 참고할 수 있는 외부 경로
+## 참고 자료는 저장소 안에 있다
 
-같은 머신에 있는 이전 프로젝트다. 필요할 때 읽기만 한다.
+**이 프로젝트는 외부 경로를 참조하지 않는다.** 필요한 참고 자료는 전부 `reference/` 안에 옮겨져 있다.
 
-- `~/workspace/quant` — yfinance 수집기(`src/qbt/utils/stock_downloader.py`),
-  결과 문서 작성 예시(`docs/research/RESEARCH_*.md`), 기존 QQQ 데이터(`storage/stock/QQQ_max.csv`)
-- `~/workspace/krx-sprint` — **삭제 예정.** pykrx 수집 코드(`src/krx_sprint/collect/`)와
-  이벤트 스터디 구현(`src/krx_sprint/backtest/event_study.py`)이 참고할 만하다.
-  다만 국내 개별종목 패널 전용이라 그대로 쓸 수 없다. 설계 개념만 가져온다
+- `reference/README.md`를 먼저 읽으면 어떤 파일을 언제 보면 되는지 표로 정리돼 있다
+- `reference/`는 **읽기 전용**이다. 수정·import·실행하지 않는다. 옛 프로젝트의 모듈을 참조하고 있어
+  그대로는 동작하지 않으며, 품질 검사 대상에서도 제외돼 있다
+- 필요한 부분은 읽고 이해한 뒤 `src/verify_lab/`에 **새로 작성**한다
+
+지금 단계에서 특히 볼 것:
+
+- `reference/common_constants_qbt.py`, `reference/common_constants_krx.py` — `common_constants.py` 작성 시
+- `reference/test_examples/` — look-ahead 감시 테스트와 합성 데이터 픽스처 작성 예시
+
+## 이미 들어와 있는 데이터
+
+`storage/market/QQQ_max.csv` — QQQ 일별 시세(1999-03-10 ~ 2026-07-24, 수정주가 기준).
+이전 프로젝트에서 이관한 파일이며, `docs/spec/index_extreme_events.md` §8의 사전 실측이 이 파일로 수행됐다.
+Phase 1에서 자체 수집기를 만든 뒤 재수집해 갱신한다. 그전까지는 이 파일로 작업해도 된다.
+
+KODEX 200 데이터는 아직 없다. Phase 1에서 pykrx로 받아야 한다.

@@ -30,10 +30,12 @@ build-backend = "poetry.core.masonry.api"
 [tool.black]
 line-length = 120
 target-version = ['py312']
+extend-exclude = "^/reference/"
 
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+extend-exclude = ["reference"]
 
 [tool.ruff.lint]
 select = [

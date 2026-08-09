@@ -2,7 +2,7 @@
   "pythonVersion": "3.12",
   "typeCheckingMode": "strict",
   "include": ["src", "tests", "scripts"],
-  "exclude": ["storage", "**/__pycache__", "**/.ruff_cache", "**/node_modules", "**/.*"],
+  "exclude": ["storage", "reference", "**/__pycache__", "**/.ruff_cache", "**/node_modules", "**/.*"],
   "extraPaths": ["src"],
   "reportMissingTypeStubs": "none",
   "reportUnknownMemberType": "none",

@@ -201,8 +201,20 @@ verify-lab/
 │   ├── spec/                # 개별 검증의 확정 설계
 │   ├── research/            # 검증 결과 문서 (상세: docs/research/CLAUDE.md)
 │   └── plans/               # 작업 계획서 (임시 산출물, 주기적으로 비움)
-└── storage/                 # 데이터와 산출물
+├── reference/               # 참고용 원본 코드·문서 (읽기 전용, 상세: reference/README.md)
+└── storage/
+    ├── market/              # 수집한 원시 시세 (git 동기화)
+    └── results/             # 검증 실행 결과 (git 제외, 재생성 가능)
 ```
+
+### reference 폴더
+
+이전 프로젝트에서 검증된 코드와 문서를 옮겨둔 **읽기 전용** 폴더입니다.
+수정·import·실행하지 않으며, 품질 검사(Ruff·PyRight·pytest) 대상에서 제외돼 있습니다.
+필요한 부분은 읽고 이해한 뒤 `src/verify_lab/`에 새로 작성합니다.
+각 파일의 출처와 용도는 [reference/README.md](reference/README.md)를 참고하세요.
+
+**이 프로젝트는 저장소 밖의 경로를 참조하지 않습니다.** 참고할 것은 전부 안에 있습니다.
 
 ### 공통 계층과 개별 검증의 경계 (CRITICAL)
 
