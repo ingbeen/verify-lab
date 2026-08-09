@@ -5,27 +5,35 @@
 
 ---
 
-verify-lab 프로젝트를 시작한다. 이 프로젝트는 다른 세션에서 설계를 확정하고 틀만 잡아둔 상태이며,
-**소스 구현은 아직 하나도 되어 있지 않다.**
+verify-lab 프로젝트를 시작한다. 이 프로젝트는 다른 세션에서 설계를 확정하고 틀과 문서만 잡아둔 상태다.
+**패키지 소스 구현은 아직 하나도 되어 있지 않다.**
 
 ## 먼저 읽을 것 (순서대로, 전부)
 
 1. `CLAUDE.md` — 프로젝트 규칙. 특히 "이 프로젝트가 무엇인가"와 "측정의 원칙" 8개 항목
-2. `docs/ROADMAP.md` — 검증 대상 목록과 Phase 진행 상태
-3. `docs/spec/index_extreme_events.md` — 첫 검증의 확정 설계. **이미 논의로 확정된 내용이므로
+2. **`docs/context/README.md`와 그 폴더의 두 문서** — 내 현재 투자 상태이자 이 프로젝트가 시작된 이유.
+   가장 중요한 문서다. 검증 결과를 해석할 때 이 맥락이 없으면 쓸모없는 보고가 된다
+3. `docs/ROADMAP.md` — 검증 대상 목록과 Phase 진행 상태
+4. `docs/spec/index_extreme_events.md` — 첫 검증의 확정 설계. **이미 논의로 확정된 내용이므로
    설계를 다시 제안하지 말 것.** 특히 §7 "확정된 설계 결정"과 §8 "사전 실측 기록"
-4. `.claude/rules/python.md` — 코딩 표준
-5. `docs/research/CLAUDE.md` — 결과 문서 작성 규칙
-6. `scripts/CLAUDE.md`, `tests/CLAUDE.md`
+5. `src/verify_lab/CLAUDE.md` — 계층 분리, 상수 관리, **측정 계층의 절대 원칙 5가지**
+6. `.claude/rules/python.md` — 코딩 표준. `.py` 파일을 읽으면 자동 주입되지만,
+   **기존 파일을 열지 않고 새 파일부터 만들 때는 주입되지 않으니 직접 열 것**
+7. `scripts/CLAUDE.md`, `tests/CLAUDE.md`, `docs/research/CLAUDE.md`
+
+나머지 문서와 `reference/`의 참고 자료 28개가 어디 있는지는 `docs/INDEX.md`에 지도로 정리돼 있다.
+필요할 때 INDEX를 보고 찾아 읽으면 된다. **문서를 추가하면 INDEX에 등록해야 한다** —
+`tests/test_index.py`가 검사하므로 빠뜨리면 `validate_project.py`가 실패한다.
 
 ## 현재 상태
 
 **되어 있는 것**
 
 - 폴더 구조, 설정 파일(pyproject·pyrightconfig·pytest.ini·.gitignore·poetry.toml)
-- 하네스 — `.claude/hooks/`(계획서 게이트), `.claude/rules/`, `.claude/skills/plan/`
-- 규칙 문서 — 루트 `CLAUDE.md`, 계층별 `CLAUDE.md`
-- 설계 문서 — `docs/ROADMAP.md`, `docs/spec/index_extreme_events.md`, `docs/COMMANDS.md`(골격)
+- 하네스 — `.claude/hooks/`(계획서 게이트), `.claude/rules/`(경로별 자동 주입), `.claude/skills/plan/`
+- 규칙 문서 — 루트 `CLAUDE.md`, 계층별 `CLAUDE.md`(`src/verify_lab/`·`scripts/`·`tests/`·`docs/research/`)
+- 설계·맥락 문서 — `docs/context/`, `docs/ROADMAP.md`, `docs/spec/index_extreme_events.md`, `docs/COMMANDS.md`(골격)
+- 문서 지도 `docs/INDEX.md`와 부패 검사 `tests/test_index.py`
 - `validate_project.py`
 
 **안 되어 있는 것**
@@ -35,7 +43,8 @@ verify-lab 프로젝트를 시작한다. 이 프로젝트는 다른 세션에서
   `common_constants.py`가 아직 없어 그대로는 동작하지 않는다
 - `common_constants.py` 없음
 - `data/`·`measure/`·`report/`·`studies/` 폴더가 비어 있음
-- 테스트 없음
+- 테스트는 `tests/test_index.py` 하나뿐. **이 프로젝트 환경에서 실행 검증된 적이 없다**
+  (작성 세션에서는 외부 환경으로만 통과 확인)
 - `poetry install` 미실행
 
 ## 첫 작업 — Phase 0 마무리
@@ -46,7 +55,8 @@ verify-lab 프로젝트를 시작한다. 이 프로젝트는 다른 세션에서
 2. `common_constants.py` 신설 — 경로 상수(storage 하위 구조), 공통 컬럼명 상수
    → 검증: `utils/meta_manager.py`가 정상 import된다
 3. 유틸 스모크 테스트 작성 → 검증: `validate_project.py`가 `failed=0 skipped=0`으로 통과
-4. `docs/ROADMAP.md`의 Phase 0 체크리스트 갱신
+4. `tests/test_index.py` 실행 검증 → 검증: 6개 통과. 실패하면 `docs/INDEX.md`를 고친다
+5. `docs/ROADMAP.md`의 Phase 0 체크리스트 갱신
 
 `poetry install`이 필요하면 나에게 실행을 요청할 것. 설치 명령어는 일회성이므로
 `docs/COMMANDS.md`에 기재하지 않는다.

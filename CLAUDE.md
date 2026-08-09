@@ -16,6 +16,19 @@
 verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있는지 재는 측정소**입니다.
 백테스트 도구도, 전략 개발 도구도 아닙니다. 이 구분이 모든 판단의 기준입니다.
 
+### 왜 시작됐는가 — [docs/context/](docs/context/) 를 먼저 읽으세요
+
+`docs/context/`의 두 문서는 **사용자의 현재 투자 상태를 나타내는 가장 중요한 문서**이며,
+이 프로젝트의 출발점입니다. 작업 전에 반드시 읽습니다.
+
+- `RESEARCH_q2_2xs_qqq_correlation.md` — 운용 중인 포트폴리오의 낮은 QQQ 상관은 자산 분산이 아니라
+  **하락장에서 주식을 비우는 타이밍 신호**에서 나왔다는 분해 결과. verify-lab은 그 후속으로
+  **"QQQ와 다르게 움직이는 매매법을 찾자"** 에서 출발했습니다
+- `RESEARCH_qqq_late_entry.md` — 현재 보유 판정(이번 사이클 미진입)과 그 근거
+
+검증 결과를 해석할 때는 "통계적으로 유의한가"에 더해 **"QQQ와 다르게 움직이는가"** 를 함께 봅니다.
+맥락을 모르면 숫자만 맞고 쓸모없는 보고가 됩니다.
+
 | 하는 일 | 하지 않는 일 |
 | --- | --- |
 | "이 신호 다음에 실제로 무슨 일이 있었나"를 측정 | 진입가·손절·익절·자금배분 설계 |
@@ -105,13 +118,43 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 ## 규칙 문서 구성
 
-- 공통 규칙: `CLAUDE.md`(루트, 이 문서)
-- 계층 규칙: `scripts/CLAUDE.md`, `tests/CLAUDE.md`, `docs/research/CLAUDE.md`
-- 경로별 규칙: `.claude/rules/` — 파이썬 구현 원칙·코딩 표준·로깅 정책은 [.claude/rules/python.md](.claude/rules/python.md)
-- 절차: `.claude/skills/` — 계획서 작성은 `/plan` 스킬
+> **저장소 전체의 문서 지도는 [docs/INDEX.md](docs/INDEX.md) 입니다.**
+> 어떤 문서가 어디 있는지, `reference/`의 28개 참고 자료 중 무엇을 언제 봐야 하는지가 정리돼 있습니다.
+> 여기서 찾지 못한 문서는 INDEX를 보세요.
 
-> 파이썬 파일을 작성·수정할 때는 [.claude/rules/python.md](.claude/rules/python.md)를 따릅니다.
-> 해당 규칙은 파이썬 파일을 다룰 때 자동 로드되지만, 새 파일을 만드는 등 자동 로드가 없는 경우에는 직접 읽습니다.
+작업 대상 경로의 문서를 **작업 전에 반드시 읽습니다.**
+
+| 문서 | 언제 읽나 | 로드 |
+| --- | --- | --- |
+| `CLAUDE.md` (루트, 이 문서) | 항상 | 자동 |
+| [docs/context/README.md](docs/context/README.md) | 항상 — 사용자의 현재 운용 상태와 프로젝트 배경 | 직접 |
+| [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) | 패키지 코드 작업 — 계층 분리, 상수 관리, 절대 원칙 | 자동 |
+| [scripts/CLAUDE.md](scripts/CLAUDE.md) | CLI 스크립트 작업 | 자동 |
+| [tests/CLAUDE.md](tests/CLAUDE.md) | 테스트 작성·수정 | 자동 |
+| [docs/research/CLAUDE.md](docs/research/CLAUDE.md) | 검증 결과 문서 작성 | 자동 |
+| [.claude/rules/python.md](.claude/rules/python.md) | 파이썬 파일 작업 — 코딩 표준·반올림·로깅 | 자동 |
+| [.claude/rules/docs.md](.claude/rules/docs.md) | `docs/` 파일 작업 | 자동 |
+| [.claude/rules/reference.md](.claude/rules/reference.md) | `reference/` 파일을 열었을 때 — 읽기 전용 4금지 | 자동 |
+| [.claude/rules/context.md](.claude/rules/context.md) | `docs/context/` 파일을 열었을 때 — 사용자 소유 문서 보호 | 자동 |
+| `/plan` 스킬 | 계획서 작성·갱신 | 호출 |
+
+> **자동 로드는 파일을 "읽기만" 해도 걸립니다.** 해당 경로의 파일을 Read 하는 순간
+> 그 경로의 규칙 문서 본문이 함께 주입되는 것을 `.py`와 `docs/` 양쪽에서 실측했습니다
+> (2026-08-09, [docs/ROADMAP.md](docs/ROADMAP.md) Phase 0에 기록).
+>
+> **남는 구멍은 하나입니다 — 기존 파일을 열지 않고 새 파일부터 만드는 경우.**
+> 이때는 규칙이 주입되지 않으므로 해당 문서를 직접 열어야 합니다.
+> `data/`·`measure/`·`report/`·`studies/`가 아직 비어 있어 초기 작업 대부분이 여기 해당합니다.
+
+### 새 규칙을 어디에 둘 것인가
+
+| 성격 | 위치 |
+| --- | --- |
+| 특정 폴더에서 **코드를 어떻게 쓰는가** | 그 폴더의 `CLAUDE.md` (예: `scripts/`, `tests/`) |
+| 파일 타입을 가로지르는 규칙 | `.claude/rules/` + `paths` 글롭 (예: `**/*.py`) |
+| **CLAUDE.md를 두면 오히려 혼란스러운 폴더** — 읽기 전용이거나 사용자 소유인 곳 | `.claude/rules/` (예: `reference/**`, `docs/context/**`) |
+
+새 규칙 파일을 만들면 [docs/INDEX.md](docs/INDEX.md) §2 표에도 등록합니다.
 
 ---
 
@@ -198,6 +241,7 @@ verify-lab/
 ├── docs/
 │   ├── ROADMAP.md           # 검증 대상 목록과 진행 상태 (SoT)
 │   ├── COMMANDS.md          # 실행 명령어 단일 관리
+│   ├── context/             # 사용자의 현재 운용 상태와 프로젝트 배경 (필독)
 │   ├── spec/                # 개별 검증의 확정 설계
 │   ├── research/            # 검증 결과 문서 (상세: docs/research/CLAUDE.md)
 │   └── plans/               # 작업 계획서 (임시 산출물, 주기적으로 비움)

@@ -11,11 +11,16 @@ paths:
 
 | 종류 | 파일 | 수명 |
 | --- | --- | --- |
-| **살아있는 문서** | `ROADMAP.md`, `COMMANDS.md`, `spec/*.md`, `research/RESEARCH_*.md` | 영구. 계속 갱신한다 |
+| **살아있는 문서** | `ROADMAP.md`, `COMMANDS.md`, `context/*.md`, `spec/*.md`, `research/RESEARCH_*.md` | 영구. 계속 갱신한다 |
 | **계획서** | `plans/PLAN_*.md` | **임시.** 사용자가 주기적으로 전부 삭제한다 |
 
 각 문서의 SoT 역할:
 
+- `INDEX.md` — **저장소 전체의 문서 지도.** `docs/`·`reference/`에 파일을 추가·삭제·이동하면
+  여기도 함께 고친다 (`docs/plans/` 는 예외). `tests/test_index.py` 가 양방향으로 검사하므로
+  누락하면 `validate_project.py` 가 실패한다. 규칙 내용을 복제하지 말고 **위치만** 적는다
+- `context/` — **사용자의 현재 운용 상태와 이 프로젝트가 시작된 이유.** 사용자가 갱신하는 문서이며
+  AI가 임의로 수정하지 않는다. 작업 전에 읽는다 (`context/README.md`가 안내)
 - `ROADMAP.md` — 검증 대상 목록, 진행 상태, Phase별 산출물, 계획서 승격 목적지
 - `spec/<검증명>.md` — 개별 검증의 **확정 설계와 데이터 실측 기록**.
   확정된 결정뿐 아니라 **탈락안과 그 이유**를 함께 남긴다. "이미 해봤다"의 근거가 된다
