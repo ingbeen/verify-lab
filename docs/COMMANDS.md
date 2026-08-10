@@ -24,6 +24,10 @@ poetry run python validate_project.py --cov
 poetry run black .
 ```
 
+> 검증이 **세 항목 모두 실패**하면서 `Command not found` 가 보이면 코드 문제가 아니라 실행 환경 문제입니다.
+> `poetry env info --path` 가 프로젝트의 `.venv` 를 가리키는지 먼저 확인하세요.
+> 원인과 대처는 [ROADMAP.md](ROADMAP.md) Phase 0 의 실측 기록에 있습니다.
+
 ---
 
 ## 데이터 수집

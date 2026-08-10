@@ -100,9 +100,8 @@ def test_all_documents_registered() -> None:
     """
     linked = set(_linked_paths())
     unregistered = [p for p in _tracked_files() if p.resolve() not in linked]
-    assert not unregistered, (
-        "INDEX에 등록되지 않은 문서가 있습니다. docs/INDEX.md 에 추가하세요:\n"
-        + "\n".join(f"  - {p.relative_to(PROJECT_ROOT)}" for p in sorted(unregistered))
+    assert not unregistered, "INDEX에 등록되지 않은 문서가 있습니다. docs/INDEX.md 에 추가하세요:\n" + "\n".join(
+        f"  - {p.relative_to(PROJECT_ROOT)}" for p in sorted(unregistered)
     )
 
 

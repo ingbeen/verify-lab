@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from krx_sprint.common_constants import META_JSON_PATH
+from verify_lab.common_constants import META_JSON_PATH
 
 # 메타데이터 관리 상수
 # meta.json에 저장할 최대 실행 이력 개수

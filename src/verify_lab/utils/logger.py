@@ -1,5 +1,5 @@
 """
-krx-sprint Logging Module
+verify-lab Logging Module
 
 로깅 정책:
 - DEBUG: 개발 중 상세 정보 (필터링 가능)
@@ -122,19 +122,19 @@ class ClickableFormatter(logging.Formatter):
 
 
 def setup_logger(
-    name: str = "krx_sprint",
+    name: str = "verify_lab",
     level: str | None = None,
 ) -> logging.Logger:
     """
-    krx-sprint 프로젝트용 Logger 설정
+    verify-lab 프로젝트용 Logger 설정
 
     학습 포인트:
-    1. 함수 기본 인자: name: str = "krx_sprint" - 인자를 안 넘기면 "krx_sprint" 사용
+    1. 함수 기본 인자: name: str = "verify_lab" - 인자를 안 넘기면 "verify_lab" 사용
     2. str | None: 타입 힌트 - str 또는 None 타입 허용
     3. -> logging.Logger: 반환 타입 힌트 - 이 함수는 Logger 객체 반환
 
     Args:
-        name: Logger 이름 (기본값: "krx_sprint")
+        name: Logger 이름 (기본값: "verify_lab")
         level: 로그 레벨 (DEBUG, WARNING, ERROR). None이면 DEBUG 사용
 
     Returns:
@@ -191,7 +191,7 @@ def setup_logger(
     return logger
 
 
-def get_logger(name: str = "krx_sprint") -> logging.Logger:
+def get_logger(name: str = "verify_lab") -> logging.Logger:
     """
     기존에 설정된 Logger를 가져오거나 새로 설정
 

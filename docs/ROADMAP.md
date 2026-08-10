@@ -37,7 +37,7 @@
 
 | Phase | 내용 | 상태 |
 | --- | --- | --- |
-| 0 | **부트스트랩** — 프로젝트 틀, 규칙 문서, 하네스, 유틸 이관, 품질 게이트 | 진행중 |
+| 0 | **부트스트랩** — 프로젝트 틀, 규칙 문서, 하네스, 유틸 이관, 품질 게이트 | 완료 |
 | 1 | **데이터 확보** — QQQ 수집기, KODEX 200 pykrx 실측 및 수집기 | 미착수 |
 | 2 | **공통 계층** — forward return·베이스라인·통계·리포트 | 미착수 |
 | 3 | **검증 #1 실행** — 지수 극단 이벤트 | 미착수 |
@@ -50,9 +50,9 @@
       **저장소 밖을 참조하지 않는 상태 확보**
 - [x] 문서 지도 [INDEX.md](INDEX.md) + 부패 검사 테스트 `tests/test_index.py`
 - [x] **`.claude/rules/` 자동 로드 검증** — `**/*.py`·`docs/**` 양쪽 확인. 아래 실측 기록 참고
-- [ ] 유틸 이관 마무리 — `src/verify_lab/utils/` 의 패키지명 참조 정리, `common_constants.py` 신설
-- [ ] `tests/test_index.py` 를 이 프로젝트 환경에서 실행 검증 (이관 시점에는 외부 환경에서만 통과 확인함)
-- [ ] 스모크 테스트와 `validate_project.py` 통과
+- [x] 유틸 이관 마무리 — `src/verify_lab/utils/` 의 패키지명 참조 정리, `common_constants.py` 신설
+- [x] `tests/test_index.py` 를 이 프로젝트 환경에서 실행 검증 (이관 시점에는 외부 환경에서만 통과 확인함)
+- [x] 스모크 테스트와 `validate_project.py` 통과
 
 #### 실측 기록 — `.claude/rules/` 자동 로드 (2026-08-09)
 
@@ -79,14 +79,33 @@
 > 실제로 그런 오답이 한 번 나왔다. **해당 규칙 문서에만 있는 구체적 값**을 묻고,
 > "파일을 추가로 열지 말고 추측하지 말라"는 제약을 함께 걸어야 한다.
 
-> 유틸 4종(`logger`·`formatting`·`cli_helpers`·`meta_manager`)은 이전 프로젝트에서 복사만 된 상태입니다.
-> 내부에 옛 패키지명 참조가 남아 있고 `common_constants.py`가 아직 없어 그대로는 동작하지 않습니다.
+> 유틸 4종(`logger`·`formatting`·`cli_helpers`·`meta_manager`)의 이관이 끝나 옛 패키지명 참조가
+> 남아 있지 않습니다. `common_constants.py`가 신설돼 경로·컬럼 상수를 단일 관리하며,
+> 확정된 경로 기준점과 컬럼 스키마의 근거는 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md)
+> "데이터 저장 규칙"에 있습니다.
+
+#### 실측 기록 — `poetry run` 이 다른 가상환경을 잡는 경우 (2026-08-10)
+
+**증상**: `validate_project.py` 가 Ruff·PyRight·Pytest를 **모두** 실패로 보고하면서
+`Command not found: ruff` 를 함께 출력한다. 실패 개수는 1개씩, Pytest는 `passed=0` 이다.
+
+**원인**: 셸에 `VIRTUAL_ENV` 가 프로젝트 밖 인터프리터로 설정돼 있으면 Poetry 2.x 가
+**이미 활성화된 그 환경을 우선**하고, `virtualenvs.in-project = true` 로 만들어진 `.venv` 를 쓰지 않는다.
+그 환경에는 개발 의존성이 없으므로 도구를 찾지 못한다.
+
+**확인**: `poetry env info --path` 가 프로젝트의 `.venv` 를 가리키는지 본다.
+다른 경로가 나오면 `VIRTUAL_ENV` 를 해제하고 실행한다.
+
+> 코드가 아니라 실행 환경 문제다. **품질 게이트가 통과하는데도 실패로 보이는 유일한 알려진 경로**이므로,
+> 이 출력을 보면 코드를 고치기 전에 환경부터 확인한다.
 
 ### Phase 1 — 데이터 확보
 
 - [ ] yfinance 수집기 — 수정주가 기준, `storage/market/` 저장 규칙 확정, QQQ 재수집
 - [ ] **pykrx 실측** — KODEX 200(`069500`)의 분배금 조정 여부, 초기 유동성, 괴리율, 결측·거래정지일
 - [ ] 실측 결과를 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8 "사전 실측 기록"에 반영
+- [ ] pykrx 가 반환하는 한글 컬럼을 공통 스키마로 정규화 — 정규화를 수집 시점에 할지 로딩 시점에 할지는
+      실측 후 확정합니다. 스키마 계약은 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 참고
 
 > yfinance의 `069500.KS`는 **사용 불가**로 확인됐습니다. 근거는 스펙 문서에 기록돼 있습니다.
 >
