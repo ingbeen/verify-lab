@@ -101,6 +101,10 @@
 
 ### Phase 1 — 데이터 확보
 
+- [x] `data/` 로더 계층 — 모든 시세 로딩의 단일 통로. 스키마·정렬·중복·이상치를 검사하고
+      **보간 없이 즉시 예외**를 던진다. 이상치 판정은 수집기와 같은 함수를 쓴다(판정식 단일화)
+- [ ] **KRX 계정 확보와 `.env` 설정** — 없으면 pykrx 실측과 KODEX 수집이 전부 착수 불가.
+      근거는 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8
 - [ ] yfinance 수집기 — 수정주가 기준, `storage/market/` 저장 규칙 확정, QQQ 재수집
 - [ ] **pykrx 실측** — KODEX 200(`069500`)의 분배금 조정 여부, 초기 유동성, 괴리율, 결측·거래정지일
 - [ ] 실측 결과를 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8 "사전 실측 기록"에 반영
