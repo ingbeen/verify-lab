@@ -35,7 +35,21 @@ poetry run black .
 > **사용자만 실행합니다.** 외부 서버(Yahoo Finance, KRX)에 실제 요청을 보내므로
 > AI 모델은 이 명령어를 직접 실행하지 않습니다.
 
-*(Phase 1에서 스크립트 작성 후 이 절을 채웁니다)*
+### yfinance (미국 종목)
+
+```bash
+# QQQ 전 기간 수집 (기본값)
+poetry run python scripts/data/collect_yfinance.py
+
+# 다른 종목 수집
+poetry run python scripts/data/collect_yfinance.py --ticker SPY
+```
+
+- 전 기간(`period="max"`)을 받아 `storage/market/<종목>_max.csv` 에 저장합니다. 기존 파일은 덮어씁니다
+- **확정되지 않은 최근 며칠은 저장하지 않습니다.** 제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
+- 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다. 반쪽짜리 파일이 남지 않습니다
+
+*(KRX 수집 명령어는 pykrx 실측 후 이 절에 추가합니다)*
 
 ---
 

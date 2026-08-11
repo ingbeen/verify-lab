@@ -18,7 +18,8 @@
 | 4 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 첫 검증의 확정 설계 |
 | 5 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 구조와 측정 계층의 절대 원칙 5가지 |
 
-부트스트랩 세션은 [../START_PROMPT.md](../START_PROMPT.md)가 진입점입니다.
+새 세션의 진입점은 [../START_PROMPT.md](../START_PROMPT.md)입니다. 현재 상태와 다음 작업이 정리돼 있으며,
+**작업이 진척되면 함께 갱신합니다.**
 
 ---
 
@@ -137,7 +138,7 @@
 
 | 위치 | 내용 | git |
 | --- | --- | --- |
-| `storage/market/QQQ_max.csv` | QQQ 일별 시세 (1999-03-10 ~ 2026-07-24, 수정주가). 이관본이며 Phase 1에서 재수집 | 동기화 |
+| `storage/market/QQQ_max.csv` | QQQ 일별 시세 (수정주가, 전 기간). `scripts/data/collect_yfinance.py` 로 재수집한다 | 동기화 |
 | `storage/market/` | 수집한 원시 시세 | 동기화 |
 | `storage/results/<실행시각>_<검증명>/` | 검증 산출물 (CSV, summary.json) | 제외 (재생성 가능) |
 
