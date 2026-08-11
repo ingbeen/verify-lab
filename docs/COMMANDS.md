@@ -49,7 +49,25 @@ poetry run python scripts/data/collect_yfinance.py --ticker SPY
 - **확정되지 않은 최근 며칠은 저장하지 않습니다.** 제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다. 반쪽짜리 파일이 남지 않습니다
 
-*(KRX 수집 명령어는 pykrx 실측 후 이 절에 추가합니다)*
+### pykrx (국내 종목)
+
+**KRX 데이터포털 계정이 필요합니다.** 저장소 루트의 `.env` 에 `KRX_ID`·`KRX_PW` 가 있어야 하며,
+계정이 없으면 pykrx 는 아무것도 조회하지 못합니다.
+
+```bash
+# KODEX 200 데이터 성질 실측 (분배금 조정 여부·유동성·괴리율·결측)
+poetry run python scripts/data/check_pykrx_etf.py
+
+# 다른 ETF 나 다른 시작일로 실측
+poetry run python scripts/data/check_pykrx_etf.py --ticker 069500 --start 20021014
+```
+
+- KRX 를 5회 호출하고, **각 결과를 받는 즉시** `storage/results/<실행시각>_pykrx_etf_probe/` 에 CSV 로 남깁니다.
+  뒤쪽 호출이 실패해도 앞선 원자료는 보존됩니다
+- ⚠️ **pykrx 는 로그인 시 로그인 ID 를 표준 출력에 찍습니다**(비밀번호는 찍지 않습니다).
+  실행 로그를 공유하거나 문서에 붙일 때 그 줄을 빼세요
+
+*(KODEX 200 수집 명령어는 위 실측 결과로 수집기를 설계한 뒤 추가합니다)*
 
 ---
 

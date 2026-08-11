@@ -104,16 +104,22 @@
 - [x] `data/` 로더 계층 — 모든 시세 로딩의 단일 통로. 스키마·정렬·중복·이상치를 검사하고
       **보간 없이 즉시 예외**를 던진다. 이상치 판정은 수집기와 같은 함수를 쓴다(판정식 단일화)
 - [x] **KRX 계정 확보와 `.env` 설정** — `KRX_ID`·`KRX_PW` 준비 완료 (2026-08-10)
-- [ ] **자격증명 로더** — `.env`는 만들어져 있지만 **pykrx는 `.env`를 읽지 않는다**(환경 변수만 본다).
-      `python-dotenv` 의존성 추가 + `.env` → 환경 변수 로더가 필요하며, **pykrx import보다 먼저** 호출해야 한다.
-      확인한 근거와 구현 요건은 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8
+- [x] **자격증명 로더** — `data/krx_credentials.py`. `python-dotenv` 로 `.env` 를 환경 변수에 올린다.
+      **`import pykrx` 자체가 로그인을 시도하므로**(실측) 호출 측은 로더를 부른 뒤에 pykrx 를 import 한다.
+      순서를 구조로 강제하려고 스크립트에서 import 를 함수 안에 둔다
 - [x] **yfinance 수집기** — 수정주가 기준, 저장 규칙 확정, QQQ 재수집 완료 (2026-08-11).
       저장 규칙은 아래 "확정된 원시 시세 저장 규칙", 라이브러리 동작 실측은
       [spec/index_extreme_events.md](spec/index_extreme_events.md) §8
-- [ ] **pykrx 실측** — KODEX 200(`069500`)의 분배금 조정 여부, 초기 유동성, 괴리율, 결측·거래정지일
-- [ ] 실측 결과를 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8 "사전 실측 기록"에 반영
+- [x] **pykrx 실측** — `scripts/data/check_pykrx_etf.py` 로 KODEX 200(`069500`) 확인 완료 (2026-08-11).
+      결과는 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8 "pykrx KODEX 200"
+- [x] 실측 결과를 [spec/index_extreme_events.md](spec/index_extreme_events.md) §8 에 반영하고 §9 항목 5개를 해소
+- [ ] **분배락 대응 방침 확정** — `get_etf_ohlcv_by_date` 는 전 기간을 주지만 **분배락이 조정돼 있지 않고**
+      (매년 4월 말 약 1.5%p), `get_market_ohlcv(adjusted=True)` 는 조정하지만 **한 번에 3,000행까지만** 온다.
+      스펙 §2 가 "수익률 계산은 수정주가 기준"을 확정했으므로 둘 중 하나를 고르거나 이어붙여야 한다
+- [ ] KODEX 200 수집기 — 위 방침 확정 후
 - [ ] pykrx 가 반환하는 한글 컬럼을 공통 스키마로 정규화 — 정규화를 수집 시점에 할지 로딩 시점에 할지는
-      실측 후 확정합니다. 스키마 계약은 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 참고
+      수집기 설계와 함께 확정합니다. 스키마 계약은 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 참고.
+      **가격 dtype 이 `uint32` 라 차분에서 언더플로우가 나므로 로딩 시 `float64` 변환이 필요합니다**
 
 > yfinance의 `069500.KS`는 **사용 불가**로 확인됐습니다. 근거는 스펙 문서에 기록돼 있습니다.
 > 국내 데이터는 pykrx로 받으며, 착수 전 `reference/pykrx_실측기록.md`를 읽으세요.

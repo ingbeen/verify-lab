@@ -13,6 +13,7 @@ pandas = "^2.0.0"
 scipy = "^1.14.0"
 yfinance = "^0.2.0"
 pykrx = "^1.0"
+python-dotenv = "^1.2.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.0.0"
