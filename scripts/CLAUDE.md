@@ -37,6 +37,8 @@
 | --- | --- | --- |
 | `yfinance_collect` | `data/collect_yfinance.py` | 수집한 종목, 저장 경로, 행 수, 기간, 최근 제외 건수 |
 | `pykrx_etf_probe` | `data/check_pykrx_etf.py` | 실측한 종목·기간, 원자료 저장 폴더, 함수별 반환 행 수 |
+| `pykrx_splice_probe` | `data/check_pykrx_splice.py` | 실측한 종목·시작일·분할 종료일, 원자료 저장 폴더, 세그먼트별 행 수, 겹침 불일치 건수, 덮지 못한 거래일 수 |
+| `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, **가격 기준별로** 저장 경로·행 수·기간·최근 제외 건수 |
 
 ---
 

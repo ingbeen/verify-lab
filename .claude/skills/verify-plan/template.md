@@ -1,6 +1,6 @@
 # Implementation Plan: [작업명/기능명]
 
-> 작성/운영 규칙(SoT): `/plan` 스킬(`.claude/skills/plan/SKILL.md`)을 반드시 참고하세요.  
+> 작성/운영 규칙(SoT): `/verify-plan` 스킬(`.claude/skills/verify-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
 **상태**: 🟡 Draft / 🔄 In Progress / ✅ Done
@@ -15,7 +15,7 @@
 
 - ✅ Done 조건: DoD 모두 [x] + `skipped=0` + `failed=0`
 - ⚠️ **스킵이 1개라도 존재하면 Done 처리 금지 + DoD 테스트 항목 체크 금지**
-- 상세: `/plan` 스킬의 "3) 스킵 및 완료 규칙" 참고
+- 상세: `/verify-plan` 스킬의 "3) 스킵 및 완료 규칙" 참고
 - 위 조건은 `.claude/hooks/plan_lint.py`가 저장 시 자동 검사합니다
 
 ---
@@ -31,7 +31,7 @@
 
 > 🚫 **이 영역은 삭제/수정 금지** 🚫
 > 이 섹션(0)은 지워지면 안 될 뿐만 아니라 **문구가 수정되면 안 됩니다.**
-> 규칙의 상세 정의/예외는 반드시 `/plan` 스킬을 따릅니다.
+> 규칙의 상세 정의/예외는 반드시 `/verify-plan` 스킬을 따릅니다.
 
 - `poetry run python validate_project.py`는 **마지막 Phase에서만 실행**한다. 실패하면 즉시 수정 후 재검증한다.
 - Phase 0은 "레드(의도적 실패 테스트)" 허용, Phase 1부터는 **그린 유지**를 원칙으로 한다.
@@ -66,7 +66,7 @@
 
 ## 4) 완료 조건(Definition of Done)
 
-> Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/plan` 스킬)
+> Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/verify-plan` 스킬)
 
 - [ ] 기능 요구사항 충족
 - [ ] 회귀/신규 테스트 추가
@@ -74,7 +74,7 @@
 - [ ] `poetry run black .` 실행 완료 (마지막 Phase에서 자동 포맷 적용)
 - [ ] 필요한 문서 업데이트(`docs/COMMANDS.md` / CLAUDE.md / plan 등 — 각각 변경 여부 명시)
 - [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
-      (결정 근거·실측 수치를 스펙/설계/ROADMAP/COMMANDS로 이관. `/plan` 스킬 "근거 승격" 참고)
+      (결정 근거·실측 수치를 스펙/설계/ROADMAP/COMMANDS로 이관. `/verify-plan` 스킬 "근거 승격" 참고)
 - [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)

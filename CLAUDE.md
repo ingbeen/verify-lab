@@ -136,7 +136,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | [.claude/rules/docs.md](.claude/rules/docs.md) | `docs/` 파일 작업 | 자동 |
 | [.claude/rules/reference.md](.claude/rules/reference.md) | `reference/` 파일을 열었을 때 — 읽기 전용 4금지 | 자동 |
 | [.claude/rules/context.md](.claude/rules/context.md) | `docs/context/` 파일을 열었을 때 — 사용자 소유 문서 보호 | 자동 |
-| `/plan` 스킬 | 계획서 작성·갱신 | 호출 |
+| `/verify-plan` 스킬 | 계획서 작성·갱신 | 호출 |
 
 > **자동 로드는 파일을 "읽기만" 해도 걸립니다.** 해당 경로의 파일을 Read 하는 순간
 > 그 경로의 규칙 문서 본문이 함께 주입되는 것을 `.py`와 `docs/` 양쪽에서 실측했습니다
@@ -170,7 +170,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 위 예외를 제외한 모든 변경은 `docs/plans/`에 계획서를 작성해야 합니다.
 
-계획서 작성 절차 및 품질 게이트: `/plan` 스킬([.claude/skills/plan/SKILL.md](.claude/skills/plan/SKILL.md))이 SoT입니다.
+계획서 작성 절차 및 품질 게이트: `/verify-plan` 스킬([.claude/skills/verify-plan/SKILL.md](.claude/skills/verify-plan/SKILL.md))이 SoT입니다.
 
 이 규칙은 하네스가 강제합니다 (`.claude/hooks/`).
 

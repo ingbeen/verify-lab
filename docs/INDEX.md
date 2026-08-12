@@ -36,7 +36,7 @@
 | [../.claude/rules/docs.md](../.claude/rules/docs.md) | 문서 종류와 SoT 역할, 계획서 수명 | `docs/**` **Read 시점**에 자동 (실측 확인) |
 | [../.claude/rules/reference.md](../.claude/rules/reference.md) | reference 폴더 읽기 전용 4금지 | `reference/**` Read 시점에 자동 |
 | [../.claude/rules/context.md](../.claude/rules/context.md) | 사용자 소유 문서 보호, 해석 시 붙잡을 맥락 | `docs/context/**` Read 시점에 자동 |
-| [../.claude/skills/plan/SKILL.md](../.claude/skills/plan/SKILL.md) | 계획서 작성 절차 (SoT) | `/plan` 스킬 호출 |
+| [../.claude/skills/verify-plan/SKILL.md](../.claude/skills/verify-plan/SKILL.md) | 계획서 작성 절차 (SoT) | `/verify-plan` 스킬 호출 |
 
 > **자동 로드는 편집이 아니라 읽기에서 걸립니다.** 기존 파일을 Read 하면 해당 경로의 규칙이 함께 들어옵니다.
 > 따라서 **기존 파일을 열지 않고 새 파일부터 만드는 경우**에만 규칙 문서를 직접 열면 됩니다.
@@ -139,10 +139,14 @@
 | 위치 | 내용 | git |
 | --- | --- | --- |
 | `storage/market/QQQ_max.csv` | QQQ 일별 시세 (수정주가, 전 기간). `scripts/data/collect_yfinance.py` 로 재수집한다 | 동기화 |
+| `storage/market/069500_max.csv` | KODEX 200 일별 시세 (**원본가**, 상장일부터 전 기간). 본검증용 | 동기화 |
+| `storage/market/069500_adjusted_max.csv` | KODEX 200 일별 시세 (**수정주가**, KRX 가 주는 최근 구간). 대조용 | 동기화 |
 | `storage/market/` | 수집한 원시 시세 | 동기화 |
 | `storage/results/<실행시각>_<검증명>/` | 검증 산출물 (CSV, summary.json) | 제외 (재생성 가능) |
 
-KODEX 200 데이터는 아직 없습니다. Phase 1에서 pykrx로 받습니다.
+국내 두 파일은 `scripts/data/collect_pykrx.py` 로 한 번에 재수집합니다.
+**같은 `_max.csv` 라도 종목에 따라 가격 기준이 다릅니다** — 이유와 근거는 [ROADMAP.md](ROADMAP.md)
+"확정된 원시 시세 저장 규칙"에 있습니다.
 
 ---
 

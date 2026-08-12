@@ -1,10 +1,8 @@
 ---
-name: plan
+name: verify-plan
 description: verify-lab 계획서(Implementation Plan) 작성·갱신 절차의 SoT. 코드 변경 전 docs/plans/PLAN_<short_name>.md 를 만들 때, 기존 계획서의 Phase/체크리스트를 갱신할 때, Done 처리 조건을 판단할 때 사용한다.
 when_to_use: 사용자가 계획서·plan 작성을 요청할 때. src/·scripts/·tests/ 의 코드를 변경하기 전. docs/plans/ 아래 파일을 읽거나 수정할 때. plan 을 Done 으로 표기해도 되는지 판단할 때.
 argument-hint: [short_name]
-paths:
-  - "docs/plans/**"
 ---
 
 # 계획서(Implementation Plan) 작성 절차

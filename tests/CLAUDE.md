@@ -214,6 +214,6 @@ with pytest.raises(ValueError, match="순위"):
 ## 스킵 금지
 
 `skipped > 0`이면 계획서를 Done으로 처리할 수 없습니다.
-"구현이 없어서 테스트를 못 쓴다"면 스킵이 아니라 **Phase 분해**로 해결합니다. 상세는 `/plan` 스킬.
+"구현이 없어서 테스트를 못 쓴다"면 스킵이 아니라 **Phase 분해**로 해결합니다. 상세는 `/verify-plan` 스킬.
 
 사용 중인 플러그인: pytest-cov(커버리지), freezegun(시간 고정)
