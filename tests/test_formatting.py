@@ -8,7 +8,7 @@ import logging
 
 import pytest
 
-from verify_lab.utils.formatting import Align, TableLogger, _format_cell, _get_display_width
+from verify_lab.utils.formatting import Align, TableLogger, _format_cell, get_display_width
 
 
 def test_ascii_width_is_one_per_character() -> None:
@@ -19,7 +19,7 @@ def test_ascii_width_is_one_per_character() -> None:
     When: 표시 폭을 계산한다
     Then: 글자 수와 같다
     """
-    assert _get_display_width("QQQ") == 3
+    assert get_display_width("QQQ") == 3
 
 
 def test_hangul_counts_as_two_columns() -> None:
@@ -30,7 +30,7 @@ def test_hangul_counts_as_two_columns() -> None:
     When: 표시 폭을 계산한다
     Then: 4가 된다
     """
-    assert _get_display_width("날짜") == 4
+    assert get_display_width("날짜") == 4
 
 
 def test_mixed_text_width_is_summed() -> None:
@@ -41,7 +41,7 @@ def test_mixed_text_width_is_summed() -> None:
     When: 표시 폭을 계산한다
     Then: 2*2 + 3 = 7 이다
     """
-    assert _get_display_width("종가QQQ") == 7
+    assert get_display_width("종가QQQ") == 7
 
 
 def test_empty_text_width_is_zero() -> None:
@@ -52,7 +52,7 @@ def test_empty_text_width_is_zero() -> None:
     When: 표시 폭을 계산한다
     Then: 0이다
     """
-    assert _get_display_width("") == 0
+    assert get_display_width("") == 0
 
 
 def test_left_align_pads_on_the_right() -> None:
@@ -68,7 +68,7 @@ def test_left_align_pads_on_the_right() -> None:
 
     # Then
     assert cell == "날짜    "
-    assert _get_display_width(cell) == 8
+    assert get_display_width(cell) == 8
 
 
 def test_right_align_pads_on_the_left() -> None:

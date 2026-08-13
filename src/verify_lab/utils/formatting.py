@@ -29,7 +29,7 @@ class Align(Enum):
     CENTER = "center"  # 가운데 정렬
 
 
-def _get_display_width(text: str) -> int:
+def get_display_width(text: str) -> int:
     """
     문자열의 실제 터미널 출력 폭을 계산한다.
 
@@ -77,7 +77,7 @@ def _format_cell(text: str, width: int, align: Align = Align.LEFT) -> str:
         정렬된 문자열
     """
     content = str(text)
-    content_width = _get_display_width(content)
+    content_width = get_display_width(content)
     available_padding = width - content_width
 
     # 폭이 부족한 경우 원본 반환
