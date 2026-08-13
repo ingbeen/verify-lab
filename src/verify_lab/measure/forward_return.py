@@ -27,6 +27,18 @@ import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_OPEN
+from verify_lab.data.loader import validate_market_frame
+from verify_lab.measure.constants import (
+    COL_BASIS,
+    COL_EXCLUDED_COUNT,
+    COL_EXCLUDED_REASON,
+    COL_FORWARD_RETURN,
+    COL_HORIZON,
+    COL_SIGNAL_COUNT,
+    EXCLUDED_SUMMARY_COLUMNS,
+    REASON_NONE,
+    REASON_OUT_OF_RANGE,
+)
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -38,24 +50,7 @@ DEFAULT_HORIZONS = (1, 5, 21, 63, 126, 252)
 # 계산에 필요한 시세 컬럼. 나머지 컬럼은 보지 않는다
 REQUIRED_MARKET_COLUMNS = [COL_DATE, COL_OPEN, COL_CLOSE]
 
-# 반환 컬럼 (내부 계산용 영문 토큰). 신호일은 시세 스키마의 날짜 컬럼을 그대로 쓴다 —
-# 새 이름을 만들면 시세와 대조할 때마다 변환이 붙는다
-COL_BASIS = "Basis"
-COL_HORIZON = "Horizon"
-COL_FORWARD_RETURN = "ForwardReturn"
-COL_EXCLUDED_REASON = "ExcludedReason"
-
 RESULT_COLUMNS = [COL_DATE, COL_BASIS, COL_HORIZON, COL_FORWARD_RETURN, COL_EXCLUDED_REASON]
-
-# 제외 건수 요약의 컬럼
-COL_SIGNAL_COUNT = "SignalCount"
-COL_EXCLUDED_COUNT = "ExcludedCount"
-
-EXCLUDED_SUMMARY_COLUMNS = [COL_BASIS, COL_HORIZON, COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT]
-
-# 제외 사유. 유효한 칸은 빈 문자열이다
-REASON_NONE = ""
-REASON_OUT_OF_RANGE = "구간 끝이 데이터 범위를 넘음"
 
 
 class ReturnBasis(Enum):
@@ -102,7 +97,7 @@ def compute_forward_returns(
             1 미만이거나 중복된 경우
     """
     ordered_horizons = _validated_horizons(horizons)
-    _validate_market(df)
+    validate_market_frame(df, REQUIRED_MARKET_COLUMNS)
     _validate_signals(df, signals)
 
     close = df[COL_CLOSE].to_numpy(dtype=float)
@@ -233,30 +228,6 @@ def _validated_horizons(horizons: Sequence[int]) -> tuple[int, ...]:
         raise ValueError(f"측정 구간이 중복됩니다: {list(ordered)}")
 
     return ordered
-
-
-def _validate_market(df: pd.DataFrame) -> None:
-    """시세가 위치 기반 계산의 전제를 만족하는지 확인한다.
-
-    로더가 이미 결측·0 이하 가격·중복 날짜를 막으므로 그것들은 다시 검사하지 않는다.
-    다만 입력의 출처를 알 수 없으므로 정렬만은 직접 확인한다 — 날짜가 뒤섞이면
-    위치 기반 계산이 예외 없이 조용히 어긋난다.
-
-    Args:
-        df: 시세 DataFrame
-
-    Raises:
-        ValueError: 비었거나, 필수 컬럼이 없거나, 날짜가 오름차순이 아닌 경우
-    """
-    if df.empty:
-        raise ValueError("시세 데이터가 비어 있습니다")
-
-    missing_columns = set(REQUIRED_MARKET_COLUMNS) - set(df.columns)
-    if missing_columns:
-        raise ValueError(f"필수 컬럼이 누락되었습니다: {sorted(missing_columns)}")
-
-    if not df[COL_DATE].is_monotonic_increasing:
-        raise ValueError("시세가 날짜 오름차순이 아닙니다")
 
 
 def _validate_signals(df: pd.DataFrame, signals: pd.Series) -> None:

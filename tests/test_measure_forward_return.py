@@ -20,16 +20,18 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.measure.forward_return import (
+from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
     COL_HORIZON,
     COL_SIGNAL_COUNT,
-    DEFAULT_HORIZONS,
     REASON_NONE,
     REASON_OUT_OF_RANGE,
+)
+from verify_lab.measure.forward_return import (
+    DEFAULT_HORIZONS,
     RESULT_COLUMNS,
     ReturnBasis,
     compute_forward_returns,

@@ -7,6 +7,7 @@
 그 위의 측정 결과 전체가 무효가 된다.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -63,6 +64,33 @@ def validate_market_data(df: pd.DataFrame) -> None:
             f"날짜: {df.loc[first_index, COL_DATE]}, "
             f"변동률: {change_rate[first_index]:+.2%}, 건수: {int(extreme.sum())}"
         )
+
+
+def validate_market_frame(df: pd.DataFrame, required_columns: Sequence[str]) -> None:
+    """시세 DataFrame 이 위치 기반 계산의 전제를 만족하는지 확인한다.
+
+    값의 이상(결측·0 이하 가격·급등락)은 `validate_market_data` 가 본다. 이 함수는 **구조만** 본다 —
+    비었는가, 필요한 컬럼이 있는가, 날짜가 오름차순인가.
+
+    측정 계층은 넘겨받은 DataFrame 의 출처를 알 수 없으므로 계산 전에 이 검사를 지난다.
+    날짜가 뒤섞이면 이동평균과 forward return 이 예외 없이 조용히 어긋난다.
+
+    Args:
+        df: 검사할 시세 DataFrame
+        required_columns: 호출자가 실제로 쓰는 컬럼 목록
+
+    Raises:
+        ValueError: 비었거나, 필요한 컬럼이 없거나, 날짜가 오름차순이 아닌 경우
+    """
+    if df.empty:
+        raise ValueError("시세 데이터가 비어 있습니다")
+
+    missing_columns = set(required_columns) - set(df.columns)
+    if missing_columns:
+        raise ValueError(f"필수 컬럼이 누락되었습니다: {sorted(missing_columns)}")
+
+    if not df[COL_DATE].is_monotonic_increasing:
+        raise ValueError("시세가 날짜 오름차순이 아닙니다")
 
 
 def load_market_csv(path: Path) -> pd.DataFrame:
