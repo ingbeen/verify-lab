@@ -112,4 +112,28 @@ poetry run python scripts/data/collect_pykrx.py --ticker 069500 --start 20021014
 
 > AI 모델이 직접 실행할 수 있습니다. 파라미터를 바꿔가며 반복 실행하는 것이 검증의 본질입니다.
 
-*(Phase 3에서 스크립트 작성 후 이 절을 채웁니다)*
+### 검증 #1 — 지수 극단 이벤트
+
+```bash
+# 전 조합 실행 (기본값) — QQQ 와 KODEX 200 두 가격 기준을 한 번에
+poetry run python scripts/studies/run_index_extreme.py
+
+# 특정 시세만
+poetry run python scripts/studies/run_index_extreme.py --dataset qqq
+
+# 순열 검정 설정을 바꿔 재현성 확인
+poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
+```
+
+- **강건성 조합을 한 실행에서 전부 산출합니다.** 테스트 A(순위 컷 3 × 시작연도 4 × 방향 2)와
+  테스트 B(연속 일수 8 × 시작연도 4 × 방향 2)에 시대 구간 2개를 더해 데이터셋당 132개,
+  세 데이터셋 합쳐 **신호군 396개**입니다
+- **국내 두 가격 기준을 같은 실행 안에서 계산합니다.** 대조의 전제가 "파라미터가 같았다"이고,
+  KRX 수정주가 조회 창이 하루씩 굴러가 다른 날 실행하면 대조 자체가 성립하지 않습니다
+- `--dataset` 값은 `qqq` / `kodex200`(원본가, 본검증) / `kodex200_adjusted`(수정주가, 대조)입니다.
+  **국내 두 기준을 따로 돌리면 대조가 성립하지 않으므로 함께 돌립니다**
+- 산출물은 `storage/results/<실행시각>_index_extreme/` 에 CSV 4개(`signals`·`statistics`·`excess`·`test`)와
+  `summary.json` 으로 남습니다. 덮어쓰지 않고 실행 시각으로 쌓입니다
+- **순위 컷·연속 일수·집계 시작연도는 인자가 아닙니다.** 스펙이 확정한 목록을 전부 산출해 나란히
+  보고하는 것이 이 검증의 설계이며, 값을 골라 넣는 노브로 쓰면 과최적화입니다
+- 실행 시간은 전 조합 기준 **약 3분**입니다 (2026-08-14 실측, 반복 1,000회)
