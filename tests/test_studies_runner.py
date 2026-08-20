@@ -29,7 +29,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
 )
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW
-from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
+from verify_lab.measure.forward_return import DEFAULT_HORIZONS, NEXT_OPEN_HORIZONS
 from verify_lab.report.constants import (
     DISPLAY_BASELINE,
     DISPLAY_BASELINE_SAMPLE,
@@ -334,19 +334,19 @@ class TestSignalGroupAxes:
         assert extreme == {f"K={cut}" for cut in RANK_CUTS}
         assert consecutive == {f"N={length}" for length in CONSECUTIVE_LENGTHS}
 
-    def test_각_신호군은_기준_2종_구간_6종의_열두_칸을_낸다(self, wide_outputs: StudyOutputs) -> None:
+    def test_각_신호군은_종가_6구간과_익일시가_1일의_일곱_칸을_낸다(self, wide_outputs: StudyOutputs) -> None:
         """
         목적: 칸 구성이 신호군마다 달라지지 않는지 고정한다
 
         Given: 실행 결과의 집계표
         When: 신호군별 행 수를 셌을 때
-        Then: 전부 12행이다
+        Then: 전부 7행이다 (종가 6구간 + 익일시가 1일)
         """
         # Given / When
         rows_per_group = wide_outputs.statistics.groupby(list(IDENTITY_COLUMNS), sort=False).size()
 
         # Then
-        assert set(rows_per_group) == {len(ReturnBasis) * len(DEFAULT_HORIZONS)}
+        assert set(rows_per_group) == {len(DEFAULT_HORIZONS) + len(NEXT_OPEN_HORIZONS)}
 
 
 class TestEventCount:

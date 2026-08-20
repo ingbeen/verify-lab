@@ -32,6 +32,7 @@ from verify_lab.measure.constants import (
 )
 from verify_lab.measure.forward_return import (
     DEFAULT_HORIZONS,
+    NEXT_OPEN_HORIZONS,
     RESULT_COLUMNS,
     ReturnBasis,
     compute_forward_returns,
@@ -119,19 +120,19 @@ class TestFormula:
         """
         목적: 두 기준은 **출구가 같고 입구만 다르다.** 이것이 성립해야 "차이 = 갭으로 새는 몫"이 된다.
 
-        Given: 신호일 종가 100, 다음 날 시가 105, 이틀 뒤 종가 121
-        When: 구간 2로 계산한다
-        Then: 두 기준 모두 출구가 121이고 입구만 100과 105로 갈린다
+        Given: 신호일 종가 100, 다음 날 시가 105 · 종가 110
+        When: 두 기준이 함께 내는 1일 구간으로 계산한다
+        Then: 두 기준 모두 출구가 110이고 입구만 100과 105로 갈린다
         """
         # Given
-        df = _market([100.0, 110.0, 121.0], opens=[100.0, 105.0, 115.0])
+        df = _market([100.0, 110.0], opens=[100.0, 105.0])
 
         # When
-        frame = compute_forward_returns(df, _signals(df, [0]), horizons=(2,))
+        frame = compute_forward_returns(df, _signals(df, [0]), horizons=(1,))
 
         # Then
-        assert _value(df, frame, 0, ReturnBasis.CLOSE, 2) == pytest.approx(121 / 100 - 1, abs=EXACT_TOLERANCE)
-        assert _value(df, frame, 0, ReturnBasis.NEXT_OPEN, 2) == pytest.approx(121 / 105 - 1, abs=EXACT_TOLERANCE)
+        assert _value(df, frame, 0, ReturnBasis.CLOSE, 1) == pytest.approx(110 / 100 - 1, abs=EXACT_TOLERANCE)
+        assert _value(df, frame, 0, ReturnBasis.NEXT_OPEN, 1) == pytest.approx(110 / 105 - 1, abs=EXACT_TOLERANCE)
 
     def test_gap_up_makes_the_next_open_basis_lower(self) -> None:
         """
@@ -160,6 +161,16 @@ class TestFormula:
         """
         assert DEFAULT_HORIZONS == (1, 5, 21, 63, 126, 252)
 
+    def test_next_open_horizons_are_the_one_day_cell_only(self) -> None:
+        """
+        목적: 익일 시가 기준으로 내는 구간은 **1일 하나뿐**이다 (스펙 §7 결정 ⑳).
+
+        Given: 익일 시가 기준의 측정 구간 상수
+        When: 값을 확인한다
+        Then: 1거래일 하나다
+        """
+        assert NEXT_OPEN_HORIZONS == (1,)
+
 
 class TestSamplePreservation:
     """표본이 조용히 사라지지 않음을 고정한다 — 생존편향이 들어오는 지점이다."""
@@ -170,7 +181,7 @@ class TestSamplePreservation:
 
         Given: 10거래일 시세와 신호 3건
         When: 구간 1·5로 계산한다
-        Then: 행 수가 신호 수 × 기준 2 × 구간 2 이고, 칸마다 유효와 제외의 합이 신호 수와 같다
+        Then: 행 수가 신호 수 × (종가 2칸 + 익일 시가 1칸) 이고, 칸마다 유효와 제외의 합이 신호 수와 같다
         """
         # Given
         df = _market([100.0 + index for index in range(10)])
@@ -180,7 +191,7 @@ class TestSamplePreservation:
         frame = compute_forward_returns(df, signals, horizons=(1, 5))
 
         # Then
-        assert len(frame) == 3 * 2 * 2
+        assert len(frame) == 3 * 3
         for (_, _), group in frame.groupby([COL_BASIS, COL_HORIZON]):
             usable = int(group[COL_FORWARD_RETURN].notna().sum())
             excluded = int((group[COL_EXCLUDED_REASON] != REASON_NONE).sum())
@@ -245,7 +256,7 @@ class TestSamplePreservation:
 
         Given: 구간 끝이 데이터를 넘는 신호와 넘지 않는 신호가 섞인 입력
         When: 계산한다
-        Then: 같은 (신호일, 구간)에서 두 기준의 제외 여부가 일치한다
+        Then: 두 기준이 함께 내는 1일 칸에서 제외 여부가 신호일마다 일치한다
         """
         # Given
         df = _market([100.0 + index for index in range(6)])
@@ -255,7 +266,8 @@ class TestSamplePreservation:
         frame = compute_forward_returns(df, signals, horizons=(1, 3))
 
         # Then
-        pivoted = frame.pivot(index=[COL_DATE, COL_HORIZON], columns=COL_BASIS, values=COL_FORWARD_RETURN)
+        shared = frame[frame[COL_HORIZON].isin(NEXT_OPEN_HORIZONS)]
+        pivoted = shared.pivot(index=[COL_DATE, COL_HORIZON], columns=COL_BASIS, values=COL_FORWARD_RETURN)
         assert (pivoted[ReturnBasis.CLOSE.value].isna() == pivoted[ReturnBasis.NEXT_OPEN.value].isna()).all()
 
 
@@ -286,6 +298,42 @@ class TestLookAhead:
 
 class TestReturnContract:
     """반환 형태·정렬·불변성을 고정한다."""
+
+    def test_next_open_basis_covers_the_one_day_horizon_only(self) -> None:
+        """
+        목적: 익일 시가 기준 칸은 **1일 구간에만** 생긴다 — 장기 구간은 종가 기준 값의 중복이다.
+
+        Given: 구간 1·5·21 을 넘긴 신호 1건
+        When: 계산한다
+        Then: 종가 기준은 세 구간 전부, 익일 시가 기준은 1일 하나뿐이다
+        """
+        # Given
+        df = _market([100.0 + index for index in range(30)])
+
+        # When
+        frame = compute_forward_returns(df, _signals(df, [0]), horizons=(1, 5, 21))
+
+        # Then
+        assert sorted(frame.loc[frame[COL_BASIS] == ReturnBasis.CLOSE.value, COL_HORIZON]) == [1, 5, 21]
+        assert sorted(frame.loc[frame[COL_BASIS] == ReturnBasis.NEXT_OPEN.value, COL_HORIZON]) == [1]
+
+    def test_row_count_is_signal_count_times_the_cells_of_every_basis(self) -> None:
+        """
+        목적: 행 수 계약을 고정한다 — 기준마다 구간 수가 다르므로 곱셈이 아니라 **기준별 합**이다.
+
+        Given: 신호 2건과 구간 1·5 (종가 2칸 + 익일 시가 1칸)
+        When: 계산한다
+        Then: 2 × 3 = 6행이다
+        """
+        # Given
+        df = _market([100.0 + index for index in range(10)])
+        horizons = (1, 5)
+
+        # When
+        frame = compute_forward_returns(df, _signals(df, [0, 1]), horizons=horizons)
+
+        # Then
+        assert len(frame) == 2 * (len(horizons) + len(NEXT_OPEN_HORIZONS))
 
     def test_columns_are_declared_in_order(self) -> None:
         """
@@ -320,10 +368,10 @@ class TestReturnContract:
 
         # Then
         expected = [
-            (df[COL_DATE].iloc[position], basis.value, horizon)
+            (df[COL_DATE].iloc[position], basis, horizon)
             for position in (0, 3)
-            for basis in ReturnBasis
-            for horizon in (1, 2)
+            for basis, horizons in ((ReturnBasis.CLOSE.value, (1, 2)), (ReturnBasis.NEXT_OPEN.value, (1,)))
+            for horizon in horizons
         ]
         assert list(frame[[COL_DATE, COL_BASIS, COL_HORIZON]].itertuples(index=False, name=None)) == expected
 
@@ -519,7 +567,7 @@ class TestCountExcluded:
 
         Given: 신호 2건과 구간 2개
         When: 제외 건수를 센다
-        Then: 칸이 기준 2 × 구간 2 = 4개다
+        Then: 칸이 종가 2 + 익일 시가 1 = 3개다
         """
         # Given
         df = _market([100.0 + index for index in range(8)])
@@ -529,7 +577,7 @@ class TestCountExcluded:
         summary = count_excluded(frame)
 
         # Then
-        assert len(summary) == 4
+        assert len(summary) == 3
         assert list(summary.columns) == [COL_BASIS, COL_HORIZON, COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT]
 
     def test_summary_matches_the_preservation_identity(self) -> None:

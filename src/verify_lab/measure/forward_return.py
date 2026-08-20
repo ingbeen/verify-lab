@@ -9,12 +9,17 @@
 - **이벤트일 종가 기준**: `D+h 종가 ÷ D 종가 − 1` — 신호가 가진 순수한 예측력
 - **익일 시가 기준**: `D+h 종가 ÷ D+1 시가 − 1` — 다음 날 시가에 집행해 실제로 잡을 수 있는 구간
 
+**익일 시가 기준은 1일 구간만 낸다** (`docs/spec/index_extreme_events.md` §7 결정 ⑳).
+갭 배수 `D 종가 ÷ D+1 시가` 는 구간과 무관한 상수라, 장기 구간의 익일 시가 값은 종가 기준
+값을 한 번 더 적는 것과 같다. 1일 칸을 남기는 것은 그 갭 자체가 관측 대상이기 때문이다.
+
 측정 구간은 전부 **거래일**이며 이벤트 발생 다음 거래일부터 센다. 달력일을 섞지 않도록
 날짜 연산이 아니라 위치 인덱스로만 계산한다.
 
 반환은 **신호일 × 기준 × 구간을 한 줄씩 담은 long-form** 한 장이다. 구간 끝이 데이터 범위를
 넘어가는 칸은 값 없이 사유를 달고 그대로 남는다 — 행을 지우면 표본이 조용히 사라져
-생존편향이 생긴다. 행 수는 언제나 `신호 수 × 기준 수 × 구간 수`다.
+생존편향이 생긴다. 행 수는 언제나 `신호 수 × 기준별 구간 수의 합`이다 — 기준마다 구간 수가
+다르므로 곱셈이 아니다.
 
 이 모듈은 파일 하나(가격 기준 하나)만 안다. 국내처럼 원본가와 수정주가를 병기해야 하는
 경우는 **호출 측이 같은 계산을 두 번 돌려서** 처리한다.
@@ -47,6 +52,11 @@ logger = get_logger(__name__)
 # 호출자가 성과를 보며 돌리는 노브가 아니라 상수다
 DEFAULT_HORIZONS = (1, 5, 21, 63, 126, 252)
 
+# 익일 시가 기준으로 내는 측정 구간. 종가 기준은 요청된 구간 전부를 내지만 익일 시가 기준은
+# 1일만 낸다 (스펙 §7 결정 ⑳). 나머지 구간은 `(1 + 종가 h) × D 종가 ÷ D+1 시가 − 1` 로
+# 그대로 복원되므로 같은 값을 한 번 더 적는 셈이다
+NEXT_OPEN_HORIZONS = (1,)
+
 # 계산에 필요한 시세 컬럼. 나머지 컬럼은 보지 않는다
 REQUIRED_MARKET_COLUMNS = [COL_DATE, COL_OPEN, COL_CLOSE]
 
@@ -76,7 +86,7 @@ def compute_forward_returns(
     `신호 수 = 유효 표본 + 제외 표본` 이 모든 (기준, 구간) 칸에서 성립한다.
 
     구간이 1 이상이므로 출구(`D+h`)가 존재하면 익일 시가(`D+1`)도 반드시 존재한다.
-    따라서 두 기준의 제외 조건은 언제나 같다.
+    따라서 **두 기준이 함께 내는 칸**에서 제외 조건은 언제나 같다.
 
     신호가 하나도 없으면 컬럼 구성을 유지한 빈 프레임을 돌려준다 — 계산 실패가 아니라
     "표본 0건"이라는 정상적인 측정 결과다.
@@ -84,11 +94,13 @@ def compute_forward_returns(
     Args:
         df: 날짜 오름차순 시세 (`data/loader.py` 가 검증해 돌려준 형태)
         signals: 신호인 날이 True 인 bool Series. 인덱스가 `df` 와 같아야 한다
-        horizons: 측정 구간 목록 (거래일, 모두 1 이상이며 중복 불가)
+        horizons: 측정 구간 목록 (거래일, 모두 1 이상이며 중복 불가).
+            익일 시가 기준은 이 중 `NEXT_OPEN_HORIZONS` 에 든 구간만 낸다
 
     Returns:
         `RESULT_COLUMNS` 순서의 long-form DataFrame.
-        행 순서는 신호일 → 기준 → 구간 오름차순이며, 행 수는 `신호 수 × 기준 수 × 구간 수` 다.
+        행 순서는 신호일 → 기준 → 구간 오름차순이며,
+        행 수는 `신호 수 × (종가 구간 수 + 익일 시가 구간 수)` 다.
         입력은 변경하지 않는다
 
     Raises:
@@ -114,7 +126,7 @@ def compute_forward_returns(
     # 1. (기준 → 구간) 순서로 블록을 쌓는다. 이 순서가 뒤의 안정 정렬에서 그대로 유지된다
     blocks: list[pd.DataFrame] = []
     for basis in ReturnBasis:
-        for horizon in ordered_horizons:
+        for horizon in _basis_horizons(basis, ordered_horizons):
             targets = positions + horizon
             usable = targets <= last_position
 
@@ -179,6 +191,26 @@ def count_excluded(frame: pd.DataFrame) -> pd.DataFrame:
     summary[COL_EXCLUDED_COUNT] = summary[COL_EXCLUDED_COUNT].astype(int)
 
     return summary[EXCLUDED_SUMMARY_COLUMNS]
+
+
+def _basis_horizons(basis: ReturnBasis, horizons: tuple[int, ...]) -> tuple[int, ...]:
+    """기준별로 실제 낼 측정 구간을 고른다.
+
+    종가 기준은 요청된 구간 전부를 내고, 익일 시가 기준은 `NEXT_OPEN_HORIZONS` 와
+    겹치는 구간만 낸다. 요청 구간에 1일이 없으면 익일 시가 칸은 하나도 생기지 않는다 —
+    실행 경로는 `DEFAULT_HORIZONS` 상수를 쓰므로 그 상황은 오지 않는다.
+
+    Args:
+        basis: 수익률 기준점
+        horizons: 오름차순으로 정렬된 요청 구간
+
+    Returns:
+        이 기준으로 낼 측정 구간 (오름차순)
+    """
+    if basis is ReturnBasis.CLOSE:
+        return horizons
+
+    return tuple(horizon for horizon in horizons if horizon in NEXT_OPEN_HORIZONS)
 
 
 def _empty_result() -> pd.DataFrame:

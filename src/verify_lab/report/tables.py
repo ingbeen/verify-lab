@@ -94,10 +94,14 @@ from verify_lab.utils.formatting import Align, TableLogger, get_display_width
 def build_signal_table(frame: pd.DataFrame, signal_details: pd.DataFrame | None = None) -> pd.DataFrame:
     """신호일 한 줄에 구간별 수익률을 펼친 표를 만든다.
 
-    사용자가 차트나 검색으로 직접 대조하는 원자료다. long-form 은 한 신호일이 12행으로
+    사용자가 차트나 검색으로 직접 대조하는 원자료다. long-form 은 한 신호일이 칸 수만큼 여러 행으로
     흩어져 있어 눈으로 대조할 수 없으므로 여기서 신호일 단위로 되돌린다.
 
     제외된 칸은 **비워 둔다.** 0 으로 채우면 "수익률 0%"로 읽힌다.
+
+    **컬럼은 프레임에 실제로 있는 (기준, 구간) 조합에서만 만든다.** 기준마다 측정 구간이
+    다르므로(익일 시가는 1일만) 데카르트 곱으로 펼치면 영영 채워지지 않는 칸이 생기고,
+    그 빈칸은 제외된 칸과 구분되지 않는다.
 
     Args:
         frame: `compute_forward_returns` 의 결과
@@ -114,8 +118,12 @@ def build_signal_table(frame: pd.DataFrame, signal_details: pd.DataFrame | None 
 
     working = frame.copy()
     bases = working[COL_BASIS].drop_duplicates().tolist()
-    horizons = sorted(working[COL_HORIZON].drop_duplicates().tolist())
-    ordered_labels = [f"{_basis_label(basis)} {_horizon_label(horizon)}" for basis in bases for horizon in horizons]
+    horizons_by_basis = {
+        basis: sorted(working[working[COL_BASIS] == basis][COL_HORIZON].drop_duplicates().tolist()) for basis in bases
+    }
+    ordered_labels = [
+        f"{_basis_label(basis)} {_horizon_label(horizon)}" for basis in bases for horizon in horizons_by_basis[basis]
+    ]
 
     working["_label"] = [
         f"{_basis_label(basis)} {_horizon_label(horizon)}"

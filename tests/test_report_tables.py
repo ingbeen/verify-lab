@@ -113,6 +113,33 @@ class TestSignalTable:
         # Then
         assert list(table.columns) == ["날짜", "종가 1일", "종가 1년", "익일시가 1일", "익일시가 1년"]
 
+    def test_columns_cover_only_the_pairs_present_in_the_frame(self) -> None:
+        """
+        목적: 프레임에 없는 (기준, 구간) 조합을 **만들어 내지 않는다.**
+
+        기준마다 측정 구간이 다르므로(익일시가는 1일만) 데카르트 곱으로 컬럼을 펼치면
+        값이 영영 채워지지 않는 빈 칸이 생기고, 그것은 "수익률 없음"으로 읽힌다.
+
+        Given: 종가 1일·1년 + 익일시가 1일
+        When: 신호일 목록을 만든다
+        Then: 익일시가 1년 컬럼이 생기지 않는다
+        """
+        # Given
+        frame = pd.concat(
+            [
+                _cell([0.10], basis=ReturnBasis.CLOSE, horizon=1),
+                _cell([0.20], basis=ReturnBasis.CLOSE, horizon=252),
+                _cell([0.30], basis=ReturnBasis.NEXT_OPEN, horizon=1),
+            ],
+            ignore_index=True,
+        )
+
+        # When
+        table = build_signal_table(frame)
+
+        # Then
+        assert list(table.columns) == ["날짜", "종가 1일", "종가 1년", "익일시가 1일"]
+
     def test_values_are_percent_with_two_decimals(self) -> None:
         """
         목적: 저장 값은 **백분율 2자리**다 (`.claude/rules/python.md` 반올림 규칙).
