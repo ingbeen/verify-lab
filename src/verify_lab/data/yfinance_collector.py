@@ -26,7 +26,7 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
-from verify_lab.common_constants import COL_DATE, MARKET_DIR, PRICE_COLUMNS, REQUIRED_COLUMNS
+from verify_lab.common_constants import COL_DATE, MARKET_DIR, PRICE_COLUMNS, PRICE_DECIMALS, REQUIRED_COLUMNS
 from verify_lab.data.loader import validate_market_data
 from verify_lab.utils.logger import get_logger
 
@@ -35,9 +35,6 @@ logger = get_logger(__name__)
 # 저장에서 제외할 최근 구간 (달력일). 미국장은 한국 시각 기준으로 하루가 밀리고,
 # 마감 직후 값은 확정값이 아니다. 미확정 종가를 그대로 남기면 그날이 극단 이벤트로 잡힐 수 있다
 RECENT_EXCLUSION_DAYS = 2
-
-# 가격 컬럼의 저장 자릿수. 미국 시세는 소수가 나오므로 정수로 접지 않는다
-PRICE_DECIMALS = 6
 
 # 저장 파일명. 전 기간을 한 파일로 유지해 로더가 읽을 대상이 갈리지 않게 한다
 FILE_NAME_TEMPLATE = "{ticker}_max.csv"

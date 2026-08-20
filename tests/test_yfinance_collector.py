@@ -23,11 +23,12 @@ from verify_lab.common_constants import (
     COL_LOW,
     COL_OPEN,
     COL_VOLUME,
+    PRICE_DECIMALS,
     REQUIRED_COLUMNS,
 )
 from verify_lab.data import yfinance_collector
 from verify_lab.data.loader import load_market_csv
-from verify_lab.data.yfinance_collector import PRICE_DECIMALS, collect_yfinance_history
+from verify_lab.data.yfinance_collector import collect_yfinance_history
 
 # 테스트에서 오늘로 고정하는 날짜. 최근 제외 기준일은 이 날짜에서 계산된다
 FROZEN_TODAY = "2026-08-11"
@@ -370,6 +371,30 @@ def test_prices_are_rounded_before_saving(tmp_path: Path, monkeypatch: pytest.Mo
     # Then
     saved = pd.read_csv(result.path)
     assert saved[COL_CLOSE].iloc[0] == pytest.approx(round(raw_close, PRICE_DECIMALS), abs=1e-12)
+
+
+@freeze_time(FROZEN_TODAY)
+def test_saved_price_keeps_four_decimals(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    목적: 가격 자릿수 정책(소수 4자리)을 상수가 아니라 값으로 고정한다.
+
+    위의 `test_prices_are_rounded_before_saving` 는 `PRICE_DECIMALS` 를 그대로 참조하므로
+    **상수를 바꾸면 테스트도 함께 따라가 정책이 고정되지 않는다.** 자릿수가 더 깊으면
+    실제 시세에 없는 부동소수점 잡음(`169.300003`)이 파일에 남아 차트 대조를 막는다.
+
+    Given: 자릿수가 긴 가격이 담긴 응답
+    When: 수집한다
+    Then: 저장된 종가가 소수 4자리 값이다
+    """
+    # Given
+    _stub_yfinance(monkeypatch, _history_frame([(OLD_DATES[0], 100.1234567891)]))
+
+    # When
+    result = collect_yfinance_history("QQQ", output_dir=tmp_path)
+
+    # Then
+    saved = pd.read_csv(result.path)
+    assert saved[COL_CLOSE].iloc[0] == pytest.approx(100.1235, abs=1e-12)
 
 
 @freeze_time(FROZEN_TODAY)

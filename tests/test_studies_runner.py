@@ -19,7 +19,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
+from verify_lab.common_constants import (
+    COL_CLOSE,
+    COL_DATE,
+    COL_HIGH,
+    COL_LOW,
+    COL_OPEN,
+    COL_VOLUME,
+    PRICE_DECIMALS,
+)
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
 from verify_lab.report.constants import (
@@ -764,6 +772,28 @@ class TestMultipleDatasets:
         closes = outputs.signals[DISPLAY_CLOSE].to_numpy(dtype=float)
         assert closes.tolist() == np.round(closes).tolist()
 
+    def test_소수_종가는_4자리를_넘지_않는다(self, tmp_path: Path) -> None:
+        """
+        목적: 소수가 나오는 시장의 종가 자릿수 정책(4자리)을 고정한다
+
+        4자리보다 깊은 자리는 실제 시세에 없는 부동소수점 잡음이다
+        (`169.300003` 처럼 꼬리가 남는다). 사용자가 `signals.csv` 를 차트와 대조하는 것이
+        이 프로젝트의 전제이므로, **표기가 차트와 어긋나면 원자료를 제공하는 의미가 준다.**
+
+        Given: 소수 자릿수를 쓰는 데이터셋
+        When: 신호일 목록의 종가를 봤을 때
+        Then: 소수 4자리를 넘는 값이 없다
+        """
+        # Given
+        dataset = _write_dataset(tmp_path, _clustered_frame(), price_decimals=PRICE_DECIMALS)
+
+        # When
+        outputs = _single_axis_run(dataset)
+
+        # Then
+        closes = outputs.signals[DISPLAY_CLOSE].to_numpy(dtype=float)
+        assert closes.tolist() == np.round(closes, 4).tolist()
+
 
 class TestInputValidation:
     """입력 검증 계약"""
@@ -852,3 +882,21 @@ class TestDatasetsInvariant:
 
         # Then
         assert keys == {"qqq", "kodex200"}
+
+    def test_종가_자릿수는_소수_4자리와_원화_정수다(self) -> None:
+        """
+        목적: 데이터셋에 배정된 종가 자릿수를 값으로 고정한다
+
+        저장은 4자리인데 출력만 다른 값으로 갈라지면 **없는 정밀도를 만들어 내거나
+        저장해 둔 값을 버리는데, 표는 정상으로 보인다.** 원화에 소수 자리를 붙이면
+        실제 호가에 없는 자리가 생겨 차트 대조가 나빠진다.
+
+        Given: 검증 대상 시세 목록
+        When: 종목별 자릿수를 봤을 때
+        Then: QQQ 는 4자리, KODEX 200 은 정수다
+        """
+        # Given / When
+        decimals = {dataset.key: dataset.price_decimals for dataset in DATASETS}
+
+        # Then
+        assert decimals == {"qqq": 4, "kodex200": 0}
