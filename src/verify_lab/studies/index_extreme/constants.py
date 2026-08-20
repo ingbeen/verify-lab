@@ -105,22 +105,22 @@ DECADE_PERIODS: Final = (
 # 검증 대상 시세
 # ============================================================
 
-# 종가 반올림 자릿수. KRX 원화 가격은 정수이고 수정주가 계열은 소수가 나온다
+# 종가 반올림 자릿수. KRX 원화 가격은 정수이고 미국 시세는 소수가 나온다
 # (`.claude/rules/python.md` 출력 반올림 규칙표)
 PRICE_DECIMALS_KRW: Final = 0
 PRICE_DECIMALS_DECIMAL: Final = 6
 
 DISPLAY_PRICE_BASIS_RAW: Final = "원본가"
-DISPLAY_PRICE_BASIS_ADJUSTED: Final = "수정주가"
 
 
 @dataclass(frozen=True)
 class Dataset:
     """검증 대상 시세 하나
 
-    **가격 기준 하나에 파일 하나**이므로 같은 종목이 기준별로 여러 항목이 된다.
-    국내는 원본가가 본검증이고 수정주가가 대조이며, 그 근거는
-    `docs/spec/index_extreme_events.md` §7 결정 ⑨ 다.
+    **가격 기준 하나에 파일 하나**이므로 같은 종목이 기준별로 여러 항목이 될 수 있다.
+    다만 **이 검증은 원본가만 쓴다.** 사용자가 결과를 차트와 직접 대조하는 것이 전제인데
+    보통의 차트는 배당 미포함이기 때문이며, 근거는
+    `docs/spec/index_extreme_events.md` "가격 처리" 다.
 
     Attributes:
         key: 실행 인자로 고르는 이름
@@ -141,7 +141,7 @@ DATASETS: Final = (
     Dataset(
         key="qqq",
         ticker="QQQ",
-        price_basis=DISPLAY_PRICE_BASIS_ADJUSTED,
+        price_basis=DISPLAY_PRICE_BASIS_RAW,
         path=MARKET_DIR / "QQQ_max.csv",
         price_decimals=PRICE_DECIMALS_DECIMAL,
     ),
@@ -150,13 +150,6 @@ DATASETS: Final = (
         ticker="KODEX 200",
         price_basis=DISPLAY_PRICE_BASIS_RAW,
         path=MARKET_DIR / "069500_max.csv",
-        price_decimals=PRICE_DECIMALS_KRW,
-    ),
-    Dataset(
-        key="kodex200_adjusted",
-        ticker="KODEX 200",
-        price_basis=DISPLAY_PRICE_BASIS_ADJUSTED,
-        path=MARKET_DIR / "069500_adjusted_max.csv",
         price_decimals=PRICE_DECIMALS_KRW,
     ),
 )

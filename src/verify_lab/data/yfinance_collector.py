@@ -3,9 +3,17 @@
 미국 상장 종목의 일별 시세를 받아 `storage/market/` 에 원시 시세로 남긴다.
 
 yfinance 는 웹 API 를 감싼 라이브러리라 기본 인자와 반환 컬럼이 버전 사이에 조용히 바뀔 수 있다.
-그래서 **수정주가 적용과 오류 전파를 기본값에 맡기지 않고 명시적으로 지정한다.**
-전자가 어긋나면 원본가를 수정주가로 착각해 분배락일이 인위적 하락으로 잡히고,
-후자가 어긋나면 조회 실패가 예외 대신 빈 결과로 돌아와 빈 파일이 저장된다.
+그래서 **가격 기준과 오류 전파를 기본값에 맡기지 않고 명시적으로 지정한다.**
+
+**기본은 원본가(배당 미조정)다.** 사용자가 결과를 차트와 직접 대조하는 것이 이 프로젝트의 전제인데
+(루트 `CLAUDE.md` 측정의 원칙 8), 보통의 차트는 배당 미포함이라 수정주가로 저장하면 종가가 어긋난다.
+근거는 `docs/spec/index_extreme_events.md` "가격 처리" 에 있다. 그 대신 분배락이 조정되지 않은 채
+남으므로 **배당락일이 하루짜리 하락으로 잡힌다.** 이 왜곡은 신호군과 베이스라인에 똑같이 걸리므로
+초과분 비교에는 거의 남지 않고 절대 수익률에만 남는다.
+
+`auto_adjust` 의 라이브러리 기본값은 `True`(수정주가)라 **인자를 빠뜨리면 수정주가가 조용히 저장된다.**
+파일은 정상으로 보이고 종가만 차트와 어긋나므로 눈으로는 발견되지 않는다.
+`raise_errors` 가 어긋나면 조회 실패가 예외 대신 빈 결과로 돌아와 빈 파일이 저장된다.
 
 이상치 판정은 `loader.validate_market_data()` 를 그대로 재사용한다. 수집기가 자기 판정을
 따로 두면 "수집은 통과했는데 로딩에서 막히는" 데이터가 생긴다.
@@ -28,7 +36,7 @@ logger = get_logger(__name__)
 # 마감 직후 값은 확정값이 아니다. 미확정 종가를 그대로 남기면 그날이 극단 이벤트로 잡힐 수 있다
 RECENT_EXCLUSION_DAYS = 2
 
-# 가격 컬럼의 저장 자릿수. 수정주가는 소수가 나오므로 정수로 접지 않는다
+# 가격 컬럼의 저장 자릿수. 미국 시세는 소수가 나오므로 정수로 접지 않는다
 PRICE_DECIMALS = 6
 
 # 저장 파일명. 전 기간을 한 파일로 유지해 로더가 읽을 대상이 갈리지 않게 한다
@@ -46,6 +54,7 @@ class CollectionResult:
         start_date: 저장 구간의 첫 거래일
         end_date: 저장 구간의 마지막 거래일
         excluded_recent_count: 최근 구간 제외로 빠진 행 수
+        adjusted: 수정주가 기준이면 True, 원본가 기준이면 False
     """
 
     ticker: str
@@ -54,9 +63,14 @@ class CollectionResult:
     start_date: date
     end_date: date
     excluded_recent_count: int
+    adjusted: bool
 
 
-def collect_yfinance_history(ticker: str, output_dir: Path = MARKET_DIR) -> CollectionResult:
+def collect_yfinance_history(
+    ticker: str,
+    adjusted: bool = False,
+    output_dir: Path = MARKET_DIR,
+) -> CollectionResult:
     """yfinance 에서 전 기간 일별 시세를 받아 원시 시세 파일로 저장한다.
 
     조회 → 스키마 확인 → 최근 구간 제외 → 반올림 → 이상치 검증 → 저장 순으로 수행하며,
@@ -67,6 +81,7 @@ def collect_yfinance_history(ticker: str, output_dir: Path = MARKET_DIR) -> Coll
 
     Args:
         ticker: yfinance 종목 코드 (대소문자·앞뒤 공백 무관)
+        adjusted: 수정주가로 받을지 여부. **기본값은 원본가**이며, 근거는 모듈 docstring 참고
         output_dir: 저장 디렉터리. 기본값은 원시 시세 폴더
 
     Returns:
@@ -80,8 +95,8 @@ def collect_yfinance_history(ticker: str, output_dir: Path = MARKET_DIR) -> Coll
     if not symbol:
         raise ValueError("종목 코드가 비어 있습니다")
 
-    # 1. 전 기간 조회. 두 인자는 기본값이 같더라도 명시한다 (모듈 docstring 참고)
-    raw = yf.Ticker(symbol).history(period="max", auto_adjust=True, raise_errors=True)
+    # 1. 전 기간 조회. 결과를 좌우하는 인자는 기본값에 맡기지 않고 명시한다 (모듈 docstring 참고)
+    raw = yf.Ticker(symbol).history(period="max", auto_adjust=adjusted, raise_errors=True)
 
     if raw.empty:
         raise ValueError(f"수집 결과가 비어 있습니다 - 종목: {symbol}")
@@ -119,7 +134,7 @@ def collect_yfinance_history(ticker: str, output_dir: Path = MARKET_DIR) -> Coll
     start_date = df[COL_DATE].iloc[0]
     end_date = df[COL_DATE].iloc[-1]
 
-    logger.debug(f"수집 완료: {symbol}, {len(df):,}행, 기간 {start_date} ~ {end_date}, 저장 위치 {path}")
+    logger.debug(f"수집 완료: {symbol}, 수정주가={adjusted}, {len(df):,}행, 기간 {start_date} ~ {end_date}, 저장 위치 {path}")
     if excluded_recent_count > 0:
         logger.debug(f"최근 {RECENT_EXCLUSION_DAYS}일 데이터 {excluded_recent_count}행을 제외했습니다")
 
@@ -130,4 +145,5 @@ def collect_yfinance_history(ticker: str, output_dir: Path = MARKET_DIR) -> Coll
         start_date=start_date,
         end_date=end_date,
         excluded_recent_count=excluded_recent_count,
+        adjusted=adjusted,
     )

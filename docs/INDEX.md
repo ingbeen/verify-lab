@@ -140,9 +140,8 @@
 
 | 위치 | 내용 | git |
 | --- | --- | --- |
-| `storage/market/QQQ_max.csv` | QQQ 일별 시세 (수정주가, 전 기간). `scripts/data/collect_yfinance.py` 로 재수집한다 | 동기화 |
-| `storage/market/069500_max.csv` | KODEX 200 일별 시세 (**원본가**, 상장일부터 전 기간). 본검증용 | 동기화 |
-| `storage/market/069500_adjusted_max.csv` | KODEX 200 일별 시세 (**수정주가**, KRX 가 주는 최근 구간). 대조용 | 동기화 |
+| `storage/market/QQQ_max.csv` | QQQ 일별 시세 (**원본가**, 전 기간). `scripts/data/collect_yfinance.py` 로 재수집한다 | 동기화 |
+| `storage/market/069500_max.csv` | KODEX 200 일별 시세 (**원본가**, 상장일부터 전 기간) | 동기화 |
 | `storage/market/` | 수집한 원시 시세 | 동기화 |
 | `storage/results/<실행시각>_<검증명>/` | 검증 산출물 (CSV, summary.json) | 제외 (재생성 가능) |
 

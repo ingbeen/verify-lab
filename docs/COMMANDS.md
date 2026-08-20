@@ -38,14 +38,20 @@ poetry run black .
 ### yfinance (미국 종목)
 
 ```bash
-# QQQ 전 기간 수집 (기본값)
+# QQQ 전 기간 수집 (기본값) — 원본가
 poetry run python scripts/data/collect_yfinance.py
 
 # 다른 종목 수집
 poetry run python scripts/data/collect_yfinance.py --ticker SPY
+
+# 수정주가로 받기 (본검증에는 쓰지 않습니다. 대조·실측용)
+poetry run python scripts/data/collect_yfinance.py --adjusted
 ```
 
 - 전 기간(`period="max"`)을 받아 `storage/market/<종목>_max.csv` 에 저장합니다. 기존 파일은 덮어씁니다
+- **기본은 원본가(배당 미조정)입니다.** 사용자가 결과를 차트와 직접 대조하는 것이 전제이고
+  보통의 차트는 배당 미포함이기 때문입니다 ([spec/index_extreme_events.md](spec/index_extreme_events.md) "가격 처리").
+  `--adjusted` 를 붙이면 수정주가로 받지만 **같은 파일명에 덮어쓰므로** 본검증 데이터를 잃지 않도록 주의합니다
 - **확정되지 않은 최근 며칠은 저장하지 않습니다.** 제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다. 반쪽짜리 파일이 남지 않습니다
 
@@ -97,11 +103,10 @@ poetry run python scripts/data/collect_pykrx.py
 poetry run python scripts/data/collect_pykrx.py --ticker 069500 --start 20021014
 ```
 
-- **한 번 실행으로 가격 기준 두 개를 받습니다.** 기존 파일은 덮어씁니다
+- **원본가만 받습니다.** 기존 파일은 덮어씁니다
   - `storage/market/<종목>_max.csv` — **원본가**, 상장일부터 전 기간 (본검증)
-  - `storage/market/<종목>_adjusted_max.csv` — **수정주가**, KRX 가 주는 최근 3,000거래일 (대조)
-- 수정주가 파일이 상장일보다 늦게 시작하는 것은 **정상**입니다. KRX 가 그만큼만 제공합니다
-  ([spec/index_extreme_events.md](spec/index_extreme_events.md) §8 결론 4)
+- 수정주가는 받지 않습니다. 근거는 [spec/index_extreme_events.md](spec/index_extreme_events.md) "가격 처리" 에 있습니다.
+  수집기 모듈(`pykrx_collector.collect_pykrx_history`)의 `adjusted` 인자는 남아 있으므로 필요하면 직접 호출합니다
 - **확정되지 않은 당일은 저장하지 않습니다.** 장중에도 당일 행이 반환되기 때문이며,
   제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다

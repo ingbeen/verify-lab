@@ -146,25 +146,54 @@ def test_ticker_is_normalized_to_upper_case(
 
 
 @freeze_time(FROZEN_TODAY)
-def test_history_is_called_with_adjusted_price_and_raising_errors(
+def test_history_is_called_with_raw_price_and_raising_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
 ) -> None:
     """
     목적: yfinance 호출 인자를 명시적으로 고정한다.
 
-    `auto_adjust` 가 빠지면 원본가를 수정주가로 착각해 분배락일이 인위적 하락으로 잡히고,
+    **기본은 원본가다.** 사용자가 차트와 직접 대조하는 것이 이 프로젝트의 전제이고,
+    보통의 차트는 배당 미포함이기 때문이다. 그런데 `auto_adjust` 의 라이브러리 기본값은
+    `True`(수정주가)라, **인자를 빠뜨리면 수정주가가 조용히 저장된다.** 파일은 정상으로 보이고
+    종가만 차트와 어긋나므로 눈으로 발견되지 않는다. 그래서 기본값에 기대지 않고 명시 전달을 고정한다.
+
     `raise_errors` 가 빠지면 조회 실패가 예외 대신 빈 DataFrame 으로 조용히 돌아온다.
-    둘 다 지금은 기대한 값이 기본값이지만, 기본값에 기대면 그 변경이 소리 없이 통과한다.
 
     Given: 정상 응답을 돌려주는 스텁
-    When: 수집한다
-    Then: 전 기간·수정주가·예외 전파 인자가 전달된다
+    When: 기본값으로 수집한다
+    Then: 전 기간·원본가·예외 전파 인자가 전달된다
     """
     # Given
     recorded = _stub_yfinance(monkeypatch, _history_frame(old_rows))
 
     # When
     collect_yfinance_history("QQQ", output_dir=tmp_path)
+
+    # Then
+    kwargs = recorded["kwargs"]
+    assert kwargs == {"period": "max", "auto_adjust": False, "raise_errors": True}
+
+
+@freeze_time(FROZEN_TODAY)
+def test_adjusted_argument_is_forwarded_to_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
+) -> None:
+    """
+    목적: 가격 기준 인자가 조회까지 그대로 전달되는지 고정한다.
+
+    인자를 받아놓고 조회에 반영하지 않으면 **호출자는 수정주가를 요청했다고 믿는데
+    원본가가 저장된다.** 인자와 실제 조회가 갈라지는 사고를 막는다.
+    이름과 의미는 `pykrx_collector.collect_pykrx_history` 의 `adjusted` 와 같게 맞춘다.
+
+    Given: 정상 응답을 돌려주는 스텁
+    When: `adjusted=True` 로 수집한다
+    Then: `auto_adjust=True` 로 조회한다
+    """
+    # Given
+    recorded = _stub_yfinance(monkeypatch, _history_frame(old_rows))
+
+    # When
+    collect_yfinance_history("QQQ", adjusted=True, output_dir=tmp_path)
 
     # Then
     kwargs = recorded["kwargs"]

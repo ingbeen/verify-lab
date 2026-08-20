@@ -34,6 +34,7 @@ from verify_lab.report.constants import (
 )
 from verify_lab.studies.index_extreme.constants import (
     CONSECUTIVE_LENGTHS,
+    DATASETS,
     DECADE_PERIODS,
     DEFAULT_START_YEAR,
     DISPLAY_BASELINE_ALL,
@@ -45,6 +46,7 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_PARAMETER,
     DISPLAY_PERIOD,
     DISPLAY_PRICE_BASIS,
+    DISPLAY_PRICE_BASIS_RAW,
     DISPLAY_RANK,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
@@ -709,7 +711,7 @@ class TestDeterminism:
 
 
 class TestMultipleDatasets:
-    """국내 두 가격 기준 병기 계약"""
+    """여러 데이터셋을 한 실행에 담는 계약"""
 
     def test_두_데이터셋이_같은_실행에서_같은_파라미터로_계산된다(self, tmp_path: Path) -> None:
         """
@@ -793,3 +795,60 @@ class TestInputValidation:
         # When / Then
         with pytest.raises(ValueError, match="집계 시작 연도"):
             run_study([dataset], start_years=())
+
+
+class TestDatasetsInvariant:
+    """검증 대상 시세 목록의 불변조건"""
+
+    def test_수정주가_데이터셋은_남아있지_않다(self) -> None:
+        """
+        목적: 산출물에 `가격기준 = 수정주가` 가 다시 섞이지 않도록 고정한다
+
+        이 프로젝트의 전제는 **사용자가 결과를 차트와 직접 대조한다**는 것이고,
+        보통의 차트는 배당 미포함이다. 수정주가 데이터셋이 하나라도 남으면
+        `signals.csv` 의 종가가 차트와 어긋나는 행이 다시 생기는데,
+        **표는 정상으로 보이므로 눈으로 발견되지 않는다.**
+
+        Given: 검증 대상 시세 목록
+        When: 가격 기준을 모았을 때
+        Then: 전부 원본가다
+        """
+        # Given / When
+        price_bases = {dataset.price_basis for dataset in DATASETS}
+
+        # Then
+        assert price_bases == {DISPLAY_PRICE_BASIS_RAW}
+
+    def test_수정주가_파일을_가리키는_데이터셋이_없다(self) -> None:
+        """
+        목적: 표시 이름만 원본가로 바꾸고 파일은 수정주가를 가리키는 사고를 막는다
+
+        `price_basis` 는 표시용 문자열이라 파일과 어긋나도 예외가 나지 않는다.
+        **라벨과 실제 소스가 갈라지면 결과 전체가 조용히 틀린다.**
+
+        Given: 검증 대상 시세 목록
+        When: 파일 경로를 모았을 때
+        Then: 수정주가 파일명 규칙(`_adjusted_`)을 쓰는 경로가 없다
+        """
+        # Given / When
+        names = [dataset.path.name for dataset in DATASETS]
+
+        # Then
+        assert [name for name in names if "adjusted" in name] == []
+
+    def test_데이터셋은_QQQ_와_KODEX_200_두_종이다(self) -> None:
+        """
+        목적: 데이터셋이 조용히 늘거나 줄지 않는지 고정한다
+
+        신호군 수는 데이터셋 수에 그대로 곱해진다. 하나가 빠지면 조합이 통째로 사라지는데
+        실행은 정상으로 끝난다.
+
+        Given: 검증 대상 시세 목록
+        When: 실행 인자로 쓰는 이름을 모았을 때
+        Then: QQQ 와 KODEX 200 두 종이다
+        """
+        # Given / When
+        keys = {dataset.key for dataset in DATASETS}
+
+        # Then
+        assert keys == {"qqq", "kodex200"}

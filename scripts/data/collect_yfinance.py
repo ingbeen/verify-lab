@@ -26,6 +26,10 @@ KEY_META_YFINANCE = "yfinance_collect"
 # 요약 표의 컬럼 정의 (컬럼명, 폭, 정렬)
 SUMMARY_COLUMNS = [("항목", 14, Align.LEFT), ("값", 60, Align.LEFT)]
 
+# 화면에 표시할 가격 기준 이름
+DISPLAY_RAW = "원본가"
+DISPLAY_ADJUSTED = "수정주가"
+
 
 def parse_args() -> argparse.Namespace:
     """명령행 인자를 파싱한다.
@@ -39,6 +43,11 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_TICKER,
         help=f"yfinance 종목 코드 (기본값: {DEFAULT_TICKER})",
     )
+    parser.add_argument(
+        "--adjusted",
+        action="store_true",
+        help="수정주가로 받는다 (기본값: 원본가). 원본가가 기본인 이유는 수집기 모듈 docstring 참고",
+    )
     return parser.parse_args()
 
 
@@ -51,12 +60,13 @@ def main() -> int:
     """
     args = parse_args()
 
-    result = collect_yfinance_history(args.ticker)
+    result = collect_yfinance_history(args.ticker, adjusted=args.adjusted)
 
     table = TableLogger(SUMMARY_COLUMNS, logger)
     table.print_table(
         [
             ["종목", result.ticker],
+            ["가격 기준", DISPLAY_ADJUSTED if result.adjusted else DISPLAY_RAW],
             ["기간", f"{result.start_date} ~ {result.end_date}"],
             ["행 수", f"{result.row_count:,}"],
             ["최근 제외", f"{result.excluded_recent_count}행"],
@@ -69,6 +79,7 @@ def main() -> int:
         KEY_META_YFINANCE,
         {
             "ticker": result.ticker,
+            "adjusted": result.adjusted,
             "path": str(result.path),
             "row_count": result.row_count,
             "start_date": str(result.start_date),

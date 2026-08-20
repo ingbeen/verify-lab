@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """pykrx 국내 시세 수집 CLI
 
-국내 ETF 의 일별 시세를 **두 가지 가격 기준으로** 받아 원시 시세 파일로 저장한다.
-원본가는 상장일부터 전 기간을, 수정주가는 KRX 가 주는 최근 구간을 담는다.
-두 기준이 필요한 이유는 `docs/spec/index_extreme_events.md` §7 결정 ⑨ 에 있다.
+국내 ETF 의 일별 시세를 **원본가 기준으로** 받아 원시 시세 파일로 저장한다. 상장일부터 전 기간을 담는다.
+
+**수정주가는 받지 않는다.** 사용자가 결과를 차트와 직접 대조하는 것이 이 프로젝트의 전제인데
+보통의 차트는 배당 미포함이기 때문이다. 근거는 `docs/spec/index_extreme_events.md` "가격 처리" 에 있다.
+수집기 모듈의 `adjusted` 인자는 남아 있으므로 필요하면 그쪽을 직접 호출한다.
 
 외부 서버(KRX)에 실제 요청을 보내므로 **사용자만 실행한다.**
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
@@ -13,7 +15,6 @@
 """
 
 import argparse
-import time
 
 from verify_lab.data.pykrx_collector import PykrxCollectionResult, collect_pykrx_history
 from verify_lab.utils.cli_helpers import cli_exception_handler
@@ -26,9 +27,6 @@ logger = get_logger(__name__)
 # 인자 없이 실행했을 때 받는 종목과 그 상장일. 검증 #1 의 국내 대상이다
 DEFAULT_TICKER = "069500"
 DEFAULT_START_DATE = "20021014"
-
-# KRX 호출 간 지연 (초). 20년 넘는 구간을 훑는 무거운 질의라 간격을 둔다
-CALL_INTERVAL_SECONDS = 1.0
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_PYKRX_COLLECT = "pykrx_collect"
@@ -56,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
-    parser = argparse.ArgumentParser(description="pykrx 에서 국내 ETF 시세를 원본가·수정주가 두 기준으로 받아 저장합니다 (KRX 계정 필요).")
+    parser = argparse.ArgumentParser(description="pykrx 에서 국내 ETF 시세를 원본가 기준으로 받아 저장합니다 (KRX 계정 필요).")
     parser.add_argument("--ticker", default=DEFAULT_TICKER, help=f"종목 티커 (기본값: {DEFAULT_TICKER})")
     parser.add_argument(
         "--start",
@@ -105,21 +103,18 @@ def _metadata(result: PykrxCollectionResult) -> dict[str, object]:
 
 @cli_exception_handler
 def main() -> int:
-    """두 가격 기준으로 수집을 실행하고 결과를 표로 표시한다.
+    """원본가 기준으로 수집을 실행하고 결과를 표로 표시한다.
 
     Returns:
         종료 코드 (성공 0)
     """
     args = parse_args()
 
-    # 원본가가 본검증 계열이므로 먼저 받는다. 뒤쪽 조회가 실패해도 본검증 데이터는 남는다
     raw_result = collect_pykrx_history(args.ticker, args.start, adjusted=False)
-    time.sleep(CALL_INTERVAL_SECONDS)
-    adjusted_result = collect_pykrx_history(args.ticker, args.start, adjusted=True)
 
     table = TableLogger(SUMMARY_COLUMNS, logger)
     table.print_table(
-        [_summary_row(raw_result), _summary_row(adjusted_result)],
+        [_summary_row(raw_result)],
         title=f"수집 결과 — {raw_result.ticker} (저장 폴더: {raw_result.path.parent})",
     )
 
@@ -129,7 +124,6 @@ def main() -> int:
             "ticker": raw_result.ticker,
             "start_date": args.start,
             "raw": _metadata(raw_result),
-            "adjusted": _metadata(adjusted_result),
         },
     )
 
