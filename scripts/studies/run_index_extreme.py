@@ -42,7 +42,6 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_EVENT_COUNT,
     DISPLAY_PARAMETER,
     DISPLAY_PERIOD,
-    DISPLAY_PRICE_BASIS,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
     DISPLAY_TICKER,
@@ -112,7 +111,6 @@ EXCERPT_BASIS = BASIS_LABELS[ReturnBasis.CLOSE.value]
 # 따로 가공하면 화면에서 본 숫자를 CSV 에서 찾지 못한다
 EXCERPT_COLUMNS = [
     DISPLAY_TICKER,
-    DISPLAY_PRICE_BASIS,
     DISPLAY_TEST,
     DISPLAY_PARAMETER,
     DISPLAY_DIRECTION,

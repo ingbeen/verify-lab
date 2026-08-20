@@ -297,6 +297,24 @@ class TestSignalGroupAxes:
         for table in tables:
             assert list(table.columns[: len(IDENTITY_COLUMNS)]) == list(IDENTITY_COLUMNS)
 
+    def test_식별_컬럼은_여섯_개이고_가격기준을_담지_않는다(self) -> None:
+        """
+        목적: 식별 컬럼의 구성을 상수가 아니라 값으로 고정한다
+
+        위의 `test_식별_컬럼이_네_표에_모두_앞에_붙는다` 는 `IDENTITY_COLUMNS` 를 그대로 참조하므로
+        **상수를 바꾸면 테스트도 따라가 구성이 고정되지 않는다.**
+
+        `가격기준` 은 이 프로젝트에서 **축이 아니라 상수**다(전 시장 원본가). 값이 하나뿐인 컬럼을
+        행마다 반복하면 대조할 때 고를 것이 없는 필터가 하나 끼어든다. 가격 기준은 **행 단위가 아니라
+        데이터셋 단위 속성**이므로 `summary.json` 이 제 자리다.
+
+        Given: 식별 컬럼 정의
+        When: 구성을 봤을 때
+        Then: 종목·테스트·파라미터·시작연도·방향·시대 구간 여섯 개다
+        """
+        # Given / When / Then
+        assert IDENTITY_COLUMNS == ("종목", "테스트", "파라미터", "시작연도", "방향", "시대 구간")
+
     def test_테스트별로_파라미터_접두사가_갈린다(self, wide_outputs: StudyOutputs) -> None:
         """
         목적: 한 컬럼에 담긴 K 와 N 이 서로 구분되는지 고정한다
@@ -721,22 +739,44 @@ class TestDeterminism:
 class TestMultipleDatasets:
     """여러 데이터셋을 한 실행에 담는 계약"""
 
+    def test_요약에_데이터셋의_가격_기준이_남는다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 식별 컬럼에서 뺀 가격 기준이 요약에는 남는지 고정한다
+
+        `가격기준` 은 산출물 CSV 의 컬럼에서 빠졌다. 그렇다고 **"무엇으로 쟀는지"의 기록까지
+        사라지면 안 된다** — 결과를 나중에 다시 열었을 때 어떤 가격으로 계산한 값인지 알 수 없게 된다.
+        가격 기준은 행 단위가 아니라 데이터셋 단위 속성이므로 요약이 제 자리다.
+
+        Given: 실행 결과의 요약
+        When: 데이터셋 목록을 봤을 때
+        Then: 모든 항목이 비어 있지 않은 가격 기준을 담고 있다
+        """
+        # Given / When
+        bases = [row[KEY_PRICE_BASIS] for row in wide_outputs.summary[KEY_DATASETS]]
+
+        # Then
+        assert bases and all(bases)
+
     def test_두_데이터셋이_같은_실행에서_같은_파라미터로_계산된다(self, tmp_path: Path) -> None:
         """
         목적: 대조의 전제("파라미터가 같았다")가 산출물에 남는지 고정한다
 
-        Given: 같은 종목의 가격 기준이 다른 시세 두 개
+        산출물에서 데이터셋을 가르는 것은 **`종목` 하나뿐**이다. 가격 기준은 식별 컬럼이 아니라
+        요약에만 남으므로, 두 축을 나눠 확인한다.
+
+        Given: 표시 이름과 가격 기준이 다른 시세 두 개
         When: 한 번의 실행으로 돌렸을 때
-        Then: 요약에 두 데이터셋이 함께 남고, 산출물이 가격 기준으로 갈린다
+        Then: 산출물이 종목으로 갈리고, 요약에 두 가격 기준이 함께 남는다
         """
         # Given
         dates = pd.DatetimeIndex(pd.bdate_range("2003-01-01", periods=CLUSTERED_ROWS))
         changes = _quiet_changes(len(dates) - 1)
-        raw = _write_dataset(tmp_path, _market_frame(dates, changes), key="raw")
+        raw = _write_dataset(tmp_path, _market_frame(dates, changes), key="raw", ticker="합성 원본")
         adjusted = _write_dataset(
             tmp_path,
             _market_frame(dates, changes * 1.01),
             key="adjusted",
+            ticker="합성 수정",
             price_basis="수정주가",
         )
 
@@ -750,9 +790,9 @@ class TestMultipleDatasets:
         )
 
         # Then
+        assert set(outputs.statistics[DISPLAY_TICKER]) == {"합성 원본", "합성 수정"}
+        assert DISPLAY_PRICE_BASIS not in outputs.statistics.columns
         assert {row[KEY_PRICE_BASIS] for row in outputs.summary[KEY_DATASETS]} == {"원본가", "수정주가"}
-        assert set(outputs.statistics[DISPLAY_PRICE_BASIS]) == {"원본가", "수정주가"}
-        assert set(outputs.statistics[DISPLAY_TICKER]) == {"합성"}
 
     def test_종가_반올림_자릿수는_데이터셋이_정한다(self, tmp_path: Path) -> None:
         """
@@ -900,3 +940,21 @@ class TestDatasetsInvariant:
 
         # Then
         assert decimals == {"qqq": 4, "kodex200": 0}
+
+    def test_데이터셋의_종목_이름은_서로_다르다(self) -> None:
+        """
+        목적: 산출물에서 데이터셋이 뒤섞이지 않는지 고정한다
+
+        식별 컬럼에서 `가격기준` 이 빠진 뒤로 **산출물의 데이터셋 구분자는 `종목` 하나뿐**이다.
+        표시 이름이 겹치는 데이터셋을 넣으면 서로 다른 시세의 행이 같은 신호군으로 읽히는데,
+        **행 수도 컬럼도 정상이라 눈으로는 발견되지 않는다.**
+
+        Given: 검증 대상 시세 목록
+        When: 표시 이름을 모았을 때
+        Then: 데이터셋 수만큼 서로 다른 이름이 있다
+        """
+        # Given / When
+        tickers = [dataset.ticker for dataset in DATASETS]
+
+        # Then
+        assert len(set(tickers)) == len(DATASETS)

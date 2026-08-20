@@ -61,7 +61,6 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_GROUP_SIGNAL_COUNT,
     DISPLAY_PARAMETER,
     DISPLAY_PERIOD,
-    DISPLAY_PRICE_BASIS,
     DISPLAY_RANK,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
@@ -98,7 +97,6 @@ logger = get_logger(__name__)
 # 조합을 한 파일에 쌓으므로 어느 행이 어떤 설정의 결과인지가 행 자체에 있어야 한다
 IDENTITY_COLUMNS = (
     DISPLAY_TICKER,
-    DISPLAY_PRICE_BASIS,
     DISPLAY_TEST,
     DISPLAY_PARAMETER,
     DISPLAY_START_YEAR,
@@ -640,7 +638,6 @@ def _window_group_records(
         _empty_group_record(
             {
                 DISPLAY_TICKER: context.dataset.ticker,
-                DISPLAY_PRICE_BASIS: context.dataset.price_basis,
                 DISPLAY_TEST: spec.test_label,
                 DISPLAY_PARAMETER: spec.parameter_label,
                 DISPLAY_START_YEAR: start_year,
@@ -700,7 +697,6 @@ def _measure_spec(
     for direction, signals in selected.items():
         identity = {
             DISPLAY_TICKER: context.dataset.ticker,
-            DISPLAY_PRICE_BASIS: context.dataset.price_basis,
             DISPLAY_TEST: spec.test_label,
             DISPLAY_PARAMETER: spec.parameter_label,
             DISPLAY_START_YEAR: start_year,
@@ -841,7 +837,6 @@ def _empty_group_record(identity: Mapping[str, Any]) -> dict[str, Any]:
     """
     return {
         KEY_TICKER: identity[DISPLAY_TICKER],
-        KEY_PRICE_BASIS: identity[DISPLAY_PRICE_BASIS],
         KEY_TEST: identity[DISPLAY_TEST],
         KEY_PARAMETER: identity[DISPLAY_PARAMETER],
         KEY_START_YEAR: identity[DISPLAY_START_YEAR],
