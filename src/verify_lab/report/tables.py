@@ -56,7 +56,6 @@ from verify_lab.report.constants import (
     DATE_FORMAT,
     DISPLAY_BASELINE,
     DISPLAY_BASELINE_SAMPLE,
-    DISPLAY_BASIS,
     DISPLAY_DATE,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
@@ -75,6 +74,8 @@ from verify_lab.report.constants import (
     DISPLAY_OBSERVED_MEAN,
     DISPLAY_OBSERVED_MEDIAN,
     DISPLAY_POPULATION,
+    DISPLAY_REVERSE_RATE,
+    DISPLAY_REVERSE_RATE_EXCESS,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_SIGNAL_SAMPLE,
@@ -150,33 +151,36 @@ def build_signal_table(frame: pd.DataFrame, signal_details: pd.DataFrame | None 
     return result
 
 
-def build_statistics_table(summary: pd.DataFrame) -> pd.DataFrame:
+def build_statistics_table(summary: pd.DataFrame, *, reverse_rate_column: str) -> pd.DataFrame:
     """칸별 집계를 표시용으로 바꾼다.
 
-    행 순서는 **구간 → 기준**이다. 같은 구간의 두 기준이 위아래로 붙어 있어야
-    "둘의 차이 = 갭으로 새는 몫"이 눈에 보인다.
+    행 순서는 **구간 오름차순**이다.
 
     Args:
-        summary: `statistics.summarize` 의 결과
+        summary: `statistics.summarize` 의 결과. 기준 하나만 담겨 있어야 한다
+        reverse_rate_column: `역방향 비율` 로 쓸 집계 컬럼. 상승 방향 신호면 하락 비율,
+            하락 방향 신호면 승률이다. **어느 쪽인지는 방향을 아는 `studies` 가 정한다** —
+            이 계층은 폭등·폭락을 모른 채 받은 값을 그리기만 한다
 
     Returns:
         한글 레이블과 백분율로 바뀐 집계표
 
     Raises:
-        ValueError: 필요한 컬럼이 없는 경우
+        ValueError: 필요한 컬럼이 없거나 기준이 둘 이상인 경우
     """
-    ordered = _sorted_cells(summary, "집계")
+    ordered = _sorted_single_basis_cells(summary, "집계")
+    _require_columns(ordered, [reverse_rate_column], "집계")
 
     return pd.DataFrame(
         {
             DISPLAY_HORIZON: [_horizon_label(value) for value in ordered[COL_HORIZON]],
-            DISPLAY_BASIS: [_basis_label(value) for value in ordered[COL_BASIS]],
             DISPLAY_SIGNAL_COUNT: ordered[COL_SIGNAL_COUNT].to_numpy(),
             DISPLAY_EXCLUDED: ordered[COL_EXCLUDED_COUNT].to_numpy(),
             DISPLAY_SAMPLE_COUNT: ordered[COL_SAMPLE_COUNT].to_numpy(),
             DISPLAY_MEAN: _to_percent(ordered[COL_MEAN]).to_numpy(),
             DISPLAY_MEDIAN: _to_percent(ordered[COL_MEDIAN]).to_numpy(),
             DISPLAY_WIN_RATE: _to_percent(ordered[COL_WIN_RATE]).to_numpy(),
+            DISPLAY_REVERSE_RATE: _to_percent(ordered[reverse_rate_column]).to_numpy(),
             DISPLAY_MAX: _to_percent(ordered[COL_MAX]).to_numpy(),
             DISPLAY_MIN: _to_percent(ordered[COL_MIN]).to_numpy(),
             DISPLAY_STD: _to_percent(ordered[COL_STD]).to_numpy(),
@@ -184,7 +188,7 @@ def build_statistics_table(summary: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def build_excess_table(excess_by_baseline: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
+def build_excess_table(excess_by_baseline: Mapping[str, pd.DataFrame], *, reverse_rate_column: str) -> pd.DataFrame:
     """베이스라인별 초과분을 한 표로 쌓는다 (CSV 용).
 
     어느 베이스라인 대비인지를 컬럼으로 남기고, **양쪽 표본 수를 함께 둔다.**
@@ -192,30 +196,34 @@ def build_excess_table(excess_by_baseline: Mapping[str, pd.DataFrame]) -> pd.Dat
 
     Args:
         excess_by_baseline: 베이스라인 이름 → `statistics.excess` 결과
+        reverse_rate_column: `역방향 비율 초과` 로 쓸 초과분 컬럼. 상승 방향 신호면
+            하락 비율 초과, 하락 방향 신호면 승률 초과다
 
     Returns:
         베이스라인 컬럼이 붙은 초과분표 (단위는 백분율 포인트)
 
     Raises:
-        ValueError: 입력이 비었거나 필요한 컬럼이 없는 경우
+        ValueError: 입력이 비었거나 필요한 컬럼이 없거나 기준이 둘 이상인 경우
     """
     if not excess_by_baseline:
         raise ValueError("초과분 표가 비어 있습니다")
 
     blocks: list[pd.DataFrame] = []
     for name, table in excess_by_baseline.items():
-        ordered = _sorted_cells(table, f"초과분({name})")
+        label = f"초과분({name})"
+        ordered = _sorted_single_basis_cells(table, label)
+        _require_columns(ordered, [reverse_rate_column], label)
         blocks.append(
             pd.DataFrame(
                 {
                     DISPLAY_BASELINE: name,
                     DISPLAY_HORIZON: [_horizon_label(value) for value in ordered[COL_HORIZON]],
-                    DISPLAY_BASIS: [_basis_label(value) for value in ordered[COL_BASIS]],
                     DISPLAY_SIGNAL_SAMPLE: ordered[COL_SIGNAL_SAMPLE_COUNT].to_numpy(),
                     DISPLAY_BASELINE_SAMPLE: ordered[COL_BASELINE_SAMPLE_COUNT].to_numpy(),
                     DISPLAY_MEAN_EXCESS: _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy(),
                     DISPLAY_MEDIAN_EXCESS: _to_percent(ordered[COL_MEDIAN_EXCESS]).to_numpy(),
                     DISPLAY_WIN_RATE_EXCESS: _to_percent(ordered[COL_WIN_RATE_EXCESS]).to_numpy(),
+                    DISPLAY_REVERSE_RATE_EXCESS: _to_percent(ordered[reverse_rate_column]).to_numpy(),
                 }
             )
         )
@@ -242,13 +250,12 @@ def build_test_table(test_by_population: Mapping[str, pd.DataFrame]) -> pd.DataF
 
     blocks: list[pd.DataFrame] = []
     for name, table in test_by_population.items():
-        ordered = _sorted_cells(table, f"검정({name})")
+        ordered = _sorted_single_basis_cells(table, f"검정({name})")
         blocks.append(
             pd.DataFrame(
                 {
                     DISPLAY_POPULATION: name,
                     DISPLAY_HORIZON: [_horizon_label(value) for value in ordered[COL_HORIZON]],
-                    DISPLAY_BASIS: [_basis_label(value) for value in ordered[COL_BASIS]],
                     DISPLAY_SAMPLE_COUNT: ordered[COL_SAMPLE_COUNT].to_numpy(),
                     DISPLAY_OBSERVED_MEAN: _to_percent(ordered[COL_OBSERVED_MEAN]).to_numpy(),
                     DISPLAY_OBSERVED_MEDIAN: _to_percent(ordered[COL_OBSERVED_MEDIAN]).to_numpy(),
@@ -285,17 +292,16 @@ def build_comparison_table(excess_by_baseline: Mapping[str, pd.DataFrame], test:
     if not excess_by_baseline:
         raise ValueError("초과분 표가 비어 있습니다")
 
-    ordered_test = _sorted_cells(test, "검정")
+    ordered_test = _sorted_single_basis_cells(test, "검정")
     result = pd.DataFrame(
         {
             DISPLAY_HORIZON: [_horizon_label(value) for value in ordered_test[COL_HORIZON]],
-            DISPLAY_BASIS: [_basis_label(value) for value in ordered_test[COL_BASIS]],
             DISPLAY_SAMPLE_COUNT: ordered_test[COL_SAMPLE_COUNT].to_numpy(),
         }
     )
 
     for name, table in excess_by_baseline.items():
-        ordered = _sorted_cells(table, f"초과분({name})")
+        ordered = _sorted_single_basis_cells(table, f"초과분({name})")
         result[f"{name} {DISPLAY_MEAN_EXCESS}"] = _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy()
         result[f"{name} {DISPLAY_MEDIAN_EXCESS}"] = _to_percent(ordered[COL_MEDIAN_EXCESS]).to_numpy()
 
@@ -446,6 +452,32 @@ def _sorted_cells(table: pd.DataFrame, label: str) -> pd.DataFrame:
     ordered["_basis_order"] = [BASIS_ORDER.get(str(value), len(BASIS_ORDER)) for value in ordered[COL_BASIS]]
 
     return ordered.sort_values([COL_HORIZON, "_basis_order"]).reset_index(drop=True)
+
+
+def _sorted_single_basis_cells(table: pd.DataFrame, label: str) -> pd.DataFrame:
+    """한 기준짜리 표를 구간 순서로 정렬한다.
+
+    집계·초과분·검정 표는 `기준` 컬럼을 내지 않으므로(스펙 §7 결정 ㉔) **두 기준이
+    섞여 들어오면 같은 구간이 두 줄로 나오면서 어느 줄이 무엇인지 알 수 없게 된다.**
+    값이 그럴듯해 보여 눈으로 발견되지 않으므로 여기서 막는다.
+
+    Args:
+        table: 칸 키를 가진 표
+        label: 오류 메시지에 쓸 표 이름
+
+    Returns:
+        구간 오름차순으로 정렬된 표
+
+    Raises:
+        ValueError: 칸 키 컬럼이 없거나 기준이 둘 이상인 경우
+    """
+    ordered = _sorted_cells(table, label)
+
+    bases = ordered[COL_BASIS].drop_duplicates().tolist()
+    if len(bases) > 1:
+        raise ValueError(f"{label} 표는 기준 하나만 받습니다 (받은 기준: {[_basis_label(basis) for basis in bases]})")
+
+    return ordered
 
 
 def _require_columns(table: pd.DataFrame, columns: Sequence[str], label: str) -> None:

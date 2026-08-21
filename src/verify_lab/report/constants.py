@@ -24,6 +24,11 @@ DISPLAY_SAMPLE_COUNT = "표본"
 DISPLAY_MEAN = "평균(%)"
 DISPLAY_MEDIAN = "중앙값(%)"
 DISPLAY_WIN_RATE = "승률(%)"
+
+# 신호가 걸린 방향의 **반대로** 움직인 비율. 상승 방향 신호면 하락 비율, 하락 방향 신호면 승률이다.
+# 어느 쪽인지는 방향을 아는 `studies` 가 정하며 이 계층은 받은 값을 그리기만 한다
+DISPLAY_REVERSE_RATE = "역방향 비율(%)"
+
 DISPLAY_MAX = "최고(%)"
 DISPLAY_MIN = "최악(%)"
 DISPLAY_STD = "표준편차(%)"
@@ -37,6 +42,7 @@ DISPLAY_BASELINE_SAMPLE = "베이스라인 표본"
 DISPLAY_MEAN_EXCESS = "평균 초과(%p)"
 DISPLAY_MEDIAN_EXCESS = "중앙값 초과(%p)"
 DISPLAY_WIN_RATE_EXCESS = "승률 초과(%p)"
+DISPLAY_REVERSE_RATE_EXCESS = "역방향 비율 초과(%p)"
 
 DISPLAY_OBSERVED_MEAN = "관측 평균(%)"
 DISPLAY_OBSERVED_MEDIAN = "관측 중앙값(%)"
@@ -61,10 +67,13 @@ BASIS_LABELS = {
 # 기준을 나란히 놓을 때의 순서. 종가 기준이 먼저이고, 두 값의 차이가 갭으로 새는 몫이다
 BASIS_ORDER = {basis.value: index for index, basis in enumerate(ReturnBasis)}
 
-# 측정 구간의 표시 이름 (docs/spec/index_extreme_events.md §4)
+# 측정 구간의 표시 이름. **재는 구간의 목록이 아니라 "거래일 → 이름" 사전이다** —
+# 무엇을 재는지는 `measure.forward_return.DEFAULT_HORIZONS` 가 정한다. 여기 없는 구간은
+# `f"{days}일"` 로 나가므로(`tables._horizon_label`), 그 형태로 충분한 구간은 등록하지 않는다
 HORIZON_LABELS = {
     1: "1일",
     5: "1주",
+    10: "2주",
     21: "1개월",
     63: "3개월",
     126: "6개월",

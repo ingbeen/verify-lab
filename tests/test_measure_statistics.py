@@ -31,6 +31,8 @@ from verify_lab.measure.constants import (
 from verify_lab.measure.forward_return import ReturnBasis
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
+    COL_LOSS_RATE,
+    COL_LOSS_RATE_EXCESS,
     COL_MAX,
     COL_MEAN,
     COL_MEAN_EXCESS,
@@ -147,6 +149,63 @@ class TestSummarize:
         # Then
         assert _only(summary, COL_WIN_RATE) == pytest.approx(0.0, abs=EXACT_TOLERANCE)
 
+    def test_loss_rate_is_counted_separately_from_the_win_rate(self) -> None:
+        """
+        목적: 하락 비율은 **`1 − 승률` 이 아니다.** 보합이 있으면 두 값이 갈라진다.
+
+        보합을 승률의 여집합으로 처리하면 하락 비율이 부풀고, 그 위에서 만드는
+        역방향 비율이 조용히 틀린다. 그래서 `< 0` 을 따로 센다.
+
+        Given: 상승 2건·하락 1건·보합 1건
+        When: 집계한다
+        Then: 승률 0.5, 하락 비율 0.25 이며 `1 − 승률(0.5)` 과 다르다
+        """
+        # Given
+        frame = _cell([0.10, 0.20, -0.30, 0.0])
+
+        # When
+        summary = summarize(frame)
+
+        # Then
+        assert _only(summary, COL_WIN_RATE) == pytest.approx(0.5, abs=EXACT_TOLERANCE)
+        assert _only(summary, COL_LOSS_RATE) == pytest.approx(0.25, abs=EXACT_TOLERANCE)
+
+    def test_win_and_loss_rates_leave_room_for_a_flat_day(self) -> None:
+        """
+        목적: 승률 + 하락 비율 + 보합 비율 = 1 이 성립한다.
+
+        Given: 상승 1건·하락 1건·보합 2건
+        When: 집계한다
+        Then: 두 비율의 합이 0.5 이고 나머지 0.5 가 보합이다
+        """
+        # Given
+        frame = _cell([0.10, -0.10, 0.0, 0.0])
+
+        # When
+        summary = summarize(frame)
+
+        # Then
+        total = _only(summary, COL_WIN_RATE) + _only(summary, COL_LOSS_RATE)
+        assert total == pytest.approx(0.5, abs=EXACT_TOLERANCE)
+
+    def test_loss_rate_ignores_excluded_cells(self) -> None:
+        """
+        목적: 하락 비율도 **유효 표본만** 센다. 제외된 칸이 분모에 들어가면 안 된다.
+
+        Given: 하락 1건과 제외 3건
+        When: 집계한다
+        Then: 표본 1건 기준이므로 하락 비율이 1.0 이다
+        """
+        # Given
+        frame = _cell([-0.10, None, None, None])
+
+        # When
+        summary = summarize(frame)
+
+        # Then
+        assert int(_only(summary, COL_SAMPLE_COUNT)) == 1
+        assert _only(summary, COL_LOSS_RATE) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
+
     def test_empty_cell_is_not_computable(self) -> None:
         """
         목적: 표본 0건 칸은 예외가 아니라 "계산 불가"로 나온다.
@@ -262,6 +321,27 @@ class TestExcess:
         assert list(result.columns) == EXCESS_COLUMNS
         assert int(_only(result, COL_SIGNAL_SAMPLE_COUNT)) == 2
         assert int(_only(result, COL_BASELINE_SAMPLE_COUNT)) == 4
+
+    def test_loss_rate_is_also_a_statistic_wise_difference(self) -> None:
+        """
+        목적: 하락 비율도 **대응해 뺀다** — 신호군 하락 비율 − 베이스라인 하락 비율.
+
+        역방향 비율의 초과분이 여기서 나온다. "평소보다 더 자주 반대로 갔는가"가
+        이 검증이 답하려는 질문이므로 승률 초과와 같은 자리에 둔다.
+
+        Given: 신호군 하락 비율 0.5, 베이스라인 하락 비율 0.25
+        When: 초과분을 낸다
+        Then: 하락 비율 초과가 +0.25 다
+        """
+        # Given
+        signal = summarize(_cell([0.10, -0.20]))
+        baseline = summarize(_cell([0.10, 0.20, 0.30, -0.40]))
+
+        # When
+        result = excess(signal, baseline)
+
+        # Then
+        assert _only(result, COL_LOSS_RATE_EXCESS) == pytest.approx(0.25, abs=EXACT_TOLERANCE)
 
     def test_rejects_mismatched_cells(self) -> None:
         """

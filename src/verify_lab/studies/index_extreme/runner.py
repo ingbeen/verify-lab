@@ -27,15 +27,20 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, MovingAverageKind, below_moving_average
-from verify_lab.measure.forward_return import DEFAULT_HORIZONS, compute_forward_returns
+from verify_lab.measure.constants import COL_BASIS
+from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis, compute_forward_returns
 from verify_lab.measure.statistics import (
+    COL_LOSS_RATE,
+    COL_LOSS_RATE_EXCESS,
+    COL_WIN_RATE,
+    COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
     excess,
     permutation_test,
     summarize,
 )
-from verify_lab.report.constants import PERCENT_DECIMALS, RATE_TO_PERCENT
+from verify_lab.report.constants import BASIS_LABELS, PERCENT_DECIMALS, RATE_TO_PERCENT
 from verify_lab.report.tables import (
     build_excess_table,
     build_signal_table,
@@ -104,10 +109,16 @@ IDENTITY_COLUMNS = (
     DISPLAY_PERIOD,
 )
 
+# 집계·초과분·검정이 쓰는 수익률 기준. 익일 시가는 `signals.csv` 의 원자료로만 남고
+# 평균·승률로 집계되지 않는다 (docs/spec/index_extreme_events.md §7 결정 ㉓).
+# 그래서 세 표의 `기준` 이 상수가 되고, 컬럼 대신 실행 요약이 그 기록을 든다
+AGGREGATED_BASIS = ReturnBasis.CLOSE
+
 # ============================================================
 # summary.json 키 (영문 snake_case — meta.json 의 기존 관용과 맞춘다)
 # ============================================================
 
+KEY_AGGREGATED_BASIS = "aggregated_basis"
 KEY_STUDY = "study"
 KEY_DATASETS = "datasets"
 KEY_PARAMETERS = "parameters"
@@ -313,6 +324,7 @@ def run_study(
             "start_years": list(start_years),
             "periods": [period.label for period in (PERIOD_ALL, *DECADE_PERIODS)],
             "horizons": list(DEFAULT_HORIZONS),
+            KEY_AGGREGATED_BASIS: BASIS_LABELS[AGGREGATED_BASIS.value],
             "moving_average_window": DEFAULT_MA_WINDOW,
             "event_gap_days": EVENT_GAP_DAYS,
             "zscore_window": ZSCORE_WINDOW,
@@ -577,7 +589,7 @@ def _build_populations(context: _Context, start: pd.Timestamp, end: pd.Timestamp
             continue
 
         dates = context.frame.loc[mask, COL_DATE]
-        returns = context.all_day_returns[context.all_day_returns[COL_DATE].isin(dates)]
+        returns = _aggregated_basis_only(context.all_day_returns[context.all_day_returns[COL_DATE].isin(dates)])
         populations[name] = _Population(day_count=day_count, returns=returns, summary=summarize(returns))
 
     return populations
@@ -716,7 +728,14 @@ def _measure_spec(
         }
 
         returns = compute_forward_returns(context.frame, signals)
-        signal_summary = summarize(returns)
+        aggregated = _aggregated_basis_only(returns)
+        signal_summary = summarize(aggregated)
+
+        # 무엇이 "역방향"인지는 방향이 정한다. 상승 방향 신호는 인버스로 집행하므로 하락이
+        # 맞은 것이고, 하락 방향 신호는 그대로 사므로 상승이 맞은 것이다
+        upward = direction is Direction.UP
+        reverse_rate = COL_LOSS_RATE if upward else COL_WIN_RATE
+        reverse_rate_excess = COL_LOSS_RATE_EXCESS if upward else COL_WIN_RATE_EXCESS
 
         signal_blocks.append(
             _with_identity(
@@ -726,7 +745,7 @@ def _measure_spec(
         )
         statistics_blocks.append(
             _with_identity(
-                build_statistics_table(signal_summary),
+                build_statistics_table(signal_summary, reverse_rate_column=reverse_rate),
                 identity,
                 {DISPLAY_EVENT_COUNT: counts[DISPLAY_EVENT_COUNT]},
             )
@@ -734,7 +753,8 @@ def _measure_spec(
         excess_blocks.append(
             _with_identity(
                 build_excess_table(
-                    {name: excess(signal_summary, population.summary) for name, population in populations.items()}
+                    {name: excess(signal_summary, population.summary) for name, population in populations.items()},
+                    reverse_rate_column=reverse_rate_excess,
                 ),
                 identity,
                 counts,
@@ -744,7 +764,7 @@ def _measure_spec(
             _with_identity(
                 build_test_table(
                     {
-                        name: permutation_test(returns, population.returns, repeats=repeats, seed=seed)
+                        name: permutation_test(aggregated, population.returns, repeats=repeats, seed=seed)
                         for name, population in populations.items()
                     }
                 ),
@@ -787,6 +807,21 @@ def _event_ids(
     numbered = assign_event_ids(frame.loc[union, COL_DATE], EVENT_GAP_DAYS)
 
     return {direction: numbered.loc[signals[signals].index] for direction, signals in selected.items()}
+
+
+def _aggregated_basis_only(returns: pd.DataFrame) -> pd.DataFrame:
+    """집계에 넘길 기준의 칸만 남긴다.
+
+    신호군과 베이스라인 모집단에 **똑같이** 걸어야 한다. 한쪽만 걸면 초과분이 칸 구성 불일치로
+    거부되고, 둘 다 걸지 않으면 `기준` 컬럼 없는 표에 같은 구간이 두 줄로 나온다.
+
+    Args:
+        returns: `compute_forward_returns` 의 결과
+
+    Returns:
+        집계 기준의 행만 남은 프레임. 입력은 변경하지 않는다
+    """
+    return returns[returns[COL_BASIS] == AGGREGATED_BASIS.value]
 
 
 def _signal_details(

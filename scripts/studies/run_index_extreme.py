@@ -16,14 +16,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
+from verify_lab.measure.forward_return import DEFAULT_HORIZONS
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.constants import (
-    BASIS_LABELS,
-    DISPLAY_BASIS,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
     DISPLAY_MEDIAN,
+    DISPLAY_REVERSE_RATE,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_WIN_RATE,
@@ -103,9 +102,9 @@ OUTPUT_FILES = (
 # 컬럼 사이 여백. 오른쪽 정렬 컬럼은 값이 칸 끝에 붙어 다음 컬럼과 맞닿는다
 COLUMN_GAP = "  "
 
-# 터미널에 실을 발췌의 축. 전 조합은 CSV 에 있고, 화면은 기본 설정만 훑는 자리다
+# 터미널에 실을 발췌의 축. 전 조합은 CSV 에 있고, 화면은 기본 설정만 훑는 자리다.
+# 집계는 한 기준으로만 나오므로(runner.AGGREGATED_BASIS) 기준으로 거를 것이 없다
 EXCERPT_HORIZON = HORIZON_LABELS[DEFAULT_HORIZONS[-1]]
-EXCERPT_BASIS = BASIS_LABELS[ReturnBasis.CLOSE.value]
 
 # 발췌에 실을 컬럼. 값은 저장한 표시용 프레임에서 그대로 가져온다 —
 # 따로 가공하면 화면에서 본 숫자를 CSV 에서 찾지 못한다
@@ -120,6 +119,7 @@ EXCERPT_COLUMNS = [
     DISPLAY_MEAN,
     DISPLAY_MEDIAN,
     DISPLAY_WIN_RATE,
+    DISPLAY_REVERSE_RATE,
 ]
 
 
@@ -198,7 +198,6 @@ def _print_excerpt(outputs: StudyOutputs) -> None:
         (statistics[DISPLAY_START_YEAR] == DEFAULT_START_YEAR)
         & (statistics[DISPLAY_PERIOD] == PERIOD_ALL.label)
         & (statistics[DISPLAY_HORIZON] == EXCERPT_HORIZON)
-        & (statistics[DISPLAY_BASIS] == EXCERPT_BASIS)
     ]
 
     if selected.empty:
@@ -208,7 +207,7 @@ def _print_excerpt(outputs: StudyOutputs) -> None:
     print_dataframe(
         selected[EXCERPT_COLUMNS].reset_index(drop=True),
         logger,
-        title=f"{DEFAULT_START_YEAR}년 이후 · {EXCERPT_BASIS} 기준 {EXCERPT_HORIZON} 수익률 (전 조합은 CSV 참고)",
+        title=f"{DEFAULT_START_YEAR}년 이후 · {EXCERPT_HORIZON} 수익률 (전 조합은 CSV 참고)",
     )
 
 

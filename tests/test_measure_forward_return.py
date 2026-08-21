@@ -157,9 +157,9 @@ class TestFormula:
 
         Given: 기본 구간 상수
         When: 값을 확인한다
-        Then: 1·5·21·63·126·252 거래일이다
+        Then: 1·2·3·5·10·21 거래일이다 (스펙 §7 결정 ㉑ 로 단기화)
         """
-        assert DEFAULT_HORIZONS == (1, 5, 21, 63, 126, 252)
+        assert DEFAULT_HORIZONS == (1, 2, 3, 5, 10, 21)
 
     def test_next_open_horizons_are_the_one_day_cell_only(self) -> None:
         """

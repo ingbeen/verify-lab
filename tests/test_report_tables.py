@@ -25,13 +25,22 @@ from verify_lab.measure.constants import (
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
-from verify_lab.measure.forward_return import ReturnBasis
-from verify_lab.measure.statistics import excess, permutation_test, summarize
+from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
+from verify_lab.measure.statistics import (
+    COL_LOSS_RATE,
+    COL_LOSS_RATE_EXCESS,
+    COL_WIN_RATE,
+    excess,
+    permutation_test,
+    summarize,
+)
 from verify_lab.report.constants import (
     DISPLAY_BASIS,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
+    DISPLAY_REVERSE_RATE,
+    DISPLAY_REVERSE_RATE_EXCESS,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_TEST_NOTE,
     DISPLAY_WIN_RATE,
@@ -72,6 +81,18 @@ def _both_bases(values: list[float | None], horizons: tuple[int, ...] = (1, 252)
     """기준 2종 × 지정 구간을 모두 채운 long-form 프레임을 만든다."""
     return pd.concat(
         [_cell(values, basis=basis, horizon=horizon) for basis in ReturnBasis for horizon in horizons],
+        ignore_index=True,
+    )
+
+
+def _close_only(values: list[float | None], horizons: tuple[int, ...] = (1, 21)) -> pd.DataFrame:
+    """종가 기준만 채운 long-form 프레임을 만든다.
+
+    집계 3표는 **한 기준만** 받는다 (스펙 §7 결정 ㉓·㉔). `기준` 컬럼이 없으므로
+    두 기준이 섞여 들어오면 같은 구간이 두 줄로 나오면서 구분할 방법이 사라진다.
+    """
+    return pd.concat(
+        [_cell(values, basis=ReturnBasis.CLOSE, horizon=horizon) for horizon in horizons],
         ignore_index=True,
     )
 
@@ -213,38 +234,155 @@ class TestStatisticsTable:
         """
         목적: 화면과 CSV 는 한글 레이블과 구간 이름을 쓴다 (내부/출력 분리).
 
-        Given: 기준 2종 × 구간 1일·1년
+        Given: 종가 기준 × 구간 1일·1개월
         When: 집계 표를 만든다
-        Then: 컬럼이 한글이고 구간이 "1일"·"1년" 으로 표기된다
+        Then: 컬럼이 한글이고 구간이 "1일"·"1개월" 로 표기된다
         """
         # Given
-        summary = summarize(_both_bases([0.10, 0.20]))
+        summary = summarize(_close_only([0.10, 0.20]))
 
         # When
-        table = build_statistics_table(summary)
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
 
         # Then
         assert DISPLAY_HORIZON in table.columns
         assert DISPLAY_SAMPLE_COUNT in table.columns
-        assert set(table[DISPLAY_HORIZON]) == {HORIZON_LABELS[1], HORIZON_LABELS[252]}
+        assert set(table[DISPLAY_HORIZON]) == {HORIZON_LABELS[1], HORIZON_LABELS[21]}
 
-    def test_rows_are_sorted_by_horizon_then_basis(self) -> None:
+    def test_rows_are_sorted_by_horizon(self) -> None:
         """
-        목적: 행 순서는 **구간 → 기준**이다. 같은 구간의 두 기준이 붙어 있어야 갭이 보인다.
+        목적: 행 순서는 **구간 오름차순**이다.
 
-        Given: 기준 2종 × 구간 1일·1년
+        Given: 종가 기준 × 구간 1일·1개월
         When: 집계 표를 만든다
-        Then: 1일 두 줄이 먼저, 그 다음 1년 두 줄이 온다
+        Then: 1일 다음에 1개월이 온다
+        """
+        # Given
+        summary = summarize(_close_only([0.10, 0.20]))
+
+        # When
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+
+        # Then
+        assert table[DISPLAY_HORIZON].tolist() == ["1일", "1개월"]
+
+    def test_has_no_basis_column(self) -> None:
+        """
+        목적: `기준` 컬럼을 내지 않는다 (스펙 §7 결정 ㉔).
+
+        익일시가를 집계에서 뺐으므로 값이 `종가` 하나뿐이고, 고를 것이 없는 필터는
+        대조를 방해하기만 한다. 무엇으로 쟀는지는 `summary.json` 이 기록한다.
+
+        Given: 종가 기준 집계
+        When: 집계 표를 만든다
+        Then: `기준` 컬럼이 없다
+        """
+        # Given
+        summary = summarize(_close_only([0.10, 0.20]))
+
+        # When
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+
+        # Then
+        assert DISPLAY_BASIS not in table.columns
+
+    def test_rejects_more_than_one_basis(self) -> None:
+        """
+        목적: 두 기준이 섞여 들어오면 **조용히 중복 행을 내지 않고 거부한다.**
+
+        `기준` 컬럼이 없으므로 같은 구간이 두 줄로 나오는데, 표만 보면 어느 줄이
+        어느 기준인지 알 수 없다. 그 상태로 CSV 가 나가면 대조가 불가능해진다.
+
+        Given: 기준 2종이 섞인 집계
+        When: 집계 표를 만든다
+        Then: ValueError
         """
         # Given
         summary = summarize(_both_bases([0.10, 0.20]))
 
+        # When / Then
+        with pytest.raises(ValueError, match="기준"):
+            build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+
+    def test_reverse_rate_comes_from_the_given_column(self) -> None:
+        """
+        목적: `역방향 비율` 로 쓸 컬럼은 **호출자가 정한다.**
+
+        `report` 는 폭등·폭락을 모른다. 상승 방향 신호면 하락 비율, 하락 방향 신호면
+        승률이 역방향인데, 그 판단은 방향을 아는 `studies` 의 몫이다.
+
+        Given: 상승 1건·하락 3건 (승률 25%, 하락 비율 75%)
+        When: 하락 비율을 역방향으로 지정해 표를 만든다
+        Then: 역방향 비율이 75%, 승률 컬럼은 25% 로 따로 남는다
+        """
+        # Given
+        summary = summarize(_close_only([0.10, -0.10, -0.20, -0.30], horizons=(1,)))
+
         # When
-        table = build_statistics_table(summary)
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
 
         # Then
-        assert table[DISPLAY_HORIZON].tolist() == ["1일", "1일", "1년", "1년"]
-        assert table[DISPLAY_BASIS].tolist() == ["종가", "익일시가", "종가", "익일시가"]
+        assert table[DISPLAY_REVERSE_RATE].tolist() == [75.0]
+        assert table[DISPLAY_WIN_RATE].tolist() == [25.0]
+
+    def test_reverse_rate_can_be_the_win_rate(self) -> None:
+        """
+        목적: 하락 방향 신호에서는 **승률이 곧 역방향 비율**이다 (같은 값이 두 컬럼에 온다).
+
+        Given: 상승 1건·하락 3건
+        When: 승률을 역방향으로 지정해 표를 만든다
+        Then: 두 컬럼이 모두 25% 다
+        """
+        # Given
+        summary = summarize(_close_only([0.10, -0.10, -0.20, -0.30], horizons=(1,)))
+
+        # When
+        table = build_statistics_table(summary, reverse_rate_column=COL_WIN_RATE)
+
+        # Then
+        assert table[DISPLAY_REVERSE_RATE].tolist() == [25.0]
+        assert table[DISPLAY_WIN_RATE].tolist() == [25.0]
+
+    def test_reverse_rate_is_not_one_minus_the_win_rate(self) -> None:
+        """
+        목적: 보합이 있으면 **역방향 비율 + 승률 < 100%** 다.
+
+        `100 − 승률` 로 만들면 보합이 하락으로 새어 들어가 값이 부풀지만,
+        표만 보면 정상으로 보인다.
+
+        Given: 상승 1건·하락 1건·보합 2건
+        When: 하락 비율을 역방향으로 지정해 표를 만든다
+        Then: 승률 25%, 역방향 25% 로 합이 50% 다
+        """
+        # Given
+        summary = summarize(_close_only([0.10, -0.10, 0.0, 0.0], horizons=(1,)))
+
+        # When
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+
+        # Then
+        assert table[DISPLAY_WIN_RATE].tolist() == [25.0]
+        assert table[DISPLAY_REVERSE_RATE].tolist() == [25.0]
+
+    def test_new_horizons_have_display_names(self) -> None:
+        """
+        목적: 단기 구간 6개가 전부 사람이 읽는 이름으로 나온다.
+
+        `2`·`3` 은 `HORIZON_LABELS` 에 없고 fallback(`f"{days}일"`)이 내는 값이므로
+        그 경로까지 함께 고정한다.
+
+        Given: 단기 구간 6개
+        When: 집계 표를 만든다
+        Then: 1일·2일·3일·1주·2주·1개월 순으로 나온다
+        """
+        # Given
+        summary = summarize(_close_only([0.10, 0.20], horizons=DEFAULT_HORIZONS))
+
+        # When
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+
+        # Then
+        assert table[DISPLAY_HORIZON].tolist() == ["1일", "2일", "3일", "1주", "2주", "1개월"]
 
     def test_rates_become_percent(self) -> None:
         """
@@ -258,7 +396,7 @@ class TestStatisticsTable:
         summary = summarize(_cell([0.10, 0.20]))
 
         # When
-        table = build_statistics_table(summary)
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
 
         # Then
         assert float(table[DISPLAY_MEAN].iloc[0]) == pytest.approx(15.0, abs=1e-9)
@@ -276,7 +414,7 @@ class TestStatisticsTable:
         summary = summarize(_cell([0.10, 0.20, None]))
 
         # When
-        table = build_statistics_table(summary)
+        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
 
         # Then
         assert int(table[DISPLAY_SAMPLE_COUNT].iloc[0]) == 2
@@ -299,7 +437,7 @@ class TestExcessAndTestTables:
         baseline = summarize(_cell([0.0, 0.10]))
 
         # When
-        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)})
+        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS)
 
         # Then
         assert set(table["베이스라인"]) == {BASELINE_NAME}
@@ -317,10 +455,54 @@ class TestExcessAndTestTables:
         baseline = summarize(_cell([0.0, 0.10]))
 
         # When
-        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)})
+        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS)
 
         # Then
         assert float(table["평균 초과(%p)"].iloc[0]) == pytest.approx(10.0, abs=1e-9)
+
+    def test_excess_table_carries_the_reverse_rate(self) -> None:
+        """
+        목적: 초과분 표에도 역방향 비율이 붙는다 — "평소보다 더 자주 반대로 갔는가".
+
+        이 검증이 답하려는 질문이 초과분 쪽에 있다. 절대 비율만으로는
+        "원래 그 정도 자주 내린다"와 구별되지 않는다.
+
+        Given: 신호군 하락 비율 50%, 베이스라인 하락 비율 25%
+        When: 하락 비율을 역방향으로 지정해 초과분 표를 만든다
+        Then: 역방향 비율 초과가 +25.0%p 다
+        """
+        # Given
+        signal = summarize(_cell([0.10, -0.20]))
+        baseline = summarize(_cell([0.10, 0.20, 0.30, -0.40]))
+
+        # When
+        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS)
+
+        # Then
+        assert float(table[DISPLAY_REVERSE_RATE_EXCESS].iloc[0]) == pytest.approx(25.0, abs=1e-9)
+
+    def test_excess_and_test_tables_have_no_basis_column(self) -> None:
+        """
+        목적: 초과분·검정 표에서도 `기준` 컬럼을 내지 않는다 (스펙 §7 결정 ㉔).
+
+        Given: 초과분과 검정 결과
+        When: 두 표를 만든다
+        Then: 어느 쪽에도 `기준` 컬럼이 없다
+        """
+        # Given
+        signal = summarize(_cell([0.10, 0.20]))
+        baseline = summarize(_cell([0.0, 0.10]))
+        population = _cell([value / 1000 for value in range(-100, 100)])
+
+        # When
+        excess_table = build_excess_table(
+            {BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS
+        )
+        test_table = build_test_table({"무작위 진입": permutation_test(_cell([0.09] * 12), population, repeats=50, seed=0)})
+
+        # Then
+        assert DISPLAY_BASIS not in excess_table.columns
+        assert DISPLAY_BASIS not in test_table.columns
 
     def test_p_value_keeps_four_decimals(self) -> None:
         """

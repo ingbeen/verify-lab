@@ -29,7 +29,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
 )
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW
-from verify_lab.measure.forward_return import DEFAULT_HORIZONS, NEXT_OPEN_HORIZONS
+from verify_lab.measure.forward_return import DEFAULT_HORIZONS
 from verify_lab.report.constants import (
     DISPLAY_BASELINE,
     DISPLAY_BASELINE_SAMPLE,
@@ -37,10 +37,14 @@ from verify_lab.report.constants import (
     DISPLAY_DATE,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
+    DISPLAY_REVERSE_RATE,
+    DISPLAY_REVERSE_RATE_EXCESS,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
+    DISPLAY_WIN_RATE,
 )
 from verify_lab.studies.index_extreme.constants import (
+    CONSECUTIVE_DIRECTION_LABELS,
     CONSECUTIVE_LENGTHS,
     DATASETS,
     DECADE_PERIODS,
@@ -110,6 +114,12 @@ TEST_REPEATS = 5
 # 사건이 몰린 시세의 길이와 사건을 심는 위치 (끝에서 이만큼 앞)
 CLUSTERED_ROWS = 2_600
 CLUSTERED_OFFSET = 400
+
+# 상승 방향 신호군의 표시 이름. 이 방향에서는 **하락이 역방향**이다
+UPWARD_DIRECTIONS = (EXTREME_DIRECTION_LABELS[Direction.UP], CONSECUTIVE_DIRECTION_LABELS[Direction.UP])
+
+# 백분율 지표의 허용오차 (tests/CLAUDE.md 허용오차 기준)
+RATE_TOLERANCE = 0.1
 
 
 def _quiet_changes(count: int) -> np.ndarray:
@@ -334,19 +344,103 @@ class TestSignalGroupAxes:
         assert extreme == {f"K={cut}" for cut in RANK_CUTS}
         assert consecutive == {f"N={length}" for length in CONSECUTIVE_LENGTHS}
 
-    def test_각_신호군은_종가_6구간과_익일시가_1일의_일곱_칸을_낸다(self, wide_outputs: StudyOutputs) -> None:
+    def test_각_신호군은_종가_구간만큼의_집계_칸을_낸다(self, wide_outputs: StudyOutputs) -> None:
         """
         목적: 칸 구성이 신호군마다 달라지지 않는지 고정한다
 
+        집계는 **종가 기준만** 받는다 (스펙 §7 결정 ㉓). 익일시가는 `signals.csv` 의
+        원자료로만 남고 평균·승률로 집계되지 않는다.
+
         Given: 실행 결과의 집계표
         When: 신호군별 행 수를 셌을 때
-        Then: 전부 7행이다 (종가 6구간 + 익일시가 1일)
+        Then: 전부 종가 구간 수만큼이다
         """
         # Given / When
         rows_per_group = wide_outputs.statistics.groupby(list(IDENTITY_COLUMNS), sort=False).size()
 
         # Then
-        assert set(rows_per_group) == {len(DEFAULT_HORIZONS) + len(NEXT_OPEN_HORIZONS)}
+        assert set(rows_per_group) == {len(DEFAULT_HORIZONS)}
+
+    def test_집계_세_표에_기준_컬럼이_없다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: `기준` 이 상수가 됐으므로 식별 컬럼에서 뺀다 (스펙 §7 결정 ㉔)
+
+        고를 것이 없는 필터는 대조를 방해하기만 한다. 무엇으로 쟀는지는
+        `summary.json` 이 데이터셋 단위로 기록한다.
+
+        Given: 실행 결과의 집계·초과분·검정표
+        When: 컬럼 구성을 확인했을 때
+        Then: 어느 표에도 `기준` 컬럼이 없다
+        """
+        # Given / When
+        tables = (wide_outputs.statistics, wide_outputs.excess, wide_outputs.test)
+
+        # Then
+        assert all(DISPLAY_BASIS not in table.columns for table in tables)
+
+    def test_신호일_목록에는_익일시가_1일이_남는다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 익일시가를 집계에서 뺐어도 **원자료는 남는다** (스펙 §7 결정 ㉓)
+
+        갭으로 새는 몫의 직접 관측치이자, 갭 배수를 역산해 나머지 구간을 복원하는 수단이다.
+
+        Given: 실행 결과의 신호일 목록
+        When: 컬럼 구성을 확인했을 때
+        Then: 익일시가 1일 컬럼이 하나 있고 다른 익일시가 구간은 없다
+        """
+        # Given / When
+        next_open_columns = [column for column in wide_outputs.signals.columns if column.startswith("익일시가")]
+
+        # Then
+        assert next_open_columns == ["익일시가 1일"]
+
+    def test_상승_방향_신호군의_역방향_비율은_하락_비율이다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 방향에 따라 무엇이 "역방향"인지 갈린다 (스펙 §7 결정 ㉒)
+
+        폭등 신호는 인버스로 들어가므로 **가격이 내려야** 맞은 것이고, 폭락 신호는
+        그대로 사므로 **올라야** 맞은 것이다. 승률 하나로는 폭등 쪽에서 정반대를 잰다.
+
+        Given: 상승 방향(폭등·연속 상승) 신호군의 집계
+        When: 역방향 비율과 승률을 비교했을 때
+        Then: 둘의 합이 100% 를 넘지 않는다 (여집합 관계이며 보합이 남을 수 있다)
+        """
+        # Given
+        upward = wide_outputs.statistics[wide_outputs.statistics[DISPLAY_DIRECTION].isin(UPWARD_DIRECTIONS)]
+
+        # When
+        total = upward[DISPLAY_WIN_RATE] + upward[DISPLAY_REVERSE_RATE]
+
+        # Then
+        assert not upward.empty
+        assert bool((total <= 100.0 + RATE_TOLERANCE).all())
+
+    def test_하락_방향_신호군의_역방향_비율은_승률과_같다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 폭락·연속 하락 신호는 **오르는 것이 곧 역방향**이라 두 값이 일치한다
+
+        Given: 하락 방향 신호군의 집계
+        When: 역방향 비율과 승률을 비교했을 때
+        Then: 두 값이 모든 칸에서 같다
+        """
+        # Given
+        downward = wide_outputs.statistics[~wide_outputs.statistics[DISPLAY_DIRECTION].isin(UPWARD_DIRECTIONS)]
+
+        # When / Then
+        assert not downward.empty
+        assert downward[DISPLAY_REVERSE_RATE].tolist() == downward[DISPLAY_WIN_RATE].tolist()
+
+    def test_초과분표에도_역방향_비율_초과가_남는다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: "평소보다 더 자주 반대로 갔는가"가 이 검증이 답하려는 질문이다
+
+        절대 비율만으로는 "원래 그 정도 자주 내린다"와 구별되지 않는다.
+
+        Given: 실행 결과의 초과분표
+        When: 컬럼 구성을 확인했을 때
+        Then: 역방향 비율 초과 컬럼이 있다
+        """
+        assert DISPLAY_REVERSE_RATE_EXCESS in wide_outputs.excess.columns
 
 
 class TestEventCount:
@@ -494,7 +588,6 @@ class TestBaselinePopulation:
             & (excess[DISPLAY_PERIOD] == PERIOD_ALL.label)
             & (excess[DISPLAY_BASELINE] == DISPLAY_BASELINE_ALL)
             & (excess[DISPLAY_HORIZON] == "1일")
-            & (excess[DISPLAY_BASIS] == "종가")
         ]
 
         # Then

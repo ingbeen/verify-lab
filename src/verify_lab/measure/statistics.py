@@ -38,6 +38,7 @@ COL_SAMPLE_COUNT = "SampleCount"
 COL_MEAN = "Mean"
 COL_MEDIAN = "Median"
 COL_WIN_RATE = "WinRate"
+COL_LOSS_RATE = "LossRate"
 COL_MAX = "Max"
 COL_MIN = "Min"
 COL_STD = "Std"
@@ -51,6 +52,7 @@ SUMMARY_COLUMNS = [
     COL_MEAN,
     COL_MEDIAN,
     COL_WIN_RATE,
+    COL_LOSS_RATE,
     COL_MAX,
     COL_MIN,
     COL_STD,
@@ -65,6 +67,7 @@ COL_BASELINE_SAMPLE_COUNT = "BaselineSampleCount"
 COL_MEAN_EXCESS = "MeanExcess"
 COL_MEDIAN_EXCESS = "MedianExcess"
 COL_WIN_RATE_EXCESS = "WinRateExcess"
+COL_LOSS_RATE_EXCESS = "LossRateExcess"
 
 EXCESS_COLUMNS = [
     COL_BASIS,
@@ -74,6 +77,7 @@ EXCESS_COLUMNS = [
     COL_MEAN_EXCESS,
     COL_MEDIAN_EXCESS,
     COL_WIN_RATE_EXCESS,
+    COL_LOSS_RATE_EXCESS,
 ]
 
 # ============================================================
@@ -151,7 +155,10 @@ def summarize(frame: pd.DataFrame) -> pd.DataFrame:
 
     if usable.empty:
         summary = counts.assign(
-            **{column: np.nan for column in (COL_MEAN, COL_MEDIAN, COL_WIN_RATE, COL_MAX, COL_MIN, COL_STD)}
+            **{
+                column: np.nan
+                for column in (COL_MEAN, COL_MEDIAN, COL_WIN_RATE, COL_LOSS_RATE, COL_MAX, COL_MIN, COL_STD)
+            }
         )
         summary[COL_SAMPLE_COUNT] = 0
         return summary[SUMMARY_COLUMNS]
@@ -159,12 +166,17 @@ def summarize(frame: pd.DataFrame) -> pd.DataFrame:
     # 승률은 양수 비율이다. 정확히 0인 날은 승리가 아니다
     usable[COL_WIN_RATE] = usable[COL_FORWARD_RETURN] > 0
 
+    # 하락 비율은 **승률의 여집합이 아니다.** 보합(정확히 0)이 어느 쪽에도 들어가지 않으므로
+    # `1 − 승률` 로 만들면 보합이 하락으로 새어 들어가 값이 부푼다
+    usable[COL_LOSS_RATE] = usable[COL_FORWARD_RETURN] < 0
+
     grouped = usable.groupby([COL_BASIS, COL_HORIZON], as_index=False, sort=True).agg(
         **{
             COL_SAMPLE_COUNT: (COL_FORWARD_RETURN, "size"),
             COL_MEAN: (COL_FORWARD_RETURN, "mean"),
             COL_MEDIAN: (COL_FORWARD_RETURN, "median"),
             COL_WIN_RATE: (COL_WIN_RATE, "mean"),
+            COL_LOSS_RATE: (COL_LOSS_RATE, "mean"),
             COL_MAX: (COL_FORWARD_RETURN, "max"),
             COL_MIN: (COL_FORWARD_RETURN, "min"),
             COL_STD: (COL_FORWARD_RETURN, "std"),
@@ -223,6 +235,7 @@ def excess(signal_summary: pd.DataFrame, baseline_summary: pd.DataFrame) -> pd.D
             COL_MEAN_EXCESS: merged[f"{COL_MEAN}_signal"] - merged[f"{COL_MEAN}_baseline"],
             COL_MEDIAN_EXCESS: merged[f"{COL_MEDIAN}_signal"] - merged[f"{COL_MEDIAN}_baseline"],
             COL_WIN_RATE_EXCESS: merged[f"{COL_WIN_RATE}_signal"] - merged[f"{COL_WIN_RATE}_baseline"],
+            COL_LOSS_RATE_EXCESS: merged[f"{COL_LOSS_RATE}_signal"] - merged[f"{COL_LOSS_RATE}_baseline"],
         }
     )
 
