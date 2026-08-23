@@ -181,6 +181,13 @@ DISPLAY_TEST_CONSECUTIVE: Final = "테스트 B(연속 등락)"
 EXTREME_DIRECTION_LABELS: Final = {Direction.UP: "폭등", Direction.DOWN: "폭락"}
 CONSECUTIVE_DIRECTION_LABELS: Final = {Direction.UP: "연속 상승", Direction.DOWN: "연속 하락"}
 
+# 두 방향을 한 표본으로 묶은 신호군의 이름. 상승 방향 신호의 수익률에 −1 을 곱해
+# **역방향으로 진입했을 때의 부호**로 통일한 값이며, 두 테스트가 같은 이름을 쓴다.
+#
+# `전체` 로 두지 않는 이유는 **같은 표의 `시대 구간` 컬럼에 이미 `전체` 가 있기 때문**이다.
+# 한 행에 같은 문자열이 두 컬럼에 실리면 대조할 때 어느 축의 값인지 헷갈린다
+DISPLAY_DIRECTION_REVERSE_ALL: Final = "역방향 전체"
+
 # 파라미터는 테스트마다 뜻이 달라 한 컬럼에 접두사와 함께 담는다
 PARAMETER_PREFIX_RANK_CUT: Final = "K"
 PARAMETER_PREFIX_LENGTH: Final = "N"

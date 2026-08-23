@@ -27,7 +27,7 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, MovingAverageKind, below_moving_average
-from verify_lab.measure.constants import COL_BASIS
+from verify_lab.measure.constants import COL_BASIS, COL_FORWARD_RETURN
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis, compute_forward_returns
 from verify_lab.measure.statistics import (
     COL_LOSS_RATE,
@@ -61,6 +61,7 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_CHANGE_RATE,
     DISPLAY_CLOSE,
     DISPLAY_DIRECTION,
+    DISPLAY_DIRECTION_REVERSE_ALL,
     DISPLAY_EVENT_COUNT,
     DISPLAY_EVENT_ID,
     DISPLAY_GROUP_SIGNAL_COUNT,
@@ -157,6 +158,11 @@ KEY_TEST_TABLE = "test"
 # 산출물만 보고는 알 수 없는 실행 조건. 대조의 전제가 무엇이었는지를 남긴다
 NOTE_SAME_PARAMETERS = "모든 데이터셋을 같은 실행·같은 파라미터로 계산했다. 데이터셋끼리 나란히 놓고 보는 것은 이 전제 위에서만 성립한다"
 NOTE_BASELINE_WINDOW = "베이스라인 모집단은 신호군과 같은 기간으로 잘랐다. 이동평균은 전 기간으로 쌓은 뒤 날짜로 걸렀다"
+NOTE_REVERSE_ALL = (
+    f"방향 '{DISPLAY_DIRECTION_REVERSE_ALL}' 은 두 방향을 한 표본으로 묶되 상승 방향 신호의 수익률에 -1 을 곱해 "
+    "역방향 진입 기준으로 부호를 맞춘 값이다. 베이스라인은 같은 거래일을 원본과 부호 반전 두 벌로 둔 대칭 모집단이라 "
+    "표본 수가 두 배이고 평균이 0 이다. 신호일 목록에는 이 방향의 행이 없다 - 방향별 두 블록을 합치면 복원된다"
+)
 
 
 @dataclass(frozen=True)
@@ -292,6 +298,9 @@ def run_study(
                     logger.debug(f"{dataset.ticker} {start_year}년 {period.label}: 창에 거래일이 없습니다")
                     continue
 
+                # 대칭 모집단은 신호군과 무관하므로 창당 한 번만 만든다
+                symmetric_populations = _symmetric_populations(populations)
+
                 for spec in specs:
                     blocks = _measure_spec(
                         context,
@@ -301,6 +310,7 @@ def run_study(
                         start=start,
                         end=end,
                         populations=populations,
+                        symmetric_populations=symmetric_populations,
                         repeats=repeats,
                         seed=seed,
                         empty_groups=empty_groups,
@@ -339,7 +349,7 @@ def run_study(
             KEY_EXCESS: len(excess_table),
             KEY_TEST_TABLE: len(test_table),
         },
-        KEY_NOTES: [NOTE_SAME_PARAMETERS, NOTE_BASELINE_WINDOW],
+        KEY_NOTES: [NOTE_SAME_PARAMETERS, NOTE_BASELINE_WINDOW, NOTE_REVERSE_ALL],
     }
 
     logger.debug(
@@ -671,13 +681,16 @@ def _measure_spec(
     start: pd.Timestamp,
     end: pd.Timestamp | None,
     populations: Mapping[str, _Population],
+    symmetric_populations: Mapping[str, _Population],
     repeats: int,
     seed: int,
     empty_groups: list[dict[str, Any]],
 ) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
-    """한 이벤트 정의를 두 방향으로 재고 네 표의 조각을 만든다.
+    """한 이벤트 정의를 방향별로 재고 네 표의 조각을 만든다.
 
-    사건 번호를 어느 목록에 매기는지는 이벤트 정의가 정한다 (`_build_specs` 참고).
+    방향은 이벤트 정의가 내는 둘에 더해 **두 방향을 합친 `역방향 전체`** 가 하나 더 있다
+    (`_measure_reverse_all` 참고). 사건 번호를 어느 목록에 매기는지는 이벤트 정의가 정한다
+    (`_build_specs` 참고).
 
     Args:
         context: 데이터셋 공통 값
@@ -687,6 +700,7 @@ def _measure_spec(
         start: 창 시작일
         end: 창 종료일
         populations: 이 창의 베이스라인 모집단
+        symmetric_populations: 같은 창의 대칭 베이스라인 모집단 (`역방향 전체` 용)
         repeats: 순열 검정 반복 수
         seed: 순열 검정 시드
         empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
@@ -705,6 +719,7 @@ def _measure_spec(
     statistics_blocks: list[pd.DataFrame] = []
     excess_blocks: list[pd.DataFrame] = []
     test_blocks: list[pd.DataFrame] = []
+    normalized_returns: list[pd.DataFrame] = []
 
     for direction, signals in selected.items():
         identity = {
@@ -730,6 +745,7 @@ def _measure_spec(
         returns = compute_forward_returns(context.frame, signals)
         aggregated = _aggregated_basis_only(returns)
         signal_summary = summarize(aggregated)
+        normalized_returns.append(_reverse_normalized(aggregated, direction))
 
         # 무엇이 "역방향"인지는 방향이 정한다. 상승 방향 신호는 인버스로 집행하므로 하락이
         # 맞은 것이고, 하락 방향 신호는 그대로 사므로 상승이 맞은 것이다
@@ -773,7 +789,184 @@ def _measure_spec(
             )
         )
 
+    reverse_blocks = _measure_reverse_all(
+        context,
+        spec,
+        start_year=start_year,
+        period=period,
+        selected=selected,
+        event_ids=event_ids,
+        normalized_returns=normalized_returns,
+        symmetric_populations=symmetric_populations,
+        repeats=repeats,
+        seed=seed,
+        empty_groups=empty_groups,
+    )
+    statistics_blocks.extend(reverse_blocks[0])
+    excess_blocks.extend(reverse_blocks[1])
+    test_blocks.extend(reverse_blocks[2])
+
     return signal_blocks, statistics_blocks, excess_blocks, test_blocks
+
+
+def _measure_reverse_all(
+    context: _Context,
+    spec: _TestSpec,
+    *,
+    start_year: int,
+    period: Period,
+    selected: Mapping[Direction, pd.Series],
+    event_ids: Mapping[Direction, pd.Series],
+    normalized_returns: Sequence[pd.DataFrame],
+    symmetric_populations: Mapping[str, _Population],
+    repeats: int,
+    seed: int,
+    empty_groups: list[dict[str, Any]],
+) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
+    """두 방향을 한 표본으로 묶은 `역방향 전체` 신호군을 잰다.
+
+    **이벤트 정의가 아니라 집계 단계의 합성이다.** 어느 날이 신호인지는 방향별 경로가 이미
+    정했고, 여기서는 그 결과를 부호만 맞춰 이어 붙인다. 그래서 `signals.csv` 에는 이 방향의
+    행을 내지 않는다 — 같은 날이 두 줄로 실리면 사용자의 차트 대조를 방해한다.
+
+    Args:
+        context: 데이터셋 공통 값
+        spec: 이벤트 정의와 파라미터
+        start_year: 집계 시작 연도
+        period: 시대 구간
+        selected: 방향 → 신호 bool Series
+        event_ids: 방향 → 그 방향 신호일의 사건 번호
+        normalized_returns: 방향별로 부호를 맞춘 forward return. 신호 0건 방향은 들어 있지 않다
+        symmetric_populations: 대칭 베이스라인 모집단
+        repeats: 순열 검정 반복 수
+        seed: 순열 검정 시드
+        empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
+
+    Returns:
+        집계·초과분·검정 표의 조각 목록
+    """
+    identity = {
+        DISPLAY_TICKER: context.dataset.ticker,
+        DISPLAY_TEST: spec.test_label,
+        DISPLAY_PARAMETER: spec.parameter_label,
+        DISPLAY_START_YEAR: start_year,
+        DISPLAY_DIRECTION: DISPLAY_DIRECTION_REVERSE_ALL,
+        DISPLAY_PERIOD: period.label,
+    }
+
+    # 두 방향이 **모두** 0건일 때만 이 신호군도 0건이다. 한쪽만 비면 남은 쪽으로 성립한다
+    if not normalized_returns:
+        empty_groups.append(_empty_group_record(identity))
+        return [], [], []
+
+    combined = pd.concat(normalized_returns, ignore_index=True)
+    combined_summary = summarize(combined)
+    counts = {
+        DISPLAY_GROUP_SIGNAL_COUNT: sum(int(signals.sum()) for signals in selected.values()),
+        DISPLAY_EVENT_COUNT: _reverse_all_event_count(event_ids, combine=spec.combine_directions),
+    }
+
+    # 부호를 뒤집은 뒤에는 "수익률 > 0" 이 곧 역방향 성공이므로 승률이 그대로 역방향 비율이다
+    statistics_block = _with_identity(
+        build_statistics_table(combined_summary, reverse_rate_column=COL_WIN_RATE),
+        identity,
+        {DISPLAY_EVENT_COUNT: counts[DISPLAY_EVENT_COUNT]},
+    )
+    excess_block = _with_identity(
+        build_excess_table(
+            {name: excess(combined_summary, population.summary) for name, population in symmetric_populations.items()},
+            reverse_rate_column=COL_WIN_RATE_EXCESS,
+        ),
+        identity,
+        counts,
+    )
+    test_block = _with_identity(
+        build_test_table(
+            {
+                name: permutation_test(combined, population.returns, repeats=repeats, seed=seed)
+                for name, population in symmetric_populations.items()
+            }
+        ),
+        identity,
+        counts,
+    )
+
+    return [statistics_block], [excess_block], [test_block]
+
+
+def _reverse_normalized(returns: pd.DataFrame, direction: Direction) -> pd.DataFrame:
+    """수익률을 "역방향으로 진입했을 때"의 부호로 맞춘다.
+
+    상승 방향 신호(폭등·연속 상승)는 인버스로 들어가므로 **가격이 내려야 이익**이다.
+    부호를 맞추지 않고 그냥 합치면 그 이익이 마이너스로 들어가 하락 방향의 이익과 상쇄되고,
+    평균이 해석 불가능한 값이 된다.
+
+    **이것은 인버스 상품의 손익이 아니다.** 원지수의 반대방향 수익률이며 레버리지 상품의
+    일간 복리·보수·롤 비용은 반영되지 않는다.
+
+    Args:
+        returns: 한 방향의 forward return long-form
+        direction: 그 방향
+
+    Returns:
+        부호를 맞춘 프레임. 입력은 변경하지 않는다
+    """
+    normalized = returns.copy()
+    if direction is Direction.UP:
+        normalized[COL_FORWARD_RETURN] = -normalized[COL_FORWARD_RETURN]
+
+    return normalized
+
+
+def _symmetric_populations(populations: Mapping[str, _Population]) -> dict[str, _Population]:
+    """베이스라인 모집단을 `역방향 전체` 와 비교할 수 있는 형태로 만든다.
+
+    신호군의 부호를 뒤집었으면 베이스라인도 같은 규칙으로 뒤집어야 비교가 성립하는데,
+    **베이스라인에는 방향이 없다.** 그래서 같은 거래일을 원본 한 벌과 부호 반전 한 벌로 두어
+    **"방향을 미리 모르고 동전 던지기로 정했다면"** 의 기준선을 만든다. 이 모집단의 평균은 0 이다.
+
+    신호군의 상승·하락 신호 비율과는 어긋난다. 대신 신호군마다 달라지지 않아 신호군끼리
+    나란히 놓고 볼 수 있다.
+
+    Args:
+        populations: 한 창의 베이스라인 모집단
+
+    Returns:
+        이름 → 대칭 모집단. 입력은 변경하지 않는다
+    """
+    symmetric: dict[str, _Population] = {}
+    for name, population in populations.items():
+        flipped = population.returns.copy()
+        flipped[COL_FORWARD_RETURN] = -flipped[COL_FORWARD_RETURN]
+        combined = pd.concat([population.returns, flipped], ignore_index=True)
+        symmetric[name] = _Population(
+            day_count=population.day_count * 2,
+            returns=combined,
+            summary=summarize(combined),
+        )
+
+    return symmetric
+
+
+def _reverse_all_event_count(event_ids: Mapping[Direction, pd.Series], *, combine: bool) -> int:
+    """두 방향을 합친 신호군의 사건 수를 센다.
+
+    **합칠지 말지는 결정 ⑭ 이 테스트마다 정해 둔 것을 그대로 잇는다.** 테스트 A 는 이미 두
+    방향을 합친 목록에 번호를 매기므로 그 번호를 그대로 세면 되고, 테스트 B 는 방향별로
+    따로 매기므로 방향별 사건 수를 더한다 — 합집합에 새로 매기면 신호가 촘촘해 30일 체인이
+    끊기지 않고 사건 하나가 수년에 걸친다.
+
+    Args:
+        event_ids: 방향 → 그 방향 신호일의 사건 번호
+        combine: 사건 번호가 두 방향을 합친 목록에 매겨졌는지 여부
+
+    Returns:
+        사건 수
+    """
+    if combine:
+        return int(pd.concat(list(event_ids.values())).nunique())
+
+    return sum(int(ids.nunique()) for ids in event_ids.values())
 
 
 def _event_ids(

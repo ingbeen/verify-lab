@@ -37,6 +37,7 @@ from verify_lab.report.constants import (
     DISPLAY_DATE,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
+    DISPLAY_MEAN,
     DISPLAY_REVERSE_RATE,
     DISPLAY_REVERSE_RATE_EXCESS,
     DISPLAY_SAMPLE_COUNT,
@@ -52,6 +53,7 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_BASELINE_ALL,
     DISPLAY_CLOSE,
     DISPLAY_DIRECTION,
+    DISPLAY_DIRECTION_REVERSE_ALL,
     DISPLAY_EVENT_COUNT,
     DISPLAY_EVENT_ID,
     DISPLAY_GROUP_SIGNAL_COUNT,
@@ -118,8 +120,16 @@ CLUSTERED_OFFSET = 400
 # 상승 방향 신호군의 표시 이름. 이 방향에서는 **하락이 역방향**이다
 UPWARD_DIRECTIONS = (EXTREME_DIRECTION_LABELS[Direction.UP], CONSECUTIVE_DIRECTION_LABELS[Direction.UP])
 
+# 하락 방향 신호군의 표시 이름. 여집합으로 고르면 `역방향 전체` 까지 딸려 들어온다
+DOWNWARD_DIRECTIONS = (EXTREME_DIRECTION_LABELS[Direction.DOWN], CONSECUTIVE_DIRECTION_LABELS[Direction.DOWN])
+
 # 백분율 지표의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 RATE_TOLERANCE = 0.1
+
+# 측정 구간 하나를 골라 손으로 검산할 때 쓰는 이름. `build_signal_table` 이 기준과 구간
+# 이름을 붙여 컬럼을 만들고, 집계표는 구간 이름만 담는다
+ONE_DAY_LABEL = "1일"
+CLOSE_ONE_DAY_COLUMN = f"종가 {ONE_DAY_LABEL}"
 
 
 def _quiet_changes(count: int) -> np.ndarray:
@@ -262,6 +272,8 @@ class TestSignalGroupAxes:
         """
         목적: 강건성 조합이 한 실행에서 전부 산출되는지 고정한다
 
+        방향 축은 이벤트 정의가 내는 두 방향에 **`역방향 전체` 신호군이 하나 더** 붙는다.
+
         Given: 시작연도 4개와 시대 구간 2개를 모두 덮는 합성 시세 하나
         When: 실제 상수로 실행했을 때
         Then: 집계된 신호군 수 + 신호 0건이라 빠진 신호군 수 = 축의 곱
@@ -275,7 +287,7 @@ class TestSignalGroupAxes:
         counted = summary[KEY_SIGNAL_GROUP_COUNT] + len(summary[KEY_EMPTY_SIGNAL_GROUPS])
 
         # Then
-        assert counted == parameters * len(Direction) * windows
+        assert counted == parameters * (len(Direction) + 1) * windows
 
     def test_시대_구간은_기본_시작연도에만_붙는다(self, wide_outputs: StudyOutputs) -> None:
         """
@@ -424,7 +436,7 @@ class TestSignalGroupAxes:
         Then: 두 값이 모든 칸에서 같다
         """
         # Given
-        downward = wide_outputs.statistics[~wide_outputs.statistics[DISPLAY_DIRECTION].isin(UPWARD_DIRECTIONS)]
+        downward = wide_outputs.statistics[wide_outputs.statistics[DISPLAY_DIRECTION].isin(DOWNWARD_DIRECTIONS)]
 
         # When / Then
         assert not downward.empty
@@ -572,6 +584,9 @@ class TestBaselinePopulation:
         """
         목적: 모집단 크기를 손계산 값으로 박는다
 
+        `역방향 전체` 는 대칭 모집단(원본 + 부호 반전)을 쓰므로 표본이 두 배다. 그쪽 계약은
+        `TestReverseAllDirection` 이 따로 고정한다.
+
         Given: 실행 결과의 초과분표
         When: 기본 시작연도·구간 전체·단순 보유 베이스라인의 1일 표본 수를 봤을 때
         Then: 시작연도 이후 거래일 중 다음 날이 있는 날의 수와 같다
@@ -587,7 +602,8 @@ class TestBaselinePopulation:
             (excess[DISPLAY_START_YEAR] == DEFAULT_START_YEAR)
             & (excess[DISPLAY_PERIOD] == PERIOD_ALL.label)
             & (excess[DISPLAY_BASELINE] == DISPLAY_BASELINE_ALL)
-            & (excess[DISPLAY_HORIZON] == "1일")
+            & (excess[DISPLAY_HORIZON] == ONE_DAY_LABEL)
+            & (excess[DISPLAY_DIRECTION] != DISPLAY_DIRECTION_REVERSE_ALL)
         ]
 
         # Then
@@ -1051,3 +1067,276 @@ class TestDatasetsInvariant:
 
         # Then
         assert len(set(tickers)) == len(DATASETS)
+
+
+class TestReverseAllDirection:
+    """방향 `역방향 전체` 신호군 계약
+
+    폭등이든 폭락이든 **구분 없이 역방향으로 진입**하는 매매를 한 줄로 재기 위한 신호군이다.
+    두 방향의 신호일을 한 표본으로 묶되, 상승 방향 신호의 수익률에 **−1 을 곱해**
+    "역방향으로 들어갔을 때"의 부호로 통일한다. 그냥 합치면 폭등 뒤 하락(이 매매에서는 이익)이
+    마이너스로 들어가 폭락 쪽 이익과 상쇄돼 평균이 해석 불가능해진다.
+
+    이것은 **이벤트 정의가 아니라 집계 단계의 합성**이다. 어느 날이 신호인지는 바뀌지 않는다.
+    """
+
+    @pytest.fixture
+    def clustered_outputs(self, tmp_path: Path) -> StudyOutputs:
+        """폭락 3건·폭등 1건이 심긴 시세로 돈 실행 결과."""
+        dataset = _write_dataset(tmp_path, _clustered_frame())
+
+        return _single_axis_run(dataset, rank_cuts=(max(RANK_CUTS),))
+
+    def _extreme_rows(self, table: pd.DataFrame, direction_label: str) -> pd.DataFrame:
+        """테스트 A · 시대 구간 전체 · 해당 방향의 행만 고른다."""
+        return table[
+            (table[DISPLAY_TEST] == DISPLAY_TEST_EXTREME)
+            & (table[DISPLAY_PERIOD] == PERIOD_ALL.label)
+            & (table[DISPLAY_DIRECTION] == direction_label)
+        ]
+
+    def test_역방향_전체_레이블은_시대_구간_전체와_다르다(self) -> None:
+        """
+        목적: 두 축이 같은 문자열을 쓰지 않는지 값으로 고정한다
+
+        같은 행의 `방향` 과 `시대 구간` 이 모두 `전체` 가 되면, 대조할 때 어느 축의 값인지
+        구분되지 않는다. **표는 정상으로 보이므로 눈으로는 발견되지 않는다.**
+
+        Given: 방향 레이블과 시대 구간 레이블
+        When: 두 값을 비교했을 때
+        Then: 서로 다르고, 방향 쪽은 `역방향 전체` 다
+        """
+        # Given / When / Then
+        assert DISPLAY_DIRECTION_REVERSE_ALL == "역방향 전체"
+        assert DISPLAY_DIRECTION_REVERSE_ALL != PERIOD_ALL.label
+
+    def test_방향_축의_값은_세_가지다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 방향 축이 조용히 늘거나 줄지 않는지 값으로 고정한다
+
+        Given: 테스트 A 로 돈 실행 결과
+        When: 집계표의 방향 값을 모았을 때
+        Then: 폭등·폭락·역방향 전체 세 가지다
+        """
+        # Given
+        statistics = clustered_outputs.statistics
+        extreme = statistics[statistics[DISPLAY_TEST] == DISPLAY_TEST_EXTREME]
+
+        # When / Then
+        assert set(extreme[DISPLAY_DIRECTION]) == {"폭등", "폭락", "역방향 전체"}
+
+    def test_역방향_전체의_신호_수는_두_방향의_합이다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 표본이 조용히 새거나 중복되지 않는지 고정한다
+
+        Given: 폭락 3건·폭등 1건이 심긴 실행 결과
+        When: 역방향 전체 신호군의 신호 수를 봤을 때
+        Then: 4건이다 (두 방향의 합)
+        """
+        # Given
+        statistics = clustered_outputs.statistics
+        surge = self._extreme_rows(statistics, "폭등")
+        plunge = self._extreme_rows(statistics, "폭락")
+
+        # When
+        combined = self._extreme_rows(statistics, DISPLAY_DIRECTION_REVERSE_ALL)
+
+        # Then
+        assert set(surge[DISPLAY_SIGNAL_COUNT]) == {1}
+        assert set(plunge[DISPLAY_SIGNAL_COUNT]) == {3}
+        assert set(combined[DISPLAY_SIGNAL_COUNT]) == {4}
+
+    def test_상승_방향_수익률은_부호가_뒤집혀_들어간다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 부호 정규화 산식을 신호일 원자료에서 손으로 검산해 고정한다
+
+        이 계약이 깨지면 평균이 상쇄돼 값이 작아지는데, **표는 정상으로 보인다.**
+
+        Given: 신호일 목록의 종가 1일 수익률
+        When: 폭등 행에 −1 을 곱하고 폭락 행은 그대로 두어 평균을 냈을 때
+        Then: 역방향 전체 신호군의 1일 평균과 같다
+        """
+        # Given
+        signals = clustered_outputs.signals
+        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_PERIOD] == PERIOD_ALL.label)]
+        surge = rows.loc[rows[DISPLAY_DIRECTION] == "폭등", CLOSE_ONE_DAY_COLUMN]
+        plunge = rows.loc[rows[DISPLAY_DIRECTION] == "폭락", CLOSE_ONE_DAY_COLUMN]
+
+        # When
+        expected = pd.concat([-surge, plunge]).mean()
+        combined = self._extreme_rows(clustered_outputs.statistics, DISPLAY_DIRECTION_REVERSE_ALL)
+        actual = combined.loc[combined[DISPLAY_HORIZON] == ONE_DAY_LABEL, DISPLAY_MEAN].iloc[0]
+
+        # Then
+        assert actual == pytest.approx(expected, abs=RATE_TOLERANCE)
+
+    def test_역방향_전체의_역방향_비율은_승률과_같다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 부호를 뒤집은 뒤에는 "수익률 > 0" 이 곧 "역방향 성공" 임을 고정한다
+
+        두 값이 같은 것은 중복이 아니라 정의상의 일치다. **빈칸으로 두지 않는다** —
+        빈칸은 "계산 불가"로 읽힌다.
+
+        Given: 역방향 전체 신호군의 집계
+        When: 역방향 비율과 승률을 비교했을 때
+        Then: 모든 칸에서 같다
+        """
+        # Given / When
+        combined = self._extreme_rows(clustered_outputs.statistics, DISPLAY_DIRECTION_REVERSE_ALL)
+
+        # Then
+        assert not combined.empty
+        assert combined[DISPLAY_REVERSE_RATE].tolist() == combined[DISPLAY_WIN_RATE].tolist()
+
+    def test_베이스라인_표본이_원본_모집단의_두_배다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 대칭 모집단(원본 + 부호 반전)을 쓴다는 사실을 고정한다
+
+        신호군의 부호를 뒤집었으면 베이스라인도 같은 규칙으로 뒤집어야 비교가 성립한다.
+        베이스라인은 방향이 없으므로 **"방향을 미리 모르고 동전 던지기로 정했다면"** 의
+        모집단을 쓴다 — 같은 기간 전 거래일을 원본 한 벌과 부호 반전 한 벌로 만든다.
+
+        Given: 같은 신호군의 방향별 초과분표와 역방향 전체 초과분표
+        When: 베이스라인 표본 수를 비교했을 때
+        Then: 역방향 전체 쪽이 정확히 두 배다
+        """
+        # Given
+        excess = clustered_outputs.excess
+        plunge = self._extreme_rows(excess, "폭락")
+        combined = self._extreme_rows(excess, DISPLAY_DIRECTION_REVERSE_ALL)
+
+        # When
+        by_baseline = plunge.groupby([DISPLAY_BASELINE, DISPLAY_HORIZON])[DISPLAY_BASELINE_SAMPLE].first()
+        combined_by_baseline = combined.groupby([DISPLAY_BASELINE, DISPLAY_HORIZON])[DISPLAY_BASELINE_SAMPLE].first()
+
+        # Then
+        assert not combined.empty
+        assert (combined_by_baseline == by_baseline * 2).all()
+
+    def test_테스트_A_의_사건_수는_두_방향_합집합의_사건_수다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 결정 ⑭ 이 테스트 A 에 매긴 합집합 사건 번호를 그대로 잇는지 고정한다
+
+        Given: 한 사건에 폭락 2건·폭등 1건이 몰려 있고 뒤에 별개 폭락이 하나 더 있는 시세
+        When: 역방향 전체 신호군의 사건 수를 봤을 때
+        Then: 2개다 (방향별 사건 수 2 + 1 을 더한 3이 아니다)
+        """
+        # Given / When
+        combined = self._extreme_rows(clustered_outputs.statistics, DISPLAY_DIRECTION_REVERSE_ALL)
+
+        # Then
+        assert set(combined[DISPLAY_EVENT_COUNT]) == {2}
+
+    def test_테스트_B_의_사건_수는_방향별_사건_수의_합이다(self, tmp_path: Path) -> None:
+        """
+        목적: 테스트 B 에서 두 방향을 한 사건으로 묶지 않는지 고정한다
+
+        결정 ⑭ 가 테스트 B 를 방향별로 나눈 이유가 그대로 남는다 — 합집합에 새로 번호를
+        매기면 신호가 촘촘해 30일 체인이 끊기지 않고 **사건 하나가 수년에 걸친다.**
+
+        Given: 연속 상승 2건(사건 2개)과 연속 하락 1건(사건 1개)이 있는 시세
+        When: 역방향 전체 신호군의 사건 수를 봤을 때
+        Then: 3개다 (2 + 1). 합집합으로 매겼다면 1개가 나온다
+        """
+        # Given
+        dates = pd.DatetimeIndex(pd.date_range("2011-01-03", periods=300, freq="D"))
+        dataset = _write_dataset(tmp_path, _market_frame(dates, _alternating_changes(len(dates) - 1)))
+
+        # When
+        statistics = _single_axis_run(dataset).statistics
+        combined = statistics[
+            (statistics[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE)
+            & (statistics[DISPLAY_PERIOD] == PERIOD_ALL.label)
+            & (statistics[DISPLAY_DIRECTION] == DISPLAY_DIRECTION_REVERSE_ALL)
+        ]
+
+        # Then
+        assert set(combined[DISPLAY_SIGNAL_COUNT]) == {3}
+        assert set(combined[DISPLAY_EVENT_COUNT]) == {3}
+
+    def test_신호일_목록에는_역방향_전체_행이_없다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 원자료에 같은 날이 두 줄로 실리지 않는지 고정한다
+
+        `signals.csv` 는 사용자가 차트와 직접 대조하는 파일이고, 중복 행은 그 대조를 방해한다.
+        **정보 손실은 없다** — 방향별 두 블록을 합치면 그대로 복원되고, 부호 정규화는
+        상승 방향 행의 부호만 뒤집으면 된다.
+
+        Given: 실행 결과의 신호일 목록
+        When: 방향 값을 모았을 때
+        Then: 역방향 전체가 없다
+        """
+        # Given / When / Then
+        assert DISPLAY_DIRECTION_REVERSE_ALL not in set(clustered_outputs.signals[DISPLAY_DIRECTION])
+
+    def test_초과분표와_검정표에도_역방향_전체가_있다(self, clustered_outputs: StudyOutputs) -> None:
+        """
+        목적: 절대 성적만 내고 끝나지 않는지 고정한다
+
+        `statistics` 만으로는 "평소보다 나은가"를 판단할 수 없다. 이 매매에서 폭락 뒤 상승은
+        평소에도 절반 넘게 일어나므로, 베이스라인 비교 없이는 신호를 기다린 값어치를 알 수 없다.
+
+        Given: 실행 결과의 초과분표와 검정표
+        When: 방향 값을 확인했을 때
+        Then: 두 표 모두에 역방향 전체가 있다
+        """
+        # Given / When / Then
+        for table in (clustered_outputs.excess, clustered_outputs.test):
+            assert DISPLAY_DIRECTION_REVERSE_ALL in set(table[DISPLAY_DIRECTION])
+
+    def test_한_방향만_0건이면_역방향_전체는_남는다(self, tmp_path: Path) -> None:
+        """
+        목적: 신호 0건 판정의 경계를 고정한다 (엣지 케이스)
+
+        Given: 연속 하락이 한 번도 없어 그 방향이 0건인 시세
+        When: 신호 0건으로 기록된 신호군을 봤을 때
+        Then: 연속 하락만 빠지고 역방향 전체는 집계에 남는다
+        """
+        # Given
+        dates = pd.DatetimeIndex(pd.date_range("2011-01-03", periods=300, freq="D"))
+        changes = _alternating_changes(len(dates) - 1)
+        changes[118:122] = 0.004  # 심어 둔 연속 하락을 상승으로 덮어 그 방향을 0건으로 만든다
+
+        # When
+        dataset = _write_dataset(tmp_path, _market_frame(dates, changes))
+        outputs = _single_axis_run(dataset)
+        empty_directions = {record[KEY_DIRECTION] for record in outputs.summary[KEY_EMPTY_SIGNAL_GROUPS]}
+        statistics = outputs.statistics
+        combined = statistics[
+            (statistics[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE)
+            & (statistics[DISPLAY_PERIOD] == PERIOD_ALL.label)
+            & (statistics[DISPLAY_DIRECTION] == DISPLAY_DIRECTION_REVERSE_ALL)
+        ]
+
+        # Then
+        assert "연속 하락" in empty_directions
+        assert DISPLAY_DIRECTION_REVERSE_ALL not in empty_directions
+        assert not combined.empty
+
+    def test_뒤를_잘라내도_역방향_전체는_방향별_신호의_합이다(self, tmp_path: Path) -> None:
+        """
+        목적: 합성이 새로운 판정을 만들어내지 않는지 고정한다
+
+        역방향 전체는 **이벤트 정의가 아니라 집계 합성**이므로, 어느 날이 신호인지는
+        기존 경로가 그대로 정한다. 입력의 뒤를 잘라 신호 수가 달라져도 "두 방향의 합"
+        관계는 그대로여야 한다 — 깨진다면 합성 과정에서 판정이 새로 일어난 것이다.
+
+        Given: 사건이 심긴 시세와, 뒤쪽 사건을 잘라낸 같은 시세
+        When: 각각에서 테스트 A 의 방향별·역방향 전체 신호 수를 봤을 때
+        Then: 두 입력 모두에서 역방향 전체 = 폭등 + 폭락이다
+        """
+        # Given
+        frame = _clustered_frame()
+
+        # When / Then
+        for index, cut in enumerate((len(frame) - 300, len(frame))):
+            dataset = _write_dataset(tmp_path / f"cut_{index}", frame.iloc[:cut], key="cut")
+            statistics = _single_axis_run(dataset, rank_cuts=(max(RANK_CUTS),)).statistics
+            counts = {
+                label: set(self._extreme_rows(statistics, label)[DISPLAY_SIGNAL_COUNT])
+                for label in ("폭등", "폭락", DISPLAY_DIRECTION_REVERSE_ALL)
+            }
+
+            surge = counts["폭등"].pop() if counts["폭등"] else 0
+            plunge = counts["폭락"].pop() if counts["폭락"] else 0
+            assert counts[DISPLAY_DIRECTION_REVERSE_ALL] == {surge + plunge}
