@@ -60,7 +60,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 - 전문 통계 용어보다 일상어를 씁니다. 꼭 필요한 용어는 한 줄 정의를 붙입니다.
 - 추상적 지표보다 **구체적인 날짜·가격·계산 과정을 표로** 보여줍니다.
 - 결론을 먼저 말하고 근거를 뒤에 붙입니다.
-- 모든 검증 결과는 `docs/research/RESEARCH_*.md`에 남깁니다. 형식은 `docs/research/CLAUDE.md` 참고.
+- 모든 검증 결과는 `docs/research/<검증명>.md`에 남깁니다. 형식은 `docs/research/CLAUDE.md` 참고.
 
 ---
 
@@ -208,7 +208,7 @@ verify-lab은 떠도는 매매법이 실제로 통계적 우위를 갖는지 검
 
 - **검증 대상과 진행 상태의 SoT**: [docs/ROADMAP.md](docs/ROADMAP.md)
 - **개별 검증의 확정 설계**: `docs/spec/` (검증마다 한 개)
-- **검증 결과**: `docs/research/RESEARCH_*.md`
+- **검증 결과**: `docs/research/<검증명>.md`
 
 기술 환경:
 

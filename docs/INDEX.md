@@ -53,12 +53,12 @@
 | [context/RESEARCH_qqq_late_entry.md](context/RESEARCH_qqq_late_entry.md) | 현재 보유 판정(이번 사이클 미진입)과 근거 | 같음 |
 | [ROADMAP.md](ROADMAP.md) | 검증 목록, Phase 상태, 계획서 승격 목적지 | 작업 시작·종료 시 |
 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정 결정 8건, 사전 실측 기록 | 검증 #1 관련 전부 |
-| [research/RESEARCH_index_extreme_events.md](research/RESEARCH_index_extreme_events.md) | **검증 #1 결과** — 역대급 등락·연속 등락 이후 수익률 측정과 판정 | 검증 #1 결과를 인용하거나 재실행할 때 |
+| [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) | **검증 #1 결과** — 역대급 등락·연속 등락 이후 수익률 측정과 판정 | 검증 #1 결과를 인용하거나 재실행할 때 |
 | [HANDS_ON.md](HANDS_ON.md) | **직접 대조 가이드** — 스크립트 실행부터 신호일·수익률을 손으로 검산하는 절차 | 결과를 코드 없이 직접 확인할 때 |
 | [COMMANDS.md](COMMANDS.md) | 실행 명령어 단일 SoT | 스크립트 만들거나 실행할 때 |
 | [../README.md](../README.md) | 프로젝트 소개 (사람용) | — |
 
-검증 결과 문서는 완료 시 `docs/research/RESEARCH_<검증명>.md`로 생깁니다.
+검증 결과 문서는 완료 시 `docs/research/<검증명>.md`로 생깁니다.
 계획서는 `docs/plans/PLAN_*.md`이며 **임시 산출물**이라 이 지도에 등록하지 않습니다.
 
 ---

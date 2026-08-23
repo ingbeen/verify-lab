@@ -15,7 +15,7 @@
 
 | # | 검증 대상 | 시장·자산 | 상태 | 스펙 | 결과 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | **지수 극단 이벤트** — 역대급 등락과 연속 등락 이후 수익률 | QQQ, KODEX 200 | 완료 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | [research/RESEARCH_index_extreme_events.md](research/RESEARCH_index_extreme_events.md) |
+| 1 | **지수 극단 이벤트** — 역대급 등락과 연속 등락 이후 수익률 | QQQ, KODEX 200 | 완료 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) |
 | 2 | **비트코인 4년 주기설** — 반감기 기준 주기성 | BTC | 미착수 | — | — |
 | 3 | **정배열 매매법** — 이동평균 정배열 진입의 우위 | 미정 | 미착수 | — | — |
 | 4 | **탑티어 우량주 반토막 매매법** — 고점 대비 -50% 도달 후 수익률 | 미국 대형주 | 미착수 | — | — |
@@ -276,7 +276,7 @@
       강건성 조합 396개를 한 실행에서 산출하고 국내 두 가격 기준을 같은 실행 안에서 계산한다.
       스펙 §8 의 기록값(테스트 A 신호·사건 수, 테스트 B 발생 빈도 16칸)을 그대로 재현했다.
       계약은 아래 절이 SoT다
-- [x] **3-c 결과 문서** — [research/RESEARCH_index_extreme_events.md](research/RESEARCH_index_extreme_events.md) (2026-08-14).
+- [x] **3-c 결과 문서** — [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) (2026-08-14).
       실행 산출물 `20260814_164136_index_extreme` 를 읽어 스펙 §12 의 표 7종을 채웠다. 판정은 아래 절이 요약이다
 
 #### 후속 작업 — 결과 문서를 단기 구간으로 개정 (미착수)
@@ -284,7 +284,7 @@
 - [ ] **결과 문서 §5~§13 을 단기 구간 결과로 다시 쓴다.**
       2026-08-21 에 측정 구간이 **1·2·3·5·10·21 거래일**로 바뀌었고(§7 결정 ㉑),
       `역방향 비율` 이 새 지표로 들어왔다(§7 결정 ㉒). 그래서
-      [research/RESEARCH_index_extreme_events.md](research/RESEARCH_index_extreme_events.md)
+      [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md)
       의 3개월·6개월·1년 표는 **현재 코드로 재현되지 않는다.**
       문서 최상단과 §16.5·각 장 머리에 그 사실을 적어 뒀으므로 잘못 읽힐 위험은 막혀 있지만,
       본문은 여전히 장기 구간 기준이다
@@ -446,7 +446,7 @@ Done 처리 전에 남길 가치가 있는 것을 살아있는 문서로 승격�
 | --- | --- |
 | 데이터 소스 실측 결과 (라이브러리 동작, 데이터 품질) | `docs/spec/` 의 해당 검증 스펙 — "데이터 실측 기록" |
 | 검증 설계의 확정 결정과 **탈락안·그 이유** | `docs/spec/` 의 해당 검증 스펙 — "확정된 설계 결정" |
-| 측정 결과와 판정 | `docs/research/RESEARCH_*.md` |
+| 측정 결과와 판정 | `docs/research/<검증명>.md` |
 | Phase 상태, 검증 목록, 계층 간 설계 계약 | 이 문서 |
 | 실행 명령어 | `docs/COMMANDS.md` |
 

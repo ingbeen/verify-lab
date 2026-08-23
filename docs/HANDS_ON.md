@@ -4,7 +4,7 @@
 > 통계나 파이썬을 몰라도 따라올 수 있게 썼습니다. 계산은 전부 곱하기·나누기 한 번이면 끝납니다.
 >
 > 측정이 무엇을 어떻게 쟀는지(설계)는 [spec/index_extreme_events.md](spec/index_extreme_events.md),
-> 결과와 판정은 [research/RESEARCH_index_extreme_events.md](research/RESEARCH_index_extreme_events.md) 에 있습니다.
+> 결과와 판정은 [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) 에 있습니다.
 > 이 문서는 그 둘을 **믿지 말고 직접 확인하는 절차**입니다.
 
 ---
@@ -118,7 +118,7 @@ tail -100 결과.txt
   KODEX 200   원본가        5,881  2002-10-14 ~ 2026-08-11  069500_max.csv
 ```
 
-**여기 행 수와 기간이 [결과 문서](research/RESEARCH_index_extreme_events.md) §3.1 과 같은지 먼저 봅니다.**
+**여기 행 수와 기간이 [결과 문서](research/지수_극단_이벤트.md) §3.1 과 같은지 먼저 봅니다.**
 다르면 데이터를 다시 받은 것이고, 그러면 아래 모든 숫자가 조금씩 달라집니다.
 
 #### 끝 날짜가 오늘이 아닌 것은 정상입니다
