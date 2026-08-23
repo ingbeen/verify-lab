@@ -36,6 +36,7 @@
 | [../.claude/rules/docs.md](../.claude/rules/docs.md) | 문서 종류와 SoT 역할, 계획서 수명 | `docs/**` **Read 시점**에 자동 (실측 확인) |
 | [../.claude/rules/reference.md](../.claude/rules/reference.md) | reference 폴더 읽기 전용 4금지 | `reference/**` Read 시점에 자동 |
 | [../.claude/rules/context.md](../.claude/rules/context.md) | 사용자 소유 문서 보호, 해석 시 붙잡을 맥락 | `docs/context/**` Read 시점에 자동 |
+| [../.claude/rules/strategy.md](../.claude/rules/strategy.md) | **매매 규칙 계층의 예외 규정** — 이 폴더에서만 손절·기간 설계가 허용되는 이유와 제약 | `docs/strategy/**`·`src/verify_lab/strategy/**`·`scripts/strategy/**` Read 시점에 자동 |
 | [../.claude/skills/verify-plan/SKILL.md](../.claude/skills/verify-plan/SKILL.md) | 계획서 작성 절차 (SoT) | `/verify-plan` 스킬 호출 |
 
 > **자동 로드는 편집이 아니라 읽기에서 걸립니다.** 기존 파일을 Read 하면 해당 경로의 규칙이 함께 들어옵니다.
@@ -54,6 +55,7 @@
 | [ROADMAP.md](ROADMAP.md) | 검증 목록, Phase 상태, 계획서 승격 목적지 | 작업 시작·종료 시 |
 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정 결정 8건, 사전 실측 기록 | 검증 #1 관련 전부 |
 | [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) | **검증 #1 결과** — 역대급 등락·연속 등락 이후 수익률 측정과 판정 | 검증 #1 결과를 인용하거나 재실행할 때 |
+| [strategy/역방향_매매_규칙.md](strategy/역방향_매매_규칙.md) | **현재 운용 중인 매매 규칙의 SoT** — 확정 규칙(§1)·성적·결정 근거·신호일 원자료. 측정이 아니라 측정 결과로부터 도출한 규칙이다 | **"확정된 매매법만 참고하라"의 지시 대상은 §1** |
 | [HANDS_ON.md](HANDS_ON.md) | **직접 대조 가이드** — 스크립트 실행부터 신호일·수익률을 손으로 검산하는 절차 | 결과를 코드 없이 직접 확인할 때 |
 | [COMMANDS.md](COMMANDS.md) | 실행 명령어 단일 SoT | 스크립트 만들거나 실행할 때 |
 | [../README.md](../README.md) | 프로젝트 소개 (사람용) | — |

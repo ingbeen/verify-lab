@@ -36,6 +36,11 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | 베이스라인 대비 초과분 계산 | 수익 곡선 최적화 |
 | 사용자가 차트로 대조할 수 있는 원자료 제공 | 매매 규칙 구현 |
 
+> **예외는 `strategy/` 하나입니다.** `docs/strategy/`·`src/verify_lab/strategy/`·`scripts/strategy/`는
+> 측정 결과로부터 도출한 **매매 규칙**을 다루며, 오른쪽 열이 적용되지 않습니다.
+> 경계는 폴더 단위이고 허용 범위와 제약은 [.claude/rules/strategy.md](.claude/rules/strategy.md)가 SoT입니다.
+> **그 폴더 밖에서는 여전히 금지**이며, 새 검증은 왼쪽 열만 합니다.
+
 ### 측정의 원칙 (모든 검증에 공통 적용)
 
 이 원칙들은 개별 검증의 스펙보다 우선합니다.
@@ -136,6 +141,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | [.claude/rules/docs.md](.claude/rules/docs.md) | `docs/` 파일 작업 | 자동 |
 | [.claude/rules/reference.md](.claude/rules/reference.md) | `reference/` 파일을 열었을 때 — 읽기 전용 4금지 | 자동 |
 | [.claude/rules/context.md](.claude/rules/context.md) | `docs/context/` 파일을 열었을 때 — 사용자 소유 문서 보호 | 자동 |
+| [.claude/rules/strategy.md](.claude/rules/strategy.md) | `strategy/` 경로 작업 — 매매 규칙 계층의 예외 규정과 제약 | 자동 |
 | `/verify-plan` 스킬 | 계획서 작성·갱신 | 호출 |
 
 > **자동 로드는 파일을 "읽기만" 해도 걸립니다.** 해당 경로의 파일을 Read 하는 순간
@@ -234,10 +240,12 @@ verify-lab/
 │   ├── measure/             # forward return·베이스라인·통계 — 검증 공통 계층
 │   ├── report/              # 표·CSV·마크다운 출력 — 검증 공통 계층
 │   ├── studies/             # 개별 검증의 이벤트 정의 (검증마다 한 모듈)
+│   ├── strategy/            # 측정 결과로 도출한 매매 규칙 (예외 계층)
 │   └── utils/               # 공통 유틸리티 (로거, 포맷팅, CLI 헬퍼, 메타 관리)
 ├── scripts/                 # CLI 스크립트 (상세: scripts/CLAUDE.md)
 │   ├── data/                # 데이터 수집 스크립트
-│   └── studies/             # 검증 실행 스크립트
+│   ├── studies/             # 검증 실행 스크립트
+│   └── strategy/            # 매매 규칙 실행 스크립트
 ├── tests/                   # 테스트 코드 (상세: tests/CLAUDE.md)
 ├── docs/
 │   ├── ROADMAP.md           # 검증 대상 목록과 진행 상태 (SoT)
@@ -245,6 +253,7 @@ verify-lab/
 │   ├── context/             # 사용자의 현재 운용 상태와 프로젝트 배경 (필독)
 │   ├── spec/                # 개별 검증의 확정 설계
 │   ├── research/            # 검증 결과 문서 (상세: docs/research/CLAUDE.md)
+│   ├── strategy/            # 매매 규칙과 그 성적 (예외 계층)
 │   └── plans/               # 작업 계획서 (임시 산출물, 주기적으로 비움)
 ├── reference/               # 참고용 원본 코드·문서 (읽기 전용, 상세: reference/README.md)
 └── storage/
