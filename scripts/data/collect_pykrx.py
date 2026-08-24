@@ -17,7 +17,12 @@
 
 import argparse
 
-from verify_lab.data.pykrx_collector import PykrxCollectionResult, collect_pykrx_history
+from verify_lab.data.pykrx_collector import (
+    PykrxCollectionResult,
+    PykrxNavResult,
+    collect_pykrx_history,
+    collect_pykrx_nav,
+)
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger
@@ -47,6 +52,7 @@ COLUMN_GAP = "  "
 # 화면에 표시할 가격 기준 이름
 DISPLAY_RAW = "원본가"
 DISPLAY_ADJUSTED = "수정주가"
+DISPLAY_NAV = "NAV"
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,6 +72,11 @@ def parse_args() -> argparse.Namespace:
         "--adjusted",
         action="store_true",
         help="분배금이 반영된 수정주가로 받는다 (기본값: 원본가). 저장 파일명이 달라 원본가를 덮어쓰지 않는다",
+    )
+    parser.add_argument(
+        "--nav",
+        action="store_true",
+        help="시세 대신 NAV 를 받아 `storage/series/` 에 단일 값 시계열로 저장한다",
     )
     return parser.parse_args()
 
@@ -107,6 +118,49 @@ def _metadata(result: PykrxCollectionResult) -> dict[str, object]:
     }
 
 
+def _collect_nav(ticker: str, start_date: str) -> int:
+    """NAV 를 수집하고 결과를 표로 표시한다.
+
+    Args:
+        ticker: 종목 티커
+        start_date: 조회 시작일 (YYYYMMDD)
+
+    Returns:
+        종료 코드 (성공 0)
+    """
+    result: PykrxNavResult = collect_pykrx_nav(ticker, start_date)
+
+    TableLogger(SUMMARY_COLUMNS, logger).print_table(
+        [
+            [
+                DISPLAY_NAV,
+                f"{result.start_date} ~ {result.end_date}",
+                f"{result.row_count:,}",
+                f"{result.excluded_recent_count}행",
+                f"{COLUMN_GAP}{result.path.name}",
+            ]
+        ],
+        title=f"NAV 수집 결과 — {result.ticker} (저장 폴더: {result.path.parent})",
+    )
+
+    save_metadata(
+        KEY_META_PYKRX_COLLECT,
+        {
+            "ticker": result.ticker,
+            "start_date": start_date,
+            "nav": {
+                "path": str(result.path),
+                "row_count": result.row_count,
+                "start_date": str(result.start_date),
+                "end_date": str(result.end_date),
+                "excluded_recent_count": result.excluded_recent_count,
+            },
+        },
+    )
+
+    return 0
+
+
 @cli_exception_handler
 def main() -> int:
     """수집을 실행하고 결과를 표로 표시한다.
@@ -115,6 +169,9 @@ def main() -> int:
         종료 코드 (성공 0)
     """
     args = parse_args()
+
+    if args.nav:
+        return _collect_nav(args.ticker, args.start)
 
     result = collect_pykrx_history(args.ticker, args.start, adjusted=args.adjusted)
 

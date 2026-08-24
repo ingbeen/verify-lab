@@ -29,13 +29,15 @@ from verify_lab.common_constants import (
     COL_HIGH,
     COL_LOW,
     COL_OPEN,
+    COL_VALUE,
     COL_VOLUME,
     MARKET_DIR,
     PRICE_COLUMNS,
     REQUIRED_COLUMNS,
+    SERIES_DIR,
 )
 from verify_lab.data.krx_credentials import load_krx_credentials
-from verify_lab.data.loader import validate_market_data
+from verify_lab.data.loader import validate_market_data, validate_series_data
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -69,6 +71,18 @@ INTEGER_COLUMNS = [*PRICE_COLUMNS, COL_VOLUME]
 # 가격 기준만 구분한다
 FILE_NAME_TEMPLATE = "{ticker}_max.csv"
 ADJUSTED_FILE_NAME_TEMPLATE = "{ticker}_adjusted_max.csv"
+
+# NAV 는 시세가 아니라 **일별 단일 값**이라 다른 폴더·다른 스키마로 저장한다
+NAV_FILE_NAME_TEMPLATE = "{ticker}_NAV.csv"
+
+# pykrx 가 돌려주는 NAV 컬럼 이름
+KRX_NAV_COLUMN = "NAV"
+
+# NAV 저장 자릿수. **호가가 아니라 계산된 값**이라 소스가 소수 둘째 자리까지 준다.
+# 정수로 반올림하면 상대오차가 1e-4 수준이 되는데, 재려는 프리미엄이 0.1% 대라
+# 측정치가 반올림 오차에 묻힌다. `.claude/rules/python.md` 의 "KRX 원화 가격 → 정수" 는
+# 호가 기준 가격을 가리키며 NAV 는 그 대상이 아니다
+NAV_DECIMALS = 2
 
 
 @dataclass(frozen=True)
@@ -247,6 +261,109 @@ def collect_pykrx_history(
     return PykrxCollectionResult(
         ticker=symbol,
         adjusted=adjusted,
+        path=path,
+        row_count=len(df),
+        start_date=first_date,
+        end_date=last_date,
+        excluded_recent_count=excluded_recent_count,
+    )
+
+
+@dataclass(frozen=True)
+class PykrxNavResult:
+    """NAV 수집 결과 요약.
+
+    Attributes:
+        ticker: 조회한 종목
+        path: 저장된 CSV 경로
+        row_count: 저장된 행 수
+        start_date: 저장 구간의 첫 거래일
+        end_date: 저장 구간의 마지막 거래일
+        excluded_recent_count: 최근 구간 제외로 빠진 행 수
+    """
+
+    ticker: str
+    path: Path
+    row_count: int
+    start_date: date
+    end_date: date
+    excluded_recent_count: int
+
+
+def collect_pykrx_nav(
+    ticker: str,
+    start_date: str,
+    output_dir: Path = SERIES_DIR,
+) -> PykrxNavResult:
+    """ETF 의 NAV 를 받아 **일별 단일 값 시계열**로 저장한다.
+
+    NAV 는 시세가 아니라 하루에 값 하나짜리 계열이므로 `storage/series/` 에 저장한다.
+    시세와 같은 폴더에 두면 어느 로더로 읽어야 할지 경로만으로는 알 수 없게 된다.
+
+    NAV 는 `get_etf_ohlcv_by_date` 만 돌려준다. 수정주가 경로(`get_market_ohlcv`)에는 없다.
+
+    Args:
+        ticker: 종목 티커 (앞뒤 공백 무관)
+        start_date: 조회 시작일 (YYYYMMDD). 보통 종목의 상장일을 넣는다
+        output_dir: 저장 디렉터리. 기본값은 단일 값 시계열 폴더
+
+    Returns:
+        저장 결과 요약
+
+    Raises:
+        ValueError: 종목 코드가 비었거나, 시작일 형식이 잘못됐거나, 조회 결과가 비었거나,
+            NAV 컬럼이 없거나, 최근 구간 제외 후 남는 행이 없거나, 결측이 발견된 경우
+    """
+    symbol = ticker.strip().upper()
+    if not symbol:
+        raise ValueError("종목 코드가 비어 있습니다")
+
+    try:
+        datetime.strptime(start_date, KRX_DATE_FORMAT)
+    except ValueError as error:
+        raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
+
+    today = date.today()
+    stock = _import_pykrx_stock()
+
+    raw = stock.get_etf_ohlcv_by_date(start_date, today.strftime(KRX_DATE_FORMAT), symbol)
+
+    if raw.empty:
+        raise ValueError(f"NAV 조회 결과가 비어 있습니다 - 종목: {symbol}")
+
+    if KRX_NAV_COLUMN not in raw.columns:
+        raise ValueError(f"응답에 NAV 컬럼이 없습니다 (반환 컬럼: {list(raw.columns)})")
+
+    df = raw.rename_axis(KRX_INDEX_NAME).reset_index()
+    df = df.rename(columns={KRX_INDEX_NAME: COL_DATE, KRX_NAV_COLUMN: COL_VALUE})
+    df[COL_DATE] = pd.to_datetime(df[COL_DATE]).dt.date
+    df = df[[COL_DATE, COL_VALUE]]
+
+    # 확정되지 않은 최근 구간을 제외한다. 시세 수집과 같은 기준을 쓴다
+    cutoff_date = today - timedelta(days=RECENT_EXCLUSION_DAYS)
+    total_count = len(df)
+    df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
+    excluded_recent_count = total_count - len(df)
+
+    if df.empty:
+        raise ValueError(f"최근 {RECENT_EXCLUSION_DAYS}일 제외 후 남는 NAV 가 없습니다 - 종목: {symbol}")
+
+    df[COL_VALUE] = df[COL_VALUE].astype(float).round(NAV_DECIMALS)
+
+    # 단일 값 시계열의 판정을 그대로 쓴다. 로더와 갈라지면 "받아는 놨는데 읽을 수 없는" 파일이 생긴다
+    validate_series_data(df)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / NAV_FILE_NAME_TEMPLATE.format(ticker=symbol)
+    df.to_csv(path, index=False)
+
+    first_date = df[COL_DATE].iloc[0]
+    last_date = df[COL_DATE].iloc[-1]
+
+    logger.debug(f"NAV 수집 완료: {symbol}, {len(df):,}행, 기간 {first_date} ~ {last_date}, 저장 위치 {path}")
+
+    return PykrxNavResult(
+        ticker=symbol,
         path=path,
         row_count=len(df),
         start_date=first_date,

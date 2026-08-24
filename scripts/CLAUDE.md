@@ -44,6 +44,7 @@
 | `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
+| `usdkrw_equivalence_study` | `studies/run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
 | `index_extreme_study` | `studies/run_index_extreme.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
 
 ---

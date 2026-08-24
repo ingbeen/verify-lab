@@ -100,6 +100,16 @@ ECOS_SERIES: Final = (
         unit="원",
     ),
     EcosSeries(
+        key="usdkrw_close",
+        label="원/달러(종가 15:30)",
+        stat_code="731Y003",
+        item_code="0000003",
+        cycle="D",
+        file_name="USDKRW_CLOSE.csv",
+        decimals=2,
+        unit="원",
+    ),
+    EcosSeries(
         key="cd91",
         label="CD(91일)",
         stat_code="817Y002",

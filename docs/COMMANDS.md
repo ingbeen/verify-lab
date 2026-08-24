@@ -97,6 +97,11 @@ poetry run python scripts/data/check_pykrx_splice.py --ends 20081231,20141231
 #### KODEX 200 수집
 
 ```bash
+# ETF 의 NAV 를 단일 값 시계열로 수집 (프리미엄/디스카운트 측정용)
+poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --nav
+```
+
+```bash
 # KODEX 200 전 기간 수집 (기본값)
 poetry run python scripts/data/collect_pykrx.py
 
@@ -131,16 +136,19 @@ poetry run python scripts/data/check_ecos.py
 # 다른 키워드나 다른 통계표로 실측
 poetry run python scripts/data/check_ecos.py --keyword 환율 국제수지 --stat 731Y001
 
-# 원달러 매매기준율 + CD 91일물 수집 (기본값: 전부, 가용 전 기간)
+# 환율 2종 + CD 91일물 수집 (기본값: 전부, 가용 전 기간)
 poetry run python scripts/data/collect_ecos.py
 
 # 하나만, 또는 구간을 좁혀서
-poetry run python scripts/data/collect_ecos.py --series usdkrw --start 19980101 --end 20261231
+poetry run python scripts/data/collect_ecos.py --series usdkrw_close --start 19980101 --end 20261231
 ```
 
 - 프로브는 원자료를 `storage/results/<실행시각>_ecos_probe/` 에 남깁니다.
   **통계표코드·항목코드는 기억이 아니라 이 프로브로 확인**하며, 확정값은
   [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.1 에 있습니다
+- **환율은 두 계열을 받습니다.** `usdkrw_close`(종가 15:30)가 수익률 측정의 기준이고,
+  `usdkrw`(매매기준율)는 환전 스프레드의 기준입니다. 매매기준율은 전영업일 가중평균이라 하루 늦고
+  스무딩돼 있어 수익률 측정에 쓸 수 없습니다 ([spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.4)
 - 수집 결과는 `storage/series/<이름>.csv` 에 `Date,Value` 스키마로 저장됩니다. 기존 파일은 덮어씁니다
 - **기간을 잘라 저장하지 않습니다.** 기본 시작일이 두 시계열의 실제 시작보다 이른 이유입니다
 - ⚠️ **ECOS 는 인증키를 URL 경로에 넣습니다.** 실행 로그의 요청 URL 은 키가 마스킹된 형태로 나오지만,
@@ -194,6 +202,25 @@ poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
   `summary.json` 으로 남습니다. 덮어쓰지 않고 실행 시각으로 쌓입니다
 - **순위 컷·연속 일수·집계 시작연도는 인자가 아닙니다.** 스펙이 확정한 목록을 전부 산출해 나란히
   보고하는 것이 이 검증의 설계이며, 값을 골라 넣는 노브로 쓰면 과최적화입니다
+
+### 검증 #5 — 원달러 ETF 등가성
+
+```bash
+# 전 조합 실행 (기본값) — 환율 계열 2종 × 이론값 2종 × 이상치 포함·제외
+poetry run python scripts/studies/run_usdkrw_equivalence.py
+
+# 이론값 모형을 하나만
+poetry run python scripts/studies/run_usdkrw_equivalence.py --model usd_rate
+```
+
+- **이상치 축은 인자가 아닙니다.** 2019-03-14 의 종가 이상치 포함·제외를 나란히 보는 것이 설계이며,
+  하나만 골라 산출하면 그 선택이 결론에 섞입니다
+- 산출물은 `storage/results/<실행시각>_usdkrw_equivalence/` 에 CSV 6개(`equivalence`·`annual_drift`·
+  `leverage`·`premium`·`effective_cost`·`daily`)와 `summary.json` 으로 남습니다
+- `effective_cost.csv` 는 **NAV 로 직접 잰 실효 총비용**입니다. 공시 총보수와 나란히 실립니다
+- `daily.csv` 는 **손으로 검산하는 원자료**입니다. 현물 변화와 이자 기여분을 따로 담아
+  이론값이 어떻게 만들어졌는지 그대로 따라갈 수 있습니다
+- 결과와 판정은 [research/원달러_ETF_등가성.md](research/원달러_ETF_등가성.md) 에 있습니다
 
 ---
 
