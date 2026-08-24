@@ -32,8 +32,9 @@ poetry run black .
 
 ## 데이터 수집
 
-> **사용자만 실행합니다.** 외부 서버(Yahoo Finance, KRX)에 실제 요청을 보내므로
-> AI 모델은 이 명령어를 직접 실행하지 않습니다.
+> **AI 모델도 직접 실행합니다.** 다만 외부 서버(Yahoo Finance, KRX, ECOS, FRED)에 실제 요청을
+> 보내므로 같은 데이터를 이유 없이 다시 받지 않으며, `storage/market/` 을 덮어쓴 경우
+> 새 데이터 기준일을 해당 결과 문서에 남깁니다 (루트 [CLAUDE.md](../CLAUDE.md) "스크립트 실행 규칙").
 
 ### yfinance (미국 종목)
 
