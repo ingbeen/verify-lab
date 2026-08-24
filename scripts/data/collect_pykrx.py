@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """pykrx 국내 시세 수집 CLI
 
-국내 ETF 의 일별 시세를 **원본가 기준으로** 받아 원시 시세 파일로 저장한다. 상장일부터 전 기간을 담는다.
+국내 ETF 의 일별 시세를 받아 원시 시세 파일로 저장한다. 상장일부터 전 기간을 담는다.
 
-**수정주가는 받지 않는다.** 사용자가 결과를 차트와 직접 대조하는 것이 이 프로젝트의 전제인데
+**기본은 원본가다.** 사용자가 결과를 차트와 직접 대조하는 것이 이 프로젝트의 전제인데
 보통의 차트는 배당 미포함이기 때문이다. 근거는 `docs/spec/index_extreme_events.md` "가격 처리" 에 있다.
-수집기 모듈의 `adjusted` 인자는 남아 있으므로 필요하면 그쪽을 직접 호출한다.
+`--adjusted` 를 붙이면 분배금이 반영된 수정주가를 **다른 파일명으로** 받는다. 원달러 그리드처럼
+설계가 수정 종가를 요구하는 검증이 이 인자를 쓴다 (`docs/spec/usdkrw_grid.md`).
 
-외부 서버(KRX)에 실제 요청을 보내므로 **사용자만 실행한다.**
+외부 서버(KRX)에 실제 요청을 보내므로 **같은 데이터를 이유 없이 다시 받지 않는다.**
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
 
 > **로그 주의**: pykrx 는 로그인 시 **로그인 ID 를 표준 출력에 찍는다**(비밀번호는 찍지 않는다).
@@ -54,12 +55,17 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
-    parser = argparse.ArgumentParser(description="pykrx 에서 국내 ETF 시세를 원본가 기준으로 받아 저장합니다 (KRX 계정 필요).")
+    parser = argparse.ArgumentParser(description="pykrx 에서 국내 ETF 시세를 받아 원시 시세 파일로 저장합니다 (KRX 계정 필요).")
     parser.add_argument("--ticker", default=DEFAULT_TICKER, help=f"종목 티커 (기본값: {DEFAULT_TICKER})")
     parser.add_argument(
         "--start",
         default=DEFAULT_START_DATE,
         help=f"조회 시작일 YYYYMMDD, 보통 상장일 (기본값: {DEFAULT_START_DATE})",
+    )
+    parser.add_argument(
+        "--adjusted",
+        action="store_true",
+        help="분배금이 반영된 수정주가로 받는다 (기본값: 원본가). 저장 파일명이 달라 원본가를 덮어쓰지 않는다",
     )
     return parser.parse_args()
 
@@ -103,27 +109,27 @@ def _metadata(result: PykrxCollectionResult) -> dict[str, object]:
 
 @cli_exception_handler
 def main() -> int:
-    """원본가 기준으로 수집을 실행하고 결과를 표로 표시한다.
+    """수집을 실행하고 결과를 표로 표시한다.
 
     Returns:
         종료 코드 (성공 0)
     """
     args = parse_args()
 
-    raw_result = collect_pykrx_history(args.ticker, args.start, adjusted=False)
+    result = collect_pykrx_history(args.ticker, args.start, adjusted=args.adjusted)
 
     table = TableLogger(SUMMARY_COLUMNS, logger)
     table.print_table(
-        [_summary_row(raw_result)],
-        title=f"수집 결과 — {raw_result.ticker} (저장 폴더: {raw_result.path.parent})",
+        [_summary_row(result)],
+        title=f"수집 결과 — {result.ticker} (저장 폴더: {result.path.parent})",
     )
 
     save_metadata(
         KEY_META_PYKRX_COLLECT,
         {
-            "ticker": raw_result.ticker,
+            "ticker": result.ticker,
             "start_date": args.start,
-            "raw": _metadata(raw_result),
+            "price_basis": _metadata(result),
         },
     )
 

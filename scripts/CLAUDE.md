@@ -41,6 +41,9 @@
 | `pykrx_etf_probe` | `data/check_pykrx_etf.py` | 실측한 종목·기간, 원자료 저장 폴더, 함수별 반환 행 수 |
 | `pykrx_splice_probe` | `data/check_pykrx_splice.py` | 실측한 종목·시작일·분할 종료일, 원자료 저장 폴더, 세그먼트별 행 수, 겹침 불일치 건수, 덮지 못한 거래일 수 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
+| `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
+| `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
+| `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `index_extreme_study` | `studies/run_index_extreme.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
 
 ---

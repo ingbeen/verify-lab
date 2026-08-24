@@ -54,6 +54,8 @@
 | [context/RESEARCH_qqq_late_entry.md](context/RESEARCH_qqq_late_entry.md) | 현재 보유 판정(이번 사이클 미진입)과 근거 | 같음 |
 | [ROADMAP.md](ROADMAP.md) | 검증 목록, Phase 상태, 계획서 승격 목적지 | 작업 시작·종료 시 |
 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정 결정 8건, 사전 실측 기록 | 검증 #1 관련 전부 |
+| [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | **원달러 그리드 트랙의 데이터 스펙·실측 기록·확정된 설계 결정** — ECOS/FRED 코드, ETF 2종 실측, 사양서 해석 확정 | 원달러 그리드·검증 #5 관련 전부 |
+| [../원달러_그리드_백테스트_사양서_v2.md](../원달러_그리드_백테스트_사양서_v2.md) | 원달러 그리드 **매매 규칙의 원본 사양서** (사용자 작성). 해석·확정 결과는 위 spec 이 SoT | 그리드 규칙 본문을 볼 때 |
 | [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) | **검증 #1 결과** — 역대급 등락·연속 등락 이후 수익률 측정과 판정 | 검증 #1 결과를 인용하거나 재실행할 때 |
 | [strategy/역방향_매매_규칙.md](strategy/역방향_매매_규칙.md) | **현재 운용 중인 매매 규칙의 SoT** — 확정 규칙(§1)·성적·결정 근거·신호일 원자료. 측정이 아니라 측정 결과로부터 도출한 규칙이다 | **"확정된 매매법만 참고하라"의 지시 대상은 §1** |
 | [HANDS_ON.md](HANDS_ON.md) | **직접 대조 가이드** — 스크립트 실행부터 신호일·수익률을 손으로 검산하는 절차 | 결과를 코드 없이 직접 확인할 때 |

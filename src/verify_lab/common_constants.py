@@ -21,6 +21,11 @@ STORAGE_DIR: Final = BASE_DIR / "storage"
 # 수집한 원시 시세. git 으로 동기화하며 분석 코드가 덮어쓰지 않는 불변 자산이다
 MARKET_DIR: Final = STORAGE_DIR / "market"
 
+# 일별 단일 값 시계열 (환율 고시가·금리 등). `MARKET_DIR` 와 **폴더를 나누는 것이 곧 스키마 구분**이다 —
+# 한 폴더에 OHLCV 와 단일 값이 섞이면 파일을 열어보기 전에는 어느 로더로 읽어야 할지 알 수 없고,
+# 잘못된 로더를 부르면 컬럼 검증에서야 걸린다. 폴더가 다르면 그 판단이 경로에서 끝난다
+SERIES_DIR: Final = STORAGE_DIR / "series"
+
 # 검증 산출물. 실행 시각으로 구분해 쌓이며 언제든 재생성 가능하므로 git 에서 제외한다
 RESULTS_DIR: Final = STORAGE_DIR / "results"
 
@@ -43,6 +48,18 @@ REQUIRED_COLUMNS: Final = [COL_DATE, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL
 
 # 가격 컬럼. 양수 검사처럼 가격에만 적용하는 검증의 대상이다
 PRICE_COLUMNS: Final = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE]
+
+# ============================================================
+# 일별 단일 값 시계열 스키마
+# ============================================================
+
+# 값 컬럼. 환율은 원, 금리는 백분율처럼 **단위가 소스마다 다르므로 중립적인 이름을 쓴다** —
+# `Close` 나 `Rate` 로 두면 그 이름이 맞지 않는 소스가 들어올 때 컬럼을 다시 갈라야 한다.
+# 단위와 자릿수는 각 수집기가 소유하고 `docs/spec/` 의 데이터 스펙이 기록한다
+COL_VALUE: Final = "Value"
+
+# 단일 값 시계열 파일이 반드시 가져야 하는 컬럼과 그 순서
+SERIES_REQUIRED_COLUMNS: Final = [COL_DATE, COL_VALUE]
 
 # ============================================================
 # 가격 표기

@@ -12,8 +12,16 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.data.loader import MAX_DAILY_CHANGE_RATE, load_market_csv
+from verify_lab.common_constants import (
+    COL_CLOSE,
+    COL_DATE,
+    COL_HIGH,
+    COL_LOW,
+    COL_OPEN,
+    COL_VALUE,
+    COL_VOLUME,
+)
+from verify_lab.data.loader import MAX_DAILY_CHANGE_RATE, load_market_csv, load_series_csv
 
 
 def _write_csv(path: Path, rows: list[dict[str, object]]) -> Path:
@@ -293,3 +301,250 @@ def test_source_file_is_not_modified(valid_csv: Path) -> None:
 
     # Then
     assert valid_csv.read_text(encoding="utf-8") == before
+
+
+# ============================================================
+# 일별 단일 값 시계열 로더
+# ============================================================
+#
+# 시세 로더와 **의도적으로 다른 계약**을 갖는다. 값의 부호와 변동폭을 검사하지 않는다 —
+# 금리는 0 과 음수가 실제로 존재하고, 환율은 하루에 수십 % 움직인 해가 있다.
+# 시세 로더의 판정을 그대로 걸면 정상 데이터가 예외로 막힌다.
+
+
+def _series_csv(path: Path, rows: list[dict[str, object]]) -> Path:
+    """합성 단일 값 시계열을 CSV로 써서 경로를 돌려준다."""
+    pd.DataFrame(rows).to_csv(path, index=False)
+    return path
+
+
+@pytest.fixture
+def valid_series_csv(tmp_path: Path) -> Path:
+    """이상이 없는 3일짜리 단일 값 시계열."""
+    return _series_csv(
+        tmp_path / "TEST_series.csv",
+        [
+            {COL_DATE: "2026-01-02", COL_VALUE: 1_380.50},
+            {COL_DATE: "2026-01-05", COL_VALUE: 1_382.10},
+            {COL_DATE: "2026-01-06", COL_VALUE: 1_379.90},
+        ],
+    )
+
+
+def test_series_returns_required_columns(valid_series_csv: Path) -> None:
+    """
+    목적: 단일 값 시계열의 반환 컬럼을 고정한다.
+
+    Given: 정상 시계열 파일
+    When: 로드한다
+    Then: 날짜와 값 컬럼이 들어 있다
+    """
+    df = load_series_csv(valid_series_csv)
+
+    assert {COL_DATE, COL_VALUE} <= set(df.columns)
+
+
+def test_series_date_column_is_datetime64(valid_series_csv: Path) -> None:
+    """
+    목적: 날짜 dtype 을 고정한다.
+
+    금리·환율은 거래일 기준으로 시세와 정렬해야 하므로 object dtype 이면 안 된다.
+
+    Given: 정상 시계열 파일
+    When: 로드한다
+    Then: 날짜 컬럼이 datetime64 다
+    """
+    df = load_series_csv(valid_series_csv)
+
+    assert pd.api.types.is_datetime64_any_dtype(df[COL_DATE])
+
+
+def test_series_rows_are_sorted_and_reindexed(tmp_path: Path) -> None:
+    """
+    목적: 입력 순서와 무관하게 날짜 오름차순이고 인덱스가 0부터임을 고정한다.
+
+    Given: 날짜가 뒤섞인 시계열 파일
+    When: 로드한다
+    Then: 날짜가 오름차순이고 인덱스가 0부터 연속이다
+    """
+    # Given
+    path = _series_csv(
+        tmp_path / "unsorted.csv",
+        [
+            {COL_DATE: "2026-01-06", COL_VALUE: 3.0},
+            {COL_DATE: "2026-01-02", COL_VALUE: 1.0},
+            {COL_DATE: "2026-01-05", COL_VALUE: 2.0},
+        ],
+    )
+
+    # When
+    df = load_series_csv(path)
+
+    # Then
+    assert df[COL_DATE].is_monotonic_increasing
+    assert df.index.tolist() == [0, 1, 2]
+
+
+def test_series_duplicate_dates_are_removed(tmp_path: Path) -> None:
+    """
+    목적: 같은 날짜가 두 번 오면 첫 행만 남김을 고정한다.
+
+    Given: 날짜가 중복된 시계열 파일
+    When: 로드한다
+    Then: 행이 하나로 줄고 먼저 나온 값이 남는다
+    """
+    # Given
+    path = _series_csv(
+        tmp_path / "duplicated.csv",
+        [
+            {COL_DATE: "2026-01-02", COL_VALUE: 1.0},
+            {COL_DATE: "2026-01-02", COL_VALUE: 9.0},
+        ],
+    )
+
+    # When
+    df = load_series_csv(path)
+
+    # Then
+    assert len(df) == 1
+    assert df[COL_VALUE].iloc[0] == pytest.approx(1.0, abs=1e-12)
+
+
+def test_series_accepts_zero_and_negative_values(tmp_path: Path) -> None:
+    """
+    목적: 0 과 음수를 정상 값으로 통과시킴을 고정한다.
+
+    **시세 로더와 갈리는 지점이다.** 마이너스 금리와 0% 금리는 실제로 존재하며,
+    시세의 "0 이하 가격은 오류" 판정을 여기 그대로 걸면 정상 데이터가 막힌다.
+
+    Given: 0 과 음수가 섞인 시계열 파일
+    When: 로드한다
+    Then: 예외 없이 모든 행이 남는다
+    """
+    # Given
+    path = _series_csv(
+        tmp_path / "negative.csv",
+        [
+            {COL_DATE: "2026-01-02", COL_VALUE: 0.0},
+            {COL_DATE: "2026-01-05", COL_VALUE: -0.35},
+        ],
+    )
+
+    # When
+    df = load_series_csv(path)
+
+    # Then
+    assert len(df) == 2
+    assert df[COL_VALUE].tolist() == pytest.approx([0.0, -0.35], abs=1e-12)
+
+
+def test_series_accepts_large_daily_change(tmp_path: Path) -> None:
+    """
+    목적: 하루 사이 큰 변동을 오류로 보지 않음을 고정한다 (경계 조건).
+
+    원달러는 1997년에 하루 20% 넘게 움직인 날이 있고 그것은 실제 시장 사건이다.
+
+    Given: 하루 만에 두 배가 된 시계열 파일
+    When: 로드한다
+    Then: 예외 없이 로드된다
+    """
+    # Given
+    path = _series_csv(
+        tmp_path / "jump.csv",
+        [
+            {COL_DATE: "1997-12-22", COL_VALUE: 1_000.0},
+            {COL_DATE: "1997-12-23", COL_VALUE: 2_000.0},
+        ],
+    )
+
+    # When
+    df = load_series_csv(path)
+
+    # Then
+    assert len(df) == 2
+
+
+def test_series_missing_file_raises(tmp_path: Path) -> None:
+    """
+    목적: 파일이 없을 때의 예외 타입을 고정한다.
+
+    Given: 존재하지 않는 경로
+    When: 로드한다
+    Then: FileNotFoundError 가 발생한다
+    """
+    with pytest.raises(FileNotFoundError):
+        load_series_csv(tmp_path / "없는파일.csv")
+
+
+def test_series_missing_required_column_raises(tmp_path: Path) -> None:
+    """
+    목적: 컬럼 구성이 다르면 즉시 실패함을 고정한다.
+
+    Given: 값 컬럼이 없는 파일
+    When: 로드한다
+    Then: ValueError 가 발생하고 메시지에 빠진 컬럼명이 담긴다
+    """
+    # Given
+    path = tmp_path / "no_value.csv"
+    pd.DataFrame([{COL_DATE: "2026-01-02", "Rate": 1.0}]).to_csv(path, index=False)
+
+    # When / Then
+    with pytest.raises(ValueError, match=COL_VALUE):
+        load_series_csv(path)
+
+
+def test_series_missing_value_raises(tmp_path: Path) -> None:
+    """
+    목적: 결측을 메우지 않고 예외로 막음을 고정한다 (보간 금지).
+
+    Given: 값이 비어 있는 행이 있는 파일
+    When: 로드한다
+    Then: ValueError 가 발생한다
+    """
+    # Given
+    path = _series_csv(
+        tmp_path / "missing.csv",
+        [
+            {COL_DATE: "2026-01-02", COL_VALUE: 1.0},
+            {COL_DATE: "2026-01-05", COL_VALUE: None},
+        ],
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="결측"):
+        load_series_csv(path)
+
+
+def test_series_empty_file_raises(tmp_path: Path) -> None:
+    """
+    목적: 헤더만 있는 파일을 정상으로 보지 않음을 고정한다 (경계 조건).
+
+    Given: 헤더만 있는 파일
+    When: 로드한다
+    Then: ValueError 가 발생한다
+    """
+    # Given
+    path = tmp_path / "empty_series.csv"
+    path.write_text(f"{COL_DATE},{COL_VALUE}\n", encoding="utf-8")
+
+    # When / Then
+    with pytest.raises(ValueError, match="비어"):
+        load_series_csv(path)
+
+
+def test_series_source_file_is_not_modified(valid_series_csv: Path) -> None:
+    """
+    목적: 로딩이 원본 파일을 건드리지 않음을 고정한다.
+
+    Given: 정상 시계열 파일의 원본 내용
+    When: 로드한다
+    Then: 파일 내용이 그대로다
+    """
+    # Given
+    before = valid_series_csv.read_text(encoding="utf-8")
+
+    # When
+    load_series_csv(valid_series_csv)
+
+    # Then
+    assert valid_series_csv.read_text(encoding="utf-8") == before

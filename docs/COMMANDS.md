@@ -104,13 +104,61 @@ poetry run python scripts/data/collect_pykrx.py
 poetry run python scripts/data/collect_pykrx.py --ticker 069500 --start 20021014
 ```
 
-- **원본가만 받습니다.** 기존 파일은 덮어씁니다
-  - `storage/market/<종목>_max.csv` — **원본가**, 상장일부터 전 기간 (본검증)
-- 수정주가는 받지 않습니다. 근거는 [spec/index_extreme_events.md](spec/index_extreme_events.md) "가격 처리" 에 있습니다.
-  수집기 모듈(`pykrx_collector.collect_pykrx_history`)의 `adjusted` 인자는 남아 있으므로 필요하면 직접 호출합니다
+```bash
+# 미국달러선물 ETF — 원달러 그리드용 (수정 종가가 본검증 기준)
+poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --adjusted
+poetry run python scripts/data/collect_pykrx.py --ticker 261250 --start 20161227 --adjusted
+```
+
+- **기본은 원본가입니다.** 기존 파일은 덮어씁니다
+  - `storage/market/<종목>_max.csv` — **원본가**, 상장일부터 전 기간
+  - `storage/market/<종목>_adjusted_max.csv` — **수정주가** (`--adjusted`). 파일명이 달라 원본가를 덮어쓰지 않습니다
+- 검증 #1 이 원본가를 쓰는 근거는 [spec/index_extreme_events.md](spec/index_extreme_events.md) "가격 처리" 에 있습니다.
+  원달러 그리드가 수정 종가를 쓰는 근거는 [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §2 에 있습니다
 - **확정되지 않은 당일은 저장하지 않습니다.** 장중에도 당일 행이 반환되기 때문이며,
   제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다
+
+### ECOS (한국은행 — 환율·원화금리)
+
+**ECOS 인증키가 필요합니다.** 저장소 루트의 `.env` 에 `ECOS_API_KEY` 가 있어야 하며,
+[ecos.bok.or.kr](https://ecos.bok.or.kr) 에서 무료로 발급합니다.
+
+```bash
+# 통계표·항목 코드 실측 (코드를 쓰기 전에 먼저 확인)
+poetry run python scripts/data/check_ecos.py
+
+# 다른 키워드나 다른 통계표로 실측
+poetry run python scripts/data/check_ecos.py --keyword 환율 국제수지 --stat 731Y001
+
+# 원달러 매매기준율 + CD 91일물 수집 (기본값: 전부, 가용 전 기간)
+poetry run python scripts/data/collect_ecos.py
+
+# 하나만, 또는 구간을 좁혀서
+poetry run python scripts/data/collect_ecos.py --series usdkrw --start 19980101 --end 20261231
+```
+
+- 프로브는 원자료를 `storage/results/<실행시각>_ecos_probe/` 에 남깁니다.
+  **통계표코드·항목코드는 기억이 아니라 이 프로브로 확인**하며, 확정값은
+  [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.1 에 있습니다
+- 수집 결과는 `storage/series/<이름>.csv` 에 `Date,Value` 스키마로 저장됩니다. 기존 파일은 덮어씁니다
+- **기간을 잘라 저장하지 않습니다.** 기본 시작일이 두 시계열의 실제 시작보다 이른 이유입니다
+- ⚠️ **ECOS 는 인증키를 URL 경로에 넣습니다.** 실행 로그의 요청 URL 은 키가 마스킹된 형태로 나오지만,
+  직접 URL 을 만들어 호출한 결과를 문서에 붙일 때는 키를 지우세요
+
+### FRED (미국 — 달러금리)
+
+**인증키가 필요 없습니다.** 공개 CSV 엔드포인트를 씁니다.
+
+```bash
+# 미국 3개월 T-bill (DTB3) 수집
+poetry run python scripts/data/collect_fred.py
+```
+
+- `storage/series/DTB3.csv` 에 저장합니다. 기존 파일은 덮어씁니다
+- **미국 시장 휴일은 행이 있고 값만 비어 있습니다.** 수집기는 그 행을 제외하고 제외 건수를 보고하며,
+  전일값 이월은 하지 않습니다 — 이월은 측정 계층의 판단입니다
+  ([spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.2)
 
 ---
 
