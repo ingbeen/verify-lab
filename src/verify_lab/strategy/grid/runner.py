@@ -24,7 +24,9 @@ from verify_lab.strategy.grid.constants import (
     COL_CLOSE_RATE,
     COL_COST,
     COL_EXEC_PRICE,
+    COL_EXTENDED_LEVELS,
     COL_GAIN_TAX,
+    COL_HELD_INVESTED,
     COL_HELD_SLOTS,
     COL_PARKING_INTEREST,
     COL_PARKING_RATE,
@@ -37,6 +39,7 @@ from verify_lab.strategy.grid.constants import (
     COL_TAX_PAID,
     COL_TOTAL_ASSETS,
     COL_USD_VALUE,
+    DEFAULT_LOWER_BREACH,
     DISPLAY_ACCRUED_INTEREST,
     DISPLAY_ACTIVE_LEVELS,
     DISPLAY_BLOCKED_COUNT,
@@ -53,8 +56,10 @@ from verify_lab.strategy.grid.constants import (
     DISPLAY_EXIT_DATE,
     DISPLAY_EXIT_PRICE,
     DISPLAY_EXIT_RATE,
+    DISPLAY_EXTENDED_LEVELS,
     DISPLAY_GAIN_TAX,
     DISPLAY_GRID_EXCESS,
+    DISPLAY_HELD_INVESTED,
     DISPLAY_HELD_SLOTS,
     DISPLAY_HOLD_DAYS,
     DISPLAY_INVESTED,
@@ -119,7 +124,11 @@ KEY_DAILY = "daily"
 KEY_TRADES = "trades"
 
 # 산출물만 보고는 알 수 없는 실행 조건
-NOTE_SCOPE = "거래비용·이자·세금이 모두 반영된 한 경로의 결과다. 하단 이탈은 A안이며 B안은 다음 단계다"
+NOTE_SCOPE = "거래비용·이자·세금이 모두 반영된 한 경로·한 하단 이탈 대응의 결과다. " "A안과 B안은 파라미터가 아니라 설계 대안이라 하나를 고르지 않고 둘 다 돌려 견준다"
+NOTE_LOWER_BREACH = (
+    "하단 이탈 B안의 격자 연장은 다음 재조정까지 유지된다 — 연장 하단은 직전 재조정 이후의 누적 최저 종가이며 "
+    "재조정일에 초기화된다. 연장 레벨은 하단부 배수를 받지만 위치·배수의 기준 범위는 정식 하단·상단 그대로다"
+)
 NOTE_PATH = "격자·범위·하향 돌파·목표가는 언제나 원달러 종가로 판정하고 체결과 평가만 경로의 집행 가격으로 한다. " "ETF 경로는 그 종목의 개장일로 거래일을 좁혔다"
 NOTE_ETF_PERIOD = "ETF 는 2016-12-27 상장이라 환전 경로(2005~)와 기간이 다르다. " "직접 비교하지 말고 같은 시작일로 돌린 대조군끼리 견준다"
 NOTE_ETF_CARRY = (
@@ -152,6 +161,8 @@ DAILY_LABELS = {
     COL_BUY_COUNT: DISPLAY_BUY_COUNT,
     COL_SELL_COUNT: DISPLAY_SELL_COUNT,
     COL_BLOCKED_COUNT: DISPLAY_BLOCKED_COUNT,
+    COL_EXTENDED_LEVELS: DISPLAY_EXTENDED_LEVELS,
+    COL_HELD_INVESTED: DISPLAY_HELD_INVESTED,
     COL_COST: DISPLAY_COST,
     COL_RP_RATE: DISPLAY_RP_RATE,
     COL_PARKING_RATE: DISPLAY_PARKING_RATE,
@@ -210,17 +221,22 @@ def run_usdkrw_grid(
     *,
     path_name: str = PATH_EXCHANGE,
     start_date: str | None = None,
+    lower_breach: str = DEFAULT_LOWER_BREACH,
 ) -> GridOutputs:
-    """원달러 그리드를 한 경로로 실행하고 표시용 산출물을 조립한다.
+    """원달러 그리드를 한 경로·한 하단 이탈 대응으로 실행하고 표시용 산출물을 조립한다.
 
     **격자·범위·판정은 언제나 원달러 종가**이고 경로가 바꾸는 것은 집행 가격뿐이다
     (결정 C1·C17). ETF 경로에서는 **거래일도 그 종목의 개장일로 좁힌다** —
     살 수도 팔 수도 없는 날을 판정에 넣으면 돌파를 한 번 놓친다.
 
+    **하단 이탈 A·B 는 한 번에 하나씩 돌린다.** 파라미터가 아니라 설계 대안이라
+    하나를 고르는 것이 아니라 둘을 나란히 놓고 견주며, 그 비교는 곡선을 받는 쪽의 일이다.
+
     Args:
         config: 실행 파라미터
         path_name: 집행 경로 이름 (환전 / 261240 / 261250)
         start_date: 매매 시작일 (`YYYY-MM-DD`). 넘기지 않으면 **경로의 기본 시작일**을 쓴다
+        lower_breach: 하단 이탈 대응 (사양서 §7). A안은 하단을 유지하고 B안은 격자를 아래로 연장한다
 
     Returns:
         표시용 곡선·체결 내역과 원값·메타
@@ -242,6 +258,7 @@ def run_usdkrw_grid(
         start_date=pd.Timestamp(resolved_start),
         lookback_years=config.lookback_years,
         min_range_width=config.min_range_width,
+        lower_breach=lower_breach,
     )
 
     # 2. 경로와 집행 가격. 환전은 판정 가격을 그대로 쓰고 ETF 는 수정 종가를 쓴다 (사양서 §11.3)
@@ -262,7 +279,13 @@ def run_usdkrw_grid(
         daily=_display_daily(result.daily),
         trades=_display_trades(result.trades),
         result=result,
-        meta=_build_meta(result, config=config, path_name=path_name, start_date=resolved_start),
+        meta=_build_meta(
+            result,
+            config=config,
+            path_name=path_name,
+            start_date=resolved_start,
+            lower_breach=lower_breach,
+        ),
     )
 
 
@@ -332,6 +355,7 @@ def _display_daily(daily: pd.DataFrame) -> pd.DataFrame:
             COL_EXEC_PRICE: PRICE_DECIMALS,
             COL_RANGE_LOW: PRICE_DECIMALS,
             COL_RANGE_HIGH: PRICE_DECIMALS,
+            COL_HELD_INVESTED: CAPITAL_DECIMALS,
             COL_COST: CAPITAL_DECIMALS,
             COL_RP_RATE: RATE_DECIMALS,
             COL_PARKING_RATE: RATE_DECIMALS,
@@ -394,14 +418,20 @@ def _build_meta(
     config: GridConfig,
     path_name: str = PATH_EXCHANGE,
     start_date: str,
+    lower_breach: str = DEFAULT_LOWER_BREACH,
 ) -> dict[str, Any]:
     """실행 파라미터와 핵심 수치를 모은다.
+
+    사양서 §7 이 하단 이탈 B안에 요구하는 측정 항목 중 **한 실행으로 나오는 넷**을 여기서 낸다 —
+    연장 발생 횟수·최대 연장 칸 수·현금 소진 시점·그 시점의 평가손익률이다. 남은 하나인
+    「A안 대비 평균단가·MDD」는 두 실행을 견주는 일이라 여기서는 **평균단가라는 재료**만 낸다.
 
     Args:
         result: 엔진의 원값
         config: 실행 파라미터
         path_name: 집행 경로 이름
         start_date: 매매 시작일
+        lower_breach: 하단 이탈 대응
 
     Returns:
         `summary.json` 에 담을 내용
@@ -419,6 +449,14 @@ def _build_meta(
     buy_cost = float(trades["buy_cost"].sum()) if not trades.empty else 0.0
     sell_cost = float(trades["sell_cost"].sum()) if not trades.empty else 0.0
 
+    # 사양서 §7 의 B안 측정 항목. **A안에서도 전부 계산한다** — 값이 0 이라는 사실 자체가
+    # 「A안은 연장하지 않는다」의 확인이고, 두 요약의 필드 구성이 같아야 나란히 놓을 수 있다
+    extension_days = int((daily[COL_EXTENDED_LEVELS] > 0).sum())
+    extension_levels_max = int(daily[COL_EXTENDED_LEVELS].max())
+    blocked = daily[daily[COL_BLOCKED_COUNT] > 0]
+    first_blocked = blocked.iloc[0] if not blocked.empty else None
+    average_unit_cost = result.bought_invested / result.bought_units if result.bought_units else None
+
     rp_interest = float(daily[COL_RP_INTEREST].sum())
     parking_interest = float(daily[COL_PARKING_INTEREST].sum())
     tax_paid = float(daily[COL_TAX_PAID].sum())
@@ -428,6 +466,7 @@ def _build_meta(
         KEY_STRATEGY: "usdkrw_grid",
         KEY_PARAMETERS: {
             "path": path_name,
+            "lower_breach": lower_breach,
             "lookback_years": config.lookback_years,
             "growth_rate": config.growth_rate,
             "min_range_width": config.min_range_width,
@@ -477,7 +516,14 @@ def _build_meta(
             "open_unrealised": round(result.open_unrealised, CAPITAL_DECIMALS),
             "buy_fills": int(daily[COL_BUY_COUNT].sum()),
             "sell_fills": int(daily[COL_SELL_COUNT].sum()),
-            "blocked_days": int((daily[COL_BLOCKED_COUNT] > 0).sum()),
+            "blocked_days": int(len(blocked)),
+            "first_blocked_date": None if first_blocked is None else first_blocked[COL_DATE].strftime(DATE_FORMAT),
+            "unrealised_rate_at_first_block": (None if first_blocked is None else _unrealised_rate(first_blocked)),
+            "extension_days": extension_days,
+            "extension_levels_max": extension_levels_max,
+            "average_unit_cost": None if average_unit_cost is None else round(average_unit_cost, PRICE_DECIMALS),
+            "bought_units": round(result.bought_units, PRICE_DECIMALS),
+            "bought_invested": round(result.bought_invested, CAPITAL_DECIMALS),
             "active_levels_min": int(daily[COL_ACTIVE_LEVELS].min()),
             "active_levels_max": int(daily[COL_ACTIVE_LEVELS].max()),
             "held_slots_max": int(daily[COL_HELD_SLOTS].max()),
@@ -485,6 +531,7 @@ def _build_meta(
         KEY_ROW_COUNTS: {KEY_DAILY: int(len(daily)), KEY_TRADES: int(len(trades))},
         KEY_NOTES: [
             NOTE_SCOPE,
+            NOTE_LOWER_BREACH,
             NOTE_PATH,
             NOTE_ETF_PERIOD,
             NOTE_ETF_CARRY,
@@ -499,3 +546,24 @@ def _build_meta(
             NOTE_OPTIMISTIC,
         ],
     }
+
+
+def _unrealised_rate(row: pd.Series) -> float | None:
+    """하루치 곡선에서 **보유분의 미실현 평가손익률**을 낸다.
+
+    사양서 §7 이 하단 이탈 B안에 요구하는 「소진 시점의 평가손실률」이다.
+    분모는 **보유 슬롯에 실제로 들어간 원화**(비용 포함)이며, 총자산이 아니다 —
+    총자산으로 나누면 원화현금이 섞여 **물린 정도가 투입률에 희석된다.**
+
+    Args:
+        row: 일별 곡선의 한 줄
+
+    Returns:
+        `(보유 평가액 − 보유 투입액) ÷ 보유 투입액`.
+        보유가 없으면 `None` — 0 을 돌려주면 "손익이 없다"로 읽힌다
+    """
+    invested = float(row[COL_HELD_INVESTED])
+    if invested <= 0:
+        return None
+
+    return round((float(row[COL_USD_VALUE]) - invested) / invested, 6)

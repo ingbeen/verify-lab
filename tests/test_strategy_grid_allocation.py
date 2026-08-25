@@ -510,3 +510,104 @@ class TestLogPositionIsGeometric:
         # Then
         assert positions[1] - positions[0] == pytest.approx(positions[2] - positions[1], abs=EXACT_TOLERANCE)
         assert positions[0] == pytest.approx(math.log(1.1) / math.log(2.0), abs=EXACT_TOLERANCE)
+
+
+class TestExtendedLevelsBelowRange:
+    """하단 이탈 B안이 켜는 **범위 아래 레벨**의 배분을 고정한다 (결정 C80·C81).
+
+    연장 레벨은 위치가 음수라 별도 규정이 필요해 보이지만, 3구간 판정이 `위치 < 1/3` 이므로
+    **하단부 배수가 그대로 나온다.** 특별 취급을 만들지 않는 것이 결정의 내용이다.
+    """
+
+    def _allocate_with_extension(self, *, spread: float = DEFAULT_ALLOCATION_SPREAD):
+        """정식 범위는 그대로 두고 활성 레벨만 한 칸 아래로 늘려 배분한다."""
+        return allocate_slots(
+            [-1, *_hand_levels()],
+            low=HAND_LOW,
+            high=HAND_HIGH,
+            total_assets=HAND_TOTAL,
+            growth_rate=HAND_GROWTH,
+            anchor=GRID_ANCHOR_PRICE,
+            spread=spread,
+            slot_cap_ratio=1.0,
+        )
+
+    def test_연장_레벨의_배수가_하단부다(self) -> None:
+        """
+        목적: 연장 구간의 배수를 고정한다 (결정 C80)
+
+        Given: 정식 하단(레벨 0)보다 한 칸 아래인 레벨 -1 을 활성 레벨에 넣는다
+        When: 배분한다
+        Then: 그 레벨의 위치가 음수이고 배수가 하단부(1+차등)다
+        """
+        # When
+        actual = self._allocate_with_extension()
+
+        # Then
+        assert actual.positions[-1] < 0.0
+        assert actual.multipliers[-1] == pytest.approx(1.0 + DEFAULT_ALLOCATION_SPREAD, abs=EXACT_TOLERANCE)
+
+    @pytest.mark.parametrize("spread", [0.3, 0.5, 0.7])
+    def test_연장_배수가_차등_축을_따라간다(self, spread: float) -> None:
+        """
+        목적: 배수가 **리터럴 1.5 가 아니라 하단부 배수**임을 고정한다 (결정 C80 의 탈락안)
+
+        Given: 자금 차등 축의 세 값
+        When: 연장 레벨을 포함해 배분한다
+        Then: 연장 레벨의 배수가 언제나 `1 + 차등` 이다
+
+        Note:
+            1.5 를 리터럴로 박으면 차등 0.3·0.7 에서 **연장 구간에만 축이 안 걸리는 예외**가 생긴다
+        """
+        # When
+        actual = self._allocate_with_extension(spread=spread)
+
+        # Then
+        assert actual.multipliers[-1] == pytest.approx(1.0 + spread, abs=EXACT_TOLERANCE)
+
+    def test_정식_범위의_위치가_연장에_흔들리지_않는다(self) -> None:
+        """
+        목적: 위치·배수의 기준이 **정식 범위**임을 고정한다 (결정 C81)
+
+        Given: 연장 레벨이 있는 배분과 없는 배분
+        When: 두 결과의 정식 레벨 위치를 견준다
+        Then: 정확히 같다 — 하단은 여전히 0, 상단은 여전히 1 이다
+
+        Note:
+            연장 하단을 그대로 위치 산식에 넘기면 **3구간 경계가 통째로 이동해**
+            상단부 레벨이 중간부로 내려앉는다. 예외는 나지 않고 배분만 조용히 달라진다
+        """
+        # Given
+        plain = _allocate(slot_cap_ratio=1.0)
+
+        # When
+        extended = self._allocate_with_extension()
+
+        # Then
+        for index in _hand_levels():
+            assert extended.positions[index] == pytest.approx(plain.positions[index], abs=EXACT_TOLERANCE)
+        assert extended.positions[0] == pytest.approx(0.0, abs=EXACT_TOLERANCE)
+        assert extended.positions[3] == pytest.approx(1.0, abs=EXACT_TOLERANCE)
+
+    def test_연장이_기존_레벨의_슬롯을_줄인다(self) -> None:
+        """
+        목적: 사양서 §7 의 「매일 재정규화로 자동 축소 배분」을 고정한다
+
+        Given: 연장 레벨이 있는 배분과 없는 배분
+        When: 같은 총자산으로 배분한다
+        Then: 기존 레벨의 슬롯 금액이 전부 작아지고, 총액은 여전히 보존된다
+
+        Note:
+            분모가 활성 레벨 전체(결정 C4)라 연장이 **기존 레벨의 슬롯까지 줄인다.**
+            이것은 부작용이 아니라 B안이 노출을 감당하는 방식이다
+        """
+        # Given
+        plain = _allocate(slot_cap_ratio=1.0)
+
+        # When
+        extended = self._allocate_with_extension()
+
+        # Then
+        for index in _hand_levels():
+            assert extended.amounts[index] < plain.amounts[index]
+        assert sum(extended.amounts.values()) + extended.surplus == pytest.approx(HAND_TOTAL, abs=AMOUNT_TOLERANCE)

@@ -43,6 +43,15 @@
 
 **미인출 이자는 매수에 쓸 수 없다.** 총자산에는 들어가지만 현금이 아니므로 슬롯 금액의
 분모는 키우고 실제 체결 여력은 키우지 않는다 — 실제 계좌에서도 미지급 이자는 그렇다.
+
+**하단 이탈 B안은 활성 레벨만 늘린다.** 범위표가 준 연장 하단이 정식 하단보다 낮은 날에는
+격자를 그 가격을 감싸는 레벨까지 늘려 켠다. **위치와 배수는 여전히 정식 범위로 잰다** —
+연장 하단으로 재면 3구간 경계가 통째로 이동해 상단부 레벨이 중간부로 내려앉는다.
+연장 레벨은 위치가 음수라 하단부 배수를 받으며 특별 취급이 없다.
+
+**판정식은 그대로다.** 연장으로 켜진 레벨도 하향 돌파로만 사므로 매수는 여전히 종가 하락을
+함의하고, 격자가 영구 고정이라 목표가와 매도 조건도 바뀌지 않는다. 그래서
+**한 거래일에 매수와 매도가 함께 일어나지 않는다**는 불변조건이 B안에서도 성립한다.
 """
 
 from dataclasses import dataclass, field, replace
@@ -61,7 +70,10 @@ from verify_lab.strategy.grid.constants import (
     COL_CLOSE_RATE,
     COL_COST,
     COL_EXEC_PRICE,
+    COL_EXTENDED_LEVELS,
+    COL_EXTENDED_LOW,
     COL_GAIN_TAX,
+    COL_HELD_INVESTED,
     COL_HELD_SLOTS,
     COL_PARKING_INTEREST,
     COL_PARKING_RATE,
@@ -81,7 +93,7 @@ from verify_lab.strategy.grid.constants import (
 )
 from verify_lab.strategy.grid.execution import SellOrder, Slot, plan_buys, plan_sells
 from verify_lab.strategy.grid.interest import InterestConfig, RateSeries
-from verify_lab.strategy.grid.lattice import active_level_indices, level_price
+from verify_lab.strategy.grid.lattice import active_level_indices, enclosing_level_index, level_price
 from verify_lab.strategy.grid.paths.base import CostConfig, ExecutionPath
 from verify_lab.strategy.grid.paths.exchange import ExchangePath
 from verify_lab.utils.logger import get_logger
@@ -89,7 +101,7 @@ from verify_lab.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # 범위표가 반드시 가져야 하는 컬럼
-DAILY_RANGE_REQUIRED = [COL_DATE, COL_RANGE_LOW, COL_RANGE_HIGH, COL_REBALANCED]
+DAILY_RANGE_REQUIRED = [COL_DATE, COL_RANGE_LOW, COL_RANGE_HIGH, COL_EXTENDED_LOW, COL_REBALANCED]
 
 # 일별 곡선의 컬럼 순서
 DAILY_COLUMNS = [
@@ -104,6 +116,8 @@ DAILY_COLUMNS = [
     COL_BUY_COUNT,
     COL_SELL_COUNT,
     COL_BLOCKED_COUNT,
+    COL_EXTENDED_LEVELS,
+    COL_HELD_INVESTED,
     COL_COST,
     COL_RP_RATE,
     COL_PARKING_RATE,
@@ -198,6 +212,10 @@ class GridResult:
             결정 C8 의 세전 평가와 같은 정신이며 총자산에는 이미 들어 있다
         rp_filled: T-bill 원지표가 없어 전일값을 이월한 거래일 수
         parking_filled: CD91 원지표가 없어 전일값을 이월한 거래일 수
+        bought_units: 전 기간 매수로 취득한 보유 단위 합계 (환전은 달러, ETF 는 주식 수)
+        bought_invested: 그 매수에 실제로 나간 원화 합계 (**비용 포함**).
+            둘의 비가 **평균단가**이며 사양서 §7 의 「A안 대비 평균단가 개선폭」이 그것으로 판정한다.
+            체결표에서 역산하면 나눗셈이 하나 늘고 그것이 두 번째 판정식이 되므로 여기서 누적한다
     """
 
     daily: pd.DataFrame
@@ -209,6 +227,8 @@ class GridResult:
     open_accrued_interest: float = field(default=0.0)
     rp_filled: int = field(default=0)
     parking_filled: int = field(default=0)
+    bought_units: float = field(default=0.0)
+    bought_invested: float = field(default=0.0)
 
 
 def run_grid(
@@ -278,6 +298,10 @@ def run_grid(
 
     # 파킹 이자의 기준 잔고는 **전 거래일 마감 원화현금**이다. 첫날은 이자가 없다
     previous_cash = 0.0
+
+    # 평균단가의 재료. 청산 여부와 무관하게 **모든 매수**를 센다
+    bought_units = 0.0
+    bought_invested = 0.0
 
     for offset, (_, day) in enumerate(ranges.iterrows()):
         date = pd.Timestamp(day[COL_DATE])
@@ -376,17 +400,32 @@ def run_grid(
         total_assets = cash + usd_value + accrued_value
         _assert_balance_change(opening_total, total_assets, change=-(sell_cost + gain_tax), stage="매도", date=date)
 
-        # 5. 활성 레벨과 슬롯 금액. 분모는 활성 레벨 전체이며 보유분을 포함한다 (결정 C4)
-        active = active_level_indices(
-            float(day[COL_RANGE_LOW]),
-            float(day[COL_RANGE_HIGH]),
-            growth_rate=config.growth_rate,
-            anchor=config.anchor,
+        # 5. 활성 레벨과 슬롯 금액. 분모는 활성 레벨 전체이며 보유분을 포함한다 (결정 C4).
+        #    하단 이탈 B안은 격자를 **연장 하단을 감싸는 레벨까지** 아래로 늘린다.
+        #    A안이면 연장 하단이 정식 하단과 같아 이 분기가 아무 일도 하지 않는다
+        low = float(day[COL_RANGE_LOW])
+        high = float(day[COL_RANGE_HIGH])
+        extended_low = float(day[COL_EXTENDED_LOW])
+
+        grid_low = low
+        if extended_low < low:
+            grid_low = level_price(
+                enclosing_level_index(extended_low, growth_rate=config.growth_rate, anchor=config.anchor),
+                growth_rate=config.growth_rate,
+                anchor=config.anchor,
+            )
+
+        active = active_level_indices(grid_low, high, growth_rate=config.growth_rate, anchor=config.anchor)
+        extended_levels = sum(
+            1 for index in active if level_price(index, growth_rate=config.growth_rate, anchor=config.anchor) < low
         )
+
+        # **위치와 배수는 정식 범위로 잰다.** 연장 하단으로 재면 3구간 경계가 통째로 이동해
+        # 상단부 레벨이 중간부로 내려앉는다 — 연장 레벨은 위치가 음수라 하단부 배수를 받는다
         allocation = allocate_slots(
             active,
-            low=float(day[COL_RANGE_LOW]),
-            high=float(day[COL_RANGE_HIGH]),
+            low=low,
+            high=high,
             total_assets=total_assets,
             growth_rate=config.growth_rate,
             anchor=config.anchor,
@@ -418,6 +457,8 @@ def run_grid(
             # 경로가 예산을 다 쓰지 못할 수 있어 둘은 같은 값이 아니다
             cash -= buy.spent
             buy_cost += buy.cost
+            bought_units += buy.units
+            bought_invested += buy.spent
             held[buy.level_index] = Slot(
                 level_index=buy.level_index,
                 entry_date=date,
@@ -444,14 +485,16 @@ def run_grid(
                 COL_DATE: date,
                 COL_CLOSE_RATE: close,
                 COL_EXEC_PRICE: exec_price,
-                COL_RANGE_LOW: float(day[COL_RANGE_LOW]),
-                COL_RANGE_HIGH: float(day[COL_RANGE_HIGH]),
+                COL_RANGE_LOW: low,
+                COL_RANGE_HIGH: high,
                 COL_REBALANCED: bool(day[COL_REBALANCED]),
                 COL_ACTIVE_LEVELS: len(active),
                 COL_HELD_SLOTS: len(held),
                 COL_BUY_COUNT: len(plan.orders),
                 COL_SELL_COUNT: len(sells),
                 COL_BLOCKED_COUNT: len(plan.blocked_levels),
+                COL_EXTENDED_LEVELS: extended_levels,
+                COL_HELD_INVESTED: sum(slot.invested for slot in held.values()),
                 COL_COST: sell_cost + buy_cost + interest_cost,
                 COL_RP_RATE: rp_rate_pct,
                 COL_PARKING_RATE: parking_rate_pct,
@@ -491,6 +534,8 @@ def run_grid(
         open_accrued_interest=accrued_rp_usd * last_close + accrued_parking,
         rp_filled=rates.rp_filled,
         parking_filled=rates.parking_filled,
+        bought_units=bought_units,
+        bought_invested=bought_invested,
     )
 
 

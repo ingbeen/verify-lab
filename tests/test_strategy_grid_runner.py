@@ -22,6 +22,7 @@ from verify_lab.strategy.grid.constants import (
     DISPLAY_GRID_EXCESS,
     DISPLAY_TOTAL_ASSETS,
     INITIAL_CAPITAL,
+    LOWER_BREACH_EXTEND,
 )
 from verify_lab.strategy.grid.engine import DAILY_COLUMNS, TRADE_COLUMNS, GridConfig, GridResult
 from verify_lab.strategy.grid.execution import Slot
@@ -74,6 +75,8 @@ def _daily() -> pd.DataFrame:
                 "BuyCount": 0,
                 "SellCount": 0,
                 "BlockedCount": 0,
+                "ExtendedLevels": 0,
+                "HeldInvested": 0.0,
                 "Cost": 0.0,
                 "RpRate": 1.5,
                 "ParkingRate": 2.5,
@@ -97,7 +100,9 @@ def _daily() -> pd.DataFrame:
                 "HeldSlots": 1,
                 "BuyCount": 1,
                 "SellCount": 0,
-                "BlockedCount": 0,
+                "BlockedCount": 2,
+                "ExtendedLevels": 3,
+                "HeldInvested": 4_007_200.4,
                 "Cost": 7_200.7,
                 "RpRate": 1.5,
                 "ParkingRate": 2.5,
@@ -159,6 +164,8 @@ def _result() -> GridResult:
         open_invested=1_200_000.0,
         open_value=1_150_000.0,
         open_unrealised=-50_000.0,
+        bought_units=5_000.0,
+        bought_invested=6_010_800.0,
     )
 
 
@@ -299,6 +306,7 @@ class TestBuildMeta:
             "slot_cap_ratio",
             "initial_capital",
             "path",
+            "lower_breach",
             "exchange_spread_rate",
             "slippage_rate",
             "brokerage_rate",
@@ -424,3 +432,126 @@ class TestBuildMeta:
         # Then
         assert actual[KEY_ROW_COUNTS] == {"daily": 2, "trades": 1}
         assert actual[KEY_PERIOD]["trading_days"] == 2
+
+
+class TestLowerBreachSummary:
+    """하단 이탈 B안의 측정 항목이 요약에 실림을 고정한다 (사양서 §7).
+
+    §7 은 B안에 다섯 가지를 요구한다 — 연장 발생 횟수 / 최대 연장 칸 수 / 현금 완전 소진
+    여부·시점 / 소진 시점의 평가손실률 / A안 대비 평균단가·MDD. **앞의 넷은 실행 하나로 나오고**
+    마지막 하나는 두 실행을 견주는 일이라 요약이 재료(평균단가)만 낸다.
+    """
+
+    def test_연장_통계를_남긴다(self) -> None:
+        """
+        목적: 사양서 §7 의 측정 항목 1(연장 발생 횟수·최대 칸 수)을 고정한다
+
+        Given: 둘째 날에 연장 레벨이 3개 켜진 곡선
+        When: 요약을 만든다
+        Then: 연장 발동 거래일이 1일, 최대 연장 칸이 3이다
+        """
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01")
+
+        # Then
+        assert actual[KEY_RESULT]["extension_days"] == 1
+        assert actual[KEY_RESULT]["extension_levels_max"] == 3
+
+    def test_소진_시점과_그때의_평가손익률을_남긴다(self) -> None:
+        """
+        목적: 사양서 §7 의 측정 항목 2·3 을 고정한다
+
+        Given: 둘째 날에 자금 부족이 2건 나고 그날 보유 투입액이 4,007,200.4원, 평가액이 4,000,000.4원인 곡선
+        When: 요약을 만든다
+        Then: 첫 소진일이 그날이고 평가손익률이 `(평가액 − 투입액) ÷ 투입액` 이다
+        """
+        # Given
+        expected = (4_000_000.4 - 4_007_200.4) / 4_007_200.4
+
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01")
+
+        # Then
+        assert actual[KEY_RESULT]["first_blocked_date"] == "2020-01-03"
+        assert actual[KEY_RESULT]["unrealised_rate_at_first_block"] == pytest.approx(expected, abs=1e-6)
+
+    def test_평균단가는_투입원화를_취득단위로_나눈_값이다(self) -> None:
+        """
+        목적: 평균단가의 정의를 고정한다 (결정 C84)
+
+        Given: 매수 누계가 6,010,800원 / 5,000단위인 결과
+        When: 요약을 만든다
+        Then: 평균단가가 1,202.16원이다
+
+        Note:
+            **비용을 포함한 실제 단가**다. 지정가 운용이었다면 얼마였을지가 아니라
+            "이 매매법이 실제로 얼마에 샀는가" 가 §7 의 물음이기 때문이다
+        """
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01")
+
+        # Then
+        assert actual[KEY_RESULT]["average_unit_cost"] == pytest.approx(1_202.16, abs=AMOUNT_TOLERANCE)
+
+    def test_취득_단위가_없으면_평균단가가_비어_있다(self) -> None:
+        """
+        목적: 엣지 케이스 — 매수가 한 건도 없을 때 0 으로 나누지 않음을 고정한다
+
+        Given: 매수 누계가 0인 결과
+        When: 요약을 만든다
+        Then: 평균단가가 None 이다 — 0 을 돌려주면 "0원에 샀다"로 읽힌다
+        """
+        # Given
+        result = GridResult(
+            daily=_daily(),
+            trades=_trades(),
+            open_slots=(),
+            open_invested=0.0,
+            open_value=0.0,
+        )
+
+        # When
+        actual = _build_meta(result, config=_config(), start_date="2005-01-01")
+
+        # Then
+        assert actual[KEY_RESULT]["average_unit_cost"] is None
+
+    def test_소진이_없으면_시점이_비어_있다(self) -> None:
+        """
+        목적: 엣지 케이스 — 자금 부족이 한 번도 없는 실행을 고정한다
+
+        Given: 자금 부족이 0인 곡선
+        When: 요약을 만든다
+        Then: 첫 소진일과 그때의 평가손익률이 모두 None 이다
+        """
+        # Given
+        daily = _daily()
+        daily["BlockedCount"] = 0
+        result = GridResult(
+            daily=daily,
+            trades=_trades(),
+            open_slots=(),
+            open_invested=0.0,
+            open_value=0.0,
+        )
+
+        # When
+        actual = _build_meta(result, config=_config(), start_date="2005-01-01")
+
+        # Then
+        assert actual[KEY_RESULT]["first_blocked_date"] is None
+        assert actual[KEY_RESULT]["unrealised_rate_at_first_block"] is None
+
+    def test_하단_이탈_방식이_파라미터에_남는다(self) -> None:
+        """
+        목적: 산출물만 보고 A안인지 B안인지 알 수 있게 함을 고정한다
+
+        Given: B안으로 돈 결과
+        When: 요약을 만든다
+        Then: 파라미터에 그 값이 담겨 있다
+        """
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01", lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then
+        assert actual[KEY_PARAMETERS]["lower_breach"] == LOWER_BREACH_EXTEND

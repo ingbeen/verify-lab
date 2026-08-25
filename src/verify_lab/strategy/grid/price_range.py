@@ -10,6 +10,15 @@
 **이 계층이 틀리는 방식은 창이 한 칸 밀리는 것**이다. 당월이 섞이면 그날 시세로 그날 범위를
 정하는 룩어헤드가 되고, 워밍업이 모자란 채로 돌면 범위가 좁아져 슬롯 하나가 거대해진다.
 둘 다 예외가 나지 않으므로 **개수를 세어 즉시 실패**하고 look-ahead 감시 테스트를 건다.
+
+**하단 이탈 대응도 여기서 갈린다**(사양서 §7). A안은 월평균 하단을 그대로 두어 이탈하면
+살 곳이 없어지고, B안은 **당일 종가를 포함하는 칸까지 격자를 아래로 연장**한다. 이 계층이 내는
+것은 **어디까지 늘릴지의 목표 가격**뿐이며 어느 레벨이 켜지는지는 격자 계층이 정한다 —
+범위 산출은 익절폭 g 와 무관해야 하기 때문이다.
+
+**연장은 다음 재조정까지 유지된다.** 매일 종가로 다시 구하면 반등하는 순간 저절로 꺼져
+사양서가 규정한 「다음 재조정에서 비활성화」가 죽은 문장이 된다. 그래서 **직전 재조정 이후의
+누적 최저 종가**를 쓰고 재조정일마다 초기화한다 — 당일까지만 보므로 미래를 참조하지 않는다.
 """
 
 import math
@@ -20,12 +29,16 @@ import pandas as pd
 from verify_lab.common_constants import COL_DATE, COL_VALUE
 from verify_lab.data.loader import validate_market_frame
 from verify_lab.strategy.grid.constants import (
+    COL_EXTENDED_LOW,
     COL_RANGE_HIGH,
     COL_RANGE_LOW,
     COL_RANGE_WIDENED,
     COL_RAW_RANGE_HIGH,
     COL_RAW_RANGE_LOW,
     COL_REBALANCED,
+    DEFAULT_LOWER_BREACH,
+    LOWER_BREACH_CHOICES,
+    LOWER_BREACH_EXTEND,
     MONTHS_PER_YEAR,
 )
 from verify_lab.utils.logger import get_logger
@@ -37,6 +50,7 @@ DAILY_RANGE_COLUMNS = [
     COL_DATE,
     COL_RANGE_LOW,
     COL_RANGE_HIGH,
+    COL_EXTENDED_LOW,
     COL_RAW_RANGE_LOW,
     COL_RAW_RANGE_HIGH,
     COL_RANGE_WIDENED,
@@ -170,6 +184,7 @@ def build_daily_ranges(
     start_date: pd.Timestamp,
     lookback_years: int,
     min_range_width: float,
+    lower_breach: str = DEFAULT_LOWER_BREACH,
 ) -> pd.DataFrame:
     """거래일 한 줄씩 범위가 실린 표를 만든다.
 
@@ -180,24 +195,34 @@ def build_daily_ranges(
     **전체 시세를 넘기고 결과 행만 자른다.** 시세를 먼저 잘라 넘기면 월평균 창이 그 지점부터
     다시 쌓여 워밍업이 무너지는데, 결과는 달라지고 예외는 나지 않는다.
 
+    **연장 하단은 A안에도 언제나 실린다.** A안이면 정식 하단과 같은 값이며, 그래야 엔진이
+    「B안이면」으로 분기하지 않는다 — 분기가 생기면 그 한 곳만 고쳐질 때 결과가 조용히 틀린다.
+
     Args:
         series: 일별 단일 값 시계열 **전 기간** (`load_series_csv` 가 돌려준 형태)
         start_date: 매매 시작일. 이 날짜 이상인 거래일만 결과에 담는다
         lookback_years: 룩백 N (년)
         min_range_width: 최소 범위폭 (비율)
+        lower_breach: 하단 이탈 대응 (사양서 §7). A안은 하단을 유지하고 B안은 격자를 아래로 연장한다
 
     Returns:
         거래일 오름차순 표. 컬럼 구성은 `DAILY_RANGE_COLUMNS`
 
     Raises:
         ValueError: 시작일 이후 거래일이 없거나, 워밍업이 모자라거나,
-            파라미터가 유효하지 않은 경우
+            하단 이탈 대응이 알 수 없는 값이거나, 파라미터가 유효하지 않은 경우
     """
+    if lower_breach not in LOWER_BREACH_CHOICES:
+        raise ValueError(f"알 수 없는 하단 이탈 대응입니다: {lower_breach} (가능한 값: {list(LOWER_BREACH_CHOICES)})")
+
     monthly = monthly_average_close(series)
 
-    trading_dates = series.loc[series[COL_DATE] >= start_date, COL_DATE].reset_index(drop=True)
+    selected = series.loc[series[COL_DATE] >= start_date]
+    trading_dates = selected[COL_DATE].reset_index(drop=True)
     if trading_dates.empty:
         raise ValueError(f"매매 시작일 이후 거래일이 없습니다: {start_date.date()} (시세 마지막 {series[COL_DATE].max().date()})")
+
+    trading_closes = selected[COL_VALUE].reset_index(drop=True)
 
     months = trading_dates.dt.to_period(MONTH_FREQ)
 
@@ -211,11 +236,19 @@ def build_daily_ranges(
         for month in months[rebalanced]
     }
 
+    lows = pd.Series([resolved[month].low for month in months], dtype=float)
+
     frame = pd.DataFrame(
         {
             COL_DATE: trading_dates,
-            COL_RANGE_LOW: [resolved[month].low for month in months],
+            COL_RANGE_LOW: lows,
             COL_RANGE_HIGH: [resolved[month].high for month in months],
+            COL_EXTENDED_LOW: _extended_lows(
+                lows,
+                closes=trading_closes,
+                rebalanced=rebalanced,
+                lower_breach=lower_breach,
+            ),
             COL_RAW_RANGE_LOW: [resolved[month].raw_low for month in months],
             COL_RAW_RANGE_HIGH: [resolved[month].raw_high for month in months],
             COL_RANGE_WIDENED: [resolved[month].widened for month in months],
@@ -224,9 +257,48 @@ def build_daily_ranges(
     )
 
     widened_count = int(frame.loc[frame[COL_REBALANCED], COL_RANGE_WIDENED].sum())
-    logger.debug(f"범위표 생성: {len(frame):,}거래일, 재조정 {int(rebalanced.sum()):,}회, 최소폭 강제 {widened_count:,}회")
+    extended_count = int((frame[COL_EXTENDED_LOW] < frame[COL_RANGE_LOW]).sum())
+    logger.debug(
+        f"범위표 생성: {len(frame):,}거래일, 재조정 {int(rebalanced.sum()):,}회, "
+        f"최소폭 강제 {widened_count:,}회, 하단 이탈 {lower_breach}안 연장 {extended_count:,}일"
+    )
 
     return frame[DAILY_RANGE_COLUMNS]
+
+
+def _extended_lows(
+    lows: pd.Series,
+    *,
+    closes: pd.Series,
+    rebalanced: pd.Series,
+    lower_breach: str,
+) -> pd.Series:
+    """격자를 어디까지 아래로 늘릴지의 목표 가격을 거래일마다 낸다.
+
+    A안은 정식 하단을 그대로 돌려준다 — 살 곳이 없어지는 것이 A안의 규칙이다.
+
+    B안은 **직전 재조정 이후의 누적 최저 종가**까지 내려간다 (사양서 §7·결정 C6).
+    당일 종가가 누적에 들어가므로 이탈한 날 바로 연장되고, 재조정일에 누적이 초기화되므로
+    **정식 하단이 따라 내려오지 않은 연장분은 그날 꺼진다.** 매일 종가로 다시 구하면
+    반등하는 순간 저절로 꺼져 그 초기화 규칙이 아무 일도 하지 않게 된다.
+
+    Args:
+        lows: 거래일별 정식 범위 하단
+        closes: 거래일별 종가 (판정 가격)
+        rebalanced: 거래일별 재조정 여부. 첫 거래일도 재조정일이다
+        lower_breach: 하단 이탈 대응
+
+    Returns:
+        거래일별 연장 하단. 언제나 정식 하단 이하다
+    """
+    if lower_breach != LOWER_BREACH_EXTEND:
+        return lows
+
+    # 재조정일마다 1씩 늘어나는 묶음 번호. 같은 번호 안에서만 최저 종가가 누적된다
+    blocks = rebalanced.astype(int).cumsum()
+    running_low = closes.groupby(blocks).cummin()
+
+    return pd.Series(running_low.to_numpy(), dtype=float).combine(lows, min)
 
 
 def _apply_min_width(raw_low: float, raw_high: float, *, min_range_width: float) -> tuple[float, float, bool]:

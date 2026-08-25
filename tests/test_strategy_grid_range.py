@@ -12,6 +12,8 @@
 - **폭 판정은 곱셈으로 한다.** 사양서 §4.2 의 `상단/하단 − 1 < 폭` 을 문자 그대로 쓰면
   폭이 정확히 임계값일 때 오발동한다 (검사 범위 15%·20%에서 실제로 발생)
 - **재조정은 월 1회**, 매월 첫 거래일이며 사이 날은 직전 범위를 그대로 쓴다
+- **연장 하단은 하단 이탈 B안이 격자를 어디까지 늘릴지를 정한다.** A안이면 정식 하단과 같고,
+  B안이면 직전 재조정 이후 관측된 최저 종가까지 내려가며 **매 재조정일에 초기화**된다
 """
 
 import math
@@ -22,6 +24,7 @@ import pytest
 
 from verify_lab.common_constants import COL_DATE, COL_VALUE
 from verify_lab.strategy.grid.constants import (
+    COL_EXTENDED_LOW,
     COL_RANGE_HIGH,
     COL_RANGE_LOW,
     COL_RANGE_WIDENED,
@@ -29,6 +32,8 @@ from verify_lab.strategy.grid.constants import (
     COL_RAW_RANGE_LOW,
     COL_REBALANCED,
     DEFAULT_MIN_RANGE_WIDTH,
+    LOWER_BREACH_EXTEND,
+    LOWER_BREACH_HOLD,
 )
 from verify_lab.strategy.grid.price_range import build_daily_ranges, monthly_average_close, resolve_range
 
@@ -403,6 +408,7 @@ class TestBuildDailyRanges:
             COL_DATE,
             COL_RANGE_LOW,
             COL_RANGE_HIGH,
+            COL_EXTENDED_LOW,
             COL_RAW_RANGE_LOW,
             COL_RAW_RANGE_HIGH,
             COL_RANGE_WIDENED,
@@ -581,3 +587,182 @@ class TestBuildDailyRanges:
                 lookback_years=1,
                 min_range_width=DEFAULT_MIN_RANGE_WIDTH,
             )
+
+
+class TestExtendedLow:
+    """하단 이탈 B안의 연장 하단 계약을 고정한다 (결정 C78·C79).
+
+    연장 하단은 **격자를 어디까지 늘릴지의 목표 가격**이다. 어느 레벨이 켜지는지는 격자 계층이
+    정하며, 이 계층은 가격만 낸다 (결정 C82).
+
+    이 계층이 틀리는 방식은 셋이다 — **A안인데 하단이 움직이거나**, **이탈이 재조정을 넘어
+    이월되거나**, **당일 종가가 빠져 이탈한 날 연장이 한 박자 늦는 것**이다.
+    전부 예외가 나지 않고 결과만 조용히 달라진다.
+    """
+
+    def _falling_series(self) -> pd.DataFrame:
+        """2019-01 ~ 2020-03 시계열. 2020-02 에 이탈하고 2020-03 에 반등한다.
+
+        워밍업 12개월(2019-01 ~ 2019-12)을 1,000원 근처로 고정해 범위를 좁게 만든 뒤,
+        2020-02 에 그 아래로 내려가는 경로를 둔다.
+        """
+        values_by_month = {f"2019-{month:02d}": [1000.0, 1000.0, 1000.0] for month in range(1, 13)}
+        # 2020-01 은 범위 안, 2020-02 는 이탈(급락 후 얕은 반등), 2020-03 은 완전히 회복
+        values_by_month["2020-01"] = [1000.0, 1000.0, 1000.0]
+        values_by_month["2020-02"] = [800.0, 700.0, 750.0]
+        values_by_month["2020-03"] = [1000.0, 1000.0, 1000.0]
+
+        return _series_by_month(values_by_month)
+
+    def _build(self, series: pd.DataFrame, lower_breach: str) -> pd.DataFrame:
+        """2020-01 부터의 범위표를 만든다."""
+        return build_daily_ranges(
+            series,
+            start_date=pd.Timestamp("2020-01-01"),
+            lookback_years=1,
+            min_range_width=DEFAULT_MIN_RANGE_WIDTH,
+            lower_breach=lower_breach,
+        )
+
+    def test_A안이면_연장_하단이_정식_하단과_같다(self) -> None:
+        """
+        목적: A안에 연장이 전혀 없음을 고정한다 (회귀 안전망)
+
+        Given: 하단을 크게 이탈하는 시계열
+        When: A안으로 범위표를 만든다
+        Then: 모든 행에서 연장 하단이 정식 하단과 **정확히** 같다
+
+        Note:
+            컬럼은 A안에도 언제나 존재한다 — 엔진이 「B안이면」으로 분기하지 않게 하기 위해서다.
+            분기가 생기면 그 한 곳만 고쳐질 때 예외 없이 결과가 틀린다
+        """
+        # When
+        actual = self._build(self._falling_series(), LOWER_BREACH_HOLD)
+
+        # Then
+        assert (actual[COL_EXTENDED_LOW] == actual[COL_RANGE_LOW]).all()
+
+    def test_종가가_하단_위면_B안도_연장하지_않는다(self) -> None:
+        """
+        목적: 연장이 **이탈한 날에만** 일어남을 고정한다
+
+        Given: 하단을 이탈하는 시계열
+        When: B안으로 범위표를 만든다
+        Then: 종가가 하단 이상인 날은 연장 하단이 정식 하단과 같다
+        """
+        # Given
+        series = self._falling_series()
+        closes = series.set_index(COL_DATE)[COL_VALUE]
+
+        # When
+        actual = self._build(series, LOWER_BREACH_EXTEND)
+        close = closes.reindex(pd.DatetimeIndex(actual[COL_DATE])).to_numpy()
+
+        # Then
+        above = actual[close >= actual[COL_RANGE_LOW].to_numpy()]
+        assert not above.empty
+        assert (above[COL_EXTENDED_LOW] == above[COL_RANGE_LOW]).all()
+
+    def test_이탈한_날_당일_종가까지_내려간다(self) -> None:
+        """
+        목적: 연장이 **당일 종가를 포함**함을 고정한다 (결정 C6 — 이탈 즉시 연장)
+
+        Given: 2020-02 첫 거래일에 800원으로 이탈한다
+        When: B안으로 범위표를 만든다
+        Then: 그날 연장 하단이 800원이다
+
+        Note:
+            당일 종가를 빼고 전일까지만 보면 이탈한 날 연장이 한 박자 늦어
+            **그날의 하향 돌파를 통째로 놓친다**
+        """
+        # When
+        actual = self._build(self._falling_series(), LOWER_BREACH_EXTEND)
+        breach_day = actual[actual[COL_DATE] == pd.Timestamp("2020-02-03")].iloc[0]
+
+        # Then
+        assert breach_day[COL_RANGE_LOW] > 800.0
+        assert breach_day[COL_EXTENDED_LOW] == pytest.approx(800.0, abs=PRICE_TOLERANCE)
+
+    def test_반등해도_그_달_안에서는_유지된다(self) -> None:
+        """
+        목적: 연장의 수명을 고정한다 — **재조정까지 유지**된다 (결정 C78)
+
+        Given: 2020-02 에 800 → 700 → 750 으로 움직인다 (마지막 날 반등)
+        When: B안으로 범위표를 만든다
+        Then: 셋째 날 연장 하단이 750 이 아니라 그 달 최저인 700 이다
+
+        Note:
+            매일 재계산하면 750 이 된다. 그러면 결정 C6 의
+            「다음 재조정에서 비활성화」가 죽은 문장이 되고, 반등 중 재하락 구간에서
+            같은 레벨을 다시 살 수 있는지가 달라진다
+        """
+        # When
+        actual = self._build(self._falling_series(), LOWER_BREACH_EXTEND)
+        month = actual[actual[COL_DATE].dt.to_period("M") == pd.Period("2020-02", freq="M")]
+
+        # Then
+        assert list(month[COL_EXTENDED_LOW].round(4)) == pytest.approx([800.0, 700.0, 700.0], abs=PRICE_TOLERANCE)
+
+    def test_재조정일에_초기화된다(self) -> None:
+        """
+        목적: 전월의 최저 종가가 이월되지 않음을 고정한다 (결정 C78)
+
+        Given: 2020-02 에 700원까지 내려갔다가 2020-03 에 1,000원으로 회복한다
+        When: B안으로 범위표를 만든다
+        Then: 2020-03 의 연장 하단이 정식 하단과 같다 — 700 이 남아 있지 않다
+        """
+        # When
+        actual = self._build(self._falling_series(), LOWER_BREACH_EXTEND)
+        month = actual[actual[COL_DATE].dt.to_period("M") == pd.Period("2020-03", freq="M")]
+
+        # Then
+        assert not month.empty
+        assert (month[COL_EXTENDED_LOW] == month[COL_RANGE_LOW]).all()
+
+    def test_연장_하단은_정식_하단보다_높아지지_않는다(self) -> None:
+        """
+        목적: 방향 불변조건을 고정한다 — 연장은 **아래로만** 간다
+
+        Given: 하단을 이탈하는 시계열
+        When: B안으로 범위표를 만든다
+        Then: 모든 날에서 연장 하단 ≤ 정식 하단이다
+        """
+        # When
+        actual = self._build(self._falling_series(), LOWER_BREACH_EXTEND)
+
+        # Then
+        assert (actual[COL_EXTENDED_LOW] <= actual[COL_RANGE_LOW]).all()
+
+    def test_미래를_참조하지_않는다(self, assert_stable_under_truncation: Callable[..., None]) -> None:
+        """
+        목적: look-ahead 감시 계약을 건다 (`tests/CLAUDE.md` 필수 테스트)
+
+        Given: 이탈이 들어 있는 시계열
+        When: 뒤를 잘라낸 입력과 전체 입력으로 각각 B안 범위표를 만든다
+        Then: 겹치는 날의 연장 하단이 같다
+
+        Note:
+            누적 최저 종가를 **그 달 전체**에서 구하면 이탈 이전 날의 연장 하단이
+            이미 내려가 있어 여기서 걸린다
+        """
+        assert_stable_under_truncation(
+            lambda frame: self._build(frame, LOWER_BREACH_EXTEND)[[COL_DATE, COL_EXTENDED_LOW]],
+            self._falling_series(),
+            41,
+            key_columns=[COL_DATE],
+            value_column=COL_EXTENDED_LOW,
+        )
+
+    def test_알_수_없는_하단_이탈_방식은_거부한다(self) -> None:
+        """
+        목적: 입력 검증 정책을 고정한다
+
+        Given: A 도 B 도 아닌 값
+        When: 범위표를 만든다
+        Then: ValueError
+
+        Note:
+            조용히 A안으로 떨어지면 **B안을 돌린 줄 알고 A안 결과를 읽게 된다**
+        """
+        with pytest.raises(ValueError, match="하단 이탈"):
+            self._build(self._falling_series(), "C")

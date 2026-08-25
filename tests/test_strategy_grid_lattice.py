@@ -12,12 +12,19 @@
 - **경계 판정은 레벨가 직접 비교로 한다.** `log` 추정만 쓰면 g=0.008 에서 k=-40~39 의
   경계 80개 중 28개가 한 칸 밀린다 — 레벨이 조용히 사라지면 슬롯 금액의 분모가 달라져
   전 구간의 자금 배분이 어긋난다
+- **가격을 감싸는 칸은 그 가격 이하의 가장 높은 레벨이다.** 하단 이탈 B안이 격자를
+  아래로 연장할 때 어디까지 켜는지를 이 정의가 정한다
 """
 
 import pytest
 
 from verify_lab.strategy.grid.constants import GRID_ANCHOR_PRICE
-from verify_lab.strategy.grid.lattice import active_level_indices, level_price, target_price
+from verify_lab.strategy.grid.lattice import (
+    active_level_indices,
+    enclosing_level_index,
+    level_price,
+    target_price,
+)
 
 # 손계산을 쉽게 하려고 앵커 100원·익절폭 25% 를 쓴다. 1.25 는 이진수로 정확히 표현되므로
 # 레벨 가격이 51.2 / 64 / 80 / 100 / 125 / 156.25 / 195.3125 처럼 딱 떨어진다
@@ -273,6 +280,120 @@ class TestActiveLevelIndices:
 
         # Then
         assert actual == []
+
+
+class TestEnclosingLevelIndex:
+    """가격을 감싸는 칸의 아래 레벨 번호를 고정한다 (결정 C79).
+
+    하단 이탈 B안은 「당일 종가를 포함하는 칸까지」 격자를 연장한다. 칸은 두 레벨 사이의
+    구간이므로 그 칸의 바닥, 즉 **종가 이하의 가장 높은 레벨**이 연장의 끝이다.
+    """
+
+    def test_레벨_사이_가격은_아래_레벨을_준다(self) -> None:
+        """
+        목적: `레벨_k ≤ 가격 < 레벨_(k+1)` 의 k 를 돌려줌을 고정한다
+
+        Given: 레벨 1(125원)과 레벨 2(156.25원) 사이의 가격
+        When: 감싸는 레벨을 구한다
+        Then: 아래 레벨인 1 이다
+        """
+        # Given
+        price = 130.0
+
+        # When
+        actual = enclosing_level_index(price, growth_rate=HAND_GROWTH, anchor=HAND_ANCHOR)
+
+        # Then
+        assert actual == 1
+
+    def test_레벨가와_정확히_같으면_그_레벨이다(self) -> None:
+        """
+        목적: 아래쪽 경계를 **포함**함을 고정한다
+
+        Given: 레벨 2 의 가격 그 자체
+        When: 감싸는 레벨을 구한다
+        Then: 2 다 — 한 칸 아래인 1 이 아니다
+        """
+        # Given
+        price = level_price(2, growth_rate=HAND_GROWTH, anchor=HAND_ANCHOR)
+
+        # When
+        actual = enclosing_level_index(price, growth_rate=HAND_GROWTH, anchor=HAND_ANCHOR)
+
+        # Then
+        assert actual == 2
+
+    def test_바로_아래_레벨보다_높고_그_위_레벨보다_낮다(self) -> None:
+        """
+        목적: 반환값의 불변조건을 가격으로 직접 고정한다
+
+        Given: 레벨가에 걸치지 않는 가격
+        When: 감싸는 레벨을 구한다
+        Then: `레벨_k ≤ 가격 < 레벨_(k+1)` 이 성립한다
+        """
+        # Given
+        price = 1234.56
+
+        # When
+        index = enclosing_level_index(price, growth_rate=SPEC_GROWTH)
+
+        # Then
+        assert level_price(index, growth_rate=SPEC_GROWTH) <= price
+        assert price < level_price(index + 1, growth_rate=SPEC_GROWTH)
+
+    @pytest.mark.parametrize("index", list(range(-40, 40)))
+    def test_모든_레벨가에서_log_추정이_밀리지_않는다(self, index: int) -> None:
+        """
+        목적: 부동소수점 보정을 고정한다 (결정 C22 와 같은 함정)
+
+        Given: 레벨가와 정확히 일치하는 가격을 k = -40 ~ 39 전부에서 만든다
+        When: 감싸는 레벨을 구한다
+        Then: 언제나 그 레벨 자신이다
+
+        Note:
+            `floor(log(가격/앵커) / log(1+g))` 만 쓰면 여기서 한 칸 밀린다.
+            연장 하단이 한 칸 밀리면 **켜지는 레벨 수가 달라져 슬롯 금액의 분모가 어긋나는데**
+            예외는 나지 않는다 — `active_level_indices` 가 밟았던 함정과 같다
+        """
+        # Given
+        price = level_price(index, growth_rate=SPEC_GROWTH)
+
+        # When
+        actual = enclosing_level_index(price, growth_rate=SPEC_GROWTH)
+
+        # Then
+        assert actual == index
+
+    def test_앵커보다_싼_가격은_음수_레벨을_준다(self) -> None:
+        """
+        목적: 엣지 케이스 — 음수 k 구간에서도 성립함을 고정한다
+
+        Given: 앵커(100원)의 절반보다 조금 높은 가격
+        When: 감싸는 레벨을 구한다
+        Then: 음수 레벨이며 가격 관계가 그대로 성립한다
+        """
+        # Given
+        price = 55.0
+
+        # When
+        actual = enclosing_level_index(price, growth_rate=HAND_GROWTH, anchor=HAND_ANCHOR)
+
+        # Then
+        assert actual < 0
+        assert level_price(actual, growth_rate=HAND_GROWTH, anchor=HAND_ANCHOR) <= price
+        assert price < level_price(actual + 1, growth_rate=HAND_GROWTH, anchor=HAND_ANCHOR)
+
+    @pytest.mark.parametrize("price", [0.0, -1.0])
+    def test_가격이_양수가_아니면_거부한다(self, price: float) -> None:
+        """
+        목적: 입력 검증 정책을 고정한다
+
+        Given: 0 이하의 가격
+        When: 감싸는 레벨을 구한다
+        Then: ValueError
+        """
+        with pytest.raises(ValueError, match="가격"):
+            enclosing_level_index(price, growth_rate=SPEC_GROWTH)
 
 
 class TestLatticeIsPermanent:

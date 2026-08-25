@@ -12,6 +12,8 @@
 - **총자산은 거래비용만큼만 줄어든다.** 비용률이 0이면 「전후 총자산이 같다」로 되돌아간다
 - **중복 슬롯이 없고 현금이 음수가 되지 않는다** (사양서 §15.2 #1·#12)
 - **재조정이 보유 슬롯을 건드리지 않는다** (§15.2 #7)
+- **하단 이탈 B안은 사는 곳을 늘릴 뿐 판정식을 바꾸지 않는다** — 이탈이 없는 시세에서
+  A안과 원 단위까지 같고, 이탈이 있어도 **매수와 매도가 같은 날 함께 일어나지 않는다** (결정 C86)
 """
 
 from collections.abc import Callable, Sequence
@@ -27,6 +29,8 @@ from verify_lab.strategy.grid.constants import (
     COL_CASH,
     COL_CLOSE_RATE,
     COL_COST,
+    COL_EXTENDED_LEVELS,
+    COL_HELD_INVESTED,
     COL_HELD_SLOTS,
     COL_PARKING_INTEREST,
     COL_RP_INTEREST,
@@ -38,6 +42,8 @@ from verify_lab.strategy.grid.constants import (
     DEFAULT_MIN_RANGE_WIDTH,
     DEFAULT_SLOT_CAP_RATIO,
     INITIAL_CAPITAL,
+    LOWER_BREACH_EXTEND,
+    LOWER_BREACH_HOLD,
 )
 from verify_lab.strategy.grid.engine import GridConfig, run_grid
 from verify_lab.strategy.grid.interest import InterestConfig, RateSeries
@@ -136,6 +142,7 @@ def _run(
     config: GridConfig | None = None,
     rp: float = 0.0,
     parking: float = 0.0,
+    lower_breach: str = LOWER_BREACH_HOLD,
 ):
     """손계산용 기본 인자로 엔진을 돌린다. 금리는 기본이 0이라 이자가 붙지 않는다."""
     settings = config or _config()
@@ -144,6 +151,7 @@ def _run(
         start_date=TRADING_START,
         lookback_years=settings.lookback_years,
         min_range_width=settings.min_range_width,
+        lower_breach=lower_breach,
     )
 
     return run_grid(
@@ -866,3 +874,243 @@ class TestSlotCapPassthrough:
 
         # Then
         assert actual.daily[COL_CASH].iloc[-1] > AMOUNT_TOLERANCE
+
+
+class TestLowerBreachExtension:
+    """하단 이탈 B안(격자 아래 연장)의 계약을 고정한다 (사양서 §7).
+
+    B안은 **설계 대안이지 파라미터가 아니다.** 그래서 고정할 것은 "성적이 좋아지는가"가 아니라
+    **"A안을 건드리지 않는가"** 와 **"판정식이 그대로인가"** 다.
+
+    워밍업 1,200원 12개월이면 최소폭 강제로 범위가 `1,095.45 ~ 1,314.53` 이 된다.
+    익절폭 5% 격자에서 활성 레벨은 k=2(1,102.5) ~ k=5(1,276.3) 네 개이고,
+    **종가 1,050원(k=1 의 레벨가)으로 떨어지면 그 아래로 한 칸이 더 켜진다.**
+    """
+
+    # 이탈 없이 오르내리는 경로. 두 값 모두 범위 하단 1,095.45 위에 있다
+    CALM_PATH = [1200.0, 1130.0, 1220.0, 1130.0, 1220.0, 1130.0, 1220.0]
+
+    # 하단(1,095.45)을 뚫고 k=1 의 레벨가(1,050)까지 내려가는 경로
+    BREACH_PATH = [1200.0, 1050.0, 1050.0, 1050.0]
+
+    def test_이탈이_없으면_A안과_원_단위까지_같다(self) -> None:
+        """
+        목적: B안 도입이 **A안의 결과를 흔들지 않음**을 고정한다 (회귀 안전망)
+
+        Given: 범위 하단을 한 번도 뚫지 않는 경로
+        When: A안과 B안으로 각각 돌린다
+        Then: 일별 총자산과 체결 건수가 정확히 같다
+
+        Note:
+            착수 전 실측에서 **ETF 기간(2017~)의 이탈일이 0일**이었다.
+            이 계약이 깨지면 261240·261250 성적이 조용히 달라진다
+        """
+        # Given
+        series = _daily_series(1200.0, self.CALM_PATH)
+
+        # When
+        hold = _run(series, lower_breach=LOWER_BREACH_HOLD)
+        extend = _run(series, lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then
+        assert extend.daily[COL_TOTAL_ASSETS].tolist() == pytest.approx(
+            hold.daily[COL_TOTAL_ASSETS].tolist(), abs=AMOUNT_TOLERANCE
+        )
+        assert len(extend.trades) == len(hold.trades)
+        assert extend.daily[COL_EXTENDED_LEVELS].sum() == 0
+
+    def test_이탈하면_당일_종가를_감싸는_레벨까지_켜진다(self) -> None:
+        """
+        목적: 연장의 경계를 실행 결과로 고정한다 (결정 C79)
+
+        Given: 종가가 1,050원(k=1 의 레벨가)까지 떨어지는 경로
+        When: A안과 B안으로 각각 돌린다
+        Then: B안의 활성 레벨이 A안보다 정확히 하나 많고, 그 하나가 연장분으로 집계된다
+        """
+        # Given
+        series = _daily_series(1200.0, self.BREACH_PATH)
+
+        # When
+        hold = _run(series, lower_breach=LOWER_BREACH_HOLD)
+        extend = _run(series, lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then — 둘째 날이 이탈일이다
+        assert int(hold.daily[COL_EXTENDED_LEVELS].iloc[1]) == 0
+        assert int(extend.daily[COL_EXTENDED_LEVELS].iloc[1]) == 1
+        assert int(extend.daily[COL_ACTIVE_LEVELS].iloc[1]) == int(hold.daily[COL_ACTIVE_LEVELS].iloc[1]) + 1
+
+    def test_연장_레벨을_실제로_산다(self) -> None:
+        """
+        목적: 연장이 **체결로 이어짐**을 고정한다
+
+        Given: 종가가 1,050원까지 떨어지는 경로
+        When: A안과 B안으로 각각 돌린다
+        Then: B안만 레벨 1 을 보유하며, 그 레벨의 매수 판정은 A안과 같은 하향 돌파다
+        """
+        # Given
+        series = _daily_series(1200.0, self.BREACH_PATH)
+
+        # When
+        hold = _run(series, lower_breach=LOWER_BREACH_HOLD)
+        extend = _run(series, lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then
+        assert 1 not in [slot.level_index for slot in hold.open_slots]
+        assert 1 in [slot.level_index for slot in extend.open_slots]
+        assert int(extend.daily[COL_BUY_COUNT].iloc[1]) == int(hold.daily[COL_BUY_COUNT].iloc[1]) + 1
+
+    def test_연장_레벨의_목표가가_바로_위_칸이다(self) -> None:
+        """
+        목적: 연장 레벨도 **격자 고정 목표가**를 따름을 고정한다 (사양서 §3.3·결정 C40)
+
+        Given: 연장 레벨 1 을 사고 그 위로 회복하는 경로
+        When: B안으로 돌린다
+        Then: 레벨 1 의 매도 목표가가 `레벨_2` 다
+        """
+        # Given — 1,050 에서 사고 1,102.5(레벨 2) 위로 올라가 팔린다
+        series = _daily_series(1200.0, [1200.0, 1050.0, 1110.0])
+
+        # When
+        actual = _run(series, lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then
+        sold = actual.trades[actual.trades["level_index"] == 1]
+        assert not sold.empty
+        assert sold["target_price"].iloc[0] == pytest.approx(
+            level_price(2, growth_rate=HAND_GROWTH), abs=AMOUNT_TOLERANCE
+        )
+
+    def test_연장이_꺼져도_보유_슬롯이_남는다(self) -> None:
+        """
+        목적: 재조정이 **미체결 레벨만** 토글함을 고정한다 (사양서 §4.3·§4.4)
+
+        Given: 한 달 안에서 연장 레벨을 사고, 다음 달에 이탈이 사라진다
+        When: B안으로 돌린다
+        Then: 다음 달에 연장 레벨 수가 0으로 돌아가지만 레벨 1 은 계속 보유 중이다
+
+        Note:
+            연장분이 꺼진다는 것은 **거기서 더 사지 않는다**는 뜻이지
+            들고 있던 것을 판다는 뜻이 아니다. 재조정으로 손익이 확정되면
+            사양서 §4.3 이 경계한 "인공 수익원"이 생긴다
+        """
+        # Given — 1월에 이탈해 레벨 1 을 사고, 2월 내내 1,100원(레벨 1 과 2 사이)에 머문다
+        days = pd.bdate_range(TRADING_START, periods=30)
+        path = [1200.0, 1050.0] + [1100.0] * (len(days) - 2)
+        series = pd.concat(
+            [_series([1200.0] * WARMUP_MONTHS), pd.DataFrame({COL_DATE: days, COL_VALUE: path})],
+            ignore_index=True,
+        )
+
+        # When
+        actual = _run(series, lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then
+        assert int(actual.daily[COL_EXTENDED_LEVELS].iloc[-1]) == 0
+        assert 1 in [slot.level_index for slot in actual.open_slots]
+
+    def test_연장이_기존_레벨의_슬롯을_줄인다(self) -> None:
+        """
+        목적: 사양서 §7 의 「매일 재정규화로 자동 축소 배분」을 실행 결과로 고정한다
+
+        Given: 이탈일에 여러 레벨이 함께 체결되는 경로. **슬롯 상한을 풀어 둔다** —
+               손계산용 익절폭 5% 는 활성 레벨이 네댓 개뿐이라 기본 상한 8% 가 전부 걸리고,
+               상한이 걸리면 재정규화가 슬롯이 아니라 잉여에만 나타난다
+        When: A안과 B안으로 각각 돌린다
+        Then: 두 안 모두 산 레벨의 투입액이 B안에서 더 작다
+
+        Note:
+            분모가 활성 레벨 전체(결정 C4)라 연장이 **기존 레벨의 슬롯까지 줄인다.**
+            B안의 「낮은 평균단가」와 이 축소가 서로 반대 방향으로 작용하므로
+            손익계산서를 둘로 나눠 봐야 한다
+        """
+        # Given
+        series = _daily_series(1200.0, self.BREACH_PATH)
+        config = _config(slot_cap_ratio=1.0)
+
+        # When
+        hold = _run(series, config=config, lower_breach=LOWER_BREACH_HOLD)
+        extend = _run(series, config=config, lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then
+        held_by_level = {slot.level_index: slot.invested for slot in hold.open_slots}
+        extended_by_level = {slot.level_index: slot.invested for slot in extend.open_slots}
+        shared = sorted(set(held_by_level) & set(extended_by_level))
+        assert shared, "두 안이 함께 산 레벨이 없어 비교가 성립하지 않습니다"
+        for index in shared:
+            assert extended_by_level[index] < held_by_level[index]
+
+    def test_보유_투입액이_곡선에_실린다(self) -> None:
+        """
+        목적: 사양서 §7 의 「소진 시점 평가손실률」을 낼 재료가 있음을 고정한다
+
+        Given: 이탈해 여러 슬롯을 보유하게 되는 경로
+        When: B안으로 돌린다
+        Then: 마지막 날의 보유 투입액이 미청산 슬롯 투입액 합계와 같다
+        """
+        # Given
+        series = _daily_series(1200.0, self.BREACH_PATH)
+
+        # When
+        actual = _run(series, lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then
+        assert float(actual.daily[COL_HELD_INVESTED].iloc[-1]) == pytest.approx(
+            actual.open_invested, abs=AMOUNT_TOLERANCE
+        )
+
+    def test_매수와_매도가_같은_날_함께_일어나지_않는다(self) -> None:
+        """
+        목적: **결정 C39 가 B안에서도 성립함**을 고정한다 (결정 C86)
+
+        Given: 하단을 여러 번 뚫고 되돌아오는 긴 경로
+        When: B안으로 돌린다
+        Then: 매수와 매도가 함께 난 거래일이 하나도 없다
+
+        Note:
+            증명 전제가 살아 있다 — 연장으로 켜진 레벨도 **하향 돌파로만** 사므로
+            매수는 여전히 종가 하락을 함의하고, 격자가 영구 고정이라 매도 조건도 그대로다.
+            여기서 걸리면 하루 안의 처리 순서(결정 C38)가 그때부터 결과를 바꾸기 시작한다
+        """
+        # Given
+        path = ([1200.0, 1120.0, 1040.0, 1000.0, 1080.0, 1160.0, 1240.0] * 9)[:60]
+        days = pd.bdate_range(TRADING_START, periods=len(path))
+        series = pd.concat(
+            [_series([1200.0] * WARMUP_MONTHS), pd.DataFrame({COL_DATE: days, COL_VALUE: path})],
+            ignore_index=True,
+        )
+
+        # When
+        actual = _run(series, config=_config(cost=PAID_COST), lower_breach=LOWER_BREACH_EXTEND)
+
+        # Then — 연장이 실제로 발동한 실행이어야 계약을 검사한 것이 된다
+        assert actual.daily[COL_EXTENDED_LEVELS].sum() > 0
+        both = (actual.daily[COL_BUY_COUNT] > 0) & (actual.daily[COL_SELL_COUNT] > 0)
+        assert not both.any(), f"매수와 매도가 함께 난 거래일: {actual.daily.loc[both, COL_DATE].tolist()}"
+
+    def test_뒤를_잘라도_겹치는_날의_총자산이_같다(self, assert_stable_under_truncation: Callable[..., None]) -> None:
+        """
+        목적: B안에도 look-ahead 감시 계약을 건다 (`tests/CLAUDE.md` 필수 테스트)
+
+        Given: 이탈이 들어 있는 긴 경로
+        When: 뒤를 잘라낸 시세와 전체 시세로 각각 B안을 돌린다
+        Then: 겹치는 날의 총자산이 같다
+
+        Note:
+            연장 하단은 **직전 재조정 이후의 누적 최저 종가**다. 그 달 전체에서 최저를 구하면
+            이탈 이전 날의 격자가 이미 늘어나 있어 여기서 걸린다
+        """
+        # Given
+        path = ([1200.0, 1120.0, 1040.0, 1000.0, 1080.0, 1160.0, 1240.0] * 9)[:60]
+        days = pd.bdate_range(TRADING_START, periods=len(path))
+        series = pd.concat(
+            [_series([1200.0] * WARMUP_MONTHS), pd.DataFrame({COL_DATE: days, COL_VALUE: path})],
+            ignore_index=True,
+        )
+
+        def run(frame: pd.DataFrame) -> pd.DataFrame:
+            return _run(frame, lower_breach=LOWER_BREACH_EXTEND).daily[[COL_DATE, COL_TOTAL_ASSETS]]
+
+        # When / Then
+        assert_stable_under_truncation(
+            run, series, len(series) - 10, key_columns=[COL_DATE], value_column=COL_TOTAL_ASSETS
+        )

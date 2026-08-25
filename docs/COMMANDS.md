@@ -243,6 +243,10 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --path 261250
 # 같은 기간 대조군 — ETF 와 견주려면 환전도 2017~ 로 돌린다
 poetry run python scripts/strategy/run_usdkrw_grid.py --start-date 2017-01-01
 
+# 하단 이탈 대응 — A / B 를 각각 돌려 나란히 놓는다 (파라미터가 아니라 설계 대안이다)
+poetry run python scripts/strategy/run_usdkrw_grid.py --lower-breach B
+poetry run python scripts/strategy/run_usdkrw_grid.py --lower-breach B --path 261240
+
 # 축별 대조 — 한 번에 한 축만 바꾼다
 poetry run python scripts/strategy/run_usdkrw_grid.py --lookback-years 7
 poetry run python scripts/strategy/run_usdkrw_grid.py --growth-rate 0.012
@@ -254,7 +258,21 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --rp-floor 0.70
 poetry run python scripts/strategy/run_usdkrw_grid.py --parking-floor 0.25
 ```
 
-- **거래비용과 이자·세금이 모두 반영됐습니다.** 하단 이탈은 A안이며 B안이 남았습니다
+- **거래비용·이자·세금과 하단 이탈 A/B 가 모두 반영됐습니다.** 남은 것은 성과 계층과 축별 검사입니다
+- **`--lower-breach` 는 하단 이탈 대응입니다.** A(기본)는 월평균 하단을 유지해 이탈하면 매수를
+  중단하고, B는 **당일 종가를 감싸는 레벨까지 격자를 아래로 연장**합니다. 사양서 §7 이 둘 다
+  실행해 비교하라고 규정했으므로 **하나를 고르지 않고 두 번 돌려 견줍니다** —
+  그래서 축별 단독 검사에 들어가지 않고 `--path` 처럼 실행을 가릅니다.
+  **B안의 연장은 다음 재조정까지 유지됩니다** (연장 하단 = 직전 재조정 이후 누적 최저 종가)
+- **B안이 발동하는 곳은 2005~2007 하나뿐입니다.** 기본 설정에서 연장 **327일 / 연속 구간 7회 /
+  최대 6칸**이고 2008년 이후 19년간 0일입니다. **ETF 기간(2017~)에는 어느 축에서도 0일**이라
+  261240·261250 은 **B안 결과가 A안과 원 단위까지 같습니다** — 차이가 없는 것이 결과입니다
+- **B안의 손익계산서**(환전 2005~): 평균단가 1,155.8346 → **1,147.7988**(0.695% 개선),
+  MDD −8.1039% → **−8.1039%**(0.000%p), 종료 총자산 178,494,280 → **179,714,437원**.
+  사양서 §7 의 실패 조건("평균단가 2% 개선에 MDD 8% 악화")에 걸리지 않습니다.
+  **다만 MDD 가 그대로인 것은 최대 낙폭 구간에 연장이 없었기 때문이고, 진짜 대가는
+  현금 소진이 2014-04-10 → 2007-10-31 로 6년 반 앞당겨진 것**입니다
+  ([spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.12)
 - **`--path` 는 집행 경로입니다.** 격자·범위·하향 돌파·목표가는 **어느 경로든 원달러 종가**로
   판정하고, 경로가 바꾸는 것은 집행 가격·비용·세금·보유 이자뿐입니다 —
   그래서 세 경로의 체결 건수가 같습니다
@@ -282,6 +300,9 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --parking-floor 0.25
   대조할 값이 아닙니다
 - 산출물은 `storage/results/<실행시각>_usdkrw_grid/` 에 `daily.csv`(일별 총자산 곡선),
   `trades.csv`(체결 내역), `summary.json` 으로 남습니다
+- `daily.csv` 의 **연장 레벨**은 그날 정식 하단 아래에 켜진 레벨 수이며 A안은 언제나 0 입니다.
+  **보유 투입액**은 보유 슬롯에 실제로 들어간 원화(비용 포함)라 **달러 평가액**과 짝지으면
+  그날의 미실현 평가손익률이 됩니다 — 사양서 §7 의 「소진 시점 평가손실률」이 이 둘로 계산됩니다
 - `daily.csv` 의 **총자산은 시가평가**라 미실현 평가손익이 들어 있습니다.
   `거래비용` 열은 그날 발생한 몫이며, **총자산은 그 비용만큼만 줄어듭니다** — 평가에는 비용이 걸리지 않습니다
 - `trades.csv` 의 **이탈 보너스**는 종가 체결 가정의 기여분이며 **비용 전 명목 기준**입니다.

@@ -12,6 +12,11 @@
 g=0.008 에서 k=-40~39 의 경계 80개 중 28개가 어긋나는 것을 실측했다. 레벨 하나가
 조용히 사라지면 슬롯 금액의 분모(활성 레벨 배수 합)가 달라져 전 구간의 자금 배분이 틀어지고,
 예외는 나지 않는다. 그래서 로그로 후보만 잡고 **레벨가를 직접 비교해 앞뒤로 보정**한다.
+
+**가격을 감싸는 칸도 이 계층이 답한다.** 하단 이탈 B안은 「당일 종가를 포함하는 칸까지」
+격자를 아래로 연장하는데(결정 C6), 칸은 두 레벨 사이의 구간이므로 그 칸의 바닥인
+**종가 이하의 가장 높은 레벨**이 연장의 끝이다. 범위 계층은 연장할 목표 가격만 내고
+어느 레벨이 켜지는지는 여기서 정해진다 — 범위 산출은 익절폭 g 와 무관해야 하기 때문이다.
 """
 
 import math
@@ -125,6 +130,45 @@ def active_level_indices(
         return []
 
     return list(range(lowest, highest + 1))
+
+
+def enclosing_level_index(price: float, *, growth_rate: float, anchor: float = GRID_ANCHOR_PRICE) -> int:
+    """가격을 포함하는 칸의 **아래쪽 레벨 번호**를 낸다.
+
+    `레벨_k ≤ price < 레벨_(k+1)` 인 k 이며, 가격이 레벨가와 정확히 같으면 **그 레벨 자신**이다.
+    하단 이탈 B안이 격자를 어디까지 늘릴지가 이 정의로 정해진다 (결정 C79).
+
+    **경계 판정을 로그 추정에 맡기지 않는다.** `floor(log(가격/앵커) / log(1+g))` 는 가격이
+    레벨가와 같을 때 한 칸 밀린다 — `active_level_indices` 가 밟았던 것과 같은 함정이며,
+    연장 하단이 한 칸 밀리면 켜지는 레벨 수가 달라져 **슬롯 금액의 분모가 조용히 어긋난다.**
+
+    Args:
+        price: 감싸는 칸을 찾을 가격 (양수)
+        growth_rate: 익절폭 g (비율)
+        anchor: 격자의 앵커 가격
+
+    Returns:
+        `레벨_k ≤ price < 레벨_(k+1)` 을 만족하는 레벨 번호 k
+
+    Raises:
+        ValueError: 가격이 양수가 아니거나, 익절폭·앵커가 유효하지 않은 경우
+    """
+    _validate_lattice(growth_rate=growth_rate, anchor=anchor)
+
+    if price <= 0:
+        raise ValueError(f"가격은 양수여야 합니다: {price}")
+
+    # 1. 로그로 후보를 잡는다. 경계에서 한 칸 밀릴 수 있으므로 **추정일 뿐**이다
+    index = math.floor(math.log(price / anchor) / math.log1p(growth_rate))
+
+    # 2. 레벨가를 직접 비교해 보정한다. 두 루프의 방향이 반대라 순서대로 돌리면
+    #    `레벨(index) <= price < 레벨(index+1)` 이 성립한 채로 끝난다
+    while level_price(index + 1, growth_rate=growth_rate, anchor=anchor) <= price:
+        index += 1
+    while level_price(index, growth_rate=growth_rate, anchor=anchor) > price:
+        index -= 1
+
+    return index
 
 
 def _validate_lattice(*, growth_rate: float, anchor: float) -> None:

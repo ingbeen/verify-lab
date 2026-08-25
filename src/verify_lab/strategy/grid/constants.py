@@ -68,6 +68,27 @@ COL_RAW_RANGE_HIGH: Final = "RawRangeHigh"
 COL_RANGE_WIDENED: Final = "RangeWidened"
 COL_REBALANCED: Final = "Rebalanced"
 
+# 격자를 어디까지 아래로 늘릴지의 **목표 가격**. A안이면 정식 하단과 같고, B안이면
+# 직전 재조정 이후 관측된 최저 종가까지 내려간다. **어느 레벨이 켜지는지는 격자 계층이 정하며**
+# 이 계층은 가격만 낸다 (결정 C82) — 범위 산출은 익절폭 g 와 무관해야 하기 때문이다
+COL_EXTENDED_LOW: Final = "ExtendedLow"
+
+
+# ============================================================
+# 하단 이탈 대응
+# ============================================================
+
+# 사양서 §7 의 두 안. **파라미터가 아니라 설계 대안**이라 하나를 고르지 않고 **둘 다 실행해 비교**한다 —
+# §12 의 파라미터 표에서도 하단 이탈만 기본값이 「—」이고 검사 방식이 「A / B 병행」이다.
+# 그래서 축별 단독 검사 25회에 들어가지 않고 `--path` 처럼 실행을 가른다 (결정 C83)
+LOWER_BREACH_HOLD: Final = "A"
+LOWER_BREACH_EXTEND: Final = "B"
+
+LOWER_BREACH_CHOICES: Final = (LOWER_BREACH_HOLD, LOWER_BREACH_EXTEND)
+
+# 기본은 A안이다. 지금까지 나온 성적이 전부 A안이라 기본값을 옮기면 **과거 결과와 비교가 끊긴다**
+DEFAULT_LOWER_BREACH: Final = LOWER_BREACH_HOLD
+
 
 # ============================================================
 # 자금 배분
@@ -249,6 +270,15 @@ COL_GAIN_TAX: Final = "GainTax"
 # 집행 가격. 환전 경로는 판정 가격(원달러 종가)과 같고 ETF 경로는 수정 종가다
 COL_EXEC_PRICE: Final = "ExecPrice"
 
+# 그날 하단 이탈로 **정식 하단 아래에 켜진 레벨 수**. A안은 언제나 0 이다.
+# 사양서 §7 이 B안의 필수 측정 항목으로 「연장 발생 횟수 / 최대 연장 칸 수」를 요구한다
+COL_EXTENDED_LEVELS: Final = "ExtendedLevels"
+
+# 그날 마감 시점 보유 슬롯에 들어가 있는 원화 합계 (**비용 포함**).
+# 평가액(`COL_USD_VALUE`)과 짝을 이뤄 **미실현 평가손익률**을 만든다 —
+# 사양서 §7 이 요구하는 「소진 시점의 평가손실률」이 이 둘로만 계산된다
+COL_HELD_INVESTED: Final = "HeldInvested"
+
 
 # ============================================================
 # 표시용 레이블 (일별 곡선)
@@ -273,6 +303,8 @@ DISPLAY_ACCRUED_INTEREST: Final = "미인출이자"
 DISPLAY_TAX_PAID: Final = "원천징수"
 DISPLAY_GAIN_TAX: Final = "매매과세"
 DISPLAY_EXEC_PRICE: Final = "집행가"
+DISPLAY_EXTENDED_LEVELS: Final = "연장 레벨"
+DISPLAY_HELD_INVESTED: Final = "보유 투입액"
 DISPLAY_CASH: Final = "원화현금"
 DISPLAY_USD_VALUE: Final = "달러 평가액"
 DISPLAY_TOTAL_ASSETS: Final = "총자산"
