@@ -16,6 +16,7 @@ from verify_lab.common_constants import COL_DATE, PRICE_DECIMALS, SERIES_DIR
 from verify_lab.data.loader import load_series_csv
 from verify_lab.report.constants import DATE_FORMAT
 from verify_lab.strategy.grid.constants import (
+    COL_ACCRUED_INTEREST,
     COL_ACTIVE_LEVELS,
     COL_BLOCKED_COUNT,
     COL_BUY_COUNT,
@@ -23,12 +24,18 @@ from verify_lab.strategy.grid.constants import (
     COL_CLOSE_RATE,
     COL_COST,
     COL_HELD_SLOTS,
+    COL_PARKING_INTEREST,
+    COL_PARKING_RATE,
     COL_RANGE_HIGH,
     COL_RANGE_LOW,
     COL_REBALANCED,
+    COL_RP_INTEREST,
+    COL_RP_RATE,
     COL_SELL_COUNT,
+    COL_TAX_PAID,
     COL_TOTAL_ASSETS,
     COL_USD_VALUE,
+    DISPLAY_ACCRUED_INTEREST,
     DISPLAY_ACTIVE_LEVELS,
     DISPLAY_BLOCKED_COUNT,
     DISPLAY_BUY_COST,
@@ -47,19 +54,26 @@ from verify_lab.strategy.grid.constants import (
     DISPLAY_INVESTED,
     DISPLAY_LEVEL_INDEX,
     DISPLAY_LEVEL_PRICE,
+    DISPLAY_PARKING_INTEREST,
+    DISPLAY_PARKING_RATE,
     DISPLAY_PROCEEDS,
     DISPLAY_RANGE_HIGH,
     DISPLAY_RANGE_LOW,
     DISPLAY_REALIZED,
     DISPLAY_REBALANCED,
+    DISPLAY_RP_INTEREST,
+    DISPLAY_RP_RATE,
     DISPLAY_SELL_COST,
     DISPLAY_SELL_COUNT,
     DISPLAY_TARGET_PRICE,
+    DISPLAY_TAX_PAID,
     DISPLAY_TOTAL_ASSETS,
     DISPLAY_USD_VALUE,
+    INTEREST_TAX_RATE,
     TRADING_START_DATE,
 )
 from verify_lab.strategy.grid.engine import GridConfig, GridResult, run_grid
+from verify_lab.strategy.grid.interest import build_rate_series
 from verify_lab.strategy.grid.price_range import build_daily_ranges
 from verify_lab.utils.logger import get_logger
 
@@ -68,8 +82,15 @@ logger = get_logger(__name__)
 # 판정·체결·평가의 기준 가격. 매매기준율이 아니라 **정규장 종가**다 (결정 C17·C19)
 CLOSE_SERIES_FILENAME = "USDKRW_CLOSE.csv"
 
+# 실수령 금리의 원지표. 달러는 미국 3개월 T-bill, 원화는 CD 91일물이다 (사양서 §11.1)
+TBILL_SERIES_FILENAME = "DTB3.csv"
+CD91_SERIES_FILENAME = "CD91.csv"
+
 # 자본금은 정수 원 단위로 저장한다 (`.claude/rules/python.md` 반올림 규칙표)
 CAPITAL_DECIMALS = 0
+
+# 금리는 연 % 로 싣는다. 원지표가 소수 둘째 자리까지라 셋째 자리는 하한이 만든 값에서만 생긴다
+RATE_DECIMALS = 3
 
 # ============================================================
 # summary.json 키
@@ -86,7 +107,12 @@ KEY_DAILY = "daily"
 KEY_TRADES = "trades"
 
 # 산출물만 보고는 알 수 없는 실행 조건
-NOTE_SCOPE = "환전 경로 단독이며 거래비용만 반영됐다. 달러 RP·원화 파킹 이자와 세금, ETF 2종은 다음 단계다"
+NOTE_SCOPE = "환전 경로 단독이다. 거래비용과 이자·세금이 반영됐으며 ETF 2종과 하단 이탈 B안은 다음 단계다"
+NOTE_INTEREST = "이자는 세전으로 매일 총자산에 쌓이고 다음 달 첫 거래일에 인출하며 그때 15.4% 를 원천징수한다. " "RP 이자일수는 보유일수 − 1 이고 원화 파킹은 전일 잔고에 매일 붙는다"
+NOTE_INTEREST_PATH = "월말 RP 이자 환전에는 환전 스프레드만 붙고 슬리피지는 붙지 않는다. " "슬리피지는 돌파 판정과 종가의 차이를 흡수한 값인데 이자 인출은 정해진 날의 정기 환전이다"
+NOTE_RATE_SOURCE = (
+    "금리는 원지표가 아니라 실수령 모델이다. 달러는 max(T-bill − 계단 스프레드, 하한), " "원화는 max(CD91 − 0.30%p, 하한)이며 원지표가 없는 날은 전일값을 이월했다"
+)
 NOTE_COST = "거래비용은 환전 스프레드와 슬리피지의 편도 합계이며 슬롯 금액(예산) 안에서 나간다. " "총자산은 그 비용만큼만 줄어들고 평가에는 비용을 적용하지 않는다"
 NOTE_OPTIMISTIC = (
     "21년 백테스트에 오늘의 환전 우대율(90%)을 소급 적용하고 있다. 토스증권은 2021년 출범이라 " "2005~2020년에 이 조건이 존재할 수 없었으므로 환전 경로 비용은 전 기간에 걸쳐 낙관적이다"
@@ -109,6 +135,12 @@ DAILY_LABELS = {
     COL_SELL_COUNT: DISPLAY_SELL_COUNT,
     COL_BLOCKED_COUNT: DISPLAY_BLOCKED_COUNT,
     COL_COST: DISPLAY_COST,
+    COL_RP_RATE: DISPLAY_RP_RATE,
+    COL_PARKING_RATE: DISPLAY_PARKING_RATE,
+    COL_RP_INTEREST: DISPLAY_RP_INTEREST,
+    COL_PARKING_INTEREST: DISPLAY_PARKING_INTEREST,
+    COL_ACCRUED_INTEREST: DISPLAY_ACCRUED_INTEREST,
+    COL_TAX_PAID: DISPLAY_TAX_PAID,
     COL_CASH: DISPLAY_CASH,
     COL_USD_VALUE: DISPLAY_USD_VALUE,
     COL_TOTAL_ASSETS: DISPLAY_TOTAL_ASSETS,
@@ -175,8 +207,16 @@ def run_usdkrw_grid(config: GridConfig, *, start_date: str = TRADING_START_DATE)
         min_range_width=config.min_range_width,
     )
 
-    # 2. 엔진. 하향 돌파 판정에 직전 거래일 종가가 필요하므로 전 기간 시세를 함께 넘긴다
-    result = run_grid(series, ranges, config=config)
+    # 2. 금리. **마스터 달력은 원달러 고시일**이며 원지표가 없는 날은 전일값을 이월한다 (결정 C14)
+    rates = build_rate_series(
+        pd.DatetimeIndex(ranges[COL_DATE]),
+        tbill=load_series_csv(SERIES_DIR / TBILL_SERIES_FILENAME),
+        cd91=load_series_csv(SERIES_DIR / CD91_SERIES_FILENAME),
+        config=config.interest,
+    )
+
+    # 3. 엔진. 하향 돌파 판정에 직전 거래일 종가가 필요하므로 전 기간 시세를 함께 넘긴다
+    result = run_grid(series, ranges, config=config, rates=rates)
 
     return GridOutputs(
         daily=_display_daily(result.daily),
@@ -203,6 +243,12 @@ def _display_daily(daily: pd.DataFrame) -> pd.DataFrame:
             COL_RANGE_LOW: PRICE_DECIMALS,
             COL_RANGE_HIGH: PRICE_DECIMALS,
             COL_COST: CAPITAL_DECIMALS,
+            COL_RP_RATE: RATE_DECIMALS,
+            COL_PARKING_RATE: RATE_DECIMALS,
+            COL_RP_INTEREST: CAPITAL_DECIMALS,
+            COL_PARKING_INTEREST: CAPITAL_DECIMALS,
+            COL_ACCRUED_INTEREST: CAPITAL_DECIMALS,
+            COL_TAX_PAID: CAPITAL_DECIMALS,
             COL_CASH: CAPITAL_DECIMALS,
             COL_USD_VALUE: CAPITAL_DECIMALS,
             COL_TOTAL_ASSETS: CAPITAL_DECIMALS,
@@ -272,6 +318,10 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
     buy_cost = float(trades["buy_cost"].sum()) if not trades.empty else 0.0
     sell_cost = float(trades["sell_cost"].sum()) if not trades.empty else 0.0
 
+    rp_interest = float(daily[COL_RP_INTEREST].sum())
+    parking_interest = float(daily[COL_PARKING_INTEREST].sum())
+    tax_paid = float(daily[COL_TAX_PAID].sum())
+
     return {
         KEY_STRATEGY: "usdkrw_grid",
         KEY_PARAMETERS: {
@@ -284,6 +334,9 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
             "exchange_spread_rate": config.cost.exchange_spread_rate,
             "slippage_rate": config.cost.slippage_rate,
             "round_trip_cost_rate": round(2.0 * (config.cost.exchange_spread_rate + config.cost.slippage_rate), 6),
+            "rp_floor_rate": config.interest.rp_floor_rate,
+            "parking_floor_rate": config.interest.parking_floor_rate,
+            "interest_tax_rate": INTEREST_TAX_RATE,
             "anchor": config.anchor,
             "start_date": start_date,
         },
@@ -302,6 +355,15 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
             "cost_total": round(cost_total, CAPITAL_DECIMALS),
             "buy_cost_total": round(buy_cost, CAPITAL_DECIMALS),
             "sell_cost_total": round(sell_cost, CAPITAL_DECIMALS),
+            "rp_interest_total": round(rp_interest, CAPITAL_DECIMALS),
+            "parking_interest_total": round(parking_interest, CAPITAL_DECIMALS),
+            "interest_total": round(rp_interest + parking_interest, CAPITAL_DECIMALS),
+            "tax_paid_total": round(tax_paid, CAPITAL_DECIMALS),
+            "open_accrued_interest": round(result.open_accrued_interest, CAPITAL_DECIMALS),
+            "rp_rate_mean": round(float(daily[COL_RP_RATE].mean()), RATE_DECIMALS),
+            "parking_rate_mean": round(float(daily[COL_PARKING_RATE].mean()), RATE_DECIMALS),
+            "rp_rate_filled_days": result.rp_filled,
+            "parking_rate_filled_days": result.parking_filled,
             "grid_excess_total": round(grid_excess, CAPITAL_DECIMALS),
             "grid_excess_share_of_realized": round(grid_excess / realized, 6) if realized else None,
             "open_slots": int(len(result.open_slots)),
@@ -316,5 +378,16 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
             "held_slots_max": int(daily[COL_HELD_SLOTS].max()),
         },
         KEY_ROW_COUNTS: {KEY_DAILY: int(len(daily)), KEY_TRADES: int(len(trades))},
-        KEY_NOTES: [NOTE_SCOPE, NOTE_COST, NOTE_PRICE, NOTE_UNREALISED, NOTE_OPEN, NOTE_EXCESS, NOTE_OPTIMISTIC],
+        KEY_NOTES: [
+            NOTE_SCOPE,
+            NOTE_COST,
+            NOTE_INTEREST,
+            NOTE_INTEREST_PATH,
+            NOTE_RATE_SOURCE,
+            NOTE_PRICE,
+            NOTE_UNREALISED,
+            NOTE_OPEN,
+            NOTE_EXCESS,
+            NOTE_OPTIMISTIC,
+        ],
     }

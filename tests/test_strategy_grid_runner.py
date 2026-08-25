@@ -25,6 +25,7 @@ from verify_lab.strategy.grid.constants import (
 )
 from verify_lab.strategy.grid.engine import DAILY_COLUMNS, TRADE_COLUMNS, GridConfig, GridResult
 from verify_lab.strategy.grid.execution import Slot
+from verify_lab.strategy.grid.interest import InterestConfig
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.runner import (
     DAILY_LABELS,
@@ -53,6 +54,7 @@ def _config() -> GridConfig:
         slot_cap_ratio=0.08,
         initial_capital=INITIAL_CAPITAL,
         cost=CostConfig(exchange_spread_rate=0.0008, slippage_rate=0.0010),
+        interest=InterestConfig(rp_floor_rate=0.40, parking_floor_rate=0.50),
     )
 
 
@@ -71,6 +73,13 @@ def _daily() -> pd.DataFrame:
                 "BuyCount": 0,
                 "SellCount": 0,
                 "BlockedCount": 0,
+                "Cost": 0.0,
+                "RpRate": 1.5,
+                "ParkingRate": 2.5,
+                "RpInterest": 0.0,
+                "ParkingInterest": 0.0,
+                "AccruedInterest": 0.0,
+                "TaxPaid": 0.0,
                 "Cash": 100_000_000.6,
                 "UsdValue": 0.0,
                 "TotalAssets": 100_000_000.6,
@@ -86,6 +95,13 @@ def _daily() -> pd.DataFrame:
                 "BuyCount": 1,
                 "SellCount": 0,
                 "BlockedCount": 0,
+                "Cost": 7_200.7,
+                "RpRate": 1.5,
+                "ParkingRate": 2.5,
+                "RpInterest": 0.0,
+                "ParkingInterest": 6_849.3,
+                "AccruedInterest": 6_849.3,
+                "TaxPaid": 0.0,
                 "Cash": 96_000_000.0,
                 "UsdValue": 4_000_000.4,
                 "TotalAssets": 100_000_000.4,
@@ -262,7 +278,7 @@ class TestBuildMeta:
 
         Given: 실행 결과와 설정
         When: 요약을 만든다
-        Then: 다섯 파라미터와 초기 자본금·비용·앵커·시작일이 담겨 있다
+        Then: 다섯 파라미터와 초기 자본금·비용·이자·앵커·시작일이 담겨 있다
         """
         # When
         actual = _build_meta(_result(), config=_config(), start_date="2005-01-01")
@@ -278,6 +294,9 @@ class TestBuildMeta:
             "exchange_spread_rate",
             "slippage_rate",
             "round_trip_cost_rate",
+            "rp_floor_rate",
+            "parking_floor_rate",
+            "interest_tax_rate",
             "anchor",
             "start_date",
         }

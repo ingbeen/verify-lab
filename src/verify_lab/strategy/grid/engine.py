@@ -3,12 +3,19 @@
 조각 넷(격자·범위·배분·체결)을 하루씩 돌려 **일별 총자산 곡선**을 낸다.
 그 곡선이 모든 매매법의 공통 산출물이며, 표준 지표는 곡선 하나만 받는 함수가 계산한다.
 
-하루의 처리 순서는 **매도 → 총자산 평가 → 슬롯 금액 → 매수** 다. 매도로 나온 현금을 같은 날
-매수에 쓸 수 있어야 자연스럽기 때문인데, **한 거래일에 매수와 매도가 함께 일어날 수 없어**
-순서가 결과를 바꾸지는 않는다 — 매수는 종가 하락을, 매도는 종가 상승을 각각 함의한다.
+하루의 처리 순서는 **이자 → 월말 정산 → 매도 → 총자산 평가 → 슬롯 금액 → 매수** 다.
+매도로 나온 현금을 같은 날 매수에 쓸 수 있어야 자연스럽기 때문인데, **한 거래일에 매수와 매도가
+함께 일어날 수 없어** 그 둘의 순서가 결과를 바꾸지는 않는다 — 매수는 종가 하락을, 매도는 종가
+상승을 각각 함의한다.
+
+**이자가 맨 앞에 오는 것은 이자일수 −1 때문이다.** 사양서 §9.1 의 「이자일수 = 보유일수 − 1」은
+매도일을 알아야 계산되는데, 그러면 미래를 보게 된다. 이자를 매도·매수보다 먼저 얹고 각 거래일에
+`[전거래일, 오늘) 중 매수일을 뺀 날 수` 만큼만 주면, 매수는 이자 뒤에 일어나 매수 당일이 빠지고
+매도도 이자 뒤라 매도 당일이 빠진다. 합계가 정확히 `(매도일 − 매수일) − 1` 이 되며 **미래를
+보지 않는다.**
 
 ```
-총자산 = 원화현금 + Σ(슬롯 보유 단위 × 당일 종가)
+총자산 = 원화현금 + Σ(슬롯 보유 단위 × 당일 종가) + 미인출 이자
 ```
 
 **미실현 평가손익을 반드시 반영한다.** 실현손익만 집계하면 그리드 곡선은 **구조적으로 항상
@@ -23,12 +30,17 @@
 **평가에는 비용을 적용하지 않는다** (사양서 §8). 매일 청산 비용을 차감하면 미실현 손실이
 과대계상돼 MDD 가 오염된다. 비용은 **실제 체결 시점에만** 발생한다.
 
-**이 계층은 이자와 세금을 다루지 않는다.** 달러 RP·원화 파킹 이자와 원천징수는 아직 없다.
-사양서 §17.1 은 대기자금 이자를 가장 큰 수익원으로 잡았으므로 그것이 붙으면
-곡선의 성격이 달라진다.
+**이자는 세전으로 매일 쌓이고 세금은 지급 시 뗀다** (결정 C7). 달러 RP 이자는 달러로,
+원화 파킹 이자는 원화로 쌓이며 **총자산에는 즉시 반영**된다 — 월말에만 반영하면 곡선에 계단이
+생겨 MDD·Sharpe 가 왜곡된다. 쌓인 이자는 **다음 달 첫 거래일**에 인출되고 그때 15.4% 를
+원천징수하며, RP 쪽은 환전을 거치되 **슬리피지는 붙지 않는다** — 돌파 판정이 아니라
+정해진 날의 정기 환전이라 「15:20 판정과 종가의 차이」라는 성격이 없다.
+
+**미인출 이자는 매수에 쓸 수 없다.** 총자산에는 들어가지만 현금이 아니므로 슬롯 금액의
+분모는 키우고 실제 체결 여력은 키우지 않는다 — 실제 계좌에서도 미지급 이자는 그렇다.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pandas as pd
 
@@ -36,6 +48,7 @@ from verify_lab.common_constants import COL_DATE, COL_VALUE
 from verify_lab.data.loader import validate_market_frame
 from verify_lab.strategy.grid.allocation import allocate_slots
 from verify_lab.strategy.grid.constants import (
+    COL_ACCRUED_INTEREST,
     COL_ACTIVE_LEVELS,
     COL_BLOCKED_COUNT,
     COL_BUY_COUNT,
@@ -43,15 +56,24 @@ from verify_lab.strategy.grid.constants import (
     COL_CLOSE_RATE,
     COL_COST,
     COL_HELD_SLOTS,
+    COL_PARKING_INTEREST,
+    COL_PARKING_RATE,
     COL_RANGE_HIGH,
     COL_RANGE_LOW,
     COL_REBALANCED,
+    COL_RP_INTEREST,
+    COL_RP_RATE,
     COL_SELL_COUNT,
+    COL_TAX_PAID,
     COL_TOTAL_ASSETS,
     COL_USD_VALUE,
+    DAYS_PER_YEAR,
     GRID_ANCHOR_PRICE,
+    INTEREST_TAX_RATE,
+    PERCENT_TO_RATE,
 )
 from verify_lab.strategy.grid.execution import SellOrder, Slot, plan_buys, plan_sells
+from verify_lab.strategy.grid.interest import InterestConfig, RateSeries
 from verify_lab.strategy.grid.lattice import active_level_indices, level_price
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.paths.exchange import ExchangePath
@@ -75,6 +97,12 @@ DAILY_COLUMNS = [
     COL_SELL_COUNT,
     COL_BLOCKED_COUNT,
     COL_COST,
+    COL_RP_RATE,
+    COL_PARKING_RATE,
+    COL_RP_INTEREST,
+    COL_PARKING_INTEREST,
+    COL_ACCRUED_INTEREST,
+    COL_TAX_PAID,
     COL_CASH,
     COL_USD_VALUE,
     COL_TOTAL_ASSETS,
@@ -118,6 +146,7 @@ class GridConfig:
         slot_cap_ratio: 슬롯 상한 (비율)
         initial_capital: 초기 자본금 (원)
         cost: 거래비용 파라미터
+        interest: 이자 파라미터
         anchor: 격자의 앵커 가격
     """
 
@@ -128,6 +157,7 @@ class GridConfig:
     slot_cap_ratio: float
     initial_capital: float
     cost: CostConfig
+    interest: InterestConfig
     anchor: float = GRID_ANCHOR_PRICE
 
     def __post_init__(self) -> None:
@@ -152,6 +182,10 @@ class GridResult:
         open_invested: 미청산 슬롯에 투입된 원화
         open_value: 미청산 슬롯의 마지막 날 시가평가액
         open_unrealised: 미청산 평가손익 (`open_value − open_invested`)
+        open_accrued_interest: 종료 시점에 아직 인출되지 않은 이자 (원, **세전**).
+            결정 C8 의 세전 평가와 같은 정신이며 총자산에는 이미 들어 있다
+        rp_filled: T-bill 원지표가 없어 전일값을 이월한 거래일 수
+        parking_filled: CD91 원지표가 없어 전일값을 이월한 거래일 수
     """
 
     daily: pd.DataFrame
@@ -160,9 +194,18 @@ class GridResult:
     open_invested: float
     open_value: float
     open_unrealised: float = field(default=0.0)
+    open_accrued_interest: float = field(default=0.0)
+    rp_filled: int = field(default=0)
+    parking_filled: int = field(default=0)
 
 
-def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) -> GridResult:
+def run_grid(
+    series: pd.DataFrame,
+    ranges: pd.DataFrame,
+    *,
+    config: GridConfig,
+    rates: RateSeries,
+) -> GridResult:
     """그리드를 하루씩 돌려 일별 총자산 곡선과 체결 내역을 낸다.
 
     **전 기간 시세를 넘긴다.** 매매 시작일의 하향 돌파 판정에 직전 거래일 종가가 필요한데,
@@ -172,12 +215,14 @@ def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) 
         series: 일별 단일 값 시계열 **전 기간** (`load_series_csv` 가 돌려준 형태)
         ranges: 거래일별 범위표 (`build_daily_ranges` 가 돌려준 형태)
         config: 실행 파라미터
+        rates: `ranges` 의 거래일에 맞춘 실수령 금리 계열
 
     Returns:
         일별 곡선·체결 내역·미청산 슬롯
 
     Raises:
-        ValueError: 입력이 비었거나, 컬럼이 없거나, 범위표의 거래일이 시세에 없는 경우
+        ValueError: 입력이 비었거나, 컬럼이 없거나, 범위표의 거래일이 시세에 없거나,
+            금리 계열이 범위표와 어긋나는 경우
         RuntimeError: 현금이 음수가 되거나 중복 슬롯이 생기거나 회계 항등식이 깨진 경우
     """
     validate_market_frame(series, [COL_DATE, COL_VALUE])
@@ -192,22 +237,94 @@ def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) 
     if positions[0] == 0:
         raise ValueError("매매 시작일 앞에 거래일이 없어 하향 돌파를 판정할 수 없습니다 — 전 기간 시세를 넘겨야 합니다")
 
+    if len(rates.rp) != len(ranges) or len(rates.parking) != len(ranges):
+        raise ValueError(
+            f"금리 계열의 길이가 범위표와 다릅니다: 범위표 {len(ranges):,}행, " f"RP {len(rates.rp):,}행, 파킹 {len(rates.parking):,}행"
+        )
+
     path = ExchangePath(config.cost)
+
+    # 월말 이자 환전에는 **슬리피지가 붙지 않는다.** 슬리피지는 사양서 §6.6 의
+    # 「15:20 판정과 종가의 차이」를 흡수한 값인데, 이자 인출은 돌파 판정이 아니라
+    # 정해진 날에 하는 정기 환전이라 그 성격이 없다
+    interest_path = ExchangePath(replace(config.cost, slippage_rate=0.0))
 
     cash = config.initial_capital
     held: dict[int, Slot] = {}
     rows: list[dict[str, object]] = []
     trades: list[dict[str, object]] = []
 
+    # 아직 인출되지 않은 세전 이자. RP 는 달러로, 파킹은 원화로 쌓인다
+    accrued_rp_usd = 0.0
+    accrued_parking = 0.0
+
+    # 파킹 이자의 기준 잔고는 **전 거래일 마감 원화현금**이다. 첫날은 이자가 없다
+    previous_cash = 0.0
+
     for offset, (_, day) in enumerate(ranges.iterrows()):
         date = pd.Timestamp(day[COL_DATE])
         position = int(positions[offset])
         close = float(closes.iloc[position])
         previous_close = float(closes.iloc[position - 1])
+        previous_date = pd.Timestamp(closes.index[position - 1])
+        elapsed_days = int((date - previous_date).days)
 
-        # 1. 매도. 목표가에 닿은 슬롯을 전부 청산하고 현금을 회수한다.
+        rp_rate_pct = float(rates.rp.iloc[offset])
+        parking_rate_pct = float(rates.parking.iloc[offset])
+
+        # 1. 이자. **매도·매수보다 먼저**라야 이자일수 −1 이 미래를 보지 않고 성립한다.
+        #    매수는 이자 뒤에 일어나 매수 당일이 빠지고, 매도도 이자 뒤라 매도 당일이 빠진다
+        opening_total = (
+            cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+        )
+
+        rp_interest_usd = (
+            sum(
+                slot.units * (rp_rate_pct / PERCENT_TO_RATE) * _interest_days(slot, date=date, previous=previous_date)
+                for slot in held.values()
+            )
+            / DAYS_PER_YEAR
+        )
+        parking_interest = previous_cash * (parking_rate_pct / PERCENT_TO_RATE) * elapsed_days / DAYS_PER_YEAR
+
+        accrued_rp_usd += rp_interest_usd
+        accrued_parking += parking_interest
+
+        after_interest = (
+            cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+        )
+        _assert_balance_change(
+            opening_total, after_interest, change=rp_interest_usd * close + parking_interest, stage="이자", date=date
+        )
+
+        # 2. 월말 정산. **다음 달 첫 거래일**에 전월분을 인출하고 15.4% 를 원천징수한다.
+        #    「마지막 거래일」로 잡으면 그 판정에 다음 행이 필요해 미래를 보게 된다
+        tax_paid = 0.0
+        interest_cost = 0.0
+        if date.year != previous_date.year or date.month != previous_date.month:
+            liquidation = interest_path.liquidate(accrued_rp_usd, price=close)
+            rp_gross = liquidation.notional
+            interest_cost = liquidation.cost
+
+            # 세금은 **세전 이자**에 붙는다. 환전 비용은 과세 대상이 아니라 별도 지출이다
+            tax_paid = (rp_gross + accrued_parking) * INTEREST_TAX_RATE
+            cash += rp_gross - interest_cost + accrued_parking - tax_paid
+
+            accrued_rp_usd = 0.0
+            accrued_parking = 0.0
+
+            after_settlement = (
+                cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+            )
+            _assert_balance_change(
+                after_interest, after_settlement, change=-(tax_paid + interest_cost), stage="이자 정산", date=date
+            )
+
+        # 3. 매도. 목표가에 닿은 슬롯을 전부 청산하고 현금을 회수한다.
         #    매도 전 총자산을 먼저 재 두는 것은 감소분이 매도 비용과 같은지 검사하기 위해서다
-        opening_total = cash + sum(slot.units for slot in held.values()) * close
+        opening_total = (
+            cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+        )
         sells = plan_sells(
             list(held.values()),
             close=close,
@@ -223,12 +340,14 @@ def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) 
             sell_cost += sell.cost
             trades.append(_trade_row(slot, sell, growth_rate=config.growth_rate, anchor=config.anchor))
 
-        # 2. 총자산 평가. **매수 직전의 값**이며 사양서 §5.2 가 요구하는 "매일 종가 확정 후" 다
+        # 4. 총자산 평가. **매수 직전의 값**이며 사양서 §5.2 가 요구하는 "매일 종가 확정 후" 다.
+        #    **미인출 이자도 총자산에 들어간다** — 현금은 아니지만 이미 내 것이다 (결정 C7)
         usd_value = sum(slot.units for slot in held.values()) * close
-        total_assets = cash + usd_value
-        _assert_cost_only_decline(opening_total, total_assets, cost=sell_cost, stage="매도", date=date)
+        accrued_value = accrued_rp_usd * close + accrued_parking
+        total_assets = cash + usd_value + accrued_value
+        _assert_balance_change(opening_total, total_assets, change=-sell_cost, stage="매도", date=date)
 
-        # 3. 활성 레벨과 슬롯 금액. 분모는 활성 레벨 전체이며 보유분을 포함한다 (결정 C4)
+        # 5. 활성 레벨과 슬롯 금액. 분모는 활성 레벨 전체이며 보유분을 포함한다 (결정 C4)
         active = active_level_indices(
             float(day[COL_RANGE_LOW]),
             float(day[COL_RANGE_HIGH]),
@@ -246,7 +365,8 @@ def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) 
             slot_cap_ratio=config.slot_cap_ratio,
         )
 
-        # 4. 매수. 하향 돌파한 미보유 레벨을 아래(싼) 쪽부터 현금이 닿는 데까지 산다
+        # 6. 매수. 하향 돌파한 미보유 레벨을 아래(싼) 쪽부터 현금이 닿는 데까지 산다.
+        #    **미인출 이자는 쓸 수 없다** — 현금만 넘긴다
         plan = plan_buys(
             active,
             list(held),
@@ -280,12 +400,13 @@ def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) 
         if cash < -IDENTITY_TOLERANCE:
             raise RuntimeError(f"내부 불변조건 위반: 현금이 음수입니다 - {cash:,.4f}원, 날짜 {date.date()}")
 
-        # 5. 종가 마감 시점의 총자산을 곡선에 남긴다 (결정 C42).
+        # 7. 종가 마감 시점의 총자산을 곡선에 남긴다 (결정 C42).
         #    자산이 원화에서 달러로 바뀌는 것만으로는 총액이 변하지 않으므로,
-        #    3번의 값에서 **매수 비용만큼만** 줄어 있어야 한다
+        #    평가 시점의 값에서 **매수 비용만큼만** 줄어 있어야 한다
         closing_usd_value = sum(slot.units for slot in held.values()) * close
-        closing_total = cash + closing_usd_value
-        _assert_cost_only_decline(total_assets, closing_total, cost=buy_cost, stage="매수", date=date)
+        closing_accrued = accrued_rp_usd * close + accrued_parking
+        closing_total = cash + closing_usd_value + closing_accrued
+        _assert_balance_change(total_assets, closing_total, change=-buy_cost, stage="매수", date=date)
 
         rows.append(
             {
@@ -299,12 +420,20 @@ def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) 
                 COL_BUY_COUNT: len(plan.orders),
                 COL_SELL_COUNT: len(sells),
                 COL_BLOCKED_COUNT: len(plan.blocked_levels),
-                COL_COST: sell_cost + buy_cost,
+                COL_COST: sell_cost + buy_cost + interest_cost,
+                COL_RP_RATE: rp_rate_pct,
+                COL_PARKING_RATE: parking_rate_pct,
+                COL_RP_INTEREST: rp_interest_usd * close,
+                COL_PARKING_INTEREST: parking_interest,
+                COL_ACCRUED_INTEREST: closing_accrued,
+                COL_TAX_PAID: tax_paid,
                 COL_CASH: cash,
                 COL_USD_VALUE: closing_usd_value,
                 COL_TOTAL_ASSETS: closing_total,
             }
         )
+
+        previous_cash = cash
 
     daily = pd.DataFrame(rows, columns=DAILY_COLUMNS)
     last_close = float(daily[COL_CLOSE_RATE].iloc[-1])
@@ -325,39 +454,65 @@ def run_grid(series: pd.DataFrame, ranges: pd.DataFrame, *, config: GridConfig) 
         open_invested=open_invested,
         open_value=open_value,
         open_unrealised=open_value - open_invested,
+        open_accrued_interest=accrued_rp_usd * last_close + accrued_parking,
+        rp_filled=rates.rp_filled,
+        parking_filled=rates.parking_filled,
     )
 
 
-def _assert_cost_only_decline(
+def _interest_days(slot: Slot, *, date: pd.Timestamp, previous: pd.Timestamp) -> int:
+    """슬롯 하나가 오늘 받을 RP 이자의 달력일 수를 낸다.
+
+    구간은 `[전거래일, 오늘)` 이고 **매수일은 빠진다.** 매수·매도가 이자보다 뒤에 처리되므로
+    매수 당일과 매도 당일이 자동으로 제외되며, 전 구간을 더하면 정확히
+    `(매도일 − 매수일) − 1` 이 된다 (사양서 §9.1). **미래를 보지 않는다.**
+
+    Args:
+        slot: 보유 중인 슬롯
+        date: 오늘 거래일
+        previous: 직전 거래일
+
+    Returns:
+        이자가 붙는 달력일 수 (0 이상)
+    """
+    elapsed = int((date - previous).days)
+    since_entry = int((date - slot.entry_date).days)
+
+    # 매수일이 직전 거래일보다 앞이면 구간 전체가 이자 대상이고,
+    # 직전 거래일에 샀다면 그날 하루가 빠진다. 매수일은 직전 거래일보다 뒤일 수 없다
+    return max(0, min(elapsed, since_entry - 1))
+
+
+def _assert_balance_change(
     before: float,
     after: float,
     *,
-    cost: float,
+    change: float,
     stage: str,
     date: pd.Timestamp,
 ) -> None:
-    """총자산이 **거래비용만큼만** 줄었는지 검사한다.
+    """총자산이 **예상한 만큼만** 움직였는지 검사한다.
 
     자산이 원화에서 달러로 바뀌거나 그 반대로 바뀌는 것만으로는 총액이 변하지 않는다.
-    변하는 것은 그때 실제로 나간 비용뿐이므로, 그 폭이 어긋나면 회계가 깨진 것이다.
-    비용이 0이면 「전후 총자산이 같다」로 되돌아간다.
+    변하는 것은 그때 발생한 이자(증가)와 비용·세금(감소)뿐이므로, 그 폭이 어긋나면 회계가 깨진 것이다.
+    이자도 비용도 0이면 「전후 총자산이 같다」로 되돌아간다.
 
     Args:
         before: 단계 이전의 총자산
         after: 단계 이후의 총자산
-        cost: 그 단계에서 발생한 거래비용
+        change: 그 단계에서 예상되는 변화량. 이자는 양수, 비용·세금은 음수다
         stage: 예외 메시지에 쓸 단계 이름
         date: 검사한 거래일
 
     Raises:
-        RuntimeError: 감소분이 비용과 다른 경우
+        RuntimeError: 변화량이 예상과 다른 경우
     """
-    expected = before - cost
+    expected = before + change
     if abs(after - expected) > IDENTITY_TOLERANCE:
         raise RuntimeError(
-            f"내부 불변조건 위반: {stage} 전후 총자산의 변화가 거래비용과 다릅니다 - "
+            f"내부 불변조건 위반: {stage} 전후 총자산의 변화가 예상과 다릅니다 - "
             f"{stage} 전 {before:,.4f}원, {stage} 후 {after:,.4f}원, "
-            f"비용 {cost:,.4f}원, 차이 {after - expected:,.4f}원, 날짜 {date.date()}"
+            f"예상 변화 {change:,.4f}원, 차이 {after - expected:,.4f}원, 날짜 {date.date()}"
         )
 
 

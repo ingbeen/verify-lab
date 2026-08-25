@@ -243,13 +243,16 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --min-range-width 0.30
 poetry run python scripts/strategy/run_usdkrw_grid.py --allocation-spread 0.3
 poetry run python scripts/strategy/run_usdkrw_grid.py --slot-cap-ratio 0.06
 poetry run python scripts/strategy/run_usdkrw_grid.py --exchange-spread 0.0010
+poetry run python scripts/strategy/run_usdkrw_grid.py --rp-floor 0.70
+poetry run python scripts/strategy/run_usdkrw_grid.py --parking-floor 0.25
 ```
 
-- **환전 경로 단독이며 거래비용까지만 반영됐습니다.** 환전 스프레드와 슬리피지는 붙었지만
-  **달러 RP·원화 파킹 이자와 세금은 아직 없습니다.** 사양서 §17.1 은 **대기자금 이자가 가장 큰
-  수익원**이라고 적었으므로, 이자가 붙으면 곡선의 성격이 달라집니다
-- **거래비용이 총수익의 33% 를 가져갑니다.** 기본 설정에서 종료 총자산이 비용 없을 때
-  132,064,560원, 비용을 물면 **123,285,506원**입니다 (+32.06% → +23.29%)
+- **환전 경로 단독이며 거래비용과 이자·세금이 반영됐습니다.** 남은 것은 **ETF 경로 2종과
+  하단 이탈 B안**입니다
+- **이자가 수익의 3분의 2입니다.** 기본 설정에서 종료 총자산 **178,494,280원**(+78.49%)이고,
+  총수익 7,849만원 중 **세후 이자가 5,016만원(63.9%)** 입니다. 이자를 빼면 123,285,506원(+23.29%)
+  이므로 **곡선의 성격이 이자로 정해집니다**
+- **원화 파킹 이자가 달러 RP 의 3.75배입니다.** 투입률이 평균 35.87% 라 자금의 64%가 원화로 대기합니다
 - **인자는 사양서 §12 의 검사 범위로 제한돼 있습니다.** 범위 밖 값을 넣으면 argparse 가 거부합니다 —
   성과가 좋아지는 값을 찾는 연속 노브가 아니라 **결론이 뒤집히는지 보는 대조 축**입니다
 - **익절폭 `--growth-rate` 는 격자 자체를 바꿉니다.** `1000 × (1+g)^k` 의 레벨 가격이 전부
@@ -257,9 +260,14 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --exchange-spread 0.0010
 - **`--exchange-spread` 는 환전 스프레드 편도입니다.** 0.039%(우대 95% 실측) / **0.08%(기본)** /
   0.10%(사양서 원안) 셋이며, 결론이 스프레드 가정에 의존하는지 보는 축입니다.
   실계좌 환전 실측의 근거는 [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.7 에 있습니다
-- 초기 자본금(1억원)·매매 시작일(2005-01)·**슬리피지 편도 0.10%** 는 **인자가 아닙니다.**
-  확정된 값이며 SoT 는 `src/verify_lab/strategy/grid/constants.py` 입니다.
-  슬리피지는 사양서 §12 의 파라미터 표에 없어 검사 축이 아닙니다
+- **`--rp-floor`·`--parking-floor` 는 실수령 금리의 하한입니다.** 사양서 §11.2 의 모델이며
+  RP 는 0.10 / **0.40(기본)** / 0.70%, 파킹은 0.25 / **0.50(기본)** / 0.75% 입니다.
+  **RP 하한은 전체 거래일의 48.8% 에 걸립니다** — 절반 가까운 날의 금리를 T-bill 이 아니라
+  이 값이 정하므로 이 트랙에서 비중이 큰 견고성 검사입니다 (파킹 하한은 5.7%)
+- 초기 자본금(1억원)·매매 시작일(2005-01)·**슬리피지 편도 0.10%**·**이자 세율 15.4%** 는
+  **인자가 아닙니다.** 확정된 값이며 SoT 는 `src/verify_lab/strategy/grid/constants.py` 입니다.
+  슬리피지는 사양서 §12 의 파라미터 표에 없어 검사 축이 아니고, 세율은 법정 세율이라 바꿔 가며
+  대조할 값이 아닙니다
 - 산출물은 `storage/results/<실행시각>_usdkrw_grid/` 에 `daily.csv`(일별 총자산 곡선),
   `trades.csv`(체결 내역), `summary.json` 으로 남습니다
 - `daily.csv` 의 **총자산은 시가평가**라 미실현 평가손익이 들어 있습니다.
@@ -267,7 +275,13 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --exchange-spread 0.0010
 - `trades.csv` 의 **이탈 보너스**는 종가 체결 가정의 기여분이며 **비용 전 명목 기준**입니다.
   지정가 운용도 같은 비용을 물기 때문이며, 한 체결에서
   `실현손익 = 이탈 보너스 + g × 명목투입 − 매수비용 − 매도비용` 이 성립합니다
-- 선행 조건: `storage/series/USDKRW_CLOSE.csv`. 없으면 "데이터 수집" 의 ECOS 절을 따릅니다
+- `daily.csv` 의 **미인출이자**는 총자산에 들어가지만 **매수에는 쓸 수 없습니다** —
+  실제 계좌의 미지급 이자와 같습니다. **원천징수**는 다음 달 첫 거래일에만 0이 아닙니다
+- **이탈 보너스 비중을 총수익 기준으로만 읽지 마세요.** 이자가 분모에 들어가 24.94% 로
+  §15.3 의 30% 를 통과하지만, **이자는 종가 체결과 무관한 수익원**이라 그 통과가 위험을 숨깁니다.
+  **매매 기여분 대비로는 69.1%** 이며 근거는 [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.10 입니다
+- 선행 조건: `storage/series/USDKRW_CLOSE.csv`·`DTB3.csv`·`CD91.csv`.
+  없으면 "데이터 수집" 의 ECOS·FRED 절을 따릅니다
 - 실행 시간은 **수 초**입니다
 
 ### 역방향 매매 규칙

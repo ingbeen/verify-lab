@@ -21,13 +21,17 @@ import pytest
 
 from verify_lab.common_constants import COL_DATE, COL_VALUE
 from verify_lab.strategy.grid.constants import (
+    COL_ACCRUED_INTEREST,
     COL_ACTIVE_LEVELS,
     COL_BUY_COUNT,
     COL_CASH,
     COL_CLOSE_RATE,
     COL_COST,
     COL_HELD_SLOTS,
+    COL_PARKING_INTEREST,
+    COL_RP_INTEREST,
     COL_SELL_COUNT,
+    COL_TAX_PAID,
     COL_TOTAL_ASSETS,
     COL_USD_VALUE,
     DEFAULT_ALLOCATION_SPREAD,
@@ -36,6 +40,7 @@ from verify_lab.strategy.grid.constants import (
     INITIAL_CAPITAL,
 )
 from verify_lab.strategy.grid.engine import GridConfig, run_grid
+from verify_lab.strategy.grid.interest import InterestConfig, RateSeries
 from verify_lab.strategy.grid.lattice import level_price
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.price_range import build_daily_ranges
@@ -56,9 +61,17 @@ FREE_COST = CostConfig(exchange_spread_rate=0.0, slippage_rate=0.0)
 # 확정된 기본 비용 (결정 C35). 편도 합계 0.18%, 왕복 0.36%
 PAID_COST = CostConfig(exchange_spread_rate=0.0008, slippage_rate=0.0010)
 
+# 이자가 없는 설정. 하한이 0이면 금리 0을 그대로 통과시킨다
+FREE_INTEREST = InterestConfig(rp_floor_rate=0.0, parking_floor_rate=0.0)
 
-def _config(*, cost: CostConfig | None = None, **overrides: float | int) -> GridConfig:
-    """손계산용 기본 설정. 비용을 넘기지 않으면 **비용 없음**이라 G2 의 항등식이 그대로 성립한다."""
+
+def _config(
+    *,
+    cost: CostConfig | None = None,
+    interest: InterestConfig | None = None,
+    **overrides: float | int,
+) -> GridConfig:
+    """손계산용 기본 설정. 비용도 이자도 넘기지 않으면 **둘 다 없음**이라 회계가 단순해진다."""
     values: dict[str, float | int] = {
         "lookback_years": 1,
         "growth_rate": HAND_GROWTH,
@@ -69,7 +82,23 @@ def _config(*, cost: CostConfig | None = None, **overrides: float | int) -> Grid
     }
     values.update(overrides)
 
-    return GridConfig(**values, cost=cost or FREE_COST)  # type: ignore[arg-type]
+    return GridConfig(  # type: ignore[arg-type]
+        **values,
+        cost=cost or FREE_COST,
+        interest=interest or FREE_INTEREST,
+    )
+
+
+def _rates(ranges: pd.DataFrame, *, rp: float = 0.0, parking: float = 0.0) -> RateSeries:
+    """범위표의 거래일에 맞춘 **고정 금리** 계열. 0이면 이자가 발생하지 않는다."""
+    index = pd.DatetimeIndex(ranges[COL_DATE])
+
+    return RateSeries(
+        rp=pd.Series(rp, index=index, dtype=float),
+        parking=pd.Series(parking, index=index, dtype=float),
+        rp_filled=0,
+        parking_filled=0,
+    )
 
 
 def _series(values: Sequence[float], *, start: str = "2019-01-01") -> pd.DataFrame:
@@ -92,8 +121,22 @@ def _daily_series(warmup: float, path: Sequence[float]) -> pd.DataFrame:
     return pd.concat([frame, tail], ignore_index=True).sort_values(COL_DATE).reset_index(drop=True)
 
 
-def _run(series: pd.DataFrame, *, config: GridConfig | None = None):
-    """손계산용 기본 인자로 엔진을 돌린다."""
+def _across_month() -> pd.DataFrame:
+    """달을 넘길 만큼 긴 **상승** 경로. 계속 오르므로 하향 돌파가 없어 매수가 일어나지 않는다.
+
+    2020-01-01 부터의 영업일 24개라 1월(23영업일)을 넘어 2월 첫 거래일까지 간다.
+    """
+    return _daily_series(1200.0, [1200.0 + index for index in range(24)])
+
+
+def _run(
+    series: pd.DataFrame,
+    *,
+    config: GridConfig | None = None,
+    rp: float = 0.0,
+    parking: float = 0.0,
+):
+    """손계산용 기본 인자로 엔진을 돌린다. 금리는 기본이 0이라 이자가 붙지 않는다."""
     settings = config or _config()
     ranges = build_daily_ranges(
         series,
@@ -102,7 +145,7 @@ def _run(series: pd.DataFrame, *, config: GridConfig | None = None):
         min_range_width=settings.min_range_width,
     )
 
-    return run_grid(series, ranges, config=settings)
+    return run_grid(series, ranges, config=settings, rates=_rates(ranges, rp=rp, parking=parking))
 
 
 class TestAccountingIdentity:
@@ -352,6 +395,225 @@ class TestCostAccounting:
         assert slot.invested - slot.notional_invested == pytest.approx(slot.entry_cost, abs=AMOUNT_TOLERANCE)
 
 
+class TestInterestAccrual:
+    """이자 발생과 월말 정산의 계약을 고정한다."""
+
+    def test_이자가_0이면_곡선이_그대로다(self) -> None:
+        """
+        목적: 이자 도입이 기존 결과를 바꾸지 않았음을 보는 회귀 안전망
+
+        Given: 금리 0 인 경로
+        When: 엔진을 돌린다
+        Then: 이자·세금·미인출 이자가 전부 0 이다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1140.0, 1080.0, 1140.0])
+
+        # When
+        actual = _run(series)
+
+        # Then
+        assert actual.daily[COL_RP_INTEREST].sum() == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+        assert actual.daily[COL_PARKING_INTEREST].sum() == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+        assert actual.daily[COL_TAX_PAID].sum() == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+        assert actual.open_accrued_interest == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+
+    def test_첫날에는_파킹_이자가_없다(self) -> None:
+        """
+        목적: 백테스트 시작 이전 구간의 이자를 받지 않음을 고정한다
+
+        Given: 파킹 금리가 있는 경로
+        When: 엔진을 돌린다
+        Then: 첫 거래일의 파킹 이자가 0 이고 둘째 날부터 붙는다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1210.0, 1220.0])
+
+        # When
+        actual = _run(series, parking=3.65)
+
+        # Then
+        assert actual.daily[COL_PARKING_INTEREST].iloc[0] == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+        assert actual.daily[COL_PARKING_INTEREST].iloc[1] > 0
+
+    def test_파킹_이자는_전일_잔고에_달력일만큼_붙는다(self) -> None:
+        """
+        목적: 파킹 이자의 산식을 손계산으로 고정한다
+
+        Given: 매수가 없어 현금이 1억 그대로인 경로와 파킹 금리 연 3.65%
+        When: 엔진을 돌린다
+        Then: 둘째 날 이자가 `1억 × 3.65% × 경과 달력일 ÷ 365` 다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1210.0, 1220.0])
+
+        # When
+        actual = _run(series, parking=3.65)
+
+        # Then
+        elapsed = (actual.daily[COL_DATE].iloc[1] - actual.daily[COL_DATE].iloc[0]).days
+        expected = INITIAL_CAPITAL * 0.0365 * elapsed / 365
+        assert actual.daily[COL_PARKING_INTEREST].iloc[1] == pytest.approx(expected, abs=AMOUNT_TOLERANCE)
+
+    def test_매수일_당일에는_RP_이자가_없다(self) -> None:
+        """
+        목적: 사양서 §9.1 의 「RP 는 매수일 당일 이자 미지급」을 고정한다
+
+        Given: 매수가 일어나는 경로와 RP 금리
+        When: 엔진을 돌린다
+        Then: 처음 매수한 날의 RP 이자가 0 이다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1140.0, 1140.0])
+
+        # When
+        actual = _run(series, rp=3.65)
+
+        # Then
+        first_buy = actual.daily[actual.daily[COL_BUY_COUNT] > 0].iloc[0]
+        assert float(first_buy[COL_RP_INTEREST]) == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+
+    def test_RP_이자일수가_보유일수_빼기_1이다(self) -> None:
+        """
+        목적: 사양서 §9.1 의 이자일수 −1 을 **청산된 슬롯 전체**에 대해 고정한다
+
+        Given: 사고파는 경로와 RP 금리 연 3.65%
+        When: 엔진을 돌린다
+        Then: RP 이자 합계가 `Σ(보유 달러 × 3.65% × (보유일수 − 1) ÷ 365 × 매도 환율)` 과 같다
+
+        Note:
+            매수·매도 당일이 빠지는 것은 이자를 매도·매수보다 **먼저** 처리하기 때문이다.
+            매도일을 미리 알 필요가 없어 look-ahead 가 생기지 않는다.
+            대조가 성립하려면 미청산 슬롯이 없어야 하므로 그것도 확인한다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1080.0, 1200.0, 1320.0, 1400.0])
+
+        # When
+        actual = _run(series, rp=3.65)
+
+        # Then
+        assert not actual.trades.empty
+        assert not actual.open_slots
+
+        # 명목투입(투입액 − 매수비용)을 매수 환율로 나누면 보유 달러가 나온다.
+        # 이 경로는 하루 만에 사고팔지 않으므로 환율이 그대로인 구간에서만 이자가 붙는다
+        units = (actual.trades["invested"] - actual.trades["buy_cost"]) / actual.trades["entry_price"]
+        days = (actual.trades["hold_days"] - 1).clip(lower=0)
+        expected = float((units * 0.0365 * days / 365 * actual.trades["exit_price"]).sum())
+        assert float(actual.daily[COL_RP_INTEREST].sum()) == pytest.approx(expected, abs=AMOUNT_TOLERANCE)
+
+    def test_미인출_이자가_총자산에_들어간다(self) -> None:
+        """
+        목적: 결정 C7 의 「일별 발생분을 총자산에 즉시 반영」을 고정한다
+
+        Given: 한 달 안에서 끝나는 짧은 경로와 파킹 금리
+        When: 엔진을 돌린다
+        Then: 마지막 총자산이 `현금 + 평가액 + 미인출 이자` 이고 미인출 이자가 0보다 크다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1210.0, 1220.0])
+
+        # When
+        actual = _run(series, parking=3.65)
+
+        # Then
+        last = actual.daily.iloc[-1]
+        assert float(last[COL_ACCRUED_INTEREST]) > 0
+        assert float(last[COL_TOTAL_ASSETS]) == pytest.approx(
+            float(last[COL_CASH]) + float(last[COL_USD_VALUE]) + float(last[COL_ACCRUED_INTEREST]),
+            abs=AMOUNT_TOLERANCE,
+        )
+
+    def test_원천징수는_달이_바뀐_첫_거래일에만_일어난다(self) -> None:
+        """
+        목적: 월말 정산의 시점을 고정한다
+
+        Given: 달을 넘기는 경로와 파킹 금리
+        When: 엔진을 돌린다
+        Then: 원천징수가 일어난 날이 전부 달이 바뀐 첫 거래일이다
+
+        Note:
+            **「매월 마지막 거래일」로 잡으면 그 판정에 다음 행이 필요하다.** 시세를 월 중간에서
+            자르면 마지막 날이 월말로 오판되어 look-ahead 감시 테스트가 깨진다
+        """
+        # Given
+        series = _across_month()
+
+        # When
+        actual = _run(series, parking=3.65)
+
+        # Then
+        daily = actual.daily
+        month_changed = daily[COL_DATE].dt.month != daily[COL_DATE].shift(1).dt.month
+        settled = daily[COL_TAX_PAID] > 0
+        assert settled.any()
+        assert bool(month_changed[settled].all())
+
+    def test_세금은_인출_직전_미인출_이자의_15_4퍼센트다(self) -> None:
+        """
+        목적: 원천징수의 과세 기준을 손계산으로 고정한다
+
+        Given: 달을 넘기는 경로와 파킹 금리
+        When: 엔진을 돌린다
+        Then: 첫 정산일의 세금이 `(직전일 미인출 이자 + 당일 발생 이자) × 15.4%` 다
+        """
+        # Given
+        series = _across_month()
+
+        # When
+        actual = _run(series, parking=3.65)
+
+        # Then
+        daily = actual.daily.reset_index(drop=True)
+        position = int(daily.index[daily[COL_TAX_PAID] > 0][0])
+        assert position > 0
+
+        base = (
+            float(daily[COL_ACCRUED_INTEREST].iloc[position - 1])
+            + float(daily[COL_PARKING_INTEREST].iloc[position])
+            + float(daily[COL_RP_INTEREST].iloc[position])
+        )
+        assert float(daily[COL_TAX_PAID].iloc[position]) == pytest.approx(base * 0.154, abs=AMOUNT_TOLERANCE)
+
+    def test_파킹_이자만_있으면_정산에_환전_비용이_없다(self) -> None:
+        """
+        목적: 원화 이자는 환전을 거치지 않음을 고정한다
+
+        Given: 계속 올라 매수가 없는 경로. 파킹 이자만 쌓인다
+        When: 비용을 물고 엔진을 돌린다
+        Then: 정산일의 거래비용이 0 이다 — 환전할 달러가 없다
+        """
+        # Given
+        series = _across_month()
+
+        # When
+        actual = _run(series, config=_config(cost=PAID_COST), parking=3.65)
+
+        # Then
+        settled = actual.daily[actual.daily[COL_TAX_PAID] > 0]
+        assert not settled.empty
+        assert float(settled.iloc[0][COL_COST]) == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+
+    def test_이자가_붙으면_총자산이_늘어난다(self) -> None:
+        """
+        목적: 이자가 실제로 곡선을 밀어 올리는지 고정한다
+
+        Given: 같은 경로를 이자 없이 한 번, 파킹 이자를 붙여 한 번 돌린다
+        When: 마지막 총자산을 견준다
+        Then: 이자를 붙인 쪽이 더 크다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1210.0, 1220.0, 1230.0])
+
+        # When
+        free = _run(series)
+        paid = _run(series, parking=3.65)
+
+        # Then
+        assert float(paid.daily[COL_TOTAL_ASSETS].iloc[-1]) > float(free.daily[COL_TOTAL_ASSETS].iloc[-1])
+
+
 class TestSlotInvariants:
     """보유 슬롯의 불변조건을 고정한다."""
 
@@ -574,7 +836,7 @@ class TestEdgeCases:
 
         # When / Then
         with pytest.raises(ValueError, match="거래일"):
-            run_grid(series, broken, config=config)
+            run_grid(series, broken, config=config, rates=_rates(broken))
 
 
 class TestSlotCapPassthrough:

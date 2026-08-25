@@ -119,6 +119,46 @@ DEFAULT_SLIPPAGE_RATE: Final = 0.0010
 
 
 # ============================================================
+# 이자와 세금
+# ============================================================
+
+# 달러 RP 금리의 하한 (연%). 사양서 §11.2 — 국내 증권사는 해외주식 결제·파생 헤지로 달러가
+# 상시 부족하고 원달러 스왑베이시스가 만성 마이너스라, 미국 금리가 0이어도 프리미엄을 얹을 여력이 있다.
+# **이 하한이 실제로 절반의 날을 지배한다** — 2005 이후 5,340 거래일 중 2,605일(48.8%)에서
+# T-bill 에서 스프레드를 뺀 값이 하한보다 낮다
+DEFAULT_RP_FLOOR_RATE: Final = 0.40
+
+# RP 하한의 검사 범위 (사양서 §12). **절반의 날을 정하는 값**이라 이 트랙에서 비중이 큰 견고성 검사다
+RP_FLOOR_RATE_CHOICES: Final = (0.10, 0.40, 0.70)
+
+# 원화 파킹 금리의 하한 (연%). 파킹통장·CMA 는 기준금리 0.5% 시기에도 연 0.5~1.0% 를 지급했다.
+# RP 하한과 달리 거의 걸리지 않는다 — 같은 기간 306일(5.7%)뿐이다
+DEFAULT_PARKING_FLOOR_RATE: Final = 0.50
+
+# 파킹 하한의 검사 범위 (사양서 §12)
+PARKING_FLOOR_RATE_CHOICES: Final = (0.25, 0.50, 0.75)
+
+# 원화 파킹 금리를 만들 때 CD91 에서 빼는 폭 (연%p). 사양서 §11.2
+PARKING_RATE_DISCOUNT: Final = 0.30
+
+# 달러 RP 금리를 만들 때 T-bill 에서 빼는 폭. `(하한 T-bill, 빼는 폭)` 을 **내림차순**으로 둔다 —
+# 위에서부터 처음 만족하는 칸이 답이라 `x < 0.5%` 는 마지막 칸으로 떨어지며, DTB3 에 실재하는
+# 음수 값(최저 −0.050%)도 그 칸으로 간다 (사양서 §11.2)
+RP_RATE_SPREAD_STEPS: Final = ((4.0, 1.00), (2.0, 0.60), (0.5, 0.30), (float("-inf"), 0.10))
+
+# 이자 소득의 원천징수율 (비율, 0.154 = 15.4%). **법정 세율이라 검사 축이 아니다** —
+# 사양서 §12 의 파라미터 표에도 없다. ETF 차익 과세도 같은 값이다 (사양서 §10)
+INTEREST_TAX_RATE: Final = 0.154
+
+# 이자 일할의 분모 (일). **365 달력일**이며 연환산 계수(250 거래일)와 다르다 (결정 C14).
+# 실제 거래일 밀도(약 261일)와 몇 % 어긋나지만 250 은 사양서가 정한 값이라 그 오차가 사실이다
+DAYS_PER_YEAR: Final = 365
+
+# 연 % 로 표기된 금리를 비율로 바꾸는 나눗수 (1.547% → 0.01547)
+PERCENT_TO_RATE: Final = 100.0
+
+
+# ============================================================
 # 실행
 # ============================================================
 
@@ -153,6 +193,20 @@ COL_BLOCKED_COUNT: Final = "BlockedCount"
 # 곡선의 하루치 변화를 이 값과 환율 변동으로 분해할 수 있다
 COL_COST: Final = "Cost"
 
+# 그날 적용한 실수령 금리 (연%). 원지표가 아니라 하한·스프레드를 반영한 값이다
+COL_RP_RATE: Final = "RpRate"
+COL_PARKING_RATE: Final = "ParkingRate"
+
+# 그날 발생한 세전 이자
+COL_RP_INTEREST: Final = "RpInterest"
+COL_PARKING_INTEREST: Final = "ParkingInterest"
+
+# 아직 인출되지 않고 쌓여 있는 이자 (세전). 총자산에 즉시 반영되므로 항등식에 들어간다
+COL_ACCRUED_INTEREST: Final = "AccruedInterest"
+
+# 그날 월말 정산으로 뗀 원천징수액과 이자 환전 비용
+COL_TAX_PAID: Final = "TaxPaid"
+
 
 # ============================================================
 # 표시용 레이블 (일별 곡선)
@@ -169,6 +223,12 @@ DISPLAY_BUY_COUNT: Final = "매수"
 DISPLAY_SELL_COUNT: Final = "매도"
 DISPLAY_BLOCKED_COUNT: Final = "자금부족"
 DISPLAY_COST: Final = "거래비용"
+DISPLAY_RP_RATE: Final = "RP금리(%)"
+DISPLAY_PARKING_RATE: Final = "파킹금리(%)"
+DISPLAY_RP_INTEREST: Final = "RP이자"
+DISPLAY_PARKING_INTEREST: Final = "파킹이자"
+DISPLAY_ACCRUED_INTEREST: Final = "미인출이자"
+DISPLAY_TAX_PAID: Final = "원천징수"
 DISPLAY_CASH: Final = "원화현금"
 DISPLAY_USD_VALUE: Final = "달러 평가액"
 DISPLAY_TOTAL_ASSETS: Final = "총자산"

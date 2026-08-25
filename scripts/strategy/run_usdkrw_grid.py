@@ -5,9 +5,9 @@
 확정 설계는 `docs/spec/usdkrw_grid.md` §4 가 SoT이며, 규칙 본문은
 `docs/spec/usdkrw_grid_rules.md` 이되 §4 가 바꾼 부분은 §4 가 이긴다.
 
-**거래비용까지만 반영된 결과다.** 환전 스프레드와 슬리피지는 붙었지만 **달러 RP·원화 파킹
-이자와 세금은 아직 없다.** 사양서 §17.1 이 대기자금 이자를 가장 큰 수익원으로 잡았으므로,
-지금 곡선은 그리드 매매의 기여분에서 거래비용을 뺀 것까지만 담고 있다.
+**거래비용과 이자·세금까지 반영된 결과다.** 남은 것은 ETF 경로 2종과 하단 이탈 B안이다.
+사양서 §17.1 이 대기자금 이자를 가장 큰 수익원으로 잡았고 **실제로 그렇게 나온다** —
+투입률이 낮아 원화 파킹 이자가 달러 RP 이자보다 훨씬 크다.
 
 **인자는 사양서 §12 의 검사 범위로 제한한다.** 성과가 좋아지는 값을 찾는 연속 노브가 아니라
 결론이 뒤집히는지 보는 대조 축이다.
@@ -26,18 +26,24 @@ from verify_lab.strategy.grid.constants import (
     DEFAULT_GROWTH_RATE,
     DEFAULT_LOOKBACK_YEARS,
     DEFAULT_MIN_RANGE_WIDTH,
+    DEFAULT_PARKING_FLOOR_RATE,
+    DEFAULT_RP_FLOOR_RATE,
     DEFAULT_SLIPPAGE_RATE,
     DEFAULT_SLOT_CAP_RATIO,
     EXCHANGE_SPREAD_RATE_CHOICES,
     GROWTH_RATE_CHOICES,
     INITIAL_CAPITAL,
+    INTEREST_TAX_RATE,
     LOOKBACK_YEAR_CHOICES,
     MIN_RANGE_WIDTH_CHOICES,
+    PARKING_FLOOR_RATE_CHOICES,
+    RP_FLOOR_RATE_CHOICES,
     SLOT_CAP_RATIO_CHOICES,
     STRATEGY_NAME,
     TRADING_START_DATE,
 )
 from verify_lab.strategy.grid.engine import GridConfig
+from verify_lab.strategy.grid.interest import InterestConfig
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.runner import (
     KEY_DAILY,
@@ -78,7 +84,7 @@ def _build_parser() -> argparse.ArgumentParser:
     Returns:
         인자 파서
     """
-    parser = argparse.ArgumentParser(description="원달러 그리드 백테스트 (환전 경로 단독, 거래비용 반영 · 이자·세금 미반영)")
+    parser = argparse.ArgumentParser(description="원달러 그리드 백테스트 (환전 경로 단독, 거래비용·이자·세금 반영)")
     parser.add_argument(
         "--lookback-years",
         type=int,
@@ -121,6 +127,20 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=EXCHANGE_SPREAD_RATE_CHOICES,
         help="환전 스프레드 편도 (비율). 결론이 스프레드 가정에 의존하는지 보는 축이다",
     )
+    parser.add_argument(
+        "--rp-floor",
+        type=float,
+        default=DEFAULT_RP_FLOOR_RATE,
+        choices=RP_FLOOR_RATE_CHOICES,
+        help="달러 RP 금리의 하한 (연%%). 절반 가까운 날을 이 값이 정한다",
+    )
+    parser.add_argument(
+        "--parking-floor",
+        type=float,
+        default=DEFAULT_PARKING_FLOOR_RATE,
+        choices=PARKING_FLOOR_RATE_CHOICES,
+        help="원화 파킹 금리의 하한 (연%%)",
+    )
 
     return parser
 
@@ -142,9 +162,12 @@ def _print_settings(config: GridConfig) -> None:
         ["환전 스프레드", f"편도 {config.cost.exchange_spread_rate * RATE_TO_PERCENT:.3f}%"],
         ["슬리피지", f"편도 {config.cost.slippage_rate * RATE_TO_PERCENT:.3f}%"],
         ["왕복 비용", f"{2 * (config.cost.exchange_spread_rate + config.cost.slippage_rate) * RATE_TO_PERCENT:.3f}%"],
+        ["RP 하한", f"연 {config.interest.rp_floor_rate:.2f}%"],
+        ["파킹 하한", f"연 {config.interest.parking_floor_rate:.2f}%"],
+        ["이자 원천징수", f"{INTEREST_TAX_RATE * RATE_TO_PERCENT:.1f}%"],
     ]
     TableLogger(SETTING_COLUMNS, logger).print_table(rows, title="실행 조건")
-    logger.debug("이자와 세금은 아직 반영되지 않았다 — 대기자금 이자가 붙으면 곡선의 성격이 달라진다")
+    logger.debug("ETF 경로 2종과 하단 이탈 B안은 아직 반영되지 않았다")
 
 
 def _print_result(outputs: GridOutputs) -> None:
@@ -168,6 +191,12 @@ def _print_result(outputs: GridOutputs) -> None:
         ["실현손익 합계", f"{result['realized_total']:,.0f}원"],
         ["거래비용 합계", f"{result['cost_total']:,.0f}원"],
         ["└ 매수 / 매도", f"{result['buy_cost_total']:,.0f}원 / {result['sell_cost_total']:,.0f}원"],
+        ["이자 합계 (세전)", f"{result['interest_total']:,.0f}원"],
+        ["└ RP / 파킹", f"{result['rp_interest_total']:,.0f}원 / {result['parking_interest_total']:,.0f}원"],
+        ["└ 평균 금리", f"연 {result['rp_rate_mean']:.3f}% / {result['parking_rate_mean']:.3f}%"],
+        ["원천징수 합계", f"{result['tax_paid_total']:,.0f}원"],
+        ["미인출 이자 (세전)", f"{result['open_accrued_interest']:,.0f}원"],
+        ["금리 이월일 (RP/파킹)", f"{result['rp_rate_filled_days']:,}일 / {result['parking_rate_filled_days']:,}일"],
         ["이탈 보너스 합계", f"{result['grid_excess_total']:,.0f}원"],
         ["이탈 보너스 비중", "계산 불가" if share is None else f"{share * RATE_TO_PERCENT:.{PERCENT_DECIMALS}f}%"],
         ["미청산 평가손익", f"{result['open_unrealised']:,.0f}원"],
@@ -191,6 +220,7 @@ def main() -> None:
         slot_cap_ratio=args.slot_cap_ratio,
         initial_capital=INITIAL_CAPITAL,
         cost=CostConfig(exchange_spread_rate=args.exchange_spread, slippage_rate=DEFAULT_SLIPPAGE_RATE),
+        interest=InterestConfig(rp_floor_rate=args.rp_floor, parking_floor_rate=args.parking_floor),
     )
 
     _print_settings(config)
