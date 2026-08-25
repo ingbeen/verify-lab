@@ -25,7 +25,9 @@ from verify_lab.common_constants import COL_DATE, COL_VALUE
 from verify_lab.strategy.grid.constants import (
     COL_ACCRUED_INTEREST,
     COL_ACTIVE_LEVELS,
+    COL_BUY_AMOUNT,
     COL_BUY_COUNT,
+    COL_CAPPED_LEVELS,
     COL_CASH,
     COL_CLOSE_RATE,
     COL_COST,
@@ -97,12 +99,16 @@ def _config(
 
 
 def _rates(ranges: pd.DataFrame, *, rp: float = 0.0, parking: float = 0.0) -> RateSeries:
-    """범위표의 거래일에 맞춘 **고정 금리** 계열. 0이면 이자가 발생하지 않는다."""
+    """범위표의 거래일에 맞춘 **고정 금리** 계열. 0이면 이자가 발생하지 않는다.
+
+    무위험 수익률은 엔진이 쓰지 않으므로(지표 계층의 입력이다) 파킹과 같은 값을 둔다.
+    """
     index = pd.DatetimeIndex(ranges[COL_DATE])
 
     return RateSeries(
         rp=pd.Series(rp, index=index, dtype=float),
         parking=pd.Series(parking, index=index, dtype=float),
+        risk_free=pd.Series(parking, index=index, dtype=float),
         rp_filled=0,
         parking_filled=0,
     )
@@ -1114,3 +1120,89 @@ class TestLowerBreachExtension:
         assert_stable_under_truncation(
             run, series, len(series) - 10, key_columns=[COL_DATE], value_column=COL_TOTAL_ASSETS
         )
+
+
+class TestMetricColumns:
+    """사양서 §13.2 가 요구하는 재료를 곡선에 남김을 고정한다.
+
+    **지표를 위해 판정을 바꾸지 않는다.** 두 컬럼은 이미 일어난 일을 적을 뿐이며,
+    총자산과 체결은 그대로여야 한다.
+    """
+
+    def test_매수_투입액이_그날_실제_지출과_같다(self) -> None:
+        """
+        목적: 「일일 최대 투입 비율」(§13.2)의 재료를 고정한다
+
+        Given: 하루에 여러 레벨이 함께 체결되는 급락 경로
+        When: 엔진을 돌린다
+        Then: 그날 매수 투입액이 그날 줄어든 현금과 같다
+
+        Note:
+            **배정된 예산이 아니라 실제로 나간 금액**이다. ETF 경로는 정수 주식 수라
+            둘이 다르고, 예산으로 적으면 투입 비율이 실제보다 커 보인다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1050.0, 1050.0])
+
+        # When
+        actual = _run(series)
+
+        # Then — 매수만 있고 매도가 없는 날이므로 현금 감소분이 곧 투입액이다
+        daily = actual.daily
+        spent = daily[COL_CASH].shift(1).iloc[1] - daily[COL_CASH].iloc[1]
+        assert float(daily[COL_BUY_AMOUNT].iloc[1]) == pytest.approx(spent, abs=AMOUNT_TOLERANCE)
+        assert float(daily[COL_BUY_AMOUNT].iloc[0]) == pytest.approx(0.0, abs=AMOUNT_TOLERANCE)
+
+    def test_상한이_걸린_레벨_수를_남긴다(self) -> None:
+        """
+        목적: 사양서 §5.3 의 「상한 발동 횟수」(§13.2 필수 지표)를 고정한다
+
+        Given: 활성 레벨이 적어 슬롯 상한 8% 가 전부 걸리는 손계산 설정
+        When: 엔진을 돌린다
+        Then: 상한 발동 레벨 수가 활성 레벨 수와 같다
+        """
+        # Given
+        actual = _run(_across_month())
+
+        # Then
+        daily = actual.daily
+        assert (daily[COL_CAPPED_LEVELS] == daily[COL_ACTIVE_LEVELS]).all()
+
+    def test_상한이_안_걸리면_0이다(self) -> None:
+        """
+        목적: 엣지 케이스 — 상한을 풀면 발동이 사라짐을 고정한다
+
+        Given: 슬롯 상한을 100% 로 둔 설정
+        When: 엔진을 돌린다
+        Then: 상한 발동 레벨 수가 언제나 0 이다
+        """
+        # When
+        actual = _run(_across_month(), config=_config(slot_cap_ratio=1.0))
+
+        # Then
+        assert actual.daily[COL_CAPPED_LEVELS].sum() == 0
+
+    def test_컬럼_추가가_총자산을_바꾸지_않는다(self) -> None:
+        """
+        목적: 지표용 컬럼이 **판정과 회계에 영향을 주지 않음**을 고정한다
+
+        Given: 사고파는 경로
+        When: 엔진을 돌린다
+        Then: 매수가 실제로 일어났는데도 회계 항등식이 그대로 성립한다
+
+        Note:
+            매수는 원화를 달러로 바꾸는 것이라 **투입액이 총자산에서 사라지지 않는다.**
+            총자산 자체는 환율이 움직이면 미실현 평가손익 때문에 변하므로,
+            고정할 것은 「투입액만큼 줄었는가」가 아니라 **「현금과 평가액의 합인가」** 다
+        """
+        # Given
+        series = _daily_series(1200.0, [1200.0, 1130.0, 1220.0, 1130.0])
+
+        # When
+        actual = _run(series)
+
+        # Then
+        daily = actual.daily
+        assert daily[COL_BUY_AMOUNT].sum() > 0
+        total = daily[COL_CASH] + daily[COL_USD_VALUE]
+        assert daily[COL_TOTAL_ASSETS].tolist() == pytest.approx(total.tolist(), abs=AMOUNT_TOLERANCE)

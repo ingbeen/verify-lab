@@ -21,6 +21,13 @@ T-bill 이 아니라 하한이 정한다. 국내 증권사는 해외주식 결�
 
 **이 모듈은 이자를 얹지 않는다.** 금리를 만들 뿐이고, 어느 잔고에 며칠치를 붙일지는
 시뮬레이션 루프의 책임이다 — 이자일수 규칙이 경로마다 다르기 때문이다.
+
+**무위험 수익률도 여기서 낸다.** 사양서 §13.1 이 Sharpe·Sortino 의 `rf = CD91` 로 규정했고,
+그 원지표가 원화 파킹 금리와 **같은 계열에서 갈리기** 때문이다 — 정렬과 이월을 두 번 구현하면
+두 곳이 조용히 달라진다. 다만 **rf 에는 상품 스프레드도 하한도 걸지 않는다.** 하한을 걸면
+제로금리 구간에서 **무위험보다 높은 무위험 금리**가 되어 그 시기의 Sharpe 가 구조적으로 낮아진다.
+대신 **세율은 적용한다** — 전략 곡선이 이미 세후(이자에 원천징수 반영)라 같은 기준이어야
+사과 대 사과가 된다.
 """
 
 from dataclasses import dataclass
@@ -29,6 +36,7 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_DATE, COL_VALUE
 from verify_lab.strategy.grid.constants import (
+    INTEREST_TAX_RATE,
     PARKING_RATE_DISCOUNT,
     RP_RATE_SPREAD_STEPS,
 )
@@ -70,12 +78,16 @@ class RateSeries:
     Attributes:
         rp: 거래일 → 달러 RP 금리 (연%)
         parking: 거래일 → 원화 파킹 금리 (연%)
+        risk_free: 거래일 → **무위험 수익률** (연%, 세후). CD91 원지표에 세율만 적용한 값이며
+            상품 스프레드도 하한도 걸지 않는다. 사양서 §13.1 의 Sharpe·Sortino 가 쓴다
         rp_filled: RP 원지표가 없어 전일값을 이월한 거래일 수
-        parking_filled: 파킹 원지표가 없어 전일값을 이월한 거래일 수
+        parking_filled: 파킹 원지표가 없어 전일값을 이월한 거래일 수.
+            **rf 도 같은 계열이라 이 건수가 그대로 적용된다**
     """
 
     rp: pd.Series
     parking: pd.Series
+    risk_free: pd.Series
     rp_filled: int
     parking_filled: int
 
@@ -130,7 +142,7 @@ def build_rate_series(
     cd91: pd.DataFrame,
     config: InterestConfig,
 ) -> RateSeries:
-    """마스터 달력의 모든 거래일에 실수령 금리를 붙인다.
+    """마스터 달력의 모든 거래일에 실수령 금리와 무위험 수익률을 붙인다.
 
     **원지표가 없는 날은 전일값을 이월한다.** 달력 첫날 이전에 원지표가 하나도 없으면
     이월할 값이 없으므로 거부한다 — 조용히 하한으로 채우면 그 구간이 통째로 하한 금리가 된다.
@@ -158,6 +170,8 @@ def build_rate_series(
     return RateSeries(
         rp=rp_raw.map(lambda value: rp_rate(value, floor=config.rp_floor_rate)),
         parking=parking_raw.map(lambda value: parking_rate(value, floor=config.parking_floor_rate)),
+        # 원지표에 세율만 적용한다. 하한을 걸면 무위험보다 높은 무위험 금리가 된다
+        risk_free=parking_raw * (1.0 - INTEREST_TAX_RATE),
         rp_filled=rp_filled,
         parking_filled=parking_filled,
     )

@@ -270,6 +270,14 @@ COL_GAIN_TAX: Final = "GainTax"
 # 집행 가격. 환전 경로는 판정 가격(원달러 종가)과 같고 ETF 경로는 수정 종가다
 COL_EXEC_PRICE: Final = "ExecPrice"
 
+# 그날 매수에 **실제로 나간 원화 합계**. 배정된 예산이 아니라 지출액이라
+# ETF 경로의 정수 주식 수 잔액이 빠져 있다. 사양서 §13.2 의 「일일 최대 투입 비율」이 쓴다
+COL_BUY_AMOUNT: Final = "BuyAmount"
+
+# 그날 슬롯 상한이 걸린 레벨 수. 사양서 §5.3 의 작동 빈도이며 §13.2 의 필수 지표다 —
+# **상한이 걸리면 하단부와 중간부가 같은 금액이 되어 3구간 차등이 소멸**하므로 횟수를 남긴다
+COL_CAPPED_LEVELS: Final = "CappedLevels"
+
 # 그날 하단 이탈로 **정식 하단 아래에 켜진 레벨 수**. A안은 언제나 0 이다.
 # 사양서 §7 이 B안의 필수 측정 항목으로 「연장 발생 횟수 / 최대 연장 칸 수」를 요구한다
 COL_EXTENDED_LEVELS: Final = "ExtendedLevels"
@@ -303,6 +311,8 @@ DISPLAY_ACCRUED_INTEREST: Final = "미인출이자"
 DISPLAY_TAX_PAID: Final = "원천징수"
 DISPLAY_GAIN_TAX: Final = "매매과세"
 DISPLAY_EXEC_PRICE: Final = "집행가"
+DISPLAY_BUY_AMOUNT: Final = "매수 투입액"
+DISPLAY_CAPPED_LEVELS: Final = "상한 발동"
 DISPLAY_EXTENDED_LEVELS: Final = "연장 레벨"
 DISPLAY_HELD_INVESTED: Final = "보유 투입액"
 DISPLAY_CASH: Final = "원화현금"

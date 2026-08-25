@@ -55,6 +55,7 @@ from verify_lab.strategy.grid.constants import (
 )
 from verify_lab.strategy.grid.engine import GridConfig
 from verify_lab.strategy.grid.interest import InterestConfig
+from verify_lab.strategy.grid.metrics import red_flags
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.runner import (
     KEY_DAILY,
@@ -87,6 +88,94 @@ RESULT_COLUMNS = [("항목", 22, Align.LEFT), ("값", 24, Align.RIGHT)]
 
 # 산출물 표의 컬럼 정의
 OUTPUT_COLUMNS = [("파일", 16, Align.LEFT), ("행", 10, Align.RIGHT)]
+
+# 성과 지표 표의 컬럼 정의
+METRIC_COLUMNS = [("지표", 22, Align.LEFT), ("값", 24, Align.RIGHT)]
+
+# 사양서 §15.3 판정 표의 컬럼 정의
+FLAG_COLUMNS = [("징후", 34, Align.LEFT), ("판정", 10, Align.LEFT), ("근거", 46, Align.LEFT)]
+
+
+def _optional(value: float | None, template: str) -> str:
+    """계산 불가를 숨기지 않고 그대로 표시한다.
+
+    Args:
+        value: 지표 값이거나 `None`
+        template: 값이 있을 때 쓸 포맷 문자열
+
+    Returns:
+        표시 문자열
+    """
+    return "계산 불가" if value is None else template.format(value)
+
+
+def _print_metrics(outputs: GridOutputs) -> None:
+    """사양서 §13 의 지표를 표로 보여준다.
+
+    Args:
+        outputs: 실행 산출물
+    """
+    performance = outputs.performance
+    grid = outputs.grid_metrics
+
+    rows = [
+        ["총수익률", f"{performance.total_return_rate * RATE_TO_PERCENT:+.{PERCENT_DECIMALS}f}%"],
+        ["CAGR", f"{performance.cagr * RATE_TO_PERCENT:+.{PERCENT_DECIMALS}f}%"],
+        ["MDD", f"{performance.max_drawdown * RATE_TO_PERCENT:.{PERCENT_DECIMALS}f}%"],
+        ["└ 최저점 / 신고점", f"{performance.max_drawdown_date.date()} / {performance.peak_date.date()}"],
+        ["Calmar", _optional(performance.calmar, "{:.3f}")],
+        ["변동성 (연환산)", _optional(performance.volatility, "{:.4%}")],
+        ["Sharpe", _optional(performance.sharpe, "{:.3f}")],
+        ["Sortino", _optional(performance.sortino, "{:.3f}")],
+        ["무위험 수익률 평균", f"연 {performance.risk_free_mean:.3f}%"],
+        ["└ 그대로 굴렸다면", f"{performance.risk_free_return_rate * RATE_TO_PERCENT:+.{PERCENT_DECIMALS}f}%"],
+        ["최장 보유", _optional(grid.hold_days_max, "{:,.0f}일")],
+        [
+            "└ 평균 / 중앙값",
+            f"{_optional(grid.hold_days_mean, '{:,.1f}')}일 / {_optional(grid.hold_days_median, '{:,.1f}')}일",
+        ],
+        ["└ 미청산 최장", _optional(grid.open_hold_days_max, "{:,.0f}일")],
+        ["회전 전체 / 슬롯당", f"{grid.turnover_per_year:.2f}회/년 / {_optional(grid.turnover_per_slot_per_year, '{:.2f}회/년')}"],
+        ["평균 투입률 / 현금", f"{grid.deployment_mean:.2%} / {grid.cash_ratio_mean:.2%}"],
+        ["일일 최대 투입", f"{grid.daily_deploy_max:.2%} ({grid.daily_deploy_max_date.date()})"],
+        ["하루 3건 이상 매수", f"{grid.multi_fill_days:,}일"],
+        ["자금 소진율", f"{grid.blocked_day_ratio:.2%} ({grid.blocked_days:,}일)"],
+        ["최대 미실현 손실", _optional(grid.unrealised_worst_rate, "{:.2%}")],
+        ["이탈 보너스 / 총수익", _optional(grid.grid_excess_share_of_total_return, "{:.2%}")],
+        [
+            "└ 실현손익 / 매매기여",
+            f"{_optional(grid.grid_excess_share_of_realized, '{:.2%}')} / {_optional(grid.grid_excess_share_of_trading, '{:.2%}')}",
+        ],
+        ["세후 이자 / 매매 기여", f"{grid.interest_after_tax:,.0f}원 / {grid.trading_return:,.0f}원"],
+        ["하단 이탈", f"{grid.breach_days:,}일 / {grid.breach_episodes}구간 / 최장 {grid.breach_days_max_run:,}일"],
+        ["└ 최대 깊이", _optional(grid.breach_depth_max, "{:.3%}")],
+        ["상한 발동", f"{grid.capped_days:,}일"],
+        [
+            "재조정 범위 변화 하단",
+            f"중앙 {_optional(grid.range_low_shift_median, '{:.2%}')} / 최대 {_optional(grid.range_low_shift_max, '{:.2%}')}",
+        ],
+        [
+            "└ 상단",
+            f"중앙 {_optional(grid.range_high_shift_median, '{:.2%}')} / 최대 {_optional(grid.range_high_shift_max, '{:.2%}')}",
+        ],
+    ]
+    TableLogger(METRIC_COLUMNS, logger).print_table(rows, title="성과 지표 (사양서 §13)")
+
+
+def _print_red_flags(outputs: GridOutputs) -> None:
+    """사양서 §15.3 의 징후를 전부 판정해 보여준다.
+
+    **판정할 수 없는 항목도 남긴다** — 빼 버리면 검사한 것과 구분되지 않는다.
+
+    Args:
+        outputs: 실행 산출물
+    """
+    verdicts = {True: "걸림", False: "통과", None: "판정 불가"}
+    rows = [
+        [flag.name, verdicts[flag.triggered], flag.detail]
+        for flag in red_flags(outputs.performance, outputs.grid_metrics)
+    ]
+    TableLogger(FLAG_COLUMNS, logger).print_table(rows, title="Red Flag 판정 (사양서 §15.3)")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -281,6 +370,8 @@ def main() -> None:
         lower_breach=args.lower_breach,
     )
     _print_result(outputs)
+    _print_metrics(outputs)
+    _print_red_flags(outputs)
 
     directory = create_run_directory(STRATEGY_NAME)
     save_table(directory, DAILY_FILENAME, outputs.daily)

@@ -19,6 +19,7 @@ from verify_lab.common_constants import COL_DATE, COL_VALUE
 from verify_lab.strategy.grid.constants import (
     DEFAULT_PARKING_FLOOR_RATE,
     DEFAULT_RP_FLOOR_RATE,
+    INTEREST_TAX_RATE,
 )
 from verify_lab.strategy.grid.interest import (
     InterestConfig,
@@ -325,3 +326,83 @@ class TestRateSeriesAlignment:
         assert high.rp.iloc[0] == pytest.approx(0.70, abs=EXACT_TOLERANCE)
         assert low.parking.iloc[0] == pytest.approx(0.30, abs=EXACT_TOLERANCE)
         assert high.parking.iloc[0] == pytest.approx(0.75, abs=EXACT_TOLERANCE)
+
+
+class TestRiskFreeSeries:
+    """Sharpe·Sortino 가 쓸 무위험 수익률 계열을 고정한다 (결정 C87).
+
+    사양서 §13.1 은 **`rf = CD91`, rf=0 금지**로 규정했다. 원지표를 그대로 쓰지 않고
+    **세후로 만드는 것**이 이 계열의 내용이며, 이유는 전략 곡선이 이미 세후이기 때문이다 —
+    이자에 15.4% 를 원천징수한 뒤의 총자산이 곡선에 실린다.
+
+    **실수령 파킹 금리와 같은 원지표에서 갈린다.** 정렬과 이월을 두 번 구현하지 않으려고
+    같은 자리에서 낸다.
+    """
+
+    def test_CD91_원지표에_세율을_적용한다(self) -> None:
+        """
+        목적: rf 의 정의를 고정한다 (결정 C87)
+
+        Given: CD91 이 연 4.00% 인 거래일
+        When: 금리 계열을 만든다
+        Then: rf 가 `4.00 × (1 − 15.4%) = 3.384%` 다
+
+        Note:
+            **실수령 파킹 금리(4.00 − 0.30 = 3.70%)와 다르다.** 파킹은 상품이고
+            rf 는 무위험 금리다 — 파킹은 하한이 걸리는 날 CD91 보다 높아지기까지 한다
+        """
+        # Given
+        calendar = pd.DatetimeIndex(["2020-01-02"])
+        tbill = _series([("2020-01-02", 1.50)])
+        cd91 = _series([("2020-01-02", 4.00)])
+
+        # When
+        actual = build_rate_series(calendar, tbill=tbill, cd91=cd91, config=_config())
+
+        # Then
+        assert actual.risk_free.iloc[0] == pytest.approx(4.00 * (1.0 - INTEREST_TAX_RATE), abs=EXACT_TOLERANCE)
+        assert actual.parking.iloc[0] == pytest.approx(3.70, abs=EXACT_TOLERANCE)
+
+    def test_원지표가_없는_날은_전일값을_이월한다(self) -> None:
+        """
+        목적: rf 도 마스터 달력 정렬을 그대로 따름을 고정한다 (결정 C65)
+
+        Given: CD91 에 값이 없는 거래일이 끼어 있다
+        When: 금리 계열을 만든다
+        Then: 그날 rf 가 전일값에서 온 값이다
+        """
+        # Given
+        calendar = pd.DatetimeIndex(["2020-01-02", "2020-01-03"])
+        tbill = _series([("2020-01-02", 1.50), ("2020-01-03", 1.50)])
+        cd91 = _series([("2020-01-02", 4.00)])
+
+        # When
+        actual = build_rate_series(calendar, tbill=tbill, cd91=cd91, config=_config())
+
+        # Then
+        assert actual.risk_free.iloc[1] == pytest.approx(4.00 * (1.0 - INTEREST_TAX_RATE), abs=EXACT_TOLERANCE)
+        assert actual.parking_filled == 1
+
+    def test_하한은_rf에_걸리지_않는다(self) -> None:
+        """
+        목적: rf 가 **원지표**임을 고정한다 — 파킹 하한이 rf 를 밀어 올리지 않는다
+
+        Given: CD91 이 파킹 하한(0.50%)보다 낮은 0.10%
+        When: 금리 계열을 만든다
+        Then: 파킹 금리는 하한 0.50% 이고 rf 는 `0.10 × (1 − 15.4%)` 다
+
+        Note:
+            하한을 rf 에 적용하면 **무위험보다 높은 무위험 금리**가 되어
+            제로금리 구간의 Sharpe 가 구조적으로 낮게 나온다
+        """
+        # Given
+        calendar = pd.DatetimeIndex(["2020-01-02"])
+        tbill = _series([("2020-01-02", 0.10)])
+        cd91 = _series([("2020-01-02", 0.10)])
+
+        # When
+        actual = build_rate_series(calendar, tbill=tbill, cd91=cd91, config=_config())
+
+        # Then
+        assert actual.parking.iloc[0] == pytest.approx(DEFAULT_PARKING_FLOOR_RATE, abs=EXACT_TOLERANCE)
+        assert actual.risk_free.iloc[0] == pytest.approx(0.10 * (1.0 - INTEREST_TAX_RATE), abs=EXACT_TOLERANCE)

@@ -65,7 +65,9 @@ from verify_lab.strategy.grid.constants import (
     COL_ACCRUED_INTEREST,
     COL_ACTIVE_LEVELS,
     COL_BLOCKED_COUNT,
+    COL_BUY_AMOUNT,
     COL_BUY_COUNT,
+    COL_CAPPED_LEVELS,
     COL_CASH,
     COL_CLOSE_RATE,
     COL_COST,
@@ -116,6 +118,8 @@ DAILY_COLUMNS = [
     COL_BUY_COUNT,
     COL_SELL_COUNT,
     COL_BLOCKED_COUNT,
+    COL_BUY_AMOUNT,
+    COL_CAPPED_LEVELS,
     COL_EXTENDED_LEVELS,
     COL_HELD_INVESTED,
     COL_COST,
@@ -449,6 +453,7 @@ def run_grid(
             anchor=config.anchor,
         )
         buy_cost = 0.0
+        buy_amount = 0.0
         for buy in plan.orders:
             if buy.level_index in held:
                 raise RuntimeError(f"내부 불변조건 위반: 이미 보유한 레벨을 다시 샀습니다 - 레벨 {buy.level_index}, 날짜 {date.date()}")
@@ -457,6 +462,7 @@ def run_grid(
             # 경로가 예산을 다 쓰지 못할 수 있어 둘은 같은 값이 아니다
             cash -= buy.spent
             buy_cost += buy.cost
+            buy_amount += buy.spent
             bought_units += buy.units
             bought_invested += buy.spent
             held[buy.level_index] = Slot(
@@ -493,6 +499,8 @@ def run_grid(
                 COL_BUY_COUNT: len(plan.orders),
                 COL_SELL_COUNT: len(sells),
                 COL_BLOCKED_COUNT: len(plan.blocked_levels),
+                COL_BUY_AMOUNT: buy_amount,
+                COL_CAPPED_LEVELS: len(allocation.capped_levels),
                 COL_EXTENDED_LEVELS: extended_levels,
                 COL_HELD_INVESTED: sum(slot.invested for slot in held.values()),
                 COL_COST: sell_cost + buy_cost + interest_cost,

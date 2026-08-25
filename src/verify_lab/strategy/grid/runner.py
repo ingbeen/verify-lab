@@ -19,7 +19,9 @@ from verify_lab.strategy.grid.constants import (
     COL_ACCRUED_INTEREST,
     COL_ACTIVE_LEVELS,
     COL_BLOCKED_COUNT,
+    COL_BUY_AMOUNT,
     COL_BUY_COUNT,
+    COL_CAPPED_LEVELS,
     COL_CASH,
     COL_CLOSE_RATE,
     COL_COST,
@@ -43,8 +45,10 @@ from verify_lab.strategy.grid.constants import (
     DISPLAY_ACCRUED_INTEREST,
     DISPLAY_ACTIVE_LEVELS,
     DISPLAY_BLOCKED_COUNT,
+    DISPLAY_BUY_AMOUNT,
     DISPLAY_BUY_COST,
     DISPLAY_BUY_COUNT,
+    DISPLAY_CAPPED_LEVELS,
     DISPLAY_CASH,
     DISPLAY_CLOSE_RATE,
     DISPLAY_COST,
@@ -88,10 +92,12 @@ from verify_lab.strategy.grid.constants import (
 )
 from verify_lab.strategy.grid.engine import GridConfig, GridResult, run_grid
 from verify_lab.strategy.grid.interest import build_rate_series
+from verify_lab.strategy.grid.metrics import GridMetrics, evaluate_grid, red_flags, rounded
 from verify_lab.strategy.grid.paths.base import ExecutionPath
 from verify_lab.strategy.grid.paths.etf import EtfPath
 from verify_lab.strategy.grid.paths.exchange import ExchangePath
 from verify_lab.strategy.grid.price_range import build_daily_ranges
+from verify_lab.strategy.performance import PerformanceMetrics, evaluate_curve
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -109,6 +115,10 @@ CAPITAL_DECIMALS = 0
 # 금리는 연 % 로 싣는다. 원지표가 소수 둘째 자리까지라 셋째 자리는 하한이 만든 값에서만 생긴다
 RATE_DECIMALS = 3
 
+# 비율(0~1) 지표의 자릿수. `.claude/rules/python.md` 반올림 규칙표는 4자리를 정하지만
+# Sharpe 처럼 0.1 단위 차이가 판정을 가르는 값이 있어 지표는 6자리로 싣는다
+RATIO_DECIMALS = 6
+
 # ============================================================
 # summary.json 키
 # ============================================================
@@ -120,11 +130,22 @@ KEY_RESULT = "result"
 KEY_ROW_COUNTS = "row_counts"
 KEY_NOTES = "notes"
 
+# 사양서 §13 의 지표와 §15.3 의 판정
+KEY_PERFORMANCE = "performance"
+KEY_GRID_METRICS = "grid_metrics"
+KEY_RED_FLAGS = "red_flags"
+
 KEY_DAILY = "daily"
 KEY_TRADES = "trades"
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_SCOPE = "거래비용·이자·세금이 모두 반영된 한 경로·한 하단 이탈 대응의 결과다. " "A안과 B안은 파라미터가 아니라 설계 대안이라 하나를 고르지 않고 둘 다 돌려 견준다"
+NOTE_METRICS = (
+    "표준 지표의 연환산은 250 거래일이고 무위험 수익률의 일할은 365 달력일이다. "
+    "rf 는 CD91 원지표에 15.4% 를 적용한 세후 값이며 상품 스프레드도 하한도 걸지 않는다 — "
+    "곡선이 이미 세후라 같은 기준이어야 하고, 하한을 걸면 무위험보다 높은 무위험 금리가 된다"
+)
+NOTE_RED_FLAG = "사양서 §15.3 의 징후 아홉 개를 전부 판정해 남긴다. 한 실행으로 판정할 수 없는 항목은 " "통과가 아니라 '판정 불가'로 적는다 — 빼 버리면 검사한 것과 구분되지 않는다"
 NOTE_LOWER_BREACH = (
     "하단 이탈 B안의 격자 연장은 다음 재조정까지 유지된다 — 연장 하단은 직전 재조정 이후의 누적 최저 종가이며 "
     "재조정일에 초기화된다. 연장 레벨은 하단부 배수를 받지만 위치·배수의 기준 범위는 정식 하단·상단 그대로다"
@@ -161,6 +182,8 @@ DAILY_LABELS = {
     COL_BUY_COUNT: DISPLAY_BUY_COUNT,
     COL_SELL_COUNT: DISPLAY_SELL_COUNT,
     COL_BLOCKED_COUNT: DISPLAY_BLOCKED_COUNT,
+    COL_BUY_AMOUNT: DISPLAY_BUY_AMOUNT,
+    COL_CAPPED_LEVELS: DISPLAY_CAPPED_LEVELS,
     COL_EXTENDED_LEVELS: DISPLAY_EXTENDED_LEVELS,
     COL_HELD_INVESTED: DISPLAY_HELD_INVESTED,
     COL_COST: DISPLAY_COST,
@@ -207,12 +230,16 @@ class GridOutputs:
         trades: 체결 내역 (표시용)
         result: 엔진의 원값. 집계는 **이 값으로 한다** — 반올림된 표에서 다시 계산하면
             이중 반올림으로 합계가 어긋난다
+        performance: 곡선 하나에서 나온 표준 지표 (사양서 §13.1)
+        grid_metrics: 그리드 전용 지표 (사양서 §13.2)
         meta: 실행 파라미터와 핵심 수치
     """
 
     daily: pd.DataFrame
     trades: pd.DataFrame
     result: GridResult
+    performance: PerformanceMetrics
+    grid_metrics: GridMetrics
     meta: dict[str, Any]
 
 
@@ -275,16 +302,25 @@ def run_usdkrw_grid(
     # 4. 엔진. 하향 돌파 판정에 직전 거래일 종가가 필요하므로 전 기간 시세를 함께 넘긴다
     result = run_grid(series, ranges, config=config, rates=rates, path=path, exec_prices=exec_prices)
 
+    # 5. 지표. **표준 지표는 곡선 하나와 rf 계열만 받는다** — 그리드를 모른다 (결정 B1)
+    curve = result.daily.set_index(COL_DATE)[COL_TOTAL_ASSETS]
+    performance = evaluate_curve(curve, risk_free=rates.risk_free.set_axis(curve.index))
+    grid_metrics = evaluate_grid(result)
+
     return GridOutputs(
         daily=_display_daily(result.daily),
         trades=_display_trades(result.trades),
         result=result,
+        performance=performance,
+        grid_metrics=grid_metrics,
         meta=_build_meta(
             result,
             config=config,
             path_name=path_name,
             start_date=resolved_start,
             lower_breach=lower_breach,
+            performance=performance,
+            grid_metrics=grid_metrics,
         ),
     )
 
@@ -355,6 +391,7 @@ def _display_daily(daily: pd.DataFrame) -> pd.DataFrame:
             COL_EXEC_PRICE: PRICE_DECIMALS,
             COL_RANGE_LOW: PRICE_DECIMALS,
             COL_RANGE_HIGH: PRICE_DECIMALS,
+            COL_BUY_AMOUNT: CAPITAL_DECIMALS,
             COL_HELD_INVESTED: CAPITAL_DECIMALS,
             COL_COST: CAPITAL_DECIMALS,
             COL_RP_RATE: RATE_DECIMALS,
@@ -419,6 +456,8 @@ def _build_meta(
     path_name: str = PATH_EXCHANGE,
     start_date: str,
     lower_breach: str = DEFAULT_LOWER_BREACH,
+    performance: PerformanceMetrics | None = None,
+    grid_metrics: GridMetrics | None = None,
 ) -> dict[str, Any]:
     """실행 파라미터와 핵심 수치를 모은다.
 
@@ -432,6 +471,8 @@ def _build_meta(
         path_name: 집행 경로 이름
         start_date: 매매 시작일
         lower_breach: 하단 이탈 대응
+        performance: 표준 지표. 넘기지 않으면 요약에서 빠진다
+        grid_metrics: 그리드 전용 지표. 넘기지 않으면 요약에서 빠진다
 
     Returns:
         `summary.json` 에 담을 내용
@@ -528,9 +569,21 @@ def _build_meta(
             "active_levels_max": int(daily[COL_ACTIVE_LEVELS].max()),
             "held_slots_max": int(daily[COL_HELD_SLOTS].max()),
         },
+        KEY_PERFORMANCE: {} if performance is None else _performance_payload(performance),
+        KEY_GRID_METRICS: {} if grid_metrics is None else _grid_payload(grid_metrics),
+        KEY_RED_FLAGS: (
+            []
+            if performance is None or grid_metrics is None
+            else [
+                {"name": flag.name, "triggered": flag.triggered, "detail": flag.detail}
+                for flag in red_flags(performance, grid_metrics)
+            ]
+        ),
         KEY_ROW_COUNTS: {KEY_DAILY: int(len(daily)), KEY_TRADES: int(len(trades))},
         KEY_NOTES: [
             NOTE_SCOPE,
+            NOTE_METRICS,
+            NOTE_RED_FLAG,
             NOTE_LOWER_BREACH,
             NOTE_PATH,
             NOTE_ETF_PERIOD,
@@ -567,3 +620,75 @@ def _unrealised_rate(row: pd.Series) -> float | None:
         return None
 
     return round((float(row[COL_USD_VALUE]) - invested) / invested, 6)
+
+
+def _performance_payload(metrics: PerformanceMetrics) -> dict[str, Any]:
+    """표준 지표를 `summary.json` 에 담을 형태로 바꾼다.
+
+    Args:
+        metrics: 표준 지표
+
+    Returns:
+        저장용 dict. 계산 불가는 `None` 그대로 남긴다
+    """
+    return {
+        "total_return_rate": rounded(metrics.total_return_rate, RATIO_DECIMALS),
+        "cagr": rounded(metrics.cagr, RATIO_DECIMALS),
+        "max_drawdown": rounded(metrics.max_drawdown, RATIO_DECIMALS),
+        "max_drawdown_date": metrics.max_drawdown_date.strftime(DATE_FORMAT),
+        "peak_date": metrics.peak_date.strftime(DATE_FORMAT),
+        "calmar": rounded(metrics.calmar, RATIO_DECIMALS),
+        "volatility": rounded(metrics.volatility, RATIO_DECIMALS),
+        "sharpe": rounded(metrics.sharpe, RATIO_DECIMALS),
+        "sortino": rounded(metrics.sortino, RATIO_DECIMALS),
+        "risk_free_mean": rounded(metrics.risk_free_mean, RATE_DECIMALS),
+        "risk_free_return_rate": rounded(metrics.risk_free_return_rate, RATIO_DECIMALS),
+    }
+
+
+def _grid_payload(metrics: GridMetrics) -> dict[str, Any]:
+    """그리드 전용 지표를 `summary.json` 에 담을 형태로 바꾼다.
+
+    Args:
+        metrics: 그리드 전용 지표
+
+    Returns:
+        저장용 dict
+    """
+    return {
+        "hold_days_max": metrics.hold_days_max,
+        "hold_days_mean": rounded(metrics.hold_days_mean, 1),
+        "hold_days_median": rounded(metrics.hold_days_median, 1),
+        "open_hold_days_max": metrics.open_hold_days_max,
+        "turnover_per_year": rounded(metrics.turnover_per_year, 2),
+        "turnover_per_slot_per_year": rounded(metrics.turnover_per_slot_per_year, 2),
+        "blocked_days": metrics.blocked_days,
+        "blocked_day_ratio": rounded(metrics.blocked_day_ratio, RATIO_DECIMALS),
+        "deployment_mean": rounded(metrics.deployment_mean, RATIO_DECIMALS),
+        "cash_ratio_mean": rounded(metrics.cash_ratio_mean, RATIO_DECIMALS),
+        "daily_deploy_max": rounded(metrics.daily_deploy_max, RATIO_DECIMALS),
+        "daily_deploy_max_date": metrics.daily_deploy_max_date.strftime(DATE_FORMAT),
+        "multi_fill_days": metrics.multi_fill_days,
+        "unrealised_worst_rate": rounded(metrics.unrealised_worst_rate, RATIO_DECIMALS),
+        "unrealised_worst_date": (
+            None if metrics.unrealised_worst_date is None else metrics.unrealised_worst_date.strftime(DATE_FORMAT)
+        ),
+        "grid_excess_total": rounded(metrics.grid_excess_total, CAPITAL_DECIMALS),
+        "grid_excess_share_of_total_return": rounded(metrics.grid_excess_share_of_total_return, RATIO_DECIMALS),
+        "grid_excess_share_of_realized": rounded(metrics.grid_excess_share_of_realized, RATIO_DECIMALS),
+        "grid_excess_share_of_trading": rounded(metrics.grid_excess_share_of_trading, RATIO_DECIMALS),
+        "total_return": rounded(metrics.total_return, CAPITAL_DECIMALS),
+        "interest_after_tax": rounded(metrics.interest_after_tax, CAPITAL_DECIMALS),
+        "trading_return": rounded(metrics.trading_return, CAPITAL_DECIMALS),
+        "breach_days": metrics.breach_days,
+        "breach_episodes": metrics.breach_episodes,
+        "breach_days_max_run": metrics.breach_days_max_run,
+        "breach_depth_max": rounded(metrics.breach_depth_max, RATIO_DECIMALS),
+        "active_levels_min": metrics.active_levels_min,
+        "active_levels_max": metrics.active_levels_max,
+        "capped_days": metrics.capped_days,
+        "range_low_shift_median": rounded(metrics.range_low_shift_median, RATIO_DECIMALS),
+        "range_low_shift_max": rounded(metrics.range_low_shift_max, RATIO_DECIMALS),
+        "range_high_shift_median": rounded(metrics.range_high_shift_median, RATIO_DECIMALS),
+        "range_high_shift_max": rounded(metrics.range_high_shift_max, RATIO_DECIMALS),
+    }
