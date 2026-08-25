@@ -43,6 +43,7 @@ from verify_lab.strategy.grid.engine import GridConfig, run_grid
 from verify_lab.strategy.grid.interest import InterestConfig, RateSeries
 from verify_lab.strategy.grid.lattice import level_price
 from verify_lab.strategy.grid.paths.base import CostConfig
+from verify_lab.strategy.grid.paths.exchange import ExchangePath
 from verify_lab.strategy.grid.price_range import build_daily_ranges
 
 # 손계산이 쉽도록 익절폭을 크게 잡는다. 레벨이 적어 체결을 눈으로 따라갈 수 있다
@@ -56,10 +57,10 @@ TRADING_START = pd.Timestamp("2020-01-01")
 AMOUNT_TOLERANCE = 0.01
 
 # 비용이 없는 설정. 이 조건에서는 G2 의 「매수 전후 총자산이 같다」가 그대로 성립한다
-FREE_COST = CostConfig(exchange_spread_rate=0.0, slippage_rate=0.0)
+FREE_COST = CostConfig(exchange_spread_rate=0.0, slippage_rate=0.0, brokerage_rate=0.0)
 
 # 확정된 기본 비용 (결정 C35). 편도 합계 0.18%, 왕복 0.36%
-PAID_COST = CostConfig(exchange_spread_rate=0.0008, slippage_rate=0.0010)
+PAID_COST = CostConfig(exchange_spread_rate=0.0008, slippage_rate=0.0010, brokerage_rate=0.0)
 
 # 이자가 없는 설정. 하한이 0이면 금리 0을 그대로 통과시킨다
 FREE_INTEREST = InterestConfig(rp_floor_rate=0.0, parking_floor_rate=0.0)
@@ -145,7 +146,13 @@ def _run(
         min_range_width=settings.min_range_width,
     )
 
-    return run_grid(series, ranges, config=settings, rates=_rates(ranges, rp=rp, parking=parking))
+    return run_grid(
+        series,
+        ranges,
+        config=settings,
+        rates=_rates(ranges, rp=rp, parking=parking),
+        path=ExchangePath(settings.cost),
+    )
 
 
 class TestAccountingIdentity:
@@ -836,7 +843,7 @@ class TestEdgeCases:
 
         # When / Then
         with pytest.raises(ValueError, match="거래일"):
-            run_grid(series, broken, config=config, rates=_rates(broken))
+            run_grid(series, broken, config=config, rates=_rates(broken), path=ExchangePath(config.cost))
 
 
 class TestSlotCapPassthrough:

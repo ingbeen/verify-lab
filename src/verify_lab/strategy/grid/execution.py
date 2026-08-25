@@ -18,6 +18,11 @@
 **보너스는 비용 전 명목으로 잰다** — 지정가 운용도 같은 비용을 물므로 비용은 상쇄되며,
 비용 후 금액으로 재면 그 판정이 다른 것을 재게 된다.
 
+**판정 가격과 집행 가격은 다르다.** 격자·범위·하향 돌파·목표가는 **원달러 종가**로 판정하고
+(결정 C1·C17), 체결은 **그 경로의 가격**으로 한다. 환전 경로는 둘이 같고 ETF 경로는 갈라진다.
+**이탈 보너스도 판정 가격으로 잰다** — 「격자에서 얼마나 벗어났는가」이고 격자가 원달러이기 때문이다.
+ETF 가 원달러를 얼마나 잘 따라갔는지는 별개의 현상이며 등가성 검증이 이미 쟀다.
+
 **금액 계산은 집행 경로가 한다.** 이 모듈은 어느 레벨을 사고 파는지까지만 정하고,
 그 예산으로 실제 무엇을 얼마나 사는지는 경로에 위임한다 — 경로마다 보유 단위와 비용 구조가 다르다.
 
@@ -49,8 +54,9 @@ class Slot:
     Attributes:
         level_index: 이 슬롯이 붙어 있는 레벨 번호 k
         entry_date: 매수 체결일
-        entry_price: 매수 체결 가격 (당일 종가)
-        units: 보유 단위 (환전 경로는 달러)
+        entry_price: 매수 **집행** 가격. 환전은 원달러 종가, ETF 는 수정 종가다
+        entry_rate: 매수일의 **판정** 가격 (원달러 종가). 격자 이탈 보너스가 이 값으로 잰다
+        units: 보유 단위 (환전은 달러, ETF 는 주식 수)
         invested: 실제로 나간 원화. **비용을 포함한다**
         entry_cost: 그중 매수 거래비용
     """
@@ -58,13 +64,14 @@ class Slot:
     level_index: int
     entry_date: pd.Timestamp
     entry_price: float
+    entry_rate: float
     units: float
     invested: float
     entry_cost: float
 
     @property
     def notional_invested(self) -> float:
-        """비용 전 명목 투입 (`보유 단위 × 체결가`)."""
+        """비용 전 명목 투입 (`보유 단위 × 집행가`)."""
         return self.units * self.entry_price
 
 
@@ -75,18 +82,20 @@ class BuyOrder:
     Attributes:
         level_index: 레벨 번호 k
         date: 체결일
-        price: 체결 가격 (당일 종가)
+        price: **집행** 가격 (당일 체결가)
+        rate: **판정** 가격 (당일 원달러 종가)
         budget: 배정된 슬롯 금액
         spent: 실제로 나간 원화. **경로가 예산을 다 쓰지 못할 수 있어 예산 이하다**
         cost: 그중 거래비용
         units: 사들인 보유 단위
         notional: 비용 전 명목 (`units × price`)
-        target_price: 매도 목표가. **격자에 고정되며 체결가와 무관하다**
+        target_price: 매도 목표가. **격자에 고정되며 체결가와 무관하다** (원달러 스케일)
     """
 
     level_index: int
     date: pd.Timestamp
     price: float
+    rate: float
     budget: float
     spent: float
     cost: float
@@ -102,27 +111,31 @@ class SellOrder:
     Attributes:
         level_index: 레벨 번호 k
         date: 체결일
-        price: 체결 가격 (당일 종가)
-        target_price: 이 슬롯의 목표가
+        price: **집행** 가격 (당일 체결가)
+        rate: **판정** 가격 (당일 원달러 종가)
+        target_price: 이 슬롯의 목표가 (원달러 스케일)
         invested: 투입했던 원화 (비용 포함)
         notional_invested: 비용 전 명목 투입
-        proceeds: 회수한 원화 (비용 차감 후)
+        proceeds: 회수한 원화 (비용·세금 차감 후)
         notional_proceeds: 비용 전 명목 회수
         cost: 매도 거래비용
-        realized: 실현손익 (`proceeds − invested`). **비용을 뺀 값이다**
-        grid_excess: 격자 이탈 보너스. **비용 전 명목 기준**으로 잰 종가 체결 가정의 기여분
+        tax: 매매 차익 과세액. **환전 경로는 언제나 0** 이다
+        realized: 실현손익 (`proceeds − invested`). **비용과 세금을 뺀 값이다**
+        grid_excess: 격자 이탈 보너스. **비용 전 명목에 판정 가격의 이탈률을 적용**한 값이다
         hold_days: 진입일로부터의 보유 달력일 수
     """
 
     level_index: int
     date: pd.Timestamp
     price: float
+    rate: float
     target_price: float
     invested: float
     notional_invested: float
     proceeds: float
     notional_proceeds: float
     cost: float
+    tax: float
     realized: float
     grid_excess: float
     hold_days: int
@@ -146,6 +159,7 @@ def plan_sells(
     held: Sequence[Slot],
     *,
     close: float,
+    exec_price: float,
     date: pd.Timestamp,
     growth_rate: float,
     path: ExecutionPath,
@@ -153,22 +167,28 @@ def plan_sells(
 ) -> tuple[SellOrder, ...]:
     """보유 슬롯 중 목표가에 닿은 것을 판다.
 
+    **판정은 원달러 종가로, 체결은 경로의 집행 가격으로** 한다. 환전 경로는 둘이 같다.
+
     Args:
         held: 보유 슬롯. 같은 레벨이 두 개 있으면 거부한다
-        close: 당일 종가 (양수)
+        close: 당일 **판정** 가격 — 원달러 종가 (양수)
+        exec_price: 당일 **집행** 가격 (양수)
         date: 체결일
         growth_rate: 익절폭 g (비율)
-        path: 집행 경로. 회수 금액과 비용을 계산한다
+        path: 집행 경로. 회수 금액과 비용·세금을 계산한다
         anchor: 격자의 앵커 가격
 
     Returns:
         매도 체결 (레벨 k 오름차순). 없으면 빈 튜플
 
     Raises:
-        ValueError: 종가가 양수가 아니거나, 같은 레벨의 슬롯이 중복된 경우
+        ValueError: 가격이 양수가 아니거나, 같은 레벨의 슬롯이 중복된 경우
     """
     if close <= 0:
         raise ValueError(f"당일 종가는 양수여야 합니다: {close}")
+
+    if exec_price <= 0:
+        raise ValueError(f"당일 집행 가격은 양수여야 합니다: {exec_price}")
 
     indices = [slot.level_index for slot in held]
     if len(set(indices)) != len(indices):
@@ -180,30 +200,32 @@ def plan_sells(
         if close < target:
             continue
 
-        liquidation = path.liquidate(slot.units, price=close)
+        liquidation = path.liquidate(slot.units, price=exec_price, cost_basis=slot.invested)
         notional_invested = slot.notional_invested
 
         orders.append(
             SellOrder(
                 level_index=slot.level_index,
                 date=date,
-                price=close,
+                price=exec_price,
+                rate=close,
                 target_price=target,
                 invested=slot.invested,
                 notional_invested=notional_invested,
                 proceeds=liquidation.proceeds,
                 notional_proceeds=liquidation.notional,
                 cost=liquidation.cost,
+                tax=liquidation.tax,
                 realized=liquidation.proceeds - slot.invested,
-                # 격자대로 지정가 운용했다면 얻었을 몫을 뺀 나머지가 종가 체결 가정의 기여분이다.
-                # 지정가 운용도 같은 비용을 물므로 **비용 전 명목**끼리 견준다
-                grid_excess=(liquidation.notional - notional_invested) - growth_rate * notional_invested,
+                # 격자대로 지정가 운용했다면 익절폭 g 만 얻었을 것이다. 그보다 얼마나 더 벌었는지가
+                # 종가 체결 가정의 기여분이며, **격자가 원달러이므로 이탈률도 판정 가격으로 잰다**
+                grid_excess=notional_invested * ((close / slot.entry_rate - 1.0) - growth_rate),
                 hold_days=int((date - slot.entry_date).days),
             )
         )
 
     if orders:
-        logger.debug(f"매도 {len(orders)}건: 종가 {close:,.2f}, 레벨 {[order.level_index for order in orders]}")
+        logger.debug(f"매도 {len(orders)}건: 판정 {close:,.2f}, 레벨 {[order.level_index for order in orders]}")
 
     return tuple(orders)
 
@@ -214,6 +236,7 @@ def plan_buys(
     *,
     previous_close: float,
     close: float,
+    exec_price: float,
     amounts: Mapping[int, float],
     cash: float,
     date: pd.Timestamp,
@@ -222,6 +245,8 @@ def plan_buys(
     anchor: float = GRID_ANCHOR_PRICE,
 ) -> BuyPlan:
     """하향 돌파한 활성 레벨을 현금이 닿는 데까지 산다.
+
+    **판정은 원달러 종가로, 체결은 경로의 집행 가격으로** 한다. 환전 경로는 둘이 같다.
 
     현금이 모자라면 **아래(싼) 레벨부터 채우고 못 사는 레벨에서 중단한다**(결정 C5·사양서 §6.5).
     건너뛰면 체결 순서가 가격이 아니라 슬롯 크기에 의존하게 되어 규칙이 하나 늘어난다.
@@ -232,8 +257,9 @@ def plan_buys(
     Args:
         active_indices: 오늘 활성인 레벨 번호
         held_indices: 이미 보유 중인 레벨 번호. **다시 사지 않는다** (사양서 §15.2 #12)
-        previous_close: 전일 종가 (양수)
-        close: 당일 종가 (양수)
+        previous_close: 전일 **판정** 가격 — 원달러 종가 (양수)
+        close: 당일 **판정** 가격 — 원달러 종가 (양수)
+        exec_price: 당일 **집행** 가격 (양수)
         amounts: 레벨 번호 → 슬롯 금액. **활성 레벨 전부에 값이 있어야 한다**
         cash: 쓸 수 있는 원화 (0 이상)
         date: 체결일
@@ -253,6 +279,9 @@ def plan_buys(
 
     if close <= 0:
         raise ValueError(f"당일 종가는 양수여야 합니다: {close}")
+
+    if exec_price <= 0:
+        raise ValueError(f"당일 집행 가격은 양수여야 합니다: {exec_price}")
 
     if cash < 0:
         raise ValueError(f"현금은 0 이상이어야 합니다: {cash}")
@@ -289,14 +318,15 @@ def plan_buys(
             break
 
         # 2. 금액 계산은 경로가 한다. 비용은 예산 안에서 나가고 남은 돈이 명목이 된다
-        acquisition = path.acquire(budget, price=close)
+        acquisition = path.acquire(budget, price=exec_price)
         remaining -= acquisition.spent
 
         orders.append(
             BuyOrder(
                 level_index=index,
                 date=date,
-                price=close,
+                price=exec_price,
+                rate=close,
                 budget=budget,
                 spent=acquisition.spent,
                 cost=acquisition.cost,
@@ -307,6 +337,6 @@ def plan_buys(
         )
 
     if orders:
-        logger.debug(f"매수 {len(orders)}건: 종가 {close:,.2f}, 레벨 {[order.level_index for order in orders]}")
+        logger.debug(f"매수 {len(orders)}건: 판정 {close:,.2f}, 레벨 {[order.level_index for order in orders]}")
 
     return BuyPlan(orders=tuple(orders), blocked_levels=tuple(blocked))

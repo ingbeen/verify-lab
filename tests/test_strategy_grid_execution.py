@@ -35,7 +35,7 @@ TODAY = pd.Timestamp("2020-06-15")
 YESTERDAY = pd.Timestamp("2020-06-12")
 
 # 손계산을 그대로 두려고 비용이 없는 경로를 쓴다. 비용 자체의 계약은 경로 테스트가 고정한다
-FREE = ExchangePath(CostConfig(exchange_spread_rate=0.0, slippage_rate=0.0))
+FREE = ExchangePath(CostConfig(exchange_spread_rate=0.0, slippage_rate=0.0, brokerage_rate=0.0))
 
 
 def _price(index: int) -> float:
@@ -49,6 +49,7 @@ def _slot(index: int, *, entry_price: float, usd: float = 1000.0) -> Slot:
         level_index=index,
         entry_date=YESTERDAY,
         entry_price=entry_price,
+        entry_rate=entry_price,
         units=usd,
         invested=usd * entry_price,
         entry_cost=0.0,
@@ -70,6 +71,7 @@ def _buy(
         held,
         previous_close=previous_close,
         close=close,
+        exec_price=close,
         amounts=dict.fromkeys(active, amount),
         cash=cash,
         date=TODAY,
@@ -274,6 +276,7 @@ class TestMultipleFills:
             [],
             previous_close=1300.0,
             close=790.0,
+            exec_price=790.0,
             amounts={-1: 3_000_000.0, 0: 500_000.0},
             cash=2_500_000.0,
             date=TODAY,
@@ -344,7 +347,14 @@ class TestSell:
         Then: 그 슬롯을 당일 종가로 판다
         """
         # When
-        actual = plan_sells([_slot(0, entry_price=990.0)], close=1300.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
+        actual = plan_sells(
+            [_slot(0, entry_price=990.0)],
+            close=1300.0,
+            exec_price=1300.0,
+            date=TODAY,
+            growth_rate=HAND_GROWTH,
+            path=FREE,
+        )
 
         # Then
         assert [order.level_index for order in actual] == [0]
@@ -362,6 +372,7 @@ class TestSell:
         actual = plan_sells(
             [_slot(0, entry_price=990.0)],
             close=target_price(0, growth_rate=HAND_GROWTH),
+            exec_price=target_price(0, growth_rate=HAND_GROWTH),
             date=TODAY,
             growth_rate=HAND_GROWTH,
             path=FREE,
@@ -379,7 +390,14 @@ class TestSell:
         Then: 체결이 없다
         """
         # When
-        actual = plan_sells([_slot(0, entry_price=990.0)], close=1200.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
+        actual = plan_sells(
+            [_slot(0, entry_price=990.0)],
+            close=1200.0,
+            exec_price=1200.0,
+            date=TODAY,
+            growth_rate=HAND_GROWTH,
+            path=FREE,
+        )
 
         # Then
         assert actual == ()
@@ -393,8 +411,22 @@ class TestSell:
         Then: 목표가가 같다 — 격자에 고정돼 있다
         """
         # When
-        first = plan_sells([_slot(0, entry_price=990.0)], close=1250.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
-        second = plan_sells([_slot(0, entry_price=950.0)], close=1250.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
+        first = plan_sells(
+            [_slot(0, entry_price=990.0)],
+            close=1250.0,
+            exec_price=1250.0,
+            date=TODAY,
+            growth_rate=HAND_GROWTH,
+            path=FREE,
+        )
+        second = plan_sells(
+            [_slot(0, entry_price=950.0)],
+            close=1250.0,
+            exec_price=1250.0,
+            date=TODAY,
+            growth_rate=HAND_GROWTH,
+            path=FREE,
+        )
 
         # Then
         assert first[0].target_price == pytest.approx(second[0].target_price, abs=EXACT_TOLERANCE)
@@ -411,6 +443,7 @@ class TestSell:
         actual = plan_sells(
             [_slot(-1, entry_price=790.0), _slot(0, entry_price=990.0)],
             close=1300.0,
+            exec_price=1300.0,
             date=TODAY,
             growth_rate=HAND_GROWTH,
             path=FREE,
@@ -428,7 +461,7 @@ class TestSell:
         Then: 예외 없이 빈 결과다
         """
         # When
-        actual = plan_sells([], close=1300.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
+        actual = plan_sells([], close=1300.0, exec_price=1300.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
 
         # Then
         assert actual == ()
@@ -450,6 +483,7 @@ class TestGridExcessBonus:
         actual = plan_sells(
             [_slot(0, entry_price=990.0, usd=1000.0)],
             close=1300.0,
+            exec_price=1300.0,
             date=TODAY,
             growth_rate=HAND_GROWTH,
             path=FREE,
@@ -474,6 +508,7 @@ class TestGridExcessBonus:
         actual = plan_sells(
             [_slot(0, entry_price=_price(0), usd=1000.0)],
             close=target_price(0, growth_rate=HAND_GROWTH),
+            exec_price=target_price(0, growth_rate=HAND_GROWTH),
             date=TODAY,
             growth_rate=HAND_GROWTH,
             path=FREE,
@@ -494,7 +529,12 @@ class TestGridExcessBonus:
         """
         # When
         actual = plan_sells(
-            [_slot(0, entry_price=entry_price)], close=close, date=TODAY, growth_rate=HAND_GROWTH, path=FREE
+            [_slot(0, entry_price=entry_price)],
+            close=close,
+            exec_price=close,
+            date=TODAY,
+            growth_rate=HAND_GROWTH,
+            path=FREE,
         )
 
         # Then
@@ -521,7 +561,7 @@ class TestNoSameDayBuyAndSell:
         held = [_slot(-1, entry_price=790.0)]
 
         # When
-        sells = plan_sells(held, close=790.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
+        sells = plan_sells(held, close=790.0, exec_price=790.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
         buys = _buy([-2, -1, 0], [-1], previous_close=1300.0, close=790.0)
 
         # Then
@@ -540,7 +580,7 @@ class TestNoSameDayBuyAndSell:
         held = [_slot(0, entry_price=990.0)]
 
         # When
-        sells = plan_sells(held, close=1300.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
+        sells = plan_sells(held, close=1300.0, exec_price=1300.0, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
         buys = _buy([-1, 0, 1], [0], previous_close=1200.0, close=1300.0)
 
         # Then
@@ -579,6 +619,7 @@ class TestValidation:
                 [],
                 previous_close=1300.0,
                 close=790.0,
+                exec_price=790.0,
                 amounts={0: 1_000_000.0},
                 cash=100_000_000.0,
                 date=TODAY,
@@ -596,7 +637,14 @@ class TestValidation:
         Then: ValueError
         """
         with pytest.raises(ValueError, match="종가"):
-            plan_sells([_slot(0, entry_price=990.0)], close=close, date=TODAY, growth_rate=HAND_GROWTH, path=FREE)
+            plan_sells(
+                [_slot(0, entry_price=990.0)],
+                close=close,
+                exec_price=close,
+                date=TODAY,
+                growth_rate=HAND_GROWTH,
+                path=FREE,
+            )
 
     def test_같은_레벨을_두_번_보유하면_거부한다(self) -> None:
         """
@@ -614,6 +662,7 @@ class TestValidation:
             plan_sells(
                 [_slot(0, entry_price=990.0), _slot(0, entry_price=950.0)],
                 close=1300.0,
+                exec_price=1300.0,
                 date=TODAY,
                 growth_rate=HAND_GROWTH,
                 path=FREE,

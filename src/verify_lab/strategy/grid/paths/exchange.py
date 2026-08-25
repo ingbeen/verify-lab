@@ -24,6 +24,9 @@
 
 **환차익은 비과세다** (사양서 §10). 매도에서 세금을 떼지 않는 것은 이 경로의 성질이며,
 ETF 경로는 차익에 15.4% 가 붙는다.
+
+**보유 중에는 달러 RP 이자를 받는다.** 실제로 얼마를 며칠치 붙일지는 평가 계층의 몫이고,
+이 경로는 「내가 들고 있는 것이 이자를 받는 자산인가」에만 답한다.
 """
 
 from dataclasses import dataclass
@@ -77,25 +80,45 @@ class ExchangePath:
 
         return Acquisition(units=notional / price, spent=budget, cost=cost, notional=notional)
 
-    def liquidate(self, units: float, *, price: float) -> Liquidation:
+    def liquidate(self, units: float, *, price: float, cost_basis: float = 0.0) -> Liquidation:
         """보유 달러를 전부 원화로 바꾼다.
+
+        **취득원가를 받지만 쓰지 않는다.** 환차익이 비과세라 세금이 언제나 0 이기 때문이며,
+        인자를 받는 것은 경로 계약을 맞추기 위해서다.
 
         Args:
             units: 팔 달러 (0 이상)
             price: 체결 환율 — 당일 정규장 종가 (양수)
+            cost_basis: 이 달러를 사는 데 나간 원화. 과세가 없어 결과에 영향을 주지 않는다
 
         Returns:
-            회수 원화와 비용·명목
+            회수 원화와 비용·명목. **세금은 언제나 0** 이다
 
         Raises:
-            ValueError: 달러가 음수이거나 환율이 양수가 아닌 경우
+            ValueError: 달러나 취득원가가 음수이거나 환율이 양수가 아닌 경우
         """
         _validate(units, price=price, quantity_label="보유 단위")
+
+        if cost_basis < 0:
+            raise ValueError(f"취득원가는 0 이상이어야 합니다: {cost_basis}")
 
         notional = units * price
         cost = notional * self.one_way_cost_rate
 
-        return Liquidation(proceeds=notional - cost, cost=cost, notional=notional)
+        return Liquidation(proceeds=notional - cost, cost=cost, tax=0.0, notional=notional)
+
+    def holding_interest_rate(self, market_rate: float) -> float:
+        """보유 달러에 붙는 연 이자율을 낸다.
+
+        달러를 그대로 들고 있으므로 **RP 금리를 그대로 받는다.**
+
+        Args:
+            market_rate: 그날의 달러 RP 금리 (연%)
+
+        Returns:
+            같은 값
+        """
+        return market_rate
 
 
 def _validate(quantity: float, *, price: float, quantity_label: str) -> None:

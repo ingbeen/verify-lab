@@ -30,7 +30,7 @@ SLIPPAGE = 0.0010
 
 def _path(*, spread: float = SPREAD, slippage: float = SLIPPAGE) -> ExchangePath:
     """검사용 환전 경로."""
-    return ExchangePath(CostConfig(exchange_spread_rate=spread, slippage_rate=slippage))
+    return ExchangePath(CostConfig(exchange_spread_rate=spread, slippage_rate=slippage, brokerage_rate=0.0))
 
 
 class TestAcquisitionIdentity:
@@ -225,7 +225,7 @@ class TestValidation:
         """
         # Given / When / Then
         with pytest.raises(ValueError, match="0 이상 1 미만"):
-            CostConfig(exchange_spread_rate=rate, slippage_rate=SLIPPAGE)
+            CostConfig(exchange_spread_rate=rate, slippage_rate=SLIPPAGE, brokerage_rate=0.0)
 
     def test_예산이_음수면_거부한다(self) -> None:
         """

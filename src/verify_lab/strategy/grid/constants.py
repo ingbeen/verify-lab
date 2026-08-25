@@ -114,8 +114,40 @@ EXCHANGE_SPREAD_RATE_CHOICES: Final = (0.00039, 0.0008, 0.0010)
 # 슬리피지 편도 (비율, 0.0010 = 0.10%). **전 경로 공통**이며 사양서 §6.6 의
 # 「15:20 판정과 종가의 차이」를 흡수한 **실측되지 않은 가정**이다. 스프레드를 낮출수록
 # 남는 왕복비용에서 이 몫이 커지므로, 한 항만 정밀하게 다듬어도 전체 정밀도는 올라가지 않는다.
-# 사양서 §12 의 파라미터 표에 없어 검사 축이 아니다
+# 사양서 §12 의 파라미터 표에 없어 검사 축이 아니다.
+# **ETF 의 낮은 유동성과 LP 호가 스프레드도 이 가정 안에 흡수된 것으로 본다** (사양서 §10.2)
 DEFAULT_SLIPPAGE_RATE: Final = 0.0010
+
+# ETF 위탁수수료 편도 (비율, 0.00015 = 0.015%). 왕복 0.03% 이며 사양서 §10 과 부록 B 의
+# 토스증권 기준이다. **환전 경로에는 붙지 않는다**
+DEFAULT_BROKERAGE_RATE: Final = 0.00015
+
+
+# ============================================================
+# 집행 경로
+# ============================================================
+
+# 경로 식별자. CLI 인자와 결과 표시에 그대로 쓴다
+PATH_EXCHANGE: Final = "환전"
+PATH_ETF_1X: Final = "261240"
+PATH_ETF_2X: Final = "261250"
+
+PATH_CHOICES: Final = (PATH_EXCHANGE, PATH_ETF_1X, PATH_ETF_2X)
+
+# ETF 경로가 읽는 시세 파일. **수정 종가가 본검증 기준**이다 (사양서 §11.3) —
+# 원본가를 쓰면 분배락이 손실로 잡히며, 261240 은 2,366일 중 2,208일의 종가가 원본가와 다르다
+ETF_MARKET_FILENAMES: Final = {
+    PATH_ETF_1X: "261240_adjusted_max.csv",
+    PATH_ETF_2X: "261250_adjusted_max.csv",
+}
+
+# 경로별 기본 매매 시작일. ETF 는 2016-12-27 상장이라 완전한 해가 2017 부터다 (사양서 §11.4).
+# **두 기간이 다르므로 직접 비교하면 안 되며**, 같은 기간 비교는 `--start-date` 로 만든 대조군으로 한다
+PATH_START_DATES: Final = {
+    PATH_EXCHANGE: TRADING_START_DATE,
+    PATH_ETF_1X: "2017-01-01",
+    PATH_ETF_2X: "2017-01-01",
+}
 
 
 # ============================================================
@@ -147,8 +179,12 @@ PARKING_RATE_DISCOUNT: Final = 0.30
 RP_RATE_SPREAD_STEPS: Final = ((4.0, 1.00), (2.0, 0.60), (0.5, 0.30), (float("-inf"), 0.10))
 
 # 이자 소득의 원천징수율 (비율, 0.154 = 15.4%). **법정 세율이라 검사 축이 아니다** —
-# 사양서 §12 의 파라미터 표에도 없다. ETF 차익 과세도 같은 값이다 (사양서 §10)
+# 사양서 §12 의 파라미터 표에도 없다
 INTEREST_TAX_RATE: Final = 0.154
+
+# ETF 매매 차익의 과세율 (비율). 이자와 같은 15.4% 이지만 **부과 대상이 다르다** —
+# 이자는 발생액에, 이것은 매도 차익에 붙는다. **환차익은 비과세**라 환전 경로는 0 이다 (사양서 §10)
+ETF_GAIN_TAX_RATE: Final = 0.154
 
 # 이자 일할의 분모 (일). **365 달력일**이며 연환산 계수(250 거래일)와 다르다 (결정 C14).
 # 실제 거래일 밀도(약 261일)와 몇 % 어긋나지만 250 은 사양서가 정한 값이라 그 오차가 사실이다
@@ -204,8 +240,14 @@ COL_PARKING_INTEREST: Final = "ParkingInterest"
 # 아직 인출되지 않고 쌓여 있는 이자 (세전). 총자산에 즉시 반영되므로 항등식에 들어간다
 COL_ACCRUED_INTEREST: Final = "AccruedInterest"
 
-# 그날 월말 정산으로 뗀 원천징수액과 이자 환전 비용
+# 그날 월말 정산으로 뗀 이자 원천징수액
 COL_TAX_PAID: Final = "TaxPaid"
+
+# 그날 매도에서 뗀 매매 차익 과세액. 환전 경로는 언제나 0 이다
+COL_GAIN_TAX: Final = "GainTax"
+
+# 집행 가격. 환전 경로는 판정 가격(원달러 종가)과 같고 ETF 경로는 수정 종가다
+COL_EXEC_PRICE: Final = "ExecPrice"
 
 
 # ============================================================
@@ -229,6 +271,8 @@ DISPLAY_RP_INTEREST: Final = "RP이자"
 DISPLAY_PARKING_INTEREST: Final = "파킹이자"
 DISPLAY_ACCRUED_INTEREST: Final = "미인출이자"
 DISPLAY_TAX_PAID: Final = "원천징수"
+DISPLAY_GAIN_TAX: Final = "매매과세"
+DISPLAY_EXEC_PRICE: Final = "집행가"
 DISPLAY_CASH: Final = "원화현금"
 DISPLAY_USD_VALUE: Final = "달러 평가액"
 DISPLAY_TOTAL_ASSETS: Final = "총자산"
@@ -241,13 +285,16 @@ DISPLAY_LEVEL_INDEX: Final = "레벨"
 DISPLAY_LEVEL_PRICE: Final = "레벨가"
 DISPLAY_TARGET_PRICE: Final = "목표가"
 DISPLAY_ENTRY_DATE: Final = "매수일"
-DISPLAY_ENTRY_PRICE: Final = "매수가"
+DISPLAY_ENTRY_RATE: Final = "매수 판정환율"
+DISPLAY_ENTRY_PRICE: Final = "매수 집행가"
 DISPLAY_EXIT_DATE: Final = "매도일"
-DISPLAY_EXIT_PRICE: Final = "매도가"
+DISPLAY_EXIT_RATE: Final = "매도 판정환율"
+DISPLAY_EXIT_PRICE: Final = "매도 집행가"
 DISPLAY_INVESTED: Final = "투입액"
 DISPLAY_BUY_COST: Final = "매수비용"
 DISPLAY_PROCEEDS: Final = "회수액"
 DISPLAY_SELL_COST: Final = "매도비용"
+DISPLAY_SELL_TAX: Final = "매도과세"
 DISPLAY_REALIZED: Final = "실현손익"
 
 # 종가 체결 가정의 기여분. 지정가 운용이었다면 얻지 못했을 몫이라 반드시 따로 본다 (사양서 §6.4)

@@ -15,8 +15,13 @@
 보지 않는다.**
 
 ```
-총자산 = 원화현금 + Σ(슬롯 보유 단위 × 당일 종가) + 미인출 이자
+총자산 = 원화현금 + Σ(슬롯 보유 단위 × 당일 집행가) + 미인출 이자
 ```
+
+**판정 가격과 집행 가격이 다르다.** 격자·범위·하향 돌파·목표가는 **원달러 종가**로 판정하고
+(결정 C1·C17), 체결과 평가는 **경로의 집행 가격**으로 한다. 환전 경로는 둘이 같고 ETF 경로는
+갈라진다. 단일 정의라야 세 경로가 **같은 날 같은 판정**을 받아 대체 가능성 비교가 성립한다.
+**미인출 RP 이자만은 달러라 언제나 원달러 종가로 환산**한다.
 
 **미실현 평가손익을 반드시 반영한다.** 실현손익만 집계하면 그리드 곡선은 **구조적으로 항상
 우상향한다** — 매도는 무조건 이익 실현이고 손실은 미실현으로 잔류하기 때문이다.
@@ -55,6 +60,8 @@ from verify_lab.strategy.grid.constants import (
     COL_CASH,
     COL_CLOSE_RATE,
     COL_COST,
+    COL_EXEC_PRICE,
+    COL_GAIN_TAX,
     COL_HELD_SLOTS,
     COL_PARKING_INTEREST,
     COL_PARKING_RATE,
@@ -75,7 +82,7 @@ from verify_lab.strategy.grid.constants import (
 from verify_lab.strategy.grid.execution import SellOrder, Slot, plan_buys, plan_sells
 from verify_lab.strategy.grid.interest import InterestConfig, RateSeries
 from verify_lab.strategy.grid.lattice import active_level_indices, level_price
-from verify_lab.strategy.grid.paths.base import CostConfig
+from verify_lab.strategy.grid.paths.base import CostConfig, ExecutionPath
 from verify_lab.strategy.grid.paths.exchange import ExchangePath
 from verify_lab.utils.logger import get_logger
 
@@ -88,6 +95,7 @@ DAILY_RANGE_REQUIRED = [COL_DATE, COL_RANGE_LOW, COL_RANGE_HIGH, COL_REBALANCED]
 DAILY_COLUMNS = [
     COL_DATE,
     COL_CLOSE_RATE,
+    COL_EXEC_PRICE,
     COL_RANGE_LOW,
     COL_RANGE_HIGH,
     COL_REBALANCED,
@@ -103,6 +111,7 @@ DAILY_COLUMNS = [
     COL_PARKING_INTEREST,
     COL_ACCRUED_INTEREST,
     COL_TAX_PAID,
+    COL_GAIN_TAX,
     COL_CASH,
     COL_USD_VALUE,
     COL_TOTAL_ASSETS,
@@ -114,13 +123,16 @@ TRADE_COLUMNS = [
     "level_price",
     "target_price",
     "entry_date",
+    "entry_rate",
     "entry_price",
     "exit_date",
+    "exit_rate",
     "exit_price",
     "invested",
     "buy_cost",
     "proceeds",
     "sell_cost",
+    "sell_tax",
     "realized",
     "grid_excess",
     "hold_days",
@@ -205,6 +217,8 @@ def run_grid(
     *,
     config: GridConfig,
     rates: RateSeries,
+    path: ExecutionPath,
+    exec_prices: pd.Series | None = None,
 ) -> GridResult:
     """그리드를 하루씩 돌려 일별 총자산 곡선과 체결 내역을 낸다.
 
@@ -216,6 +230,9 @@ def run_grid(
         ranges: 거래일별 범위표 (`build_daily_ranges` 가 돌려준 형태)
         config: 실행 파라미터
         rates: `ranges` 의 거래일에 맞춘 실수령 금리 계열
+        path: 집행 경로. 사고파는 방법과 세금·보유 이자율을 정한다
+        exec_prices: `ranges` 의 거래일에 맞춘 **집행 가격**. 넘기지 않으면 판정 가격(원달러 종가)을
+            그대로 쓴다 — 환전 경로가 그렇다
 
     Returns:
         일별 곡선·체결 내역·미청산 슬롯
@@ -242,7 +259,8 @@ def run_grid(
             f"금리 계열의 길이가 범위표와 다릅니다: 범위표 {len(ranges):,}행, " f"RP {len(rates.rp):,}행, 파킹 {len(rates.parking):,}행"
         )
 
-    path = ExchangePath(config.cost)
+    if exec_prices is not None and len(exec_prices) != len(ranges):
+        raise ValueError(f"집행 가격 계열의 길이가 범위표와 다릅니다: 범위표 {len(ranges):,}행, 집행가 {len(exec_prices):,}행")
 
     # 월말 이자 환전에는 **슬리피지가 붙지 않는다.** 슬리피지는 사양서 §6.6 의
     # 「15:20 판정과 종가의 차이」를 흡수한 값인데, 이자 인출은 돌파 판정이 아니라
@@ -269,18 +287,26 @@ def run_grid(
         previous_date = pd.Timestamp(closes.index[position - 1])
         elapsed_days = int((date - previous_date).days)
 
+        # 집행 가격. 환전 경로는 판정 가격과 같고 ETF 경로는 수정 종가다
+        exec_price = close if exec_prices is None else float(exec_prices.iloc[offset])
+        if exec_price <= 0:
+            raise ValueError(f"집행 가격은 양수여야 합니다: {exec_price}, 날짜 {date.date()}")
+
         rp_rate_pct = float(rates.rp.iloc[offset])
         parking_rate_pct = float(rates.parking.iloc[offset])
 
         # 1. 이자. **매도·매수보다 먼저**라야 이자일수 −1 이 미래를 보지 않고 성립한다.
         #    매수는 이자 뒤에 일어나 매수 당일이 빠지고, 매도도 이자 뒤라 매도 당일이 빠진다
         opening_total = (
-            cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+            cash + sum(slot.units for slot in held.values()) * exec_price + accrued_rp_usd * close + accrued_parking
         )
 
+        # **보유 이자율은 경로가 정한다.** ETF 는 캐리가 종가에 내재돼 0 을 돌려주므로
+        # 이 식 하나가 세 경로에 그대로 쓰인다 — 엔진에 경로 분기를 만들지 않는다 (사양서 §15.2 #4)
+        holding_rate = path.holding_interest_rate(rp_rate_pct)
         rp_interest_usd = (
             sum(
-                slot.units * (rp_rate_pct / PERCENT_TO_RATE) * _interest_days(slot, date=date, previous=previous_date)
+                slot.units * (holding_rate / PERCENT_TO_RATE) * _interest_days(slot, date=date, previous=previous_date)
                 for slot in held.values()
             )
             / DAYS_PER_YEAR
@@ -291,7 +317,7 @@ def run_grid(
         accrued_parking += parking_interest
 
         after_interest = (
-            cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+            cash + sum(slot.units for slot in held.values()) * exec_price + accrued_rp_usd * close + accrued_parking
         )
         _assert_balance_change(
             opening_total, after_interest, change=rp_interest_usd * close + parking_interest, stage="이자", date=date
@@ -314,7 +340,7 @@ def run_grid(
             accrued_parking = 0.0
 
             after_settlement = (
-                cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+                cash + sum(slot.units for slot in held.values()) * exec_price + accrued_rp_usd * close + accrued_parking
             )
             _assert_balance_change(
                 after_interest, after_settlement, change=-(tax_paid + interest_cost), stage="이자 정산", date=date
@@ -323,29 +349,32 @@ def run_grid(
         # 3. 매도. 목표가에 닿은 슬롯을 전부 청산하고 현금을 회수한다.
         #    매도 전 총자산을 먼저 재 두는 것은 감소분이 매도 비용과 같은지 검사하기 위해서다
         opening_total = (
-            cash + sum(slot.units for slot in held.values()) * close + accrued_rp_usd * close + accrued_parking
+            cash + sum(slot.units for slot in held.values()) * exec_price + accrued_rp_usd * close + accrued_parking
         )
         sells = plan_sells(
             list(held.values()),
             close=close,
+            exec_price=exec_price,
             date=date,
             growth_rate=config.growth_rate,
             path=path,
             anchor=config.anchor,
         )
         sell_cost = 0.0
+        gain_tax = 0.0
         for sell in sells:
             slot = held.pop(sell.level_index)
             cash += sell.proceeds
             sell_cost += sell.cost
+            gain_tax += sell.tax
             trades.append(_trade_row(slot, sell, growth_rate=config.growth_rate, anchor=config.anchor))
 
         # 4. 총자산 평가. **매수 직전의 값**이며 사양서 §5.2 가 요구하는 "매일 종가 확정 후" 다.
         #    **미인출 이자도 총자산에 들어간다** — 현금은 아니지만 이미 내 것이다 (결정 C7)
-        usd_value = sum(slot.units for slot in held.values()) * close
+        usd_value = sum(slot.units for slot in held.values()) * exec_price
         accrued_value = accrued_rp_usd * close + accrued_parking
         total_assets = cash + usd_value + accrued_value
-        _assert_balance_change(opening_total, total_assets, change=-sell_cost, stage="매도", date=date)
+        _assert_balance_change(opening_total, total_assets, change=-(sell_cost + gain_tax), stage="매도", date=date)
 
         # 5. 활성 레벨과 슬롯 금액. 분모는 활성 레벨 전체이며 보유분을 포함한다 (결정 C4)
         active = active_level_indices(
@@ -372,6 +401,7 @@ def run_grid(
             list(held),
             previous_close=previous_close,
             close=close,
+            exec_price=exec_price,
             amounts=allocation.amounts,
             cash=cash,
             date=date,
@@ -392,6 +422,7 @@ def run_grid(
                 level_index=buy.level_index,
                 entry_date=date,
                 entry_price=buy.price,
+                entry_rate=buy.rate,
                 units=buy.units,
                 invested=buy.spent,
                 entry_cost=buy.cost,
@@ -403,7 +434,7 @@ def run_grid(
         # 7. 종가 마감 시점의 총자산을 곡선에 남긴다 (결정 C42).
         #    자산이 원화에서 달러로 바뀌는 것만으로는 총액이 변하지 않으므로,
         #    평가 시점의 값에서 **매수 비용만큼만** 줄어 있어야 한다
-        closing_usd_value = sum(slot.units for slot in held.values()) * close
+        closing_usd_value = sum(slot.units for slot in held.values()) * exec_price
         closing_accrued = accrued_rp_usd * close + accrued_parking
         closing_total = cash + closing_usd_value + closing_accrued
         _assert_balance_change(total_assets, closing_total, change=-buy_cost, stage="매수", date=date)
@@ -412,6 +443,7 @@ def run_grid(
             {
                 COL_DATE: date,
                 COL_CLOSE_RATE: close,
+                COL_EXEC_PRICE: exec_price,
                 COL_RANGE_LOW: float(day[COL_RANGE_LOW]),
                 COL_RANGE_HIGH: float(day[COL_RANGE_HIGH]),
                 COL_REBALANCED: bool(day[COL_REBALANCED]),
@@ -427,6 +459,7 @@ def run_grid(
                 COL_PARKING_INTEREST: parking_interest,
                 COL_ACCRUED_INTEREST: closing_accrued,
                 COL_TAX_PAID: tax_paid,
+                COL_GAIN_TAX: gain_tax,
                 COL_CASH: cash,
                 COL_USD_VALUE: closing_usd_value,
                 COL_TOTAL_ASSETS: closing_total,
@@ -437,10 +470,11 @@ def run_grid(
 
     daily = pd.DataFrame(rows, columns=DAILY_COLUMNS)
     last_close = float(daily[COL_CLOSE_RATE].iloc[-1])
+    last_exec = float(daily[COL_EXEC_PRICE].iloc[-1])
     open_slots = tuple(held[index] for index in sorted(held))
     open_invested = sum(slot.invested for slot in open_slots)
-    # 미청산 슬롯은 강제 청산하지 않으므로 **청산 비용을 미리 빼지 않는다** (사양서 §8·결정 C8)
-    open_value = sum(slot.units for slot in open_slots) * last_close
+    # 미청산 슬롯은 강제 청산하지 않으므로 **청산 비용과 세금을 미리 빼지 않는다** (사양서 §8·결정 C8)
+    open_value = sum(slot.units for slot in open_slots) * last_exec
 
     logger.debug(
         f"그리드 실행 완료: {len(daily):,}거래일, 청산 {len(trades):,}건, "
@@ -533,13 +567,16 @@ def _trade_row(slot: Slot, sell: SellOrder, *, growth_rate: float, anchor: float
         "level_price": level_price(slot.level_index, growth_rate=growth_rate, anchor=anchor),
         "target_price": sell.target_price,
         "entry_date": slot.entry_date,
+        "entry_rate": slot.entry_rate,
         "entry_price": slot.entry_price,
         "exit_date": sell.date,
+        "exit_rate": sell.rate,
         "exit_price": sell.price,
         "invested": sell.invested,
         "buy_cost": slot.entry_cost,
         "proceeds": sell.proceeds,
         "sell_cost": sell.cost,
+        "sell_tax": sell.tax,
         "realized": sell.realized,
         "grid_excess": sell.grid_excess,
         "hold_days": sell.hold_days,

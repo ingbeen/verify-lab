@@ -12,8 +12,8 @@ from typing import Any
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_DATE, PRICE_DECIMALS, SERIES_DIR
-from verify_lab.data.loader import load_series_csv
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR, PRICE_DECIMALS, SERIES_DIR
+from verify_lab.data.loader import load_market_csv, load_series_csv
 from verify_lab.report.constants import DATE_FORMAT
 from verify_lab.strategy.grid.constants import (
     COL_ACCRUED_INTEREST,
@@ -23,6 +23,8 @@ from verify_lab.strategy.grid.constants import (
     COL_CASH,
     COL_CLOSE_RATE,
     COL_COST,
+    COL_EXEC_PRICE,
+    COL_GAIN_TAX,
     COL_HELD_SLOTS,
     COL_PARKING_INTEREST,
     COL_PARKING_RATE,
@@ -46,8 +48,12 @@ from verify_lab.strategy.grid.constants import (
     DISPLAY_DATE,
     DISPLAY_ENTRY_DATE,
     DISPLAY_ENTRY_PRICE,
+    DISPLAY_ENTRY_RATE,
+    DISPLAY_EXEC_PRICE,
     DISPLAY_EXIT_DATE,
     DISPLAY_EXIT_PRICE,
+    DISPLAY_EXIT_RATE,
+    DISPLAY_GAIN_TAX,
     DISPLAY_GRID_EXCESS,
     DISPLAY_HELD_SLOTS,
     DISPLAY_HOLD_DAYS,
@@ -65,15 +71,21 @@ from verify_lab.strategy.grid.constants import (
     DISPLAY_RP_RATE,
     DISPLAY_SELL_COST,
     DISPLAY_SELL_COUNT,
+    DISPLAY_SELL_TAX,
     DISPLAY_TARGET_PRICE,
     DISPLAY_TAX_PAID,
     DISPLAY_TOTAL_ASSETS,
     DISPLAY_USD_VALUE,
+    ETF_MARKET_FILENAMES,
     INTEREST_TAX_RATE,
-    TRADING_START_DATE,
+    PATH_EXCHANGE,
+    PATH_START_DATES,
 )
 from verify_lab.strategy.grid.engine import GridConfig, GridResult, run_grid
 from verify_lab.strategy.grid.interest import build_rate_series
+from verify_lab.strategy.grid.paths.base import ExecutionPath
+from verify_lab.strategy.grid.paths.etf import EtfPath
+from verify_lab.strategy.grid.paths.exchange import ExchangePath
 from verify_lab.strategy.grid.price_range import build_daily_ranges
 from verify_lab.utils.logger import get_logger
 
@@ -107,7 +119,12 @@ KEY_DAILY = "daily"
 KEY_TRADES = "trades"
 
 # 산출물만 보고는 알 수 없는 실행 조건
-NOTE_SCOPE = "환전 경로 단독이다. 거래비용과 이자·세금이 반영됐으며 ETF 2종과 하단 이탈 B안은 다음 단계다"
+NOTE_SCOPE = "거래비용·이자·세금이 모두 반영된 한 경로의 결과다. 하단 이탈은 A안이며 B안은 다음 단계다"
+NOTE_PATH = "격자·범위·하향 돌파·목표가는 언제나 원달러 종가로 판정하고 체결과 평가만 경로의 집행 가격으로 한다. " "ETF 경로는 그 종목의 개장일로 거래일을 좁혔다"
+NOTE_ETF_PERIOD = "ETF 는 2016-12-27 상장이라 환전 경로(2005~)와 기간이 다르다. " "직접 비교하지 말고 같은 시작일로 돌린 대조군끼리 견준다"
+NOTE_ETF_CARRY = (
+    "ETF 는 캐리·보수·롤오버·감쇠가 수정 종가에 내재돼 있어 보유 이자를 붙이지 않고 총보수도 따로 빼지 않는다. " "정수 주식 수만 사며 못 쓴 예산은 현금으로 남아 파킹 이자를 받는다"
+)
 NOTE_INTEREST = "이자는 세전으로 매일 총자산에 쌓이고 다음 달 첫 거래일에 인출하며 그때 15.4% 를 원천징수한다. " "RP 이자일수는 보유일수 − 1 이고 원화 파킹은 전일 잔고에 매일 붙는다"
 NOTE_INTEREST_PATH = "월말 RP 이자 환전에는 환전 스프레드만 붙고 슬리피지는 붙지 않는다. " "슬리피지는 돌파 판정과 종가의 차이를 흡수한 값인데 이자 인출은 정해진 날의 정기 환전이다"
 NOTE_RATE_SOURCE = (
@@ -126,6 +143,7 @@ NOTE_EXCESS = "이탈 보너스는 종가 체결 가정의 기여분이며 비�
 DAILY_LABELS = {
     COL_DATE: DISPLAY_DATE,
     COL_CLOSE_RATE: DISPLAY_CLOSE_RATE,
+    COL_EXEC_PRICE: DISPLAY_EXEC_PRICE,
     COL_RANGE_LOW: DISPLAY_RANGE_LOW,
     COL_RANGE_HIGH: DISPLAY_RANGE_HIGH,
     COL_REBALANCED: DISPLAY_REBALANCED,
@@ -141,6 +159,7 @@ DAILY_LABELS = {
     COL_PARKING_INTEREST: DISPLAY_PARKING_INTEREST,
     COL_ACCRUED_INTEREST: DISPLAY_ACCRUED_INTEREST,
     COL_TAX_PAID: DISPLAY_TAX_PAID,
+    COL_GAIN_TAX: DISPLAY_GAIN_TAX,
     COL_CASH: DISPLAY_CASH,
     COL_USD_VALUE: DISPLAY_USD_VALUE,
     COL_TOTAL_ASSETS: DISPLAY_TOTAL_ASSETS,
@@ -152,13 +171,16 @@ TRADE_LABELS = {
     "level_price": DISPLAY_LEVEL_PRICE,
     "target_price": DISPLAY_TARGET_PRICE,
     "entry_date": DISPLAY_ENTRY_DATE,
+    "entry_rate": DISPLAY_ENTRY_RATE,
     "entry_price": DISPLAY_ENTRY_PRICE,
     "exit_date": DISPLAY_EXIT_DATE,
+    "exit_rate": DISPLAY_EXIT_RATE,
     "exit_price": DISPLAY_EXIT_PRICE,
     "invested": DISPLAY_INVESTED,
     "buy_cost": DISPLAY_BUY_COST,
     "proceeds": DISPLAY_PROCEEDS,
     "sell_cost": DISPLAY_SELL_COST,
+    "sell_tax": DISPLAY_SELL_TAX,
     "realized": DISPLAY_REALIZED,
     "grid_excess": DISPLAY_GRID_EXCESS,
     "hold_days": DISPLAY_HOLD_DAYS,
@@ -183,31 +205,49 @@ class GridOutputs:
     meta: dict[str, Any]
 
 
-def run_usdkrw_grid(config: GridConfig, *, start_date: str = TRADING_START_DATE) -> GridOutputs:
-    """원달러 그리드를 실행하고 표시용 산출물을 조립한다.
+def run_usdkrw_grid(
+    config: GridConfig,
+    *,
+    path_name: str = PATH_EXCHANGE,
+    start_date: str | None = None,
+) -> GridOutputs:
+    """원달러 그리드를 한 경로로 실행하고 표시용 산출물을 조립한다.
+
+    **격자·범위·판정은 언제나 원달러 종가**이고 경로가 바꾸는 것은 집행 가격뿐이다
+    (결정 C1·C17). ETF 경로에서는 **거래일도 그 종목의 개장일로 좁힌다** —
+    살 수도 팔 수도 없는 날을 판정에 넣으면 돌파를 한 번 놓친다.
 
     Args:
         config: 실행 파라미터
-        start_date: 매매 시작일 (`YYYY-MM-DD`)
+        path_name: 집행 경로 이름 (환전 / 261240 / 261250)
+        start_date: 매매 시작일 (`YYYY-MM-DD`). 넘기지 않으면 **경로의 기본 시작일**을 쓴다
 
     Returns:
         표시용 곡선·체결 내역과 원값·메타
 
     Raises:
-        FileNotFoundError: 종가 시계열 파일이 없는 경우
-        ValueError: 워밍업이 모자라거나 파라미터가 유효하지 않은 경우
+        FileNotFoundError: 종가 시계열이나 ETF 시세 파일이 없는 경우
+        ValueError: 경로 이름이 유효하지 않거나, 워밍업이 모자라거나, 파라미터가 유효하지 않은 경우
     """
+    if path_name not in PATH_START_DATES:
+        raise ValueError(f"알 수 없는 집행 경로입니다: {path_name} (가능한 값: {list(PATH_START_DATES)})")
+
+    resolved_start = start_date or PATH_START_DATES[path_name]
     series = load_series_csv(SERIES_DIR / CLOSE_SERIES_FILENAME)
 
-    # 1. 범위표. **전 기간 시세를 넘기고 결과 행만 자른다** — 시세를 먼저 자르면 워밍업이 무너진다
+    # 1. 범위표. **전 기간 시세를 넘기고 결과 행만 자른다** — 시세를 먼저 자르면 워밍업이 무너진다.
+    #    월평균은 원달러 전 기간으로 계산해야 하므로 거래일 제한은 그 뒤에 건다
     ranges = build_daily_ranges(
         series,
-        start_date=pd.Timestamp(start_date),
+        start_date=pd.Timestamp(resolved_start),
         lookback_years=config.lookback_years,
         min_range_width=config.min_range_width,
     )
 
-    # 2. 금리. **마스터 달력은 원달러 고시일**이며 원지표가 없는 날은 전일값을 이월한다 (결정 C14)
+    # 2. 경로와 집행 가격. 환전은 판정 가격을 그대로 쓰고 ETF 는 수정 종가를 쓴다 (사양서 §11.3)
+    path, series, ranges, exec_prices = _resolve_path(path_name, config=config, series=series, ranges=ranges)
+
+    # 3. 금리. 원지표가 없는 날은 전일값을 이월한다 (결정 C14·C65)
     rates = build_rate_series(
         pd.DatetimeIndex(ranges[COL_DATE]),
         tbill=load_series_csv(SERIES_DIR / TBILL_SERIES_FILENAME),
@@ -215,15 +255,64 @@ def run_usdkrw_grid(config: GridConfig, *, start_date: str = TRADING_START_DATE)
         config=config.interest,
     )
 
-    # 3. 엔진. 하향 돌파 판정에 직전 거래일 종가가 필요하므로 전 기간 시세를 함께 넘긴다
-    result = run_grid(series, ranges, config=config, rates=rates)
+    # 4. 엔진. 하향 돌파 판정에 직전 거래일 종가가 필요하므로 전 기간 시세를 함께 넘긴다
+    result = run_grid(series, ranges, config=config, rates=rates, path=path, exec_prices=exec_prices)
 
     return GridOutputs(
         daily=_display_daily(result.daily),
         trades=_display_trades(result.trades),
         result=result,
-        meta=_build_meta(result, config=config, start_date=start_date),
+        meta=_build_meta(result, config=config, path_name=path_name, start_date=resolved_start),
     )
+
+
+def _resolve_path(
+    path_name: str,
+    *,
+    config: GridConfig,
+    series: pd.DataFrame,
+    ranges: pd.DataFrame,
+) -> tuple[ExecutionPath, pd.DataFrame, pd.DataFrame, pd.Series | None]:
+    """경로를 만들고 그 경로의 거래일·집행 가격에 맞춰 입력을 좁힌다.
+
+    ETF 경로는 **그 종목이 열린 날에만** 사고팔 수 있다. 원달러 고시일 중 ETF 휴장일을
+    남겨 두면 그날 판정이 다음 거래일의 「전일 종가」가 되어 **돌파를 한 번 놓친다.**
+
+    Args:
+        path_name: 집행 경로 이름
+        config: 실행 파라미터
+        series: 원달러 종가 전 기간
+        ranges: 거래일별 범위표
+
+    Returns:
+        경로, 거래일이 좁혀진 원달러 시세, 좁혀진 범위표, 집행 가격
+        (환전 경로는 집행 가격이 `None` 이며 판정 가격을 그대로 쓴다)
+
+    Raises:
+        FileNotFoundError: ETF 시세 파일이 없는 경우
+        ValueError: 좁힌 결과 거래일이 남지 않는 경우
+    """
+    if path_name == PATH_EXCHANGE:
+        return ExchangePath(config.cost), series, ranges, None
+
+    market = load_market_csv(MARKET_DIR / ETF_MARKET_FILENAMES[path_name])
+    trading_days = pd.DatetimeIndex(market[COL_DATE])
+
+    narrowed_series = series[series[COL_DATE].isin(trading_days)].reset_index(drop=True)
+    narrowed_ranges = ranges[ranges[COL_DATE].isin(trading_days)].reset_index(drop=True)
+    dropped = len(ranges) - len(narrowed_ranges)
+
+    if narrowed_ranges.empty:
+        raise ValueError(f"{path_name} 의 개장일과 겹치는 거래일이 없습니다 — 매매 시작일을 확인하세요")
+
+    prices = market.set_index(COL_DATE)[COL_CLOSE].reindex(pd.DatetimeIndex(narrowed_ranges[COL_DATE]))
+    if prices.isna().any():
+        missing = prices.index[prices.isna()]
+        raise ValueError(f"{path_name} 시세에 값이 없는 거래일이 있습니다: {[str(day.date()) for day in missing[:5]]}")
+
+    logger.debug(f"{path_name} 경로: 거래일 {len(narrowed_ranges):,}일, 원달러 고시일 중 휴장 {dropped:,}일 제외")
+
+    return EtfPath(ticker=path_name, cost=config.cost), narrowed_series, narrowed_ranges, prices
 
 
 def _display_daily(daily: pd.DataFrame) -> pd.DataFrame:
@@ -240,6 +329,7 @@ def _display_daily(daily: pd.DataFrame) -> pd.DataFrame:
     frame = frame.round(
         {
             COL_CLOSE_RATE: PRICE_DECIMALS,
+            COL_EXEC_PRICE: PRICE_DECIMALS,
             COL_RANGE_LOW: PRICE_DECIMALS,
             COL_RANGE_HIGH: PRICE_DECIMALS,
             COL_COST: CAPITAL_DECIMALS,
@@ -249,6 +339,7 @@ def _display_daily(daily: pd.DataFrame) -> pd.DataFrame:
             COL_PARKING_INTEREST: CAPITAL_DECIMALS,
             COL_ACCRUED_INTEREST: CAPITAL_DECIMALS,
             COL_TAX_PAID: CAPITAL_DECIMALS,
+            COL_GAIN_TAX: CAPITAL_DECIMALS,
             COL_CASH: CAPITAL_DECIMALS,
             COL_USD_VALUE: CAPITAL_DECIMALS,
             COL_TOTAL_ASSETS: CAPITAL_DECIMALS,
@@ -280,12 +371,15 @@ def _display_trades(trades: pd.DataFrame) -> pd.DataFrame:
         {
             "level_price": PRICE_DECIMALS,
             "target_price": PRICE_DECIMALS,
+            "entry_rate": PRICE_DECIMALS,
             "entry_price": PRICE_DECIMALS,
+            "exit_rate": PRICE_DECIMALS,
             "exit_price": PRICE_DECIMALS,
             "invested": CAPITAL_DECIMALS,
             "buy_cost": CAPITAL_DECIMALS,
             "proceeds": CAPITAL_DECIMALS,
             "sell_cost": CAPITAL_DECIMALS,
+            "sell_tax": CAPITAL_DECIMALS,
             "realized": CAPITAL_DECIMALS,
             "grid_excess": CAPITAL_DECIMALS,
         }
@@ -294,12 +388,19 @@ def _display_trades(trades: pd.DataFrame) -> pd.DataFrame:
     return frame.rename(columns=TRADE_LABELS)
 
 
-def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> dict[str, Any]:
+def _build_meta(
+    result: GridResult,
+    *,
+    config: GridConfig,
+    path_name: str = PATH_EXCHANGE,
+    start_date: str,
+) -> dict[str, Any]:
     """실행 파라미터와 핵심 수치를 모은다.
 
     Args:
         result: 엔진의 원값
         config: 실행 파라미터
+        path_name: 집행 경로 이름
         start_date: 매매 시작일
 
     Returns:
@@ -321,10 +422,12 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
     rp_interest = float(daily[COL_RP_INTEREST].sum())
     parking_interest = float(daily[COL_PARKING_INTEREST].sum())
     tax_paid = float(daily[COL_TAX_PAID].sum())
+    gain_tax = float(daily[COL_GAIN_TAX].sum())
 
     return {
         KEY_STRATEGY: "usdkrw_grid",
         KEY_PARAMETERS: {
+            "path": path_name,
             "lookback_years": config.lookback_years,
             "growth_rate": config.growth_rate,
             "min_range_width": config.min_range_width,
@@ -333,6 +436,7 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
             "initial_capital": round(config.initial_capital, CAPITAL_DECIMALS),
             "exchange_spread_rate": config.cost.exchange_spread_rate,
             "slippage_rate": config.cost.slippage_rate,
+            "brokerage_rate": config.cost.brokerage_rate,
             "round_trip_cost_rate": round(2.0 * (config.cost.exchange_spread_rate + config.cost.slippage_rate), 6),
             "rp_floor_rate": config.interest.rp_floor_rate,
             "parking_floor_rate": config.interest.parking_floor_rate,
@@ -359,6 +463,7 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
             "parking_interest_total": round(parking_interest, CAPITAL_DECIMALS),
             "interest_total": round(rp_interest + parking_interest, CAPITAL_DECIMALS),
             "tax_paid_total": round(tax_paid, CAPITAL_DECIMALS),
+            "gain_tax_total": round(gain_tax, CAPITAL_DECIMALS),
             "open_accrued_interest": round(result.open_accrued_interest, CAPITAL_DECIMALS),
             "rp_rate_mean": round(float(daily[COL_RP_RATE].mean()), RATE_DECIMALS),
             "parking_rate_mean": round(float(daily[COL_PARKING_RATE].mean()), RATE_DECIMALS),
@@ -380,6 +485,9 @@ def _build_meta(result: GridResult, *, config: GridConfig, start_date: str) -> d
         KEY_ROW_COUNTS: {KEY_DAILY: int(len(daily)), KEY_TRADES: int(len(trades))},
         KEY_NOTES: [
             NOTE_SCOPE,
+            NOTE_PATH,
+            NOTE_ETF_PERIOD,
+            NOTE_ETF_CARRY,
             NOTE_COST,
             NOTE_INTEREST,
             NOTE_INTEREST_PATH,

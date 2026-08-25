@@ -233,8 +233,15 @@ poetry run python scripts/studies/run_usdkrw_equivalence.py --model usd_rate
 ### 원달러 그리드
 
 ```bash
-# 기본 설정 (사양서 §12 의 기본값)
+# 기본 설정 — 환전 경로 2005~ (사양서 §12 의 기본값)
 poetry run python scripts/strategy/run_usdkrw_grid.py
+
+# 경로별 실행. ETF 는 기본 시작일이 2017-01 이다
+poetry run python scripts/strategy/run_usdkrw_grid.py --path 261240
+poetry run python scripts/strategy/run_usdkrw_grid.py --path 261250
+
+# 같은 기간 대조군 — ETF 와 견주려면 환전도 2017~ 로 돌린다
+poetry run python scripts/strategy/run_usdkrw_grid.py --start-date 2017-01-01
 
 # 축별 대조 — 한 번에 한 축만 바꾼다
 poetry run python scripts/strategy/run_usdkrw_grid.py --lookback-years 7
@@ -247,8 +254,13 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --rp-floor 0.70
 poetry run python scripts/strategy/run_usdkrw_grid.py --parking-floor 0.25
 ```
 
-- **환전 경로 단독이며 거래비용과 이자·세금이 반영됐습니다.** 남은 것은 **ETF 경로 2종과
-  하단 이탈 B안**입니다
+- **거래비용과 이자·세금이 모두 반영됐습니다.** 하단 이탈은 A안이며 B안이 남았습니다
+- **`--path` 는 집행 경로입니다.** 격자·범위·하향 돌파·목표가는 **어느 경로든 원달러 종가**로
+  판정하고, 경로가 바꾸는 것은 집행 가격·비용·세금·보유 이자뿐입니다 —
+  그래서 세 경로의 체결 건수가 같습니다
+- **ETF 는 2016-12-27 상장이라 환전 경로(2005~)와 기간이 다릅니다.** 그냥 견주면 순위가 기간에서
+  나온 건지 경로에서 나온 건지 알 수 없으므로 `--start-date` 로 대조군을 만들어 비교합니다.
+  같은 기간(2017~)에서 **환전 125,998,702원 · 261240 125,794,274원 · 261250 136,051,353원** 입니다
 - **이자가 수익의 3분의 2입니다.** 기본 설정에서 종료 총자산 **178,494,280원**(+78.49%)이고,
   총수익 7,849만원 중 **세후 이자가 5,016만원(63.9%)** 입니다. 이자를 빼면 123,285,506원(+23.29%)
   이므로 **곡선의 성격이 이자로 정해집니다**
@@ -280,8 +292,14 @@ poetry run python scripts/strategy/run_usdkrw_grid.py --parking-floor 0.25
 - **이탈 보너스 비중을 총수익 기준으로만 읽지 마세요.** 이자가 분모에 들어가 24.94% 로
   §15.3 의 30% 를 통과하지만, **이자는 종가 체결과 무관한 수익원**이라 그 통과가 위험을 숨깁니다.
   **매매 기여분 대비로는 69.1%** 이며 근거는 [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.10 입니다
+- **261250 의 성적을 CAGR 로 읽지 마세요.** 노출이 2배라 비교가 무의미하며 사양서 §1.1 이
+  리스크 조정 지표로만 보라고 규정했습니다
+- **261240 의 MDD 는 2019-03-14 하루가 1.93%p 를 만듭니다** (−3.15% → −5.08%). 그날 체결은
+  0건인데 종가가 +21.98% 튀며 평가 신고점을 만들었습니다. 근거는
+  [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.11 입니다
 - 선행 조건: `storage/series/USDKRW_CLOSE.csv`·`DTB3.csv`·`CD91.csv`.
-  없으면 "데이터 수집" 의 ECOS·FRED 절을 따릅니다
+  ETF 경로는 `storage/market/261240_adjusted_max.csv`·`261250_adjusted_max.csv` 가 더 필요합니다.
+  없으면 "데이터 수집" 의 ECOS·FRED·KRX 절을 따릅니다
 - 실행 시간은 **수 초**입니다
 
 ### 역방향 매매 규칙

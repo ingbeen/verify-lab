@@ -5,9 +5,12 @@
 확정 설계는 `docs/spec/usdkrw_grid.md` §4 가 SoT이며, 규칙 본문은
 `docs/spec/usdkrw_grid_rules.md` 이되 §4 가 바꾼 부분은 §4 가 이긴다.
 
-**거래비용과 이자·세금까지 반영된 결과다.** 남은 것은 ETF 경로 2종과 하단 이탈 B안이다.
-사양서 §17.1 이 대기자금 이자를 가장 큰 수익원으로 잡았고 **실제로 그렇게 나온다** —
-투입률이 낮아 원화 파킹 이자가 달러 RP 이자보다 훨씬 크다.
+**한 번에 한 경로를 돌린다.** 격자·범위·판정은 언제나 원달러 종가이고, 경로가 바꾸는 것은
+집행 가격·비용·세금·보유 이자뿐이다. 거래비용과 이자·세금이 모두 반영돼 있으며
+남은 것은 하단 이탈 B안이다.
+
+**ETF 는 2016-12-27 상장이라 환전 경로와 기간이 다르다.** 그냥 견주면 순위가 기간에서 나온 건지
+경로에서 나온 건지 알 수 없으므로, `--start-date` 로 **같은 시작일의 대조군**을 만들어 비교한다.
 
 **인자는 사양서 §12 의 검사 범위로 제한한다.** 성과가 좋아지는 값을 찾는 연속 노브가 아니라
 결론이 뒤집히는지 보는 대조 축이다.
@@ -22,6 +25,7 @@ from verify_lab.report.writer import create_run_directory, save_run_summary, sav
 from verify_lab.strategy.grid.constants import (
     ALLOCATION_SPREAD_CHOICES,
     DEFAULT_ALLOCATION_SPREAD,
+    DEFAULT_BROKERAGE_RATE,
     DEFAULT_EXCHANGE_SPREAD_RATE,
     DEFAULT_GROWTH_RATE,
     DEFAULT_LOOKBACK_YEARS,
@@ -37,10 +41,12 @@ from verify_lab.strategy.grid.constants import (
     LOOKBACK_YEAR_CHOICES,
     MIN_RANGE_WIDTH_CHOICES,
     PARKING_FLOOR_RATE_CHOICES,
+    PATH_CHOICES,
+    PATH_EXCHANGE,
+    PATH_START_DATES,
     RP_FLOOR_RATE_CHOICES,
     SLOT_CAP_RATIO_CHOICES,
     STRATEGY_NAME,
-    TRADING_START_DATE,
 )
 from verify_lab.strategy.grid.engine import GridConfig
 from verify_lab.strategy.grid.interest import InterestConfig
@@ -84,7 +90,18 @@ def _build_parser() -> argparse.ArgumentParser:
     Returns:
         인자 파서
     """
-    parser = argparse.ArgumentParser(description="원달러 그리드 백테스트 (환전 경로 단독, 거래비용·이자·세금 반영)")
+    parser = argparse.ArgumentParser(description="원달러 그리드 백테스트 (경로 하나씩, 거래비용·이자·세금 반영)")
+    parser.add_argument(
+        "--path",
+        default=PATH_EXCHANGE,
+        choices=PATH_CHOICES,
+        help="집행 경로. 격자·판정은 어느 경로든 원달러 종가로 한다",
+    )
+    parser.add_argument(
+        "--start-date",
+        default=None,
+        help="매매 시작일 (YYYY-MM-DD). 생략하면 경로의 기본값. 기간을 맞춘 대조군을 만들 때 쓴다",
+    )
     parser.add_argument(
         "--lookback-years",
         type=int,
@@ -145,29 +162,32 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _print_settings(config: GridConfig) -> None:
+def _print_settings(config: GridConfig, *, path_name: str, start_date: str) -> None:
     """적용한 설정을 먼저 보여준다.
 
     Args:
         config: 실행 파라미터
+        path_name: 집행 경로 이름
+        start_date: 매매 시작일
     """
     rows = [
+        ["집행 경로", path_name],
         ["룩백 N", f"{config.lookback_years}년 (월 {config.lookback_years * 12}개)"],
         ["익절폭 g", f"{config.growth_rate * RATE_TO_PERCENT:.2f}%"],
         ["최소 범위폭", f"{config.min_range_width * RATE_TO_PERCENT:.0f}%"],
         ["자금 차등", f"±{config.allocation_spread:.1f}"],
         ["슬롯 상한", f"{config.slot_cap_ratio * RATE_TO_PERCENT:.0f}%"],
         ["초기 자본금", f"{config.initial_capital:,.0f}원"],
-        ["매매 시작", TRADING_START_DATE],
+        ["매매 시작", start_date],
         ["환전 스프레드", f"편도 {config.cost.exchange_spread_rate * RATE_TO_PERCENT:.3f}%"],
+        ["위탁수수료", f"편도 {config.cost.brokerage_rate * RATE_TO_PERCENT:.3f}%"],
         ["슬리피지", f"편도 {config.cost.slippage_rate * RATE_TO_PERCENT:.3f}%"],
-        ["왕복 비용", f"{2 * (config.cost.exchange_spread_rate + config.cost.slippage_rate) * RATE_TO_PERCENT:.3f}%"],
         ["RP 하한", f"연 {config.interest.rp_floor_rate:.2f}%"],
         ["파킹 하한", f"연 {config.interest.parking_floor_rate:.2f}%"],
         ["이자 원천징수", f"{INTEREST_TAX_RATE * RATE_TO_PERCENT:.1f}%"],
     ]
     TableLogger(SETTING_COLUMNS, logger).print_table(rows, title="실행 조건")
-    logger.debug("ETF 경로 2종과 하단 이탈 B안은 아직 반영되지 않았다")
+    logger.debug("하단 이탈은 A안이며 B안은 아직 반영되지 않았다")
 
 
 def _print_result(outputs: GridOutputs) -> None:
@@ -181,6 +201,7 @@ def _print_result(outputs: GridOutputs) -> None:
     share = result["grid_excess_share_of_realized"]
 
     rows = [
+        ["집행 경로", outputs.meta["parameters"]["path"]],
         ["기간", f"{period['first_date']} ~ {period['last_date']}"],
         ["거래일 / 재조정", f"{period['trading_days']:,}일 / {period['rebalance_count']:,}회"],
         ["시작 총자산", f"{result['first_total_assets']:,.0f}원"],
@@ -194,7 +215,8 @@ def _print_result(outputs: GridOutputs) -> None:
         ["이자 합계 (세전)", f"{result['interest_total']:,.0f}원"],
         ["└ RP / 파킹", f"{result['rp_interest_total']:,.0f}원 / {result['parking_interest_total']:,.0f}원"],
         ["└ 평균 금리", f"연 {result['rp_rate_mean']:.3f}% / {result['parking_rate_mean']:.3f}%"],
-        ["원천징수 합계", f"{result['tax_paid_total']:,.0f}원"],
+        ["이자 원천징수", f"{result['tax_paid_total']:,.0f}원"],
+        ["매매 차익 과세", f"{result['gain_tax_total']:,.0f}원"],
         ["미인출 이자 (세전)", f"{result['open_accrued_interest']:,.0f}원"],
         ["금리 이월일 (RP/파킹)", f"{result['rp_rate_filled_days']:,}일 / {result['parking_rate_filled_days']:,}일"],
         ["이탈 보너스 합계", f"{result['grid_excess_total']:,.0f}원"],
@@ -219,12 +241,18 @@ def main() -> None:
         allocation_spread=args.allocation_spread,
         slot_cap_ratio=args.slot_cap_ratio,
         initial_capital=INITIAL_CAPITAL,
-        cost=CostConfig(exchange_spread_rate=args.exchange_spread, slippage_rate=DEFAULT_SLIPPAGE_RATE),
+        cost=CostConfig(
+            exchange_spread_rate=args.exchange_spread,
+            slippage_rate=DEFAULT_SLIPPAGE_RATE,
+            brokerage_rate=DEFAULT_BROKERAGE_RATE,
+        ),
         interest=InterestConfig(rp_floor_rate=args.rp_floor, parking_floor_rate=args.parking_floor),
     )
 
-    _print_settings(config)
-    outputs = run_usdkrw_grid(config)
+    start_date = args.start_date or PATH_START_DATES[args.path]
+
+    _print_settings(config, path_name=args.path, start_date=start_date)
+    outputs = run_usdkrw_grid(config, path_name=args.path, start_date=start_date)
     _print_result(outputs)
 
     directory = create_run_directory(STRATEGY_NAME)
