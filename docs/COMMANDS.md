@@ -230,6 +230,46 @@ poetry run python scripts/studies/run_usdkrw_equivalence.py --model usd_rate
 > **이것은 측정이 아니라 측정 결과로부터 도출한 매매 규칙**이며, 규칙과 확정 근거는
 > [strategy/역방향_매매_규칙.md](strategy/역방향_매매_규칙.md) 가 SoT입니다.
 
+### 원달러 그리드
+
+```bash
+# 기본 설정 (사양서 §12 의 기본값)
+poetry run python scripts/strategy/run_usdkrw_grid.py
+
+# 축별 대조 — 한 번에 한 축만 바꾼다
+poetry run python scripts/strategy/run_usdkrw_grid.py --lookback-years 7
+poetry run python scripts/strategy/run_usdkrw_grid.py --growth-rate 0.012
+poetry run python scripts/strategy/run_usdkrw_grid.py --min-range-width 0.30
+poetry run python scripts/strategy/run_usdkrw_grid.py --allocation-spread 0.3
+poetry run python scripts/strategy/run_usdkrw_grid.py --slot-cap-ratio 0.06
+poetry run python scripts/strategy/run_usdkrw_grid.py --exchange-spread 0.0010
+```
+
+- **환전 경로 단독이며 거래비용까지만 반영됐습니다.** 환전 스프레드와 슬리피지는 붙었지만
+  **달러 RP·원화 파킹 이자와 세금은 아직 없습니다.** 사양서 §17.1 은 **대기자금 이자가 가장 큰
+  수익원**이라고 적었으므로, 이자가 붙으면 곡선의 성격이 달라집니다
+- **거래비용이 총수익의 33% 를 가져갑니다.** 기본 설정에서 종료 총자산이 비용 없을 때
+  132,064,560원, 비용을 물면 **123,285,506원**입니다 (+32.06% → +23.29%)
+- **인자는 사양서 §12 의 검사 범위로 제한돼 있습니다.** 범위 밖 값을 넣으면 argparse 가 거부합니다 —
+  성과가 좋아지는 값을 찾는 연속 노브가 아니라 **결론이 뒤집히는지 보는 대조 축**입니다
+- **익절폭 `--growth-rate` 는 격자 자체를 바꿉니다.** `1000 × (1+g)^k` 의 레벨 가격이 전부
+  달라지므로 값마다 독립 실행이며, 다른 축과 달리 결과를 이어 붙일 수 없습니다
+- **`--exchange-spread` 는 환전 스프레드 편도입니다.** 0.039%(우대 95% 실측) / **0.08%(기본)** /
+  0.10%(사양서 원안) 셋이며, 결론이 스프레드 가정에 의존하는지 보는 축입니다.
+  실계좌 환전 실측의 근거는 [spec/usdkrw_grid.md](spec/usdkrw_grid.md) §3.7 에 있습니다
+- 초기 자본금(1억원)·매매 시작일(2005-01)·**슬리피지 편도 0.10%** 는 **인자가 아닙니다.**
+  확정된 값이며 SoT 는 `src/verify_lab/strategy/grid/constants.py` 입니다.
+  슬리피지는 사양서 §12 의 파라미터 표에 없어 검사 축이 아닙니다
+- 산출물은 `storage/results/<실행시각>_usdkrw_grid/` 에 `daily.csv`(일별 총자산 곡선),
+  `trades.csv`(체결 내역), `summary.json` 으로 남습니다
+- `daily.csv` 의 **총자산은 시가평가**라 미실현 평가손익이 들어 있습니다.
+  `거래비용` 열은 그날 발생한 몫이며, **총자산은 그 비용만큼만 줄어듭니다** — 평가에는 비용이 걸리지 않습니다
+- `trades.csv` 의 **이탈 보너스**는 종가 체결 가정의 기여분이며 **비용 전 명목 기준**입니다.
+  지정가 운용도 같은 비용을 물기 때문이며, 한 체결에서
+  `실현손익 = 이탈 보너스 + g × 명목투입 − 매수비용 − 매도비용` 이 성립합니다
+- 선행 조건: `storage/series/USDKRW_CLOSE.csv`. 없으면 "데이터 수집" 의 ECOS 절을 따릅니다
+- 실행 시간은 **수 초**입니다
+
 ### 역방향 매매 규칙
 
 ```bash

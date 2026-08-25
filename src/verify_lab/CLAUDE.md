@@ -19,6 +19,7 @@ src/verify_lab/
 ├── measure/             # forward return·베이스라인·통계 — 검증이 바뀌어도 안 바뀜
 ├── report/              # 표·CSV·마크다운 출력 — 검증이 바뀌어도 안 바뀜
 ├── studies/             # 개별 검증의 이벤트 정의 — 검증마다 새로 작성
+├── strategy/            # 측정 결과로 도출한 매매 규칙 — **예외 계층** (아래 참고)
 └── utils/               # 횡단 관심사 (로거, 포맷팅, CLI 헬퍼, 메타 관리)
 ```
 
@@ -28,12 +29,29 @@ src/verify_lab/
 studies  →  measure  →  data
    ↓          ↓
       report        utils
+
+strategy  →  studies      (이벤트 구동 — 신호 목록을 받는다)
+strategy  →  data         (상태 구동 — 시세 자체를 받는다)
 ```
 
 - `measure`·`report`는 **어떤 검증이 자기를 쓰는지 몰라야 합니다.** `studies`를 import하지 않습니다
 - `studies`가 `measure`의 함수 시그니처를 바꿔야 한다면, 그 검증에만 필요한 것인지 먼저 의심합니다.
   한 검증 때문에 공통 계층이 특수해지면 다음 검증에서 다시 갈라집니다
 - `utils`는 도메인 로직에 의존하지 않습니다
+- **`strategy`만 두 갈래로 들어옵니다.** `studies`가 낸 신호 목록을 받는 이벤트 구동과,
+  시세 자체를 받는 상태 구동 둘 다 허용합니다. 상태 구동이 필요한 이유와 그때도 지켜야 하는 것은
+  [.claude/rules/strategy.md](../../.claude/rules/strategy.md)가 SoT입니다
+
+### strategy 계층은 예외입니다
+
+루트 `CLAUDE.md`가 "하지 않는 일"로 규정한 **진입·손절·익절 설계를 유일하게 허용하는 폴더**입니다.
+경계는 폴더 단위이며 **`measure/`·`studies/`·`report/`에서는 여전히 금지**입니다.
+
+- 허용 범위와 제약의 SoT: [.claude/rules/strategy.md](../../.claude/rules/strategy.md)
+- **모든 매매법의 공통 산출물은 일별 총자산 곡선**입니다. 표준 지표는 곡선 하나만 받는 함수에서
+  계산하며, 곡선에는 **미실현 평가손익이 반드시 들어갑니다** — 실현손익만 집계하면
+  익절형 매매법의 자산곡선은 구조적으로 항상 우상향합니다
+- **상태 구동이라고 해서 미래를 봐도 되는 것이 아닙니다.** 상태는 판정일까지의 체결로만 쌓입니다
 
 ### studies의 계약
 

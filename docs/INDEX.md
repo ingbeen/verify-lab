@@ -54,7 +54,7 @@
 | [context/RESEARCH_qqq_late_entry.md](context/RESEARCH_qqq_late_entry.md) | 현재 보유 판정(이번 사이클 미진입)과 근거 | 같음 |
 | [ROADMAP.md](ROADMAP.md) | 검증 목록, Phase 상태, 계획서 승격 목적지 | 작업 시작·종료 시 |
 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정 결정 8건, 사전 실측 기록 | 검증 #1 관련 전부 |
-| [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | **원달러 그리드 트랙의 데이터 스펙·실측 기록·확정된 설계 결정** — ECOS/FRED 코드, ETF 2종 실측, 사양서 해석 확정 | 원달러 그리드·검증 #5 관련 전부 |
+| [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | **원달러 그리드 트랙의 SoT** — 데이터 실측 기록 9개 절(ECOS/FRED 코드, ETF 2종, 매매기준율 시차, 동적 범위, 슬롯 상한, 환전 비용, 그리드 엔진 첫 실행, 거래비용 반영 실행)과 확정된 설계 결정(A1~A4·B1~B2·C1~C56) | 원달러 그리드·검증 #5 관련 전부. **§4 가 원본 사양서를 이긴다** |
 | [spec/usdkrw_grid_rules.md](spec/usdkrw_grid_rules.md) | 원달러 그리드 **매매 규칙의 원본 사양서** (사용자 작성). **일부 규정이 실측으로 바뀌었으므로 위 spec 의 §4 가 SoT** | 그리드 규칙 본문(격자·범위·자금배분·체결·비용·지표)을 볼 때 |
 | [research/원달러_ETF_등가성.md](research/원달러_ETF_등가성.md) | **검증 #5 결과** — 261240 이 「환전 + 달러 예치」의 대체재인가. 판정은 조건부 가능 | 원달러 그리드의 ETF 경로를 다룰 때 |
 | [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) | **검증 #1 결과** — 역대급 등락·연속 등락 이후 수익률 측정과 판정 | 검증 #1 결과를 인용하거나 재실행할 때 |
