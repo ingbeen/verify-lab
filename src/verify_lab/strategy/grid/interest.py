@@ -80,14 +80,27 @@ class RateSeries:
         parking: 거래일 → 원화 파킹 금리 (연%)
         risk_free: 거래일 → **무위험 수익률** (연%, 세후). CD91 원지표에 세율만 적용한 값이며
             상품 스프레드도 하한도 걸지 않는다. 사양서 §13.1 의 Sharpe·Sortino 가 쓴다
+        tbill: 거래일 → **미국 3개월 T-bill 원지표** (연%). 가공 전 값이다
+        cd91: 거래일 → **CD 91일물 원지표** (연%). 가공 전 값이다
         rp_filled: RP 원지표가 없어 전일값을 이월한 거래일 수
         parking_filled: 파킹 원지표가 없어 전일값을 이월한 거래일 수.
             **rf 도 같은 계열이라 이 건수가 그대로 적용된다**
+
+    Note:
+        **원지표를 함께 싣는 이유는 역산이 불가능해서다** (결정 C112).
+        `rp = max(T-bill − 계단 스프레드, 하한)` 이라 가공된 RP 금리에서 T-bill 을 되돌릴 수 없고,
+        하한이 걸린 날은 정보가 통째로 사라진다 — 실측에서 거래일의 48.8% 가 그렇다.
+
+        사양서 §14 축2 의 「한미 금리차 부호」는 **원지표의 차**로 재야 한다.
+        실수령 금리로 재면 상품 스프레드와 하한이 걸려 **금리차가 아니라 상품 조건의 부호**가 된다.
+        읽는 쪽이 파일을 다시 열면 달력 정렬과 전일값 이월이 두 곳으로 갈리므로 여기서 함께 낸다.
     """
 
     rp: pd.Series
     parking: pd.Series
     risk_free: pd.Series
+    tbill: pd.Series
+    cd91: pd.Series
     rp_filled: int
     parking_filled: int
 
@@ -172,6 +185,9 @@ def build_rate_series(
         parking=parking_raw.map(lambda value: parking_rate(value, floor=config.parking_floor_rate)),
         # 원지표에 세율만 적용한다. 하한을 걸면 무위험보다 높은 무위험 금리가 된다
         risk_free=parking_raw * (1.0 - INTEREST_TAX_RATE),
+        # 이미 정렬·이월이 끝난 원지표를 그대로 싣는다. 다시 읽으면 그 판정이 두 곳으로 갈린다
+        tbill=rp_raw,
+        cd91=parking_raw,
         rp_filled=rp_filled,
         parking_filled=parking_filled,
     )

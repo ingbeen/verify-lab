@@ -406,3 +406,85 @@ class TestRiskFreeSeries:
         # Then
         assert actual.parking.iloc[0] == pytest.approx(DEFAULT_PARKING_FLOOR_RATE, abs=EXACT_TOLERANCE)
         assert actual.risk_free.iloc[0] == pytest.approx(0.10 * (1.0 - INTEREST_TAX_RATE), abs=EXACT_TOLERANCE)
+
+
+class TestRawIndicatorSeries:
+    """금리 원지표를 계열이 함께 돌려준다 (결정 C112).
+
+    **역산할 수 없어서 함께 낸다.** `rp = max(T-bill − 계단 스프레드, 하한)` 이라
+    가공된 RP 금리에서 T-bill 을 되돌릴 방법이 없다. 사양서 §14 축2 의 「한미 금리차 부호」는
+    **원지표의 차**로 재야 하는데, 실수령 금리로 재면 상품 스프레드와 하한이 걸려
+    **금리차가 아니라 상품 조건의 부호**가 나온다.
+
+    **다시 읽지 않는 것이 핵심이다.** 국면 계층이 파일을 다시 읽고 정렬하면
+    달력 정렬과 전일값 이월이 두 곳으로 갈려 조용히 달라진다 (「판정식 단일화」).
+    """
+
+    def test_원지표를_마스터_달력에_맞춰_돌려준다(self) -> None:
+        """
+        목적: 결정 C112 — 가공 전 값이 거래일마다 그대로 실린다
+
+        Given: T-bill 1.50% · CD91 4.00% 인 거래일 하나
+        When: 금리 계열을 만든다
+        Then: 원지표 두 계열이 그 값 그대로다
+        """
+        # Given
+        calendar = pd.DatetimeIndex(["2020-01-02"])
+        tbill = _series([("2020-01-02", 1.50)])
+        cd91 = _series([("2020-01-02", 4.00)])
+
+        # When
+        actual = build_rate_series(calendar, tbill=tbill, cd91=cd91, config=_config())
+
+        # Then
+        assert actual.tbill.iloc[0] == pytest.approx(1.50, abs=EXACT_TOLERANCE)
+        assert actual.cd91.iloc[0] == pytest.approx(4.00, abs=EXACT_TOLERANCE)
+        assert actual.tbill.index.equals(calendar)
+        assert actual.cd91.index.equals(calendar)
+
+    def test_원지표가_가공_계열과_같은_이월을_겪는다(self) -> None:
+        """
+        목적: 같은 정렬을 두 번 구현하지 않음을 고정한다 — 이월된 날의 값이 서로 정합한다
+
+        Given: 둘째 날에 두 원지표가 모두 비어 있다
+        When: 금리 계열을 만든다
+        Then: 원지표가 전일값을 잇고, 그 값으로 만든 RP·파킹과 정확히 맞는다
+        """
+        # Given
+        calendar = pd.DatetimeIndex(["2020-01-02", "2020-01-03"])
+        tbill = _series([("2020-01-02", 1.50)])
+        cd91 = _series([("2020-01-02", 4.00)])
+
+        # When
+        actual = build_rate_series(calendar, tbill=tbill, cd91=cd91, config=_config())
+
+        # Then
+        assert actual.tbill.iloc[1] == pytest.approx(1.50, abs=EXACT_TOLERANCE)
+        assert actual.cd91.iloc[1] == pytest.approx(4.00, abs=EXACT_TOLERANCE)
+        assert actual.rp.iloc[1] == pytest.approx(
+            rp_rate(actual.tbill.iloc[1], floor=DEFAULT_RP_FLOOR_RATE), abs=EXACT_TOLERANCE
+        )
+        assert actual.parking.iloc[1] == pytest.approx(
+            parking_rate(actual.cd91.iloc[1], floor=DEFAULT_PARKING_FLOOR_RATE), abs=EXACT_TOLERANCE
+        )
+
+    def test_하한이_걸려도_원지표는_그대로다(self) -> None:
+        """
+        목적: **원지표에서 역산이 불가능한 지점**을 고정한다.
+              하한이 걸린 날 RP 금리만 보면 T-bill 이 얼마였는지 알 수 없다
+
+        Given: T-bill 이 RP 하한보다 낮은 0.05%
+        When: 금리 계열을 만든다
+        Then: RP 는 하한이지만 원지표는 0.05% 그대로다
+        """
+        # Given
+        calendar = pd.DatetimeIndex(["2020-01-02"])
+        tbill = _series([("2020-01-02", 0.05)])
+        cd91 = _series([("2020-01-02", 4.00)])
+
+        # When
+        actual = build_rate_series(calendar, tbill=tbill, cd91=cd91, config=_config())
+
+        # Then
+        assert actual.rp.iloc[0] == pytest.approx(DEFAULT_RP_FLOOR_RATE, abs=EXACT_TOLERANCE)
+        assert actual.tbill.iloc[0] == pytest.approx(0.05, abs=EXACT_TOLERANCE)

@@ -94,7 +94,7 @@ from verify_lab.strategy.grid.constants import (
     PATH_START_DATES,
 )
 from verify_lab.strategy.grid.engine import GridConfig, GridResult, run_grid
-from verify_lab.strategy.grid.interest import build_rate_series
+from verify_lab.strategy.grid.interest import RateSeries, build_rate_series
 from verify_lab.strategy.grid.metrics import GridMetrics, evaluate_grid, red_flags, rounded
 from verify_lab.strategy.grid.paths.base import CostConfig, ExecutionPath
 from verify_lab.strategy.grid.paths.etf import EtfPath
@@ -265,6 +265,8 @@ class GridOutputs:
         performance: 곡선 하나에서 나온 표준 지표 (사양서 §13.1)
         grid_metrics: 그리드 전용 지표 (사양서 §13.2)
         benchmarks: 벤치마크 3종의 곡선과 성적 (사양서 §13.3)
+        rates: 이 실행이 실제로 쓴 금리 계열. **국면별 지표가 같은 rf 를 써야** 하고
+            (결정 C113), 사양서 §14 축2 의 금리차 부호는 여기 실린 **원지표**로 잰다
         meta: 실행 파라미터와 핵심 수치
     """
 
@@ -275,6 +277,7 @@ class GridOutputs:
     performance: PerformanceMetrics
     grid_metrics: GridMetrics
     benchmarks: tuple[Benchmark, ...]
+    rates: RateSeries
     meta: dict[str, Any]
 
 
@@ -362,6 +365,7 @@ def run_usdkrw_grid(
         performance=performance,
         grid_metrics=grid_metrics,
         benchmarks=benchmarks,
+        rates=rates,
         meta=_build_meta(
             result,
             config=config,

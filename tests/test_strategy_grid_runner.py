@@ -28,7 +28,8 @@ from verify_lab.strategy.grid.constants import (
 )
 from verify_lab.strategy.grid.engine import DAILY_COLUMNS, TRADE_COLUMNS, GridConfig, GridResult
 from verify_lab.strategy.grid.execution import Slot
-from verify_lab.strategy.grid.interest import InterestConfig
+from verify_lab.strategy.grid.interest import InterestConfig, RateSeries
+from verify_lab.strategy.grid.metrics import evaluate_grid
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.runner import (
     DAILY_LABELS,
@@ -39,6 +40,7 @@ from verify_lab.strategy.grid.runner import (
     KEY_RESULT,
     KEY_ROW_COUNTS,
     TRADE_LABELS,
+    GridOutputs,
     _build_meta,
     _display_curves,
     _display_daily,
@@ -704,3 +706,54 @@ class TestBenchmarkSummary:
 
         # Then
         assert actual[DISPLAY_STRATEGY].tolist() == pytest.approx([100_000_001.0, 100_000_000.0], abs=1e-12)
+
+
+class TestGridOutputsRates:
+    """실행이 쓴 금리 계열을 산출물에 함께 싣는다 (결정 C113).
+
+    **국면별 지표가 같은 rf 를 써야 한다.** 사양서 §14 의 분할 분석은 구간마다
+    `evaluate_curve` 를 다시 부르는데, 그 rf 를 새로 만들면 **같은 값이 나올 뿐
+    같은 것임이 보장되지 않는다** — 금리 파일이 갱신되거나 하한 인자가 달라지면 조용히 갈린다.
+
+    **원지표까지 함께 온다** (결정 C112). §14 축2 의 금리차 부호가 원지표의 차라서다.
+    """
+
+    def test_금리_계열이_산출물에_실린다(self) -> None:
+        """
+        목적: 결정 C113 — 공개 계약에 `rates` 가 있다
+
+        Given: 실행이 쓴 금리 계열
+        When: 산출물을 만든다
+        Then: 그 계열이 그대로 들어 있고 rf 와 원지표를 함께 꺼낼 수 있다
+        """
+        # Given
+        index = pd.DatetimeIndex([pd.Timestamp("2020-01-02"), pd.Timestamp("2020-01-03")])
+        rates = RateSeries(
+            rp=pd.Series(0.40, index=index, dtype=float),
+            parking=pd.Series(0.50, index=index, dtype=float),
+            risk_free=pd.Series(3.384, index=index, dtype=float),
+            tbill=pd.Series(0.05, index=index, dtype=float),
+            cd91=pd.Series(4.00, index=index, dtype=float),
+            rp_filled=0,
+            parking_filled=0,
+        )
+        benchmarks = (_benchmark("a", "첫째", [100_000_000.0, 90_000_000.0]),)
+        curve = _daily().set_index(COL_DATE)[COL_TOTAL_ASSETS]
+
+        # When
+        outputs = GridOutputs(
+            daily=_display_daily(_daily()),
+            trades=_display_trades(_trades()),
+            curves=_display_curves(_daily(), benchmarks),
+            result=_result(),
+            performance=evaluate_curve(curve, risk_free=rates.risk_free),
+            grid_metrics=evaluate_grid(_result()),
+            benchmarks=benchmarks,
+            rates=rates,
+            meta={},
+        )
+
+        # Then
+        assert outputs.rates.risk_free.index.equals(curve.index), "rf 가 곡선과 다른 거래일을 겪습니다"
+        assert outputs.rates.tbill.iloc[0] == pytest.approx(0.05, abs=1e-12)
+        assert outputs.rates.cd91.iloc[0] == pytest.approx(4.00, abs=1e-12)

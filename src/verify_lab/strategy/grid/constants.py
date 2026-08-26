@@ -244,6 +244,58 @@ PURPOSE_BENCHMARK_KRW_PARKING: Final = "리스크 대비 정당성"
 
 
 # ============================================================
+# 견고성 검사 (사양서 §12.1 축별 단독 · §14 분할 분석)
+# ============================================================
+
+# 검사 축의 키. **한 번에 한 축만** 바꾸며, 값 목록은 위의 `*_CHOICES` 가 SoT다 —
+# 여기서 값을 다시 적으면 사양서 §12 의 검사 범위와 조용히 갈라진다.
+# **최적 조합을 찾는 것이 아니다** — §12.1 이 전수 탐색을 금지했고,
+# 이 축들이 답하는 것은 「기본 설정에서 나온 결론이 축을 옮겨도 유지되는가」 하나다
+AXIS_LOOKBACK_YEARS: Final = "lookback_years"
+AXIS_GROWTH_RATE: Final = "growth_rate"
+AXIS_ALLOCATION_SPREAD: Final = "allocation_spread"
+AXIS_MIN_RANGE_WIDTH: Final = "min_range_width"
+AXIS_SLOT_CAP_RATIO: Final = "slot_cap_ratio"
+AXIS_RP_FLOOR: Final = "rp_floor_rate"
+AXIS_PARKING_FLOOR: Final = "parking_floor_rate"
+
+# **사양서 §12 파라미터 표에 없는 추가 축이다.** 슬리피지·스프레드 가정이 환전 왕복비용의 절반을
+# 넘어(§3.7) 결론이 그 가정에 의존하는지 봐야 하므로 넣되, 출처가 다르다는 사실을 표에 표기한다
+AXIS_EXCHANGE_SPREAD: Final = "exchange_spread_rate"
+
+# 검사 축의 표시 이름
+DISPLAY_AXIS_LOOKBACK_YEARS: Final = "룩백 N"
+DISPLAY_AXIS_GROWTH_RATE: Final = "익절폭 g"
+DISPLAY_AXIS_ALLOCATION_SPREAD: Final = "자금 차등"
+DISPLAY_AXIS_MIN_RANGE_WIDTH: Final = "최소 범위폭"
+DISPLAY_AXIS_SLOT_CAP_RATIO: Final = "슬롯 상한"
+DISPLAY_AXIS_RP_FLOOR: Final = "RP 하한"
+DISPLAY_AXIS_PARKING_FLOOR: Final = "파킹 하한"
+DISPLAY_AXIS_EXCHANGE_SPREAD: Final = "환전 스프레드"
+
+# 축 검사를 돌릴 실행. **환전 2005~ 가 본 실행**이고 나머지 셋은 같은 시작일로 맞춘 비교군이다 —
+# 기간이 다르면 순위가 기간에서 나온 건지 경로에서 나온 건지 알 수 없다 (결정 C72)
+EXECUTION_EXCHANGE_FULL: Final = "환전 2005~"
+EXECUTION_EXCHANGE_MATCHED: Final = "환전 2017~"
+EXECUTION_ETF_1X: Final = "261240"
+EXECUTION_ETF_2X: Final = "261250"
+
+# 사양서 §14 축1·축2 의 축 이름. 세 구간표가 한 산출물에 섞이므로 이 값으로 갈린다
+REGIME_AXIS_SPEC: Final = "사양서 국면"
+REGIME_AXIS_CONTIGUOUS: Final = "연속 분할"
+REGIME_AXIS_RATE_GAP: Final = "한미 금리차"
+
+# 금리차 부호의 표기. **동률은 별도 칸이다** (결정 C110) — 사양서 §14 는 (+)/(−) 둘만 적었지만
+# 「달러금리 > 원화금리」에도 「달러금리 < 원화금리」에도 해당하지 않는 날이 실재한다
+RATE_GAP_POSITIVE: Final = "달러 > 원화"
+RATE_GAP_NEGATIVE: Final = "달러 < 원화"
+RATE_GAP_EQUAL: Final = "동률"
+
+# 견고성 검사 결과 폴더 이름 뒤에 붙는 이름
+ROBUSTNESS_NAME: Final = "usdkrw_grid_robustness"
+
+
+# ============================================================
 # 실행
 # ============================================================
 

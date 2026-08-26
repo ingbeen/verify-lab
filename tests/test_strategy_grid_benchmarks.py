@@ -84,6 +84,9 @@ def _rates(ranges: pd.DataFrame, *, rp: float = 0.0, parking: float = 0.0) -> Ra
         rp=pd.Series(rp, index=index, dtype=float),
         parking=pd.Series(parking, index=index, dtype=float),
         risk_free=pd.Series(parking, index=index, dtype=float),
+        # 원지표는 이 테스트가 쓰지 않는다. 가공 금리를 그대로 두어 두 계열이 어긋나지 않게 한다
+        tbill=pd.Series(rp, index=index, dtype=float),
+        cd91=pd.Series(parking, index=index, dtype=float),
         rp_filled=0,
         parking_filled=0,
     )
