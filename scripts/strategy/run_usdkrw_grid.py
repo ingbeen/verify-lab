@@ -14,6 +14,10 @@
 **ETF 는 2016-12-27 상장이라 환전 경로와 기간이 다르다.** 그냥 견주면 순위가 기간에서 나온 건지
 경로에서 나온 건지 알 수 없으므로, `--start-date` 로 **같은 시작일의 대조군**을 만들어 비교한다.
 
+**벤치마크 3종을 매 실행에 병기한다** (사양서 §13.3). 질문은 "이기는가"가 아니라
+**"얼마나 자주 지고, 질 때 얼마나 지는가"** 이며, 그중 **「분할매수 후 보유」가 판정**이다 —
+못 이기면 §13.3 은 익절 로직을 제거하는 것이 맞다고 적었다.
+
 **인자는 사양서 §12 의 검사 범위로 제한한다.** 성과가 좋아지는 값을 찾는 연속 노브가 아니라
 결론이 뒤집히는지 보는 대조 축이다.
 
@@ -26,6 +30,7 @@ from verify_lab.report.constants import PERCENT_DECIMALS, RATE_TO_PERCENT
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.strategy.grid.constants import (
     ALLOCATION_SPREAD_CHOICES,
+    BENCHMARK_SPLIT_BUY_HOLD,
     DEFAULT_ALLOCATION_SPREAD,
     DEFAULT_BROKERAGE_RATE,
     DEFAULT_EXCHANGE_SPREAD_RATE,
@@ -37,6 +42,7 @@ from verify_lab.strategy.grid.constants import (
     DEFAULT_RP_FLOOR_RATE,
     DEFAULT_SLIPPAGE_RATE,
     DEFAULT_SLOT_CAP_RATIO,
+    DISPLAY_STRATEGY,
     EXCHANGE_SPREAD_RATE_CHOICES,
     GROWTH_RATE_CHOICES,
     INITIAL_CAPITAL,
@@ -58,6 +64,7 @@ from verify_lab.strategy.grid.interest import InterestConfig
 from verify_lab.strategy.grid.metrics import red_flags
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.runner import (
+    KEY_CURVES,
     KEY_DAILY,
     KEY_PERIOD,
     KEY_RESULT,
@@ -79,6 +86,7 @@ KEY_META_USDKRW_GRID = "usdkrw_grid_strategy"
 # 산출물 파일 이름
 DAILY_FILENAME = "daily.csv"
 TRADES_FILENAME = "trades.csv"
+CURVES_FILENAME = "benchmarks.csv"
 
 # 실행 조건 표의 컬럼 정의 (컬럼명, 폭, 정렬)
 SETTING_COLUMNS = [("항목", 16, Align.LEFT), ("값", 24, Align.RIGHT)]
@@ -94,6 +102,24 @@ METRIC_COLUMNS = [("지표", 22, Align.LEFT), ("값", 24, Align.RIGHT)]
 
 # 사양서 §15.3 판정 표의 컬럼 정의
 FLAG_COLUMNS = [("징후", 34, Align.LEFT), ("판정", 10, Align.LEFT), ("근거", 46, Align.LEFT)]
+
+# 사양서 §13.3 벤치마크 표의 컬럼 정의
+BENCHMARK_COLUMNS = [
+    ("기준", 18, Align.LEFT),
+    ("확인 목적", 20, Align.LEFT),
+    ("종료 총자산", 18, Align.RIGHT),
+    ("총수익률", 11, Align.RIGHT),
+    ("CAGR", 9, Align.RIGHT),
+    ("MDD", 9, Align.RIGHT),
+    ("Sharpe", 8, Align.RIGHT),
+    ("전략 − 기준", 16, Align.RIGHT),
+]
+
+# 사양서 §13.3 판정 표의 컬럼 정의. 판정 문장이 길어 값 칸을 넓게 잡는다
+VERDICT_COLUMNS = [("항목", 24, Align.LEFT), ("값", 44, Align.RIGHT)]
+
+# 전략 행에는 목적도 차이도 없다. 비워 두는 대신 그렇게 적는다
+NOT_APPLICABLE = "—"
 
 
 def _optional(value: float | None, template: str) -> str:
@@ -176,6 +202,98 @@ def _print_red_flags(outputs: GridOutputs) -> None:
         for flag in red_flags(outputs.performance, outputs.grid_metrics)
     ]
     TableLogger(FLAG_COLUMNS, logger).print_table(rows, title="Red Flag 판정 (사양서 §15.3)")
+
+
+def _print_benchmarks(outputs: GridOutputs) -> None:
+    """사양서 §13.3 의 벤치마크 3종을 전략과 나란히 보여준다.
+
+    **질문은 「이기는가」가 아니다.** §13.3 이 "얼마나 자주 지고, 질 때 얼마나 지는가" 로 적었으므로
+    승패가 아니라 **차이의 금액**을 함께 싣는다.
+
+    Args:
+        outputs: 실행 산출물
+    """
+    performance = outputs.performance
+    rows = [
+        [
+            DISPLAY_STRATEGY,
+            NOT_APPLICABLE,
+            f"{performance.last_value:,.0f}원",
+            f"{performance.total_return_rate * RATE_TO_PERCENT:+.{PERCENT_DECIMALS}f}%",
+            f"{performance.cagr * RATE_TO_PERCENT:+.{PERCENT_DECIMALS}f}%",
+            f"{performance.max_drawdown * RATE_TO_PERCENT:.{PERCENT_DECIMALS}f}%",
+            _optional(performance.sharpe, "{:.3f}"),
+            NOT_APPLICABLE,
+        ]
+    ]
+    rows.extend(
+        [
+            benchmark.name,
+            benchmark.purpose,
+            f"{benchmark.performance.last_value:,.0f}원",
+            f"{benchmark.performance.total_return_rate * RATE_TO_PERCENT:+.{PERCENT_DECIMALS}f}%",
+            f"{benchmark.performance.cagr * RATE_TO_PERCENT:+.{PERCENT_DECIMALS}f}%",
+            f"{benchmark.performance.max_drawdown * RATE_TO_PERCENT:.{PERCENT_DECIMALS}f}%",
+            _optional(benchmark.performance.sharpe, "{:.3f}"),
+            f"{performance.last_value - benchmark.performance.last_value:+,.0f}원",
+        ]
+        for benchmark in outputs.benchmarks
+    )
+    TableLogger(BENCHMARK_COLUMNS, logger).print_table(rows, title="벤치마크 (사양서 §13.3)")
+
+
+def _print_verdict(outputs: GridOutputs) -> None:
+    """사양서 §13.3 의 판정을 보여준다.
+
+    **「분할매수 후 보유」가 판정이다.** §13.3 이 "여기서 못 이기면 익절 로직을 제거하는 것이
+    맞다" 고 적었으므로, 그 한 줄을 결과에서 감추지 않는다.
+
+    Args:
+        outputs: 실행 산출물
+    """
+    split = next(
+        (benchmark for benchmark in outputs.benchmarks if benchmark.key == BENCHMARK_SPLIT_BUY_HOLD),
+        None,
+    )
+    if split is None:
+        return
+
+    contribution = outputs.performance.last_value - split.performance.last_value
+    rows = [
+        ["익절 로직의 순수 기여", f"{contribution:+,.0f}원"],
+        ["└ 전략 / 벤치마크", f"{outputs.performance.last_value:,.0f}원 / {split.performance.last_value:,.0f}원"],
+        [
+            "판정",
+            "그리드가 이긴다" if contribution > 0 else "못 이긴다 — §13.3 은 익절 로직 제거를 권한다",
+        ],
+        [
+            "벤치마크 자금 소진율",
+            f"{_detail(split.detail.get('blocked_day_ratio'), '{:.2%}')}"
+            f" ({_detail(split.detail.get('blocked_days'), '{:,}일')})",
+        ],
+        [
+            "└ 최장 보유 / 투입률",
+            f"{_detail(split.detail.get('hold_days_max'), '{:,}일')}"
+            f" / {_detail(split.detail.get('deployment_mean'), '{:.2%}')}",
+        ],
+    ]
+    TableLogger(VERDICT_COLUMNS, logger).print_table(rows, title="§13.3 판정 — 익절 로직의 순수 기여")
+
+
+def _detail(value: float | int | str | None, template: str) -> str:
+    """벤치마크 부가 사실을 표시 문자열로 바꾼다. 계산 불가는 그대로 적는다.
+
+    체결이 한 건도 없으면 보유기간이 `None` 이다 (결정 C91). 그때 `0일` 로 적으면
+    **"하루 만에 판다"로 읽히므로** 값이 없다는 사실을 그대로 남긴다.
+
+    Args:
+        value: 부가 사실의 값이거나 `None`
+        template: 값이 있을 때 쓸 포맷 문자열
+
+    Returns:
+        표시 문자열
+    """
+    return "계산 불가" if value is None else template.format(value)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -372,16 +490,23 @@ def main() -> None:
     _print_result(outputs)
     _print_metrics(outputs)
     _print_red_flags(outputs)
+    _print_benchmarks(outputs)
+    _print_verdict(outputs)
 
     directory = create_run_directory(STRATEGY_NAME)
     save_table(directory, DAILY_FILENAME, outputs.daily)
     if not outputs.trades.empty:
         save_table(directory, TRADES_FILENAME, outputs.trades)
+    save_table(directory, CURVES_FILENAME, outputs.curves)
     save_run_summary(directory, outputs.meta)
 
     counts = outputs.meta[KEY_ROW_COUNTS]
     TableLogger(OUTPUT_COLUMNS, logger).print_table(
-        [[DAILY_FILENAME, f"{counts[KEY_DAILY]:,}"], [TRADES_FILENAME, f"{counts[KEY_TRADES]:,}"]],
+        [
+            [DAILY_FILENAME, f"{counts[KEY_DAILY]:,}"],
+            [TRADES_FILENAME, f"{counts[KEY_TRADES]:,}"],
+            [CURVES_FILENAME, f"{counts[KEY_CURVES]:,}"],
+        ],
         title=f"산출물 (저장 폴더: {directory})",
     )
     save_metadata(

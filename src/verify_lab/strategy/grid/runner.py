@@ -7,7 +7,8 @@
 화면에서 본 숫자를 CSV 에서 찾지 못한다. 사용자가 직접 대조하는 것이 이 프로젝트의 전제다.
 """
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pandas as pd
@@ -15,6 +16,7 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR, PRICE_DECIMALS, SERIES_DIR
 from verify_lab.data.loader import load_market_csv, load_series_csv
 from verify_lab.report.constants import DATE_FORMAT
+from verify_lab.strategy.grid.benchmarks import Benchmark, build_benchmarks
 from verify_lab.strategy.grid.constants import (
     COL_ACCRUED_INTEREST,
     COL_ACTIVE_LEVELS,
@@ -81,6 +83,7 @@ from verify_lab.strategy.grid.constants import (
     DISPLAY_SELL_COST,
     DISPLAY_SELL_COUNT,
     DISPLAY_SELL_TAX,
+    DISPLAY_STRATEGY,
     DISPLAY_TARGET_PRICE,
     DISPLAY_TAX_PAID,
     DISPLAY_TOTAL_ASSETS,
@@ -93,7 +96,7 @@ from verify_lab.strategy.grid.constants import (
 from verify_lab.strategy.grid.engine import GridConfig, GridResult, run_grid
 from verify_lab.strategy.grid.interest import build_rate_series
 from verify_lab.strategy.grid.metrics import GridMetrics, evaluate_grid, red_flags, rounded
-from verify_lab.strategy.grid.paths.base import ExecutionPath
+from verify_lab.strategy.grid.paths.base import CostConfig, ExecutionPath
 from verify_lab.strategy.grid.paths.etf import EtfPath
 from verify_lab.strategy.grid.paths.exchange import ExchangePath
 from verify_lab.strategy.grid.price_range import build_daily_ranges
@@ -135,8 +138,22 @@ KEY_PERFORMANCE = "performance"
 KEY_GRID_METRICS = "grid_metrics"
 KEY_RED_FLAGS = "red_flags"
 
+# 사양서 §13.3 의 벤치마크 3종
+KEY_BENCHMARKS = "benchmarks"
+
 KEY_DAILY = "daily"
 KEY_TRADES = "trades"
+KEY_CURVES = "curves"
+
+# 벤치마크 부가 사실의 자릿수. 키마다 단위가 달라 한 값으로 반올림할 수 없다 —
+# 여기 없는 키는 금액이나 건수라 정수 원으로 싣는다
+BENCHMARK_DETAIL_DECIMALS = {
+    "units": PRICE_DECIMALS,
+    "entry_price": PRICE_DECIMALS,
+    "blocked_day_ratio": RATIO_DECIMALS,
+    "deployment_mean": RATIO_DECIMALS,
+    "unrealised_worst_rate": RATIO_DECIMALS,
+}
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_SCOPE = "거래비용·이자·세금이 모두 반영된 한 경로·한 하단 이탈 대응의 결과다. " "A안과 B안은 파라미터가 아니라 설계 대안이라 하나를 고르지 않고 둘 다 돌려 견준다"
@@ -146,6 +163,19 @@ NOTE_METRICS = (
     "곡선이 이미 세후라 같은 기준이어야 하고, 하한을 걸면 무위험보다 높은 무위험 금리가 된다"
 )
 NOTE_RED_FLAG = "사양서 §15.3 의 징후 아홉 개를 전부 판정해 남긴다. 한 실행으로 판정할 수 없는 항목은 " "통과가 아니라 '판정 불가'로 적는다 — 빼 버리면 검사한 것과 구분되지 않는다"
+NOTE_BENCHMARK = (
+    "사양서 §13.3 의 벤치마크 3종을 매 실행에 병기한다. 질문은 '이기는가'가 아니라 "
+    "'얼마나 자주 지고 질 때 얼마나 지는가'이며, 그리드는 추세장에서 B&H 에 구조적으로 진다. "
+    "'분할매수 후 보유'가 §13.3 의 판정이다 — 못 이기면 익절 로직을 제거하는 것이 맞다"
+)
+NOTE_BENCHMARK_COST = (
+    "B&H 의 첫날 매수에는 슬리피지가 붙지 않고 경로 고유 비용만 나간다. 슬리피지는 15:20 돌파 판정과 "
+    "종가의 차이를 흡수한 값인데 B&H 에는 돌파 판정이 없다 — 월말 이자 환전과 같은 논리다. "
+    "B&H 와 '분할매수 후 보유'는 끝까지 팔지 않으므로 청산 비용도 차익 과세도 붙지 않는다"
+)
+NOTE_BENCHMARK_PARKING = (
+    "'원화 파킹 100%' 는 실수령 파킹 금리로 굴린 값이라 무위험 수익률(rf)과 다르다. " "rf 는 CD91 원지표 세후로 하한이 없고, 파킹 금리는 하한 0.50% 가 걸리는 날 rf 보다 높아진다"
+)
 NOTE_LOWER_BREACH = (
     "하단 이탈 B안의 격자 연장은 다음 재조정까지 유지된다 — 연장 하단은 직전 재조정 이후의 누적 최저 종가이며 "
     "재조정일에 초기화된다. 연장 레벨은 하단부 배수를 받지만 위치·배수의 기준 범위는 정식 하단·상단 그대로다"
@@ -228,18 +258,23 @@ class GridOutputs:
     Attributes:
         daily: 일별 총자산 곡선 (표시용 — 값이 이미 반올림돼 있다)
         trades: 체결 내역 (표시용)
+        curves: 전략과 벤치마크 3종의 총자산을 나란히 놓은 표 (표시용).
+            **사용자가 직접 대조할 원자료**이며 §13.3 의 비교가 이 표에서 눈으로 확인된다
         result: 엔진의 원값. 집계는 **이 값으로 한다** — 반올림된 표에서 다시 계산하면
             이중 반올림으로 합계가 어긋난다
         performance: 곡선 하나에서 나온 표준 지표 (사양서 §13.1)
         grid_metrics: 그리드 전용 지표 (사양서 §13.2)
+        benchmarks: 벤치마크 3종의 곡선과 성적 (사양서 §13.3)
         meta: 실행 파라미터와 핵심 수치
     """
 
     daily: pd.DataFrame
     trades: pd.DataFrame
+    curves: pd.DataFrame
     result: GridResult
     performance: PerformanceMetrics
     grid_metrics: GridMetrics
+    benchmarks: tuple[Benchmark, ...]
     meta: dict[str, Any]
 
 
@@ -307,12 +342,26 @@ def run_usdkrw_grid(
     performance = evaluate_curve(curve, risk_free=rates.risk_free.set_axis(curve.index))
     grid_metrics = evaluate_grid(result)
 
+    # 6. 벤치마크. 사양서 §13.3 이 **필수 병기**로 규정했고, 같은 지표 계층을 그대로 통과한다.
+    #    첫날 매수처럼 **돌파 판정이 없는 집행**에는 슬리피지를 빼고 경로 고유 비용만 문다
+    benchmarks = build_benchmarks(
+        series,
+        ranges,
+        config=config,
+        rates=rates,
+        path=path,
+        scheduled_path=_build_path(path_name, cost=replace(config.cost, slippage_rate=0.0)),
+        exec_prices=exec_prices,
+    )
+
     return GridOutputs(
         daily=_display_daily(result.daily),
         trades=_display_trades(result.trades),
+        curves=_display_curves(result.daily, benchmarks),
         result=result,
         performance=performance,
         grid_metrics=grid_metrics,
+        benchmarks=benchmarks,
         meta=_build_meta(
             result,
             config=config,
@@ -321,6 +370,7 @@ def run_usdkrw_grid(
             lower_breach=lower_breach,
             performance=performance,
             grid_metrics=grid_metrics,
+            benchmarks=benchmarks,
         ),
     )
 
@@ -352,7 +402,7 @@ def _resolve_path(
         ValueError: 좁힌 결과 거래일이 남지 않는 경우
     """
     if path_name == PATH_EXCHANGE:
-        return ExchangePath(config.cost), series, ranges, None
+        return _build_path(path_name, cost=config.cost), series, ranges, None
 
     market = load_market_csv(MARKET_DIR / ETF_MARKET_FILENAMES[path_name])
     trading_days = pd.DatetimeIndex(market[COL_DATE])
@@ -371,7 +421,27 @@ def _resolve_path(
 
     logger.debug(f"{path_name} 경로: 거래일 {len(narrowed_ranges):,}일, 원달러 고시일 중 휴장 {dropped:,}일 제외")
 
-    return EtfPath(ticker=path_name, cost=config.cost), narrowed_series, narrowed_ranges, prices
+    return _build_path(path_name, cost=config.cost), narrowed_series, narrowed_ranges, prices
+
+
+def _build_path(path_name: str, *, cost: CostConfig) -> ExecutionPath:
+    """경로 하나를 만든다.
+
+    **생성을 한 곳에 둔다.** 벤치마크가 「같은 상품을 비용만 바꿔」 다시 만들어야 하는데
+    (돌파 판정이 없는 집행에는 슬리피지가 붙지 않는다), 생성이 두 곳에 있으면
+    한쪽만 고쳐질 때 **경로가 조용히 달라진다.**
+
+    Args:
+        path_name: 집행 경로 이름
+        cost: 그 경로에 적용할 거래비용
+
+    Returns:
+        집행 경로
+    """
+    if path_name == PATH_EXCHANGE:
+        return ExchangePath(cost)
+
+    return EtfPath(ticker=path_name, cost=cost)
 
 
 def _display_daily(daily: pd.DataFrame) -> pd.DataFrame:
@@ -449,6 +519,32 @@ def _display_trades(trades: pd.DataFrame) -> pd.DataFrame:
     return frame.rename(columns=TRADE_LABELS)
 
 
+def _display_curves(daily: pd.DataFrame, benchmarks: Sequence[Benchmark]) -> pd.DataFrame:
+    """전략과 벤치마크 3종의 총자산을 한 표에 나란히 놓는다.
+
+    **사용자가 직접 대조할 원자료다.** 사양서 §13.3 의 질문이 "얼마나 자주 지고 질 때 얼마나
+    지는가"라 **전 기간 요약값 하나로는 답할 수 없고**, 날짜별로 함께 실려야 어느 국면에서
+    갈라지는지가 보인다.
+
+    Args:
+        daily: 엔진이 낸 일별 곡선 원값
+        benchmarks: 벤치마크 3종. 곡선의 거래일이 `daily` 와 같아야 한다
+
+    Returns:
+        날짜와 네 곡선이 담긴 표 (정수 원으로 반올림)
+    """
+    frame = pd.DataFrame(
+        {
+            DISPLAY_DATE: daily[COL_DATE].dt.strftime(DATE_FORMAT),
+            DISPLAY_STRATEGY: daily[COL_TOTAL_ASSETS].to_numpy(),
+        }
+    )
+    for benchmark in benchmarks:
+        frame[benchmark.name] = benchmark.curve.to_numpy()
+
+    return frame.round(CAPITAL_DECIMALS)
+
+
 def _build_meta(
     result: GridResult,
     *,
@@ -458,6 +554,7 @@ def _build_meta(
     lower_breach: str = DEFAULT_LOWER_BREACH,
     performance: PerformanceMetrics | None = None,
     grid_metrics: GridMetrics | None = None,
+    benchmarks: Sequence[Benchmark] | None = None,
 ) -> dict[str, Any]:
     """실행 파라미터와 핵심 수치를 모은다.
 
@@ -473,6 +570,7 @@ def _build_meta(
         lower_breach: 하단 이탈 대응
         performance: 표준 지표. 넘기지 않으면 요약에서 빠진다
         grid_metrics: 그리드 전용 지표. 넘기지 않으면 요약에서 빠진다
+        benchmarks: 벤치마크 3종. 넘기지 않으면 요약에서 빠진다
 
     Returns:
         `summary.json` 에 담을 내용
@@ -579,11 +677,19 @@ def _build_meta(
                 for flag in red_flags(performance, grid_metrics)
             ]
         ),
-        KEY_ROW_COUNTS: {KEY_DAILY: int(len(daily)), KEY_TRADES: int(len(trades))},
+        KEY_BENCHMARKS: [] if benchmarks is None else _benchmark_payload(benchmarks, strategy_last=last),
+        KEY_ROW_COUNTS: {
+            KEY_DAILY: int(len(daily)),
+            KEY_TRADES: int(len(trades)),
+            KEY_CURVES: int(len(daily)),
+        },
         KEY_NOTES: [
             NOTE_SCOPE,
             NOTE_METRICS,
             NOTE_RED_FLAG,
+            NOTE_BENCHMARK,
+            NOTE_BENCHMARK_COST,
+            NOTE_BENCHMARK_PARKING,
             NOTE_LOWER_BREACH,
             NOTE_PATH,
             NOTE_ETF_PERIOD,
@@ -620,6 +726,52 @@ def _unrealised_rate(row: pd.Series) -> float | None:
         return None
 
     return round((float(row[COL_USD_VALUE]) - invested) / invested, 6)
+
+
+def _benchmark_payload(benchmarks: Sequence[Benchmark], *, strategy_last: float) -> list[dict[str, Any]]:
+    """벤치마크 3종을 `summary.json` 에 담을 형태로 바꾼다.
+
+    **전략과의 차이를 금액으로 함께 낸다.** 사양서 §13.3 의 판정("그리드가 분할매수 후 보유를
+    이기는가")이 비율이 아니라 금액으로 읽혀야 "질 때 얼마나 지는가"에 답할 수 있다.
+
+    Args:
+        benchmarks: 벤치마크 3종
+        strategy_last: 전략의 종료 총자산
+
+    Returns:
+        저장용 목록. 계산 불가는 `None` 그대로 남긴다
+    """
+    return [
+        {
+            "key": benchmark.key,
+            "name": benchmark.name,
+            "purpose": benchmark.purpose,
+            "last_total_assets": round(benchmark.performance.last_value, CAPITAL_DECIMALS),
+            "strategy_minus_benchmark": round(strategy_last - benchmark.performance.last_value, CAPITAL_DECIMALS),
+            "strategy_wins": strategy_last > benchmark.performance.last_value,
+            KEY_PERFORMANCE: _performance_payload(benchmark.performance),
+            "detail": {key: _rounded_detail(key, value) for key, value in benchmark.detail.items()},
+        }
+        for benchmark in benchmarks
+    ]
+
+
+def _rounded_detail(key: str, value: float | int | str | None) -> float | int | str | None:
+    """벤치마크 부가 사실 하나를 저장 직전 자릿수로 반올림한다.
+
+    키마다 단위가 달라(주식 수·가격·비율·금액) **한 값으로 반올림할 수 없다.**
+
+    Args:
+        key: 부가 사실의 키
+        value: 그 값
+
+    Returns:
+        반올림한 값. 날짜 문자열·정수·`None` 은 그대로 통과한다
+    """
+    if value is None or isinstance(value, str) or isinstance(value, int):
+        return value
+
+    return round(float(value), BENCHMARK_DETAIL_DECIMALS.get(key, CAPITAL_DECIMALS))
 
 
 def _performance_payload(metrics: PerformanceMetrics) -> dict[str, Any]:

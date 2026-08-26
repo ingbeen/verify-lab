@@ -243,6 +243,7 @@ def run_grid(
     rates: RateSeries,
     path: ExecutionPath,
     exec_prices: pd.Series | None = None,
+    sell_enabled: bool = True,
 ) -> GridResult:
     """그리드를 하루씩 돌려 일별 총자산 곡선과 체결 내역을 낸다.
 
@@ -257,6 +258,8 @@ def run_grid(
         path: 집행 경로. 사고파는 방법과 세금·보유 이자율을 정한다
         exec_prices: `ranges` 의 거래일에 맞춘 **집행 가격**. 넘기지 않으면 판정 가격(원달러 종가)을
             그대로 쓴다 — 환전 경로가 그렇다
+        sell_enabled: 목표가에 닿은 슬롯을 팔지 여부. **끄면 사양서 §13.3 의 「분할매수 후 보유」**가
+            된다 — 매수·배분·판정이 같은 코드를 그대로 지나므로 **익절 로직만 분리된다** (결정 C11)
 
     Returns:
         일별 곡선·체결 내역·미청산 슬롯
@@ -334,7 +337,9 @@ def run_grid(
         holding_rate = path.holding_interest_rate(rp_rate_pct)
         rp_interest_usd = (
             sum(
-                slot.units * (holding_rate / PERCENT_TO_RATE) * _interest_days(slot, date=date, previous=previous_date)
+                slot.units
+                * (holding_rate / PERCENT_TO_RATE)
+                * interest_days(entry_date=slot.entry_date, date=date, previous=previous_date)
                 for slot in held.values()
             )
             / DAYS_PER_YEAR
@@ -355,7 +360,7 @@ def run_grid(
         #    「마지막 거래일」로 잡으면 그 판정에 다음 행이 필요해 미래를 보게 된다
         tax_paid = 0.0
         interest_cost = 0.0
-        if date.year != previous_date.year or date.month != previous_date.month:
+        if is_settlement_day(date, previous=previous_date):
             liquidation = interest_path.liquidate(accrued_rp_usd, price=close)
             rp_gross = liquidation.notional
             interest_cost = liquidation.cost
@@ -379,14 +384,18 @@ def run_grid(
         opening_total = (
             cash + sum(slot.units for slot in held.values()) * exec_price + accrued_rp_usd * close + accrued_parking
         )
-        sells = plan_sells(
-            list(held.values()),
-            close=close,
-            exec_price=exec_price,
-            date=date,
-            growth_rate=config.growth_rate,
-            path=path,
-            anchor=config.anchor,
+        sells = (
+            plan_sells(
+                list(held.values()),
+                close=close,
+                exec_price=exec_price,
+                date=date,
+                growth_rate=config.growth_rate,
+                path=path,
+                anchor=config.anchor,
+            )
+            if sell_enabled
+            else ()
         )
         sell_cost = 0.0
         gain_tax = 0.0
@@ -547,15 +556,17 @@ def run_grid(
     )
 
 
-def _interest_days(slot: Slot, *, date: pd.Timestamp, previous: pd.Timestamp) -> int:
-    """슬롯 하나가 오늘 받을 RP 이자의 달력일 수를 낸다.
+def interest_days(*, entry_date: pd.Timestamp, date: pd.Timestamp, previous: pd.Timestamp) -> int:
+    """보유분 하나가 오늘 받을 RP 이자의 달력일 수를 낸다.
 
     구간은 `[전거래일, 오늘)` 이고 **매수일은 빠진다.** 매수·매도가 이자보다 뒤에 처리되므로
     매수 당일과 매도 당일이 자동으로 제외되며, 전 구간을 더하면 정확히
     `(매도일 − 매수일) − 1` 이 된다 (사양서 §9.1). **미래를 보지 않는다.**
 
+    **벤치마크도 이 함수를 부른다.** 규칙을 복제하면 이자일수 −1 이 두 곳에서 조용히 갈라진다.
+
     Args:
-        slot: 보유 중인 슬롯
+        entry_date: 그 보유분을 산 날
         date: 오늘 거래일
         previous: 직전 거래일
 
@@ -563,11 +574,28 @@ def _interest_days(slot: Slot, *, date: pd.Timestamp, previous: pd.Timestamp) ->
         이자가 붙는 달력일 수 (0 이상)
     """
     elapsed = int((date - previous).days)
-    since_entry = int((date - slot.entry_date).days)
+    since_entry = int((date - entry_date).days)
 
     # 매수일이 직전 거래일보다 앞이면 구간 전체가 이자 대상이고,
     # 직전 거래일에 샀다면 그날 하루가 빠진다. 매수일은 직전 거래일보다 뒤일 수 없다
     return max(0, min(elapsed, since_entry - 1))
+
+
+def is_settlement_day(date: pd.Timestamp, *, previous: pd.Timestamp) -> bool:
+    """오늘이 **전월분 이자를 인출하는 날**인지 답한다 (사양서 §9.1 의 「월말」).
+
+    판정은 **「다음 달 첫 거래일」** 이다 (결정 C58). 「그 달의 마지막 거래일」로 잡으면
+    그 판정에 다음 행이 필요해 **미래를 보게 되고**, 시세를 월 중간에서 자르면
+    마지막 날이 월말로 오판된다. 현실에서도 월말 이자는 다음 영업일에 입금된다.
+
+    Args:
+        date: 오늘 거래일
+        previous: 직전 거래일
+
+    Returns:
+        달이 바뀌었으면 `True`
+    """
+    return date.year != previous.year or date.month != previous.month
 
 
 def _assert_balance_change(

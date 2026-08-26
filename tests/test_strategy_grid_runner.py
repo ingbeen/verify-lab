@@ -14,12 +14,14 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_DATE, PRICE_DECIMALS
+from verify_lab.strategy.grid.benchmarks import Benchmark
 from verify_lab.strategy.grid.constants import (
     COL_TOTAL_ASSETS,
     DISPLAY_CLOSE_RATE,
     DISPLAY_DATE,
     DISPLAY_ENTRY_DATE,
     DISPLAY_GRID_EXCESS,
+    DISPLAY_STRATEGY,
     DISPLAY_TOTAL_ASSETS,
     INITIAL_CAPITAL,
     LOWER_BREACH_EXTEND,
@@ -30,6 +32,7 @@ from verify_lab.strategy.grid.interest import InterestConfig
 from verify_lab.strategy.grid.paths.base import CostConfig
 from verify_lab.strategy.grid.runner import (
     DAILY_LABELS,
+    KEY_BENCHMARKS,
     KEY_NOTES,
     KEY_PARAMETERS,
     KEY_PERIOD,
@@ -37,9 +40,11 @@ from verify_lab.strategy.grid.runner import (
     KEY_ROW_COUNTS,
     TRADE_LABELS,
     _build_meta,
+    _display_curves,
     _display_daily,
     _display_trades,
 )
+from verify_lab.strategy.performance import evaluate_curve
 
 # 금액 비교 허용오차
 AMOUNT_TOLERANCE = 0.01
@@ -428,13 +433,13 @@ class TestBuildMeta:
 
         Given: 이틀짜리 곡선과 체결 한 건
         When: 요약을 만든다
-        Then: 두 표의 행 수가 담겨 있다
+        Then: 세 표의 행 수가 담겨 있다 — 곡선 비교표는 일별 곡선과 거래일이 같다
         """
         # When
         actual = _build_meta(_result(), config=_config(), start_date="2005-01-01")
 
         # Then
-        assert actual[KEY_ROW_COUNTS] == {"daily": 2, "trades": 1}
+        assert actual[KEY_ROW_COUNTS] == {"daily": 2, "trades": 1, "curves": 2}
         assert actual[KEY_PERIOD]["trading_days"] == 2
 
 
@@ -559,3 +564,143 @@ class TestLowerBreachSummary:
 
         # Then
         assert actual[KEY_PARAMETERS]["lower_breach"] == LOWER_BREACH_EXTEND
+
+
+def _benchmark(key: str, name: str, values: list[float]) -> Benchmark:
+    """이틀짜리 벤치마크 하나. 표준 지표는 실제 함수가 낸 값이라 계약이 흔들리지 않는다."""
+    index = pd.DatetimeIndex([pd.Timestamp("2020-01-02"), pd.Timestamp("2020-01-03")])
+    curve = pd.Series(values, index=index, dtype=float)
+
+    return Benchmark(
+        key=key,
+        name=name,
+        purpose="확인 목적",
+        curve=curve,
+        performance=evaluate_curve(curve, risk_free=pd.Series(0.0, index=index, dtype=float)),
+        detail={
+            "units": 1.23456789,
+            "deployment_mean": 0.123456789,
+            "cost_total": 1234.5678,
+            "first_blocked_date": None,
+        },
+    )
+
+
+class TestBenchmarkSummary:
+    """사양서 §13.3 의 벤치마크가 요약과 표시용 표에 실림을 고정한다.
+
+    **질문은 「이기는가」가 아니다.** §13.3 이 "얼마나 자주 지고, 질 때 얼마나 지는가" 로 적었으므로
+    요약에는 승패뿐 아니라 **차이의 금액**이 남아야 하고, 표시용 표에는 **날짜별 곡선**이 남아야 한다.
+    """
+
+    def test_전략과의_차이를_금액으로_남긴다(self) -> None:
+        """
+        목적: §13.3 의 판정을 금액으로 고정한다
+
+        Given: 전략보다 낮게 끝난 벤치마크
+        When: 요약을 만든다
+        Then: 차이가 **정수 원**으로 실리고 전략이 이겼다고 적힌다
+        """
+        # Given
+        benchmarks = [_benchmark("b", "벤치마크", [100_000_000.0, 90_000_000.0])]
+
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01", benchmarks=benchmarks)
+
+        # Then
+        payload = actual[KEY_BENCHMARKS][0]
+        assert payload["strategy_minus_benchmark"] == pytest.approx(10_000_000.0, abs=AMOUNT_TOLERANCE)
+        assert payload["strategy_wins"] is True
+
+    def test_전략이_지면_그렇게_적는다(self) -> None:
+        """
+        목적: 지는 결과를 감추지 않음을 고정한다
+
+        Given: 전략보다 높게 끝난 벤치마크
+        When: 요약을 만든다
+        Then: 차이가 음수이고 전략이 이기지 못했다고 적힌다
+        """
+        # Given
+        benchmarks = [_benchmark("b", "벤치마크", [100_000_000.0, 130_000_000.0])]
+
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01", benchmarks=benchmarks)
+
+        # Then
+        payload = actual[KEY_BENCHMARKS][0]
+        assert payload["strategy_minus_benchmark"] < 0
+        assert payload["strategy_wins"] is False
+
+    def test_부가_사실을_키마다_다른_자릿수로_싣는다(self) -> None:
+        """
+        목적: 저장 직전 반올림 규칙을 고정한다 — 단위가 다른 값을 한 자릿수로 자르지 않는다
+
+        Given: 주식 수·비율·금액·날짜가 섞인 부가 사실
+        When: 요약을 만든다
+        Then: 가격은 4자리, 비율은 6자리, 금액은 정수, 없는 값은 `None` 그대로다
+        """
+        # Given
+        benchmarks = [_benchmark("b", "벤치마크", [100_000_000.0, 90_000_000.0])]
+
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01", benchmarks=benchmarks)
+
+        # Then
+        detail = actual[KEY_BENCHMARKS][0]["detail"]
+        assert detail["units"] == pytest.approx(1.2346, abs=1e-12)
+        assert detail["deployment_mean"] == pytest.approx(0.123457, abs=1e-12)
+        assert detail["cost_total"] == pytest.approx(1235.0, abs=1e-12)
+        assert detail["first_blocked_date"] is None
+
+    def test_벤치마크를_넘기지_않으면_요약이_비어_있다(self) -> None:
+        """
+        목적: 엣지 케이스 — 벤치마크 없이도 요약이 만들어짐을 고정한다
+
+        Given: 벤치마크를 넘기지 않은 호출
+        When: 요약을 만든다
+        Then: 벤치마크 목록이 비어 있다
+        """
+        # When
+        actual = _build_meta(_result(), config=_config(), start_date="2005-01-01")
+
+        # Then
+        assert actual[KEY_BENCHMARKS] == []
+
+    def test_곡선_비교표에_전략과_벤치마크가_나란히_실린다(self) -> None:
+        """
+        목적: 사용자가 직접 대조할 원자료를 고정한다
+
+        Given: 벤치마크 둘
+        When: 표시용 곡선 비교표를 만든다
+        Then: 날짜·전략·벤치마크 열이 있고 행 수가 곡선과 같다
+        """
+        # Given
+        benchmarks = [
+            _benchmark("a", "첫째", [100_000_000.0, 90_000_000.0]),
+            _benchmark("b", "둘째", [100_000_000.0, 110_000_000.0]),
+        ]
+
+        # When
+        actual = _display_curves(_daily(), benchmarks)
+
+        # Then
+        assert list(actual.columns) == [DISPLAY_DATE, DISPLAY_STRATEGY, "첫째", "둘째"]
+        assert len(actual) == len(_daily())
+        assert actual[DISPLAY_DATE].tolist() == ["2020-01-02", "2020-01-03"]
+
+    def test_곡선_비교표는_정수_원으로_싣는다(self) -> None:
+        """
+        목적: 표시용 반올림을 고정한다 — 화면과 CSV 가 같은 값을 보여야 한다
+
+        Given: 소수가 붙은 곡선
+        When: 표시용 곡선 비교표를 만든다
+        Then: 전략 곡선이 정수 원으로 반올림돼 있다
+        """
+        # Given
+        benchmarks = [_benchmark("a", "첫째", [100_000_000.0, 90_000_000.0])]
+
+        # When
+        actual = _display_curves(_daily(), benchmarks)
+
+        # Then
+        assert actual[DISPLAY_STRATEGY].tolist() == pytest.approx([100_000_001.0, 100_000_000.0], abs=1e-12)

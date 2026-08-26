@@ -149,6 +149,7 @@ def _run(
     rp: float = 0.0,
     parking: float = 0.0,
     lower_breach: str = LOWER_BREACH_HOLD,
+    sell_enabled: bool = True,
 ):
     """손계산용 기본 인자로 엔진을 돌린다. 금리는 기본이 0이라 이자가 붙지 않는다."""
     settings = config or _config()
@@ -166,6 +167,7 @@ def _run(
         config=settings,
         rates=_rates(ranges, rp=rp, parking=parking),
         path=ExchangePath(settings.cost),
+        sell_enabled=sell_enabled,
     )
 
 
@@ -1206,3 +1208,131 @@ class TestMetricColumns:
         assert daily[COL_BUY_AMOUNT].sum() > 0
         total = daily[COL_CASH] + daily[COL_USD_VALUE]
         assert daily[COL_TOTAL_ASSETS].tolist() == pytest.approx(total.tolist(), abs=AMOUNT_TOLERANCE)
+
+
+class TestSellSwitch:
+    """매도를 끄는 인자의 계약을 고정한다 (사양서 §13.3 「분할매수 후 보유」).
+
+    **매수 규칙이 같아야 익절 로직만 분리된다** (결정 C11). 그래서 벤치마크를 별도 루프로
+    다시 쓰지 않고 **엔진의 매도 한 단계만 끈다** — 매수·배분·판정이 같은 코드라는 사실이
+    구조로 보장돼야 두 곡선의 차이를 익절 로직의 기여로 읽을 수 있다.
+    """
+
+    # 사고팔기가 모두 일어나는 경로. 내려가서 사고 올라와서 파는 구간이 반복된다
+    ROUND_TRIP_PATH = ([1200.0, 1120.0, 1040.0, 1120.0, 1200.0, 1280.0] * 10)[:55]
+
+    def _series_with_round_trips(self) -> pd.DataFrame:
+        """매수와 매도가 모두 나오는 긴 경로."""
+        days = pd.bdate_range(TRADING_START, periods=len(self.ROUND_TRIP_PATH))
+
+        return pd.concat(
+            [
+                _series([1200.0] * WARMUP_MONTHS),
+                pd.DataFrame({COL_DATE: days, COL_VALUE: self.ROUND_TRIP_PATH}),
+            ],
+            ignore_index=True,
+        )
+
+    def test_기본값은_매도를_한다(self) -> None:
+        """
+        목적: 새 인자의 기본값이 **기존 동작**임을 고정한다 (회귀 안전망)
+
+        Given: 사고파는 경로
+        When: 인자를 넘기지 않은 실행과 매도를 켠 실행을 각각 돌린다
+        Then: 두 곡선이 원 단위까지 같다
+        """
+        # Given
+        series = self._series_with_round_trips()
+
+        # When
+        default = _run(series, config=_config(cost=PAID_COST))
+        explicit = _run(series, config=_config(cost=PAID_COST), sell_enabled=True)
+
+        # Then
+        assert default.daily[COL_TOTAL_ASSETS].tolist() == pytest.approx(
+            explicit.daily[COL_TOTAL_ASSETS].tolist(), abs=AMOUNT_TOLERANCE
+        )
+        assert len(default.trades) == len(explicit.trades)
+
+    def test_매도를_끄면_체결표가_비고_매도가_0건이다(self) -> None:
+        """
+        목적: 「분할매수 후 보유」의 정의를 고정한다 — 사되 팔지 않는다
+
+        Given: 매도가 실제로 일어나는 경로
+        When: 매도를 끄고 돌린다
+        Then: 매도 체결이 0건이고 청산된 체결표가 비어 있다
+        """
+        # Given
+        series = self._series_with_round_trips()
+
+        # When
+        selling = _run(series, config=_config(cost=PAID_COST))
+        holding = _run(series, config=_config(cost=PAID_COST), sell_enabled=False)
+
+        # Then — 매도가 실제로 나는 경로여야 계약을 검사한 것이 된다
+        assert selling.daily[COL_SELL_COUNT].sum() > 0
+        assert holding.daily[COL_SELL_COUNT].sum() == 0
+        assert holding.trades.empty
+
+    def test_매도를_꺼도_매수는_같은_날_같은_레벨에서_시작한다(self) -> None:
+        """
+        목적: **매수 규칙이 같음**을 고정한다 (결정 C11)
+
+        Given: 사고파는 경로
+        When: 매도를 켠 실행과 끈 실행을 각각 돌린다
+        Then: 첫 매수가 같은 날 같은 건수로 일어난다
+
+        Note:
+            그 뒤로는 갈라지는 것이 정상이다 — 팔지 않으면 그 레벨을 다시 살 수 없고
+            현금도 줄어든다. **갈라지는 원인이 익절 로직 하나**라는 것이 이 벤치마크의 전제다
+        """
+        # Given
+        series = self._series_with_round_trips()
+
+        # When
+        selling = _run(series, config=_config(cost=PAID_COST))
+        holding = _run(series, config=_config(cost=PAID_COST), sell_enabled=False)
+
+        # Then
+        first_selling = selling.daily[selling.daily[COL_BUY_COUNT] > 0].iloc[0]
+        first_holding = holding.daily[holding.daily[COL_BUY_COUNT] > 0].iloc[0]
+        assert first_selling[COL_DATE] == first_holding[COL_DATE]
+        assert first_selling[COL_BUY_COUNT] == first_holding[COL_BUY_COUNT]
+        assert first_selling[COL_BUY_AMOUNT] == pytest.approx(first_holding[COL_BUY_AMOUNT], abs=AMOUNT_TOLERANCE)
+
+    def test_매도를_꺼도_회계_항등식이_성립한다(self) -> None:
+        """
+        목적: 매도를 꺼도 회계가 깨지지 않음을 고정한다
+
+        Given: 사고파는 경로에 비용을 붙인 설정
+        When: 매도를 끄고 돌린다
+        Then: 매일 `총자산 == 원화현금 + 달러 평가액` 이 성립한다
+        """
+        # Given
+        series = self._series_with_round_trips()
+
+        # When
+        actual = _run(series, config=_config(cost=PAID_COST), sell_enabled=False)
+
+        # Then
+        total = actual.daily[COL_CASH] + actual.daily[COL_USD_VALUE]
+        assert actual.daily[COL_TOTAL_ASSETS].tolist() == pytest.approx(total.tolist(), abs=AMOUNT_TOLERANCE)
+
+    def test_매도를_끄면_보유_슬롯이_줄지_않는다(self) -> None:
+        """
+        목적: 슬롯이 쌓이기만 함을 고정한다 — 자금 소진이 빨라지는 원인이다
+
+        Given: 사고파는 경로
+        When: 매도를 끄고 돌린다
+        Then: 보유 슬롯 수가 한 번도 줄지 않는다
+        """
+        # Given
+        series = self._series_with_round_trips()
+
+        # When
+        actual = _run(series, config=_config(cost=PAID_COST), sell_enabled=False)
+
+        # Then
+        held = actual.daily[COL_HELD_SLOTS]
+        assert (held.diff().dropna() >= 0).all()
+        assert int(held.iloc[-1]) == len(actual.open_slots)

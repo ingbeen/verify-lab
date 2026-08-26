@@ -216,6 +216,34 @@ PERCENT_TO_RATE: Final = 100.0
 
 
 # ============================================================
+# 벤치마크 (사양서 §13.3)
+# ============================================================
+
+# 요약과 산출물에서 벤치마크를 가리키는 키. **순서가 §13.3 표의 순서**이며 가운데가 판정이다 —
+# §13.3 이 "여기서 못 이기면 익절 로직을 제거하는 것이 맞다" 고 적었다.
+# 벤치마크는 하단 이탈 A/B·경로 같은 **설계 대안이 아니라 대조 기준선**이라
+# 실행을 가르지 않고 매 실행에 병기한다 (§13.3 「필수 병기」)
+BENCHMARK_BUY_HOLD: Final = "buy_and_hold"
+BENCHMARK_SPLIT_BUY_HOLD: Final = "split_buy_hold"
+BENCHMARK_KRW_PARKING: Final = "krw_parking"
+
+BENCHMARK_KEYS: Final = (BENCHMARK_BUY_HOLD, BENCHMARK_SPLIT_BUY_HOLD, BENCHMARK_KRW_PARKING)
+
+# 표시 이름. **「원화 파킹 100%」는 무위험 수익률(rf)과 다른 값이다** — rf 는 CD91 원지표 세후라
+# 하한이 없고, 이 벤치마크는 실수령 파킹 금리라 하한 0.50% 가 걸리는 날에는 rf 보다 높다.
+# 이름을 나눠 싣는 이유가 그것이다
+DISPLAY_STRATEGY: Final = "전략 (그리드)"
+DISPLAY_BENCHMARK_BUY_HOLD: Final = "B&H (전액 보유)"
+DISPLAY_BENCHMARK_SPLIT_BUY_HOLD: Final = "분할매수 후 보유"
+DISPLAY_BENCHMARK_KRW_PARKING: Final = "원화 파킹 100%"
+
+# 사양서 §13.3 이 벤치마크마다 적어 둔 확인 목적
+PURPOSE_BENCHMARK_BUY_HOLD: Final = "매매의 가치"
+PURPOSE_BENCHMARK_SPLIT_BUY_HOLD: Final = "익절 로직의 순수 기여"
+PURPOSE_BENCHMARK_KRW_PARKING: Final = "리스크 대비 정당성"
+
+
+# ============================================================
 # 실행
 # ============================================================
 
