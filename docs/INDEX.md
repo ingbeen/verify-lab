@@ -18,8 +18,9 @@
 | 4 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 첫 검증의 확정 설계 |
 | 5 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 구조와 측정 계층의 절대 원칙 5가지 |
 
-새 세션의 진입점은 [../START_PROMPT.md](../START_PROMPT.md)입니다. 현재 상태와 다음 작업이 정리돼 있으며,
-**작업이 진척되면 함께 갱신합니다.**
+새 세션의 진입점은 저장소 루트의 `다음세션_프롬프트.md` 입니다. 현재 상태·남은 일·이번 세션에 할 것이
+정리돼 있으며, **작업이 진척되면 `/handoff` 로 그 파일을 갱신합니다.**
+파일명·위치·추적 여부의 규칙은 [../CLAUDE.md](../CLAUDE.md) "세션 인계 규칙" 이 SoT입니다.
 
 ---
 
@@ -52,7 +53,7 @@
 | [context/README.md](context/README.md) | 두 운용 문서의 안내와 핵심 결론 | 항상 |
 | [context/RESEARCH_q2_2xs_qqq_correlation.md](context/RESEARCH_q2_2xs_qqq_correlation.md) | 운용 포트폴리오의 QQQ 상관 분해. **이 프로젝트의 출발점** | 검증 결과를 해석할 때 |
 | [context/RESEARCH_qqq_late_entry.md](context/RESEARCH_qqq_late_entry.md) | 현재 보유 판정(이번 사이클 미진입)과 근거 | 같음 |
-| [ROADMAP.md](ROADMAP.md) | 검증 목록, Phase 상태, 계획서 승격 목적지 | 작업 시작·종료 시 |
+| [ROADMAP.md](ROADMAP.md) | 검증 목록, Phase 상태, **G5 이후 남은 선택지 셋**, 계획서 승격 목적지 | 작업 시작·종료 시 |
 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정 결정 8건, 사전 실측 기록 | 검증 #1 관련 전부 |
 | [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | **원달러 그리드 트랙의 SoT** — 데이터 실측 기록 15개 절(ECOS/FRED 코드, ETF 2종, 매매기준율 시차, 동적 범위, 슬롯 상한, 환전 비용, 그리드 엔진 실행 8회 — 비용 없음·거래비용·이자·ETF 경로·하단 이탈 B안·지표 계층·벤치마크·견고성 검사)과 확정된 설계 결정(A1~A4·B1~B2·C1~C118) | 원달러 그리드·검증 #5 관련 전부. **§4 가 원본 사양서를 이긴다** |
 | [spec/usdkrw_grid_rules.md](spec/usdkrw_grid_rules.md) | 원달러 그리드 **매매 규칙의 원본 사양서** (사용자 작성). **일부 규정이 실측으로 바뀌었으므로 위 spec 의 §4 가 SoT** | 그리드 규칙 본문(격자·범위·자금배분·체결·비용·지표)을 볼 때 |
