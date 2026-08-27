@@ -40,6 +40,7 @@
 | `yfinance_collect` | `data/collect_yfinance.py` | 수집한 종목, 가격 기준, 저장 경로, 행 수, 기간, 최근 제외 건수 |
 | `pykrx_etf_probe` | `data/check_pykrx_etf.py` | 실측한 종목·기간, 원자료 저장 폴더, 함수별 반환 행 수 |
 | `pykrx_splice_probe` | `data/check_pykrx_splice.py` | 실측한 종목·시작일·분할 종료일, 원자료 저장 폴더, 세그먼트별 행 수, 겹침 불일치 건수, 덮지 못한 거래일 수 |
+| `kodex_distribution_probe` | `data/check_kodex_distribution.py` | 실측한 종목, 원본가·수정주가 행 수, 수정주가가 덮지 못한 거래일 수, 만기일 수, 분배락 건수와 **만기 창 안 건수**, 창 크기 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
 | `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
@@ -47,6 +48,7 @@
 | `usdkrw_equivalence_study` | `studies/run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
 | `usdkrw_grid_strategy` | `strategy/run_usdkrw_grid.py` | 실행 파라미터, 기간과 재조정 횟수, 청산 체결 건수, 결과 폴더 |
 | `usdkrw_grid_robustness` | `strategy/run_usdkrw_grid_robustness.py` | 축·실행 정의와 고유 실행 수, 결론 뒤집힘 판정, 경로 순위 판정, 금리차 부호의 표본 구조, 결과 폴더 |
+| `option_expiry_study` | `studies/run_option_expiry.py` | 결과 폴더, 검증한 종목, offset 범위·측정 구간, 순열 검정 반복 수·시드, 표별 산출 행 수 |
 | `index_extreme_study` | `studies/run_index_extreme.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
 
 ---

@@ -202,6 +202,35 @@ def test_adjusted_argument_is_forwarded_to_history(
 
 
 @freeze_time(FROZEN_TODAY)
+def test_adjusted_is_saved_to_a_separate_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
+) -> None:
+    """
+    목적: 수정주가가 원본가 파일을 덮어쓰지 않음을 고정한다.
+
+    **가격 기준이 다르면 내용이 다른 데이터**이므로 한 파일에 섞지 않는다
+    (`docs/ROADMAP.md` "확정된 원시 시세 저장 규칙"). 파일명이 같으면 `--adjusted` 한 번에
+    본검증용 원본가가 사라지고, 파일은 정상으로 보여 눈으로는 발견되지 않는다.
+    `pykrx_collector` 와 같은 규칙을 쓴다.
+
+    Given: 정상 응답을 돌려주는 스텁과, 이미 저장된 원본가 파일
+    When: `adjusted=True` 로 수집한다
+    Then: `QQQ_adjusted_max.csv` 에 저장되고 `QQQ_max.csv` 는 그대로 남는다
+    """
+    # Given
+    _stub_yfinance(monkeypatch, _history_frame(old_rows))
+    raw_path = tmp_path / "QQQ_max.csv"
+    raw_path.write_text("원본가 자리", encoding="utf-8")
+
+    # When
+    result = collect_yfinance_history("QQQ", adjusted=True, output_dir=tmp_path)
+
+    # Then
+    assert result.path == tmp_path / "QQQ_adjusted_max.csv"
+    assert raw_path.read_text(encoding="utf-8") == "원본가 자리", "수정주가 수집이 원본가 파일을 덮어썼습니다"
+
+
+@freeze_time(FROZEN_TODAY)
 def test_saved_columns_match_market_schema(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
 ) -> None:

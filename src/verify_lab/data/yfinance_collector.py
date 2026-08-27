@@ -36,8 +36,11 @@ logger = get_logger(__name__)
 # 마감 직후 값은 확정값이 아니다. 미확정 종가를 그대로 남기면 그날이 극단 이벤트로 잡힐 수 있다
 RECENT_EXCLUSION_DAYS = 2
 
-# 저장 파일명. 전 기간을 한 파일로 유지해 로더가 읽을 대상이 갈리지 않게 한다
+# 저장 파일명. 전 기간을 한 파일로 유지해 로더가 읽을 대상이 갈리지 않게 한다.
+# **가격 기준이 다르면 파일도 다르다** — 원본가와 수정주가는 내용이 다른 데이터이므로 한 파일에 섞지 않는다
+# (`docs/ROADMAP.md` "확정된 원시 시세 저장 규칙"). `pykrx_collector` 도 같은 규칙을 쓴다
 FILE_NAME_TEMPLATE = "{ticker}_max.csv"
+ADJUSTED_FILE_NAME_TEMPLATE = "{ticker}_adjusted_max.csv"
 
 
 @dataclass(frozen=True)
@@ -125,7 +128,8 @@ def collect_yfinance_history(
 
     # 7. 저장. 검증을 통과한 뒤에만 실행한다
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / FILE_NAME_TEMPLATE.format(ticker=symbol)
+    template = ADJUSTED_FILE_NAME_TEMPLATE if adjusted else FILE_NAME_TEMPLATE
+    path = output_dir / template.format(ticker=symbol)
     df.to_csv(path, index=False)
 
     start_date = df[COL_DATE].iloc[0]

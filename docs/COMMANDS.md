@@ -55,7 +55,8 @@ poetry run python scripts/data/collect_yfinance.py --adjusted
 - 전 기간(`period="max"`)을 받아 `storage/market/<종목>_max.csv` 에 저장합니다. 기존 파일은 덮어씁니다
 - **기본은 원본가(배당 미조정)입니다.** 사용자가 결과를 차트와 직접 대조하는 것이 전제이고
   보통의 차트는 배당 미포함이기 때문입니다 ([spec/index_extreme_events.md](spec/index_extreme_events.md) "가격 처리").
-  `--adjusted` 를 붙이면 수정주가로 받지만 **같은 파일명에 덮어쓰므로** 본검증 데이터를 잃지 않도록 주의합니다
+  `--adjusted` 를 붙이면 수정주가로 받으며 **`storage/market/<종목>_adjusted_max.csv` 에 따로 저장**되므로
+  원본가 파일을 덮어쓰지 않습니다 (`pykrx` 쪽과 같은 규칙)
 - **확정되지 않은 최근 며칠은 저장하지 않습니다.** 제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다. 반쪽짜리 파일이 남지 않습니다
 
@@ -98,6 +99,24 @@ poetry run python scripts/data/check_pykrx_splice.py --ends 20081231,20141231
   "덮지 못한 거래일"이 남으면 `--ends` 에 더 이른 종료일을 추가해 재실행합니다
 - **모든 호출이 한 번의 실행 안에 있어야 합니다.** 수정계수는 조회 종료일이 아니라 조회 **시점** 기준이라,
   다른 날 받은 결과끼리 비교하면 판정이 성립하지 않습니다
+
+#### 분배락 위치 실측 (검증 #7 용)
+
+분배락이 옵션 만기일 근처에 고정돼 있으면 **원본가로 잰 만기 주변 수익률에 한 방향 편향**이 들어갑니다.
+원본가와 수정주가의 종가 배율에 생긴 계단을 찾아 분배락일을 뽑고, 만기일 기준 상대 거래일 분포를 냅니다.
+
+```bash
+# KODEX 200 (기본값)
+poetry run python scripts/data/check_kodex_distribution.py
+
+# 다른 종목
+poetry run python scripts/data/check_kodex_distribution.py --ticker 069500
+```
+
+- **외부 서버에 요청하지 않습니다.** `<종목>_max.csv`(원본가)와 `<종목>_adjusted_max.csv`(수정주가)를
+  읽으므로 두 파일이 모두 있어야 합니다
+- 판정 기준: **만기 창 안 분배락이 0건**이면 원본가로 재도 만기 측정에 편향이 없습니다.
+  실측 결과와 해석은 [spec/option_expiry.md](spec/option_expiry.md) §7.5 에 있습니다
 
 #### KODEX 200 수집
 
@@ -207,6 +226,26 @@ poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
   `summary.json` 으로 남습니다. 덮어쓰지 않고 실행 시각으로 쌓입니다
 - **순위 컷·연속 일수·집계 시작연도는 인자가 아닙니다.** 스펙이 확정한 목록을 전부 산출해 나란히
   보고하는 것이 이 검증의 설계이며, 값을 골라 넣는 노브로 쓰면 과최적화입니다
+
+### 검증 #7 — 옵션 만기일
+
+```bash
+# 전 조합 실행 (기본값) — 종목 3개 × 가격 기준 2개 × 국면 × 위칭 × offset -10~+10
+poetry run python scripts/studies/run_option_expiry.py
+
+# 종목 하나만
+poetry run python scripts/studies/run_option_expiry.py --dataset kodex200
+
+# 순열 검정 반복 수를 줄여 빠르게 확인
+poetry run python scripts/studies/run_option_expiry.py --repeats 200
+```
+
+- 선행 조건: `storage/market/` 에 **6개 파일**(QQQ·SPY·069500 각각 원본가·수정주가)이 있어야 합니다
+- **하나의 창을 고르지 않습니다.** 만기 앞뒤 21개 자리를 전부 산출해 나란히 보고합니다
+- 산출물은 `storage/results/<실행시각>_option_expiry/` 에 8개 CSV 로 남습니다.
+  신호일 원자료는 `signals.csv` 이며 차트 대조용입니다
+- 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
+  [spec/option_expiry.md](spec/option_expiry.md) 입니다
 
 ### 검증 #5 — 원달러 ETF 등가성
 
