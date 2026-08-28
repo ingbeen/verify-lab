@@ -7,7 +7,20 @@
 > CD91 **1995-01-03 ~ 2026-08-21** (8,032) · DTB3 **1954-01-04 ~ 2026-08-20** (18,150).
 > **겹치는 구간만 측정에 쓴다 — 실제 표본은 2,364일**(§3)
 > **근거 산출물**: `storage/results/20260824_104655_usdkrw_equivalence/`
-> **확정 설계**: [../spec/usdkrw_grid.md](../spec/usdkrw_grid.md)
+
+## 관련 파일
+
+| 구분 | 경로 |
+| --- | --- |
+| **확정 설계** | [spec/usdkrw_grid.md](../spec/usdkrw_grid.md) — 이 검증 전용 스펙은 없고 그리드 트랙 스펙이 함께 담당합니다 |
+| **이 결과를 쓰는 매매 규칙** | `docs/strategy/원달러_그리드.md` — ETF 경로를 쓸 수 있는 근거가 이 문서입니다 (**채택되지 않음**) |
+| **이벤트 정의** | [src/verify_lab/studies/usdkrw_equivalence/](../../src/verify_lab/studies/usdkrw_equivalence/) |
+| **실행 스크립트** | [scripts/studies/run_usdkrw_equivalence.py](../../scripts/studies/run_usdkrw_equivalence.py) |
+| **데이터 수집** | [collect_pykrx.py](../../scripts/data/collect_pykrx.py) (ETF·NAV) · [collect_ecos.py](../../scripts/data/collect_ecos.py) (환율·CD91) · [collect_fred.py](../../scripts/data/collect_fred.py) (DTB3) |
+| **테스트** | `tests/test_studies_equivalence_*.py` (5개) |
+| **실행 명령어** | [COMMANDS.md](../COMMANDS.md) "검증 실행" |
+
+원시 시세 파일과 기간은 §3, 실행 산출물 폴더는 머리말에 있습니다.
 
 ---
 
