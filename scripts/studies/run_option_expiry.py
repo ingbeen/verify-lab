@@ -13,19 +13,28 @@
 
 import argparse
 
+from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_SAMPLE_COUNT, COL_WIN_RATE
 from verify_lab.report.constants import PERCENT_DECIMALS, RATE_TO_PERCENT
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
+    COL_EXIT_WEEKDAY,
     COL_OFFSET,
     COL_TICKER,
     DATASETS,
+    DISPLAY_EXIT_WEEKDAY,
     DISPLAY_OFFSET,
     DISPLAY_TICKER,
     STUDY_NAME,
 )
-from verify_lab.studies.option_expiry.runner import StudyOutputs, basis_gap, headline_table, run_study
+from verify_lab.studies.option_expiry.runner import (
+    StudyOutputs,
+    basis_gap,
+    headline_table,
+    run_study,
+    trade_headline,
+)
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -44,6 +53,14 @@ FILE_FORWARD = "forward_summary.csv"
 FILE_EXCESS = "forward_excess.csv"
 FILE_TEST = "permutation.csv"
 FILE_BASIS_GAP = "basis_gap.csv"
+
+# 만기일 매수 → 다음주 청산 매매의 산출물. 접두사로 묶어 상대 거래일 표와 섞이지 않게 한다
+FILE_TRADE_SIGNALS = "weekly_trade_signals.csv"
+FILE_TRADE_SUMMARY = "weekly_trade_summary.csv"
+FILE_TRADE_EXCESS = "weekly_trade_excess.csv"
+FILE_TRADE_TEST = "weekly_trade_permutation.csv"
+FILE_TRADE_BY_MONTH = "weekly_trade_by_month.csv"
+FILE_TRADE_RULE_VARIANTS = "weekly_trade_rule_variants.csv"
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,6 +128,37 @@ def _display_headline(outputs: StudyOutputs) -> None:
     print_dataframe(table, logger, title="본검증 기준 · 전체 국면 · 전체 월 — 상대 거래일별 일간 등락")
 
 
+def _display_trade(outputs: StudyOutputs) -> None:
+    """만기일 매수 → 다음주 청산 매매의 묶음 성적을 화면에 표시한다.
+
+    Args:
+        outputs: 실행 산출물
+    """
+    trade = trade_headline(outputs)
+    if trade.empty:
+        logger.debug("표시할 매매 요약 행이 없습니다")
+        return
+
+    table = trade[
+        [COL_TICKER, COL_EXIT_WEEKDAY, COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT, COL_MEAN, COL_MEDIAN, COL_WIN_RATE]
+    ].copy()
+    for column in (COL_MEAN, COL_MEDIAN, COL_WIN_RATE):
+        table[column] = (table[column] * RATE_TO_PERCENT).round(PERCENT_DECIMALS)
+
+    table = table.rename(
+        columns={
+            COL_TICKER: DISPLAY_TICKER,
+            COL_EXIT_WEEKDAY: DISPLAY_EXIT_WEEKDAY,
+            COL_SIGNAL_COUNT: "진입",
+            COL_EXCLUDED_COUNT: "제외",
+            COL_MEAN: "평균(%)",
+            COL_MEDIAN: "중앙값(%)",
+            COL_WIN_RATE: "승률(%)",
+        }
+    )
+    print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 본검증 기준 · 전체 국면 · 전체 월")
+
+
 @cli_exception_handler
 def main() -> int:
     """검증을 실행하고 산출물을 저장한다.
@@ -133,8 +181,15 @@ def main() -> int:
     save_table(directory, FILE_EXCESS, outputs.excess)
     save_table(directory, FILE_TEST, outputs.test)
     save_table(directory, FILE_BASIS_GAP, basis_gap(outputs))
+    save_table(directory, FILE_TRADE_SIGNALS, outputs.trade_signals)
+    save_table(directory, FILE_TRADE_SUMMARY, outputs.trade_summary)
+    save_table(directory, FILE_TRADE_EXCESS, outputs.trade_excess)
+    save_table(directory, FILE_TRADE_TEST, outputs.trade_test)
+    save_table(directory, FILE_TRADE_BY_MONTH, outputs.trade_by_month)
+    save_table(directory, FILE_TRADE_RULE_VARIANTS, outputs.trade_rule_variants)
 
     _display_headline(outputs)
+    _display_trade(outputs)
 
     summary = {**outputs.summary, "output_dir": str(directory)}
     save_run_summary(directory, summary)

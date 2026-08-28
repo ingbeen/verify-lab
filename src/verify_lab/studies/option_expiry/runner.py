@@ -18,16 +18,29 @@ forward return 과 통계(`measure`)가 이미 있으므로, 하는 일은 그�
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR
 from verify_lab.data.loader import load_market_csv
-from verify_lab.measure.forward_return import compute_forward_returns
+from verify_lab.measure.constants import (
+    COL_BASIS,
+    COL_EXCLUDED_REASON,
+    COL_HORIZON,
+    REASON_NONE,
+)
+from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
 from verify_lab.measure.statistics import (
     COL_MEAN,
+    COL_MEAN_EXCESS,
+    COL_MEAN_P_VALUE,
     COL_MEDIAN,
+    COL_MEDIAN_EXCESS,
+    COL_MEDIAN_P_VALUE,
     COL_SAMPLE_COUNT,
+    COL_TEST_NOTE,
     COL_WIN_RATE,
+    COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
     excess,
@@ -36,18 +49,24 @@ from verify_lab.measure.statistics import (
 )
 from verify_lab.studies.option_expiry.constants import (
     COL_DAILY_RETURN,
+    COL_EXIT_WEEKDAY,
     COL_EXPIRY_DATE,
     COL_EXPIRY_MONTH,
+    COL_EXPIRY_MONTH_NUMBER,
+    COL_HOLD_DAYS,
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
     COL_PRICE_BASIS,
     COL_REGIME,
+    COL_RULE_DATE,
     COL_TICKER,
     COL_WITCHING,
     DATASETS,
+    HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
     OFFSET_HORIZONS,
     REGIME_ALL,
+    WEEKDAY_LABELS,
     WITCHING_GROUPS,
     Dataset,
     PriceSeries,
@@ -56,6 +75,11 @@ from verify_lab.studies.option_expiry.constants import (
 )
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
 from verify_lab.studies.option_expiry.offsets import expiry_offsets
+from verify_lab.studies.option_expiry.weekly_exit import (
+    HolidayExit,
+    weekly_exit_returns,
+    weekly_exit_schedule,
+)
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -82,6 +106,12 @@ class StudyOutputs:
         forward: offset 앵커 × 구간 forward return 집계
         excess: 단순 보유(같은 국면 전 거래일) 대비 초과분
         test: 순열 검정
+        trade_signals: 만기일 매수 → 다음주 청산 매매의 신호일 원자료
+        trade_summary: 그 매매의 묶음 집계 (국면 × 만기 종류)
+        trade_excess: 두 베이스라인 대비 초과분 — 같은 요일 주간 보유 · 같은 길이 단순 보유
+        trade_test: 그 매매의 순열 검정
+        trade_by_month: 만기월(1~12)별 집계와 같은 달 베이스라인
+        trade_rule_variants: 휴장 처리 규칙 네 조합의 대조
         summary: 실행 파라미터와 핵심 수치
     """
 
@@ -92,6 +122,12 @@ class StudyOutputs:
     forward: pd.DataFrame
     excess: pd.DataFrame
     test: pd.DataFrame
+    trade_signals: pd.DataFrame
+    trade_summary: pd.DataFrame
+    trade_excess: pd.DataFrame
+    trade_test: pd.DataFrame
+    trade_by_month: pd.DataFrame
+    trade_rule_variants: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -106,6 +142,12 @@ class _Accumulator:
     forward: list[pd.DataFrame] = field(default_factory=list)
     excess: list[pd.DataFrame] = field(default_factory=list)
     test: list[pd.DataFrame] = field(default_factory=list)
+    trade_signals: list[pd.DataFrame] = field(default_factory=list)
+    trade_summary: list[pd.DataFrame] = field(default_factory=list)
+    trade_excess: list[pd.DataFrame] = field(default_factory=list)
+    trade_test: list[pd.DataFrame] = field(default_factory=list)
+    trade_by_month: list[pd.DataFrame] = field(default_factory=list)
+    trade_rule_variants: list[pd.DataFrame] = field(default_factory=list)
 
 
 def _month_day_index(dates: pd.Series) -> pd.Series:
@@ -227,6 +269,27 @@ def _aggregate_daily(frame: pd.DataFrame, group_column: str) -> pd.DataFrame:
     )
 
 
+def _count_labels(values: np.ndarray, labels: tuple[str, ...] | None = None) -> dict[str, int]:
+    """정수 배열의 값별 건수를 세어 요약용 dict 로 만든다.
+
+    `summary.json` 에 그대로 실리는 값이라 키는 문자열이고 정렬이 고정돼야 한다.
+    `labels` 를 주면 값을 그 이름으로 바꾼다 (요일 번호 → 요일 이름).
+
+    Args:
+        values: 셀 정수 배열
+        labels: 값을 이름으로 바꿀 목록. `None` 이면 숫자를 문자열로 쓴다
+
+    Returns:
+        값(또는 이름)별 건수. 값 오름차순
+    """
+    found, counts = np.unique(values, return_counts=True)
+
+    return {
+        (labels[int(value)] if labels is not None else str(int(value))): int(count)
+        for value, count in zip(found, counts, strict=True)
+    }
+
+
 def _identify(frame: pd.DataFrame, **values: Any) -> pd.DataFrame:
     """표 앞머리에 식별 컬럼을 붙인다.
 
@@ -314,6 +377,9 @@ def _run_series(
                 seed=seed,
             )
 
+    trade_records = _run_weekly_trade(df, dataset, series, expiries, accumulator, repeats=repeats, seed=seed)
+
+    expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
     return {
         "ticker": dataset.ticker,
         "price_basis": series.basis,
@@ -324,6 +390,10 @@ def _run_series(
         "expiry_count": len(expiries),
         "advanced_count": int((expiries["advanced_days"] > 0).sum()),
         "inside_window_days": int(inside_window.sum()),
+        # 만기일이 실제로 무슨 요일이었나. 미국은 셋째 금요일, 한국은 둘째 목요일이 규칙이지만
+        # 휴장 앞당김으로 벗어나는 달이 있어 그 비율 자체가 보고 대상이다
+        "expiry_weekdays": _count_labels(np.asarray(expiry_weekdays), WEEKDAY_LABELS),
+        "weekly_trade": trade_records,
     }
 
 
@@ -384,6 +454,344 @@ def _run_forward(
             accumulator.test.append(_identify(test, **row_identity))
 
 
+# ============================================================
+# 만기일 매수 → 다음주 청산
+# ============================================================
+
+# 초과분 표에서 어느 베이스라인과 견줬는지 밝히는 이름. 둘은 묻는 질문이 다르다
+# (`docs/spec/option_expiry.md` §3.7)
+COL_BASELINE = "baseline"
+BASELINE_WEEKLY = "같은 요일 주간 보유"
+BASELINE_MATCHED_LENGTH = "같은 길이 단순 보유"
+
+# 휴장 처리 규칙 대조에서 쓰는 축 이름 (결정 ㉔)
+COL_WEEK_ANCHOR = "week_anchor"
+COL_HOLIDAY_RULE = "holiday_rule"
+ANCHOR_RULE_DATE = "규칙일 기준"
+ANCHOR_EXPIRY_DATE = "실제 만기일 기준"
+
+
+def _weekly_trade_frames(
+    df: pd.DataFrame,
+    dataset: Dataset,
+    expiries: pd.DataFrame,
+    exit_weekday: int,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """매매 신호군과 「같은 요일 주간 보유」 베이스라인의 long-form 을 만든다.
+
+    베이스라인은 **만기 규칙 요일에 해당하는 모든 거래일**(미국 금요일·한국 목요일)에서 같은
+    달력 규칙으로 청산한 것이다. 보유 길이 분포가 신호와 같은 달력 구조에서 나오므로
+    묶음 비교에 가중치를 지어낼 필요가 없다 (`docs/spec/option_expiry.md` 결정 ㉑).
+
+    Args:
+        df: 날짜 오름차순 시세
+        dataset: 검증 대상 정의
+        expiries: 만기일 표
+        exit_weekday: 청산 목표 요일
+
+    Returns:
+        (신호군 long-form, 베이스라인 long-form)
+    """
+    trading_days = pd.DatetimeIndex(df[COL_DATE])
+
+    signal_schedule = weekly_exit_schedule(
+        trading_days,
+        pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]),
+        pd.DatetimeIndex(expiries[COL_RULE_DATE]),
+        exit_weekday=exit_weekday,
+    )
+
+    # 베이스라인은 만기가 아니므로 규칙일이 따로 없다. 진입일 자신이 주 기준일이다
+    weekday_days = trading_days[trading_days.dayofweek == dataset.rule.weekday]
+    baseline_schedule = weekly_exit_schedule(trading_days, weekday_days, weekday_days, exit_weekday=exit_weekday)
+
+    signal = weekly_exit_returns(df, signal_schedule)
+    baseline = weekly_exit_returns(df, baseline_schedule)
+
+    return signal, baseline
+
+
+def _per_length(frame: pd.DataFrame) -> pd.DataFrame:
+    """묶음 표지를 실제 보유 거래일 수로 바꾼 유효 행만 남긴다.
+
+    「같은 길이 단순 보유」와 견주려면 칸 축이 실제 보유일수여야 한다. 제외된 행은 보유일수가
+    없어 어느 칸에도 속하지 못하므로 여기서 빠진다 — **제외 건수는 묶음 표와 신호일 원자료가
+    담당한다.**
+
+    Args:
+        frame: `weekly_exit_returns` 의 결과
+
+    Returns:
+        보유일수를 구간 축으로 갖는 long-form
+    """
+    valid = frame[frame[COL_EXCLUDED_REASON] == REASON_NONE].copy()
+    valid[COL_HORIZON] = valid[COL_HOLD_DAYS].astype(int)
+
+    return valid
+
+
+def _matched_length_baseline(market: pd.DataFrame, regime_mask: pd.Series, lengths: list[int]) -> pd.DataFrame:
+    """같은 국면의 전 거래일을 신호와 같은 보유 길이로 잡은 베이스라인을 만든다.
+
+    종가 기준만 남긴다. 익일 시가 칸은 이 매매의 정의에 없고, 남겨두면 신호군과 칸 구성이
+    달라져 초과분 계산이 성립하지 않는다.
+
+    Args:
+        market: 시세 전체
+        regime_mask: 국면 구간에 든 날
+        lengths: 신호에 나타난 보유 거래일 수 목록
+
+    Returns:
+        길이별 칸을 갖는 long-form
+    """
+    baseline = compute_forward_returns(market, regime_mask, horizons=sorted(set(lengths)))
+
+    return baseline[baseline[COL_BASIS] == ReturnBasis.CLOSE.value]
+
+
+def _aggregate_by_month(
+    signal: pd.DataFrame,
+    baseline: pd.DataFrame,
+    *,
+    repeats: int,
+    seed: int,
+) -> pd.DataFrame:
+    """만기월(1~12)별로 신호군과 같은 달 베이스라인을 나란히 낸다.
+
+    **구간 축을 만기월로 빌려 `summarize`·`excess`·`permutation_test` 를 재사용한다.**
+    통계량 정의를 두 곳에서 구현하면 두 곳이 조용히 갈라지기 때문이다. 축 이름은 돌려주기
+    직전에 만기월로 바꾼다.
+
+    같은 달 베이스라인이 반드시 필요하다 — 만기월별로 쪼개면 미국 세 ETF 모두 9월이 크게
+    음수인데, 9월 약세는 옵션 만기와 무관하게 알려진 계절성이라 **같은 달과 견주지 않으면
+    만기 효과와 가를 수 없다** (`docs/spec/option_expiry.md` 결정 ㉓).
+
+    **검정을 함께 붙인다.** 이 축은 칸이 12개이고 칸당 표본이 수십 건이라, p 값 없이 내면
+    가장 큰 칸을 골라 읽게 된다. 귀무분포는 **같은 달의 베이스라인**에서 뽑으므로 검정이
+    묻는 것도 "그 달 안에서 만기 주가 특별한가" 이다.
+
+    Args:
+        signal: 신호군 long-form (유효 행)
+        baseline: 같은 요일 주간 보유 베이스라인 long-form (유효 행)
+        repeats: 순열 검정 반복 수
+        seed: 순열 검정 시드
+
+    Returns:
+        만기월별 신호·베이스라인 집계와 초과분, 순열 검정
+    """
+    signal_by_month = signal.copy()
+    signal_by_month[COL_HORIZON] = signal_by_month[COL_DATE].dt.month
+    baseline_by_month = baseline.copy()
+    baseline_by_month[COL_HORIZON] = baseline_by_month[COL_DATE].dt.month
+
+    # 신호가 있는 달만 낸다. 베이스라인에만 있는 달을 남기면 초과분의 칸 구성이 어긋난다
+    months = sorted(set(signal_by_month[COL_HORIZON].tolist()))
+    baseline_by_month = baseline_by_month[baseline_by_month[COL_HORIZON].isin(months)]
+
+    signal_summary = summarize(signal_by_month)
+    baseline_summary = summarize(baseline_by_month)
+    month_excess = excess(signal_summary, baseline_summary)
+    month_test = permutation_test(signal_by_month, baseline_by_month, repeats=repeats, seed=seed)
+
+    merged = (
+        signal_summary.merge(baseline_summary, on=[COL_BASIS, COL_HORIZON], suffixes=("", "_baseline"))
+        .merge(
+            month_excess[[COL_BASIS, COL_HORIZON, COL_MEAN_EXCESS, COL_MEDIAN_EXCESS, COL_WIN_RATE_EXCESS]],
+            on=[COL_BASIS, COL_HORIZON],
+        )
+        .merge(
+            month_test[[COL_BASIS, COL_HORIZON, COL_MEAN_P_VALUE, COL_MEDIAN_P_VALUE, COL_TEST_NOTE]],
+            on=[COL_BASIS, COL_HORIZON],
+        )
+    )
+
+    return merged.rename(columns={COL_HORIZON: COL_EXPIRY_MONTH_NUMBER}).drop(columns=[COL_BASIS])
+
+
+def _rule_variants(df: pd.DataFrame, expiries: pd.DataFrame, exit_weekday: int) -> pd.DataFrame:
+    """휴장 처리 규칙 네 조합의 묶음 성적을 낸다 (결정 ㉔).
+
+    주 기준(규칙일 / 실제 만기일) × 청산 휴장(직전 거래일 / 다음 거래일)이다.
+    **규칙 선택이 결론을 만들지 않았다는 것 자체가 근거**이므로 네 값이 다 있어야 한다.
+
+    네 조합 모두 같은 `weekly_exit_schedule` 을 호출한다 — 청산 규칙을 두 벌 구현하면
+    두 곳이 조용히 갈라진다.
+
+    Args:
+        df: 날짜 오름차순 시세
+        expiries: 만기일 표
+        exit_weekday: 청산 목표 요일
+
+    Returns:
+        네 조합의 집계
+    """
+    trading_days = pd.DatetimeIndex(df[COL_DATE])
+    entries = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE])
+    anchors = {
+        ANCHOR_RULE_DATE: pd.DatetimeIndex(expiries[COL_RULE_DATE]),
+        ANCHOR_EXPIRY_DATE: entries,
+    }
+
+    blocks: list[pd.DataFrame] = []
+    for anchor_label, references in anchors.items():
+        for on_holiday in HolidayExit:
+            schedule = weekly_exit_schedule(
+                trading_days, entries, references, exit_weekday=exit_weekday, on_holiday=on_holiday
+            )
+            summary = summarize(weekly_exit_returns(df, schedule))
+            blocks.append(_identify(summary, **{COL_WEEK_ANCHOR: anchor_label, COL_HOLIDAY_RULE: on_holiday.value}))
+
+    return pd.concat(blocks, ignore_index=True)
+
+
+def _run_weekly_trade(
+    df: pd.DataFrame,
+    dataset: Dataset,
+    series: PriceSeries,
+    expiries: pd.DataFrame,
+    accumulator: _Accumulator,
+    *,
+    repeats: int,
+    seed: int,
+) -> list[dict[str, Any]]:
+    """만기일 매수 → 다음주 청산 매매를 청산 요일마다 전부 돌린다.
+
+    Args:
+        df: 날짜 오름차순 시세
+        dataset: 검증 대상 정의
+        series: 가격 기준 정의
+        expiries: 만기일 표
+        accumulator: 결과를 쌓는 자리
+        repeats: 순열 검정 반복 수
+        seed: 순열 검정 시드
+
+    Returns:
+        청산 요일별 요약 수치
+    """
+    records: list[dict[str, Any]] = []
+
+    for exit_weekday in dataset.exit_weekdays:
+        exit_label = WEEKDAY_LABELS[exit_weekday]
+        identity = {COL_TICKER: dataset.ticker, COL_PRICE_BASIS: series.basis, COL_EXIT_WEEKDAY: exit_label}
+
+        signal, baseline = _weekly_trade_frames(df, dataset, expiries, exit_weekday)
+
+        # 신호일 원자료. 진입·청산 가격과 날짜를 전부 남겨 사용자가 차트로 대조한다 (측정의 원칙 8)
+        raw = signal.copy()
+        raw[COL_EXPIRY_MONTH_NUMBER] = raw[COL_DATE].dt.month
+        accumulator.trade_signals.append(_identify(raw.drop(columns=[COL_BASIS, COL_HORIZON]), **identity))
+
+        accumulator.trade_rule_variants.append(_identify(_rule_variants(df, expiries, exit_weekday), **identity))
+
+        expiry_months = signal[COL_DATE].dt.month
+        for regime in dataset.regimes:
+            regime_signal = signal[_regime_mask(signal[COL_DATE], regime)]
+            regime_baseline = baseline[_regime_mask(baseline[COL_DATE], regime)]
+            if regime_signal.empty:
+                continue
+
+            # 만기월 축은 만기 종류와 무관하므로 국면마다 한 번만 낸다
+            accumulator.trade_by_month.append(
+                _identify(
+                    _aggregate_by_month(
+                        _per_length(regime_signal), _per_length(regime_baseline), repeats=repeats, seed=seed
+                    ),
+                    **{**identity, COL_REGIME: regime.label},
+                )
+            )
+
+            for group in WITCHING_GROUPS:
+                selected = _regime_mask(signal[COL_DATE], regime) & _witching_mask(expiry_months, group)
+                sliced = signal[selected]
+                if sliced.empty:
+                    continue
+
+                row_identity = {**identity, COL_REGIME: regime.label, COL_WITCHING: group.label}
+                run_test = regime.label == PERMUTATION_REGIME and group.label == PERMUTATION_WITCHING
+
+                _record_trade_cell(
+                    sliced,
+                    regime_baseline,
+                    df,
+                    _regime_mask(df[COL_DATE], regime),
+                    row_identity,
+                    accumulator,
+                    repeats=repeats,
+                    seed=seed,
+                    run_test=run_test,
+                )
+
+        valid = signal[signal[COL_EXCLUDED_REASON] == REASON_NONE]
+        records.append(
+            {
+                "exit_weekday": exit_label,
+                "entry_count": len(signal),
+                "excluded_count": len(signal) - len(valid),
+                "hold_days": _count_labels(valid[COL_HOLD_DAYS].to_numpy(dtype=int)),
+                "baseline_entry_count": len(baseline),
+            }
+        )
+
+    return records
+
+
+def _record_trade_cell(
+    sliced: pd.DataFrame,
+    regime_baseline: pd.DataFrame,
+    market: pd.DataFrame,
+    regime_mask: pd.Series,
+    row_identity: dict[str, Any],
+    accumulator: _Accumulator,
+    *,
+    repeats: int,
+    seed: int,
+    run_test: bool,
+) -> None:
+    """한 칸(국면 × 만기 종류)의 집계·초과분·검정을 쌓는다.
+
+    **묶음 비교와 길이별 비교의 베이스라인이 다르다** (`docs/spec/option_expiry.md` 결정 ㉑).
+    묶음은 「같은 요일 주간 보유」와만 견준다 — 보유 길이가 섞인 묶음을 길이 매칭 베이스라인과
+    견주려면 표본 수를 부풀리는 가중이 필요한데, 그러면 보고되는 베이스라인 표본 수가 거짓이 된다.
+    길이 매칭은 **길이별 칸에서만** 정확히 성립한다.
+
+    Args:
+        sliced: 이 칸의 신호군 long-form
+        regime_baseline: 같은 국면의 「같은 요일 주간 보유」 long-form
+        market: 시세 전체
+        regime_mask: 국면 구간에 든 날
+        row_identity: 식별 컬럼 값
+        accumulator: 결과를 쌓는 자리
+        repeats: 순열 검정 반복 수
+        seed: 순열 검정 시드
+        run_test: 순열 검정을 돌릴지 여부
+    """
+    # 1. 묶음 — 이 매매 하나의 성적이다
+    accumulator.trade_summary.append(_identify(summarize(sliced), **row_identity))
+
+    pooled_excess = excess(summarize(sliced), summarize(regime_baseline))
+    accumulator.trade_excess.append(_identify(pooled_excess, **{**row_identity, COL_BASELINE: BASELINE_WEEKLY}))
+
+    if run_test:
+        pooled_test = permutation_test(sliced, regime_baseline, repeats=repeats, seed=seed)
+        accumulator.trade_test.append(_identify(pooled_test, **{**row_identity, COL_BASELINE: BASELINE_WEEKLY}))
+
+    # 2. 보유 길이별 — 여기서만 「같은 길이 단순 보유」와 정확히 견줄 수 있다
+    per_length = _per_length(sliced)
+    if per_length.empty:
+        return
+
+    lengths = sorted({int(value) for value in per_length[COL_HORIZON]})
+    length_baseline = _matched_length_baseline(market, regime_mask, lengths)
+
+    accumulator.trade_summary.append(_identify(summarize(per_length), **row_identity))
+    length_excess = excess(summarize(per_length), summarize(length_baseline))
+    accumulator.trade_excess.append(_identify(length_excess, **{**row_identity, COL_BASELINE: BASELINE_MATCHED_LENGTH}))
+
+    if run_test:
+        length_test = permutation_test(per_length, length_baseline, repeats=repeats, seed=seed)
+        accumulator.trade_test.append(_identify(length_test, **{**row_identity, COL_BASELINE: BASELINE_MATCHED_LENGTH}))
+
+
 def run_study(
     datasets: tuple[Dataset, ...] = DATASETS,
     *,
@@ -430,6 +838,12 @@ def run_study(
         forward=_concat(accumulator.forward),
         excess=_concat(accumulator.excess),
         test=_concat(accumulator.test),
+        trade_signals=_concat(accumulator.trade_signals),
+        trade_summary=_concat(accumulator.trade_summary),
+        trade_excess=_concat(accumulator.trade_excess),
+        trade_test=_concat(accumulator.trade_test),
+        trade_by_month=_concat(accumulator.trade_by_month),
+        trade_rule_variants=_concat(accumulator.trade_rule_variants),
         summary=summary,
     )
 
@@ -441,6 +855,12 @@ def run_study(
         "forward": len(outputs.forward),
         "excess": len(outputs.excess),
         "test": len(outputs.test),
+        "trade_signals": len(outputs.trade_signals),
+        "trade_summary": len(outputs.trade_summary),
+        "trade_excess": len(outputs.trade_excess),
+        "trade_test": len(outputs.trade_test),
+        "trade_by_month": len(outputs.trade_by_month),
+        "trade_rule_variants": len(outputs.trade_rule_variants),
     }
 
     return outputs
@@ -506,4 +926,30 @@ def basis_gap(outputs: StudyOutputs) -> pd.DataFrame:
     return pivot
 
 
-__all__ = ["StudyOutputs", "basis_gap", "headline_table", "run_study"]
+def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
+    """본검증 기준·전체 국면·전체 월의 매매 묶음 성적을 뽑는다.
+
+    보유 길이별 칸은 빼고 **묶음 칸만** 남긴다 — 사용자가 물은 것은 매매 하나의 성적이다.
+
+    Args:
+        outputs: 실행 산출물
+
+    Returns:
+        종목 × 청산 요일의 요약표
+    """
+    summary = outputs.trade_summary
+    if summary.empty:
+        return summary
+
+    primary_bases = {row["price_basis"] for row in outputs.summary["series"] if row["primary"]}
+    selected = summary[
+        summary[COL_PRICE_BASIS].isin(primary_bases)
+        & (summary[COL_REGIME] == PERMUTATION_REGIME)
+        & (summary[COL_WITCHING] == PERMUTATION_WITCHING)
+        & (summary[COL_HORIZON] == HORIZON_NEXT_WEEK_EXIT)
+    ]
+
+    return selected.reset_index(drop=True)
+
+
+__all__ = ["StudyOutputs", "basis_gap", "headline_table", "run_study", "trade_headline"]

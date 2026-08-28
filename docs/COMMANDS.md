@@ -47,6 +47,7 @@ poetry run python scripts/data/collect_yfinance.py
 
 # 다른 종목 수집
 poetry run python scripts/data/collect_yfinance.py --ticker SPY
+poetry run python scripts/data/collect_yfinance.py --ticker DIA
 
 # 수정주가로 받기 (본검증에는 쓰지 않습니다. 대조·실측용)
 poetry run python scripts/data/collect_yfinance.py --adjusted
@@ -230,20 +231,22 @@ poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
 ### 검증 #7 — 옵션 만기일
 
 ```bash
-# 전 조합 실행 (기본값) — 종목 3개 × 가격 기준 2개 × 국면 × 위칭 × offset -10~+10
+# 전 조합 실행 (기본값) — 종목 4개 × 가격 기준 2개 × 국면 × 위칭 × offset -10~+10
+# 그리고 「만기일 매수 → 다음주 금요일 매도」 매매와 만기월별 집계
 poetry run python scripts/studies/run_option_expiry.py
 
-# 종목 하나만
+# 종목 하나만 (qqq · spy · dia · kodex200)
 poetry run python scripts/studies/run_option_expiry.py --dataset kodex200
 
 # 순열 검정 반복 수를 줄여 빠르게 확인
 poetry run python scripts/studies/run_option_expiry.py --repeats 200
 ```
 
-- 선행 조건: `storage/market/` 에 **6개 파일**(QQQ·SPY·069500 각각 원본가·수정주가)이 있어야 합니다
-- **하나의 창을 고르지 않습니다.** 만기 앞뒤 21개 자리를 전부 산출해 나란히 보고합니다
-- 산출물은 `storage/results/<실행시각>_option_expiry/` 에 8개 CSV 로 남습니다.
-  신호일 원자료는 `signals.csv` 이며 차트 대조용입니다
+- 선행 조건: `storage/market/` 에 **8개 파일**(QQQ·SPY·DIA·069500 각각 원본가·수정주가)이 있어야 합니다
+- **하나의 창을 고르지 않습니다.** 만기 앞뒤 21개 자리를 전부 산출해 나란히 보고합니다.
+  매매도 마찬가지로 **휴장 처리 규칙 네 조합**을 전부 내고, 한국은 **금요일·목요일 청산 두 벌**을 냅니다
+- 산출물은 `storage/results/<실행시각>_option_expiry/` 에 14개 CSV 로 남습니다.
+  신호일 원자료는 `signals.csv`(상대 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
 - 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
   [spec/option_expiry.md](spec/option_expiry.md) 입니다
 

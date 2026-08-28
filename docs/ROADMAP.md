@@ -23,7 +23,7 @@
 | 4 | **탑티어 우량주 반토막 매매법** — 고점 대비 -50% 도달 후 수익률 | 미국 대형주 | 미착수 | — | — |
 | 5 | **원달러 ETF 등가성** — 261240 이 「환전 + 달러 예치」의 대체재인가 | USDKRW, 261240, 261250 | 완료 | [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | [research/원달러_ETF_등가성.md](research/원달러_ETF_등가성.md) |
 | 6 | **달러 조달 방식** — 미국주식 매수 자금용 달러를 어떻게 사서 보유할 것인가 | USDKRW | 완료 | — | [research/달러_조달_방식.md](research/달러_조달_방식.md) |
-| 7 | **옵션 만기일** — 월물 만기 앞뒤 상대 거래일의 수익률 | QQQ, SPY, KODEX 200 | 완료 | [spec/option_expiry.md](spec/option_expiry.md) | [research/옵션_만기일.md](research/옵션_만기일.md) |
+| 7 | **옵션 만기일** — 월물 만기 앞뒤 상대 거래일의 수익률과 **만기일 매수 → 다음주 금요일 매도** | QQQ, SPY, **DIA**, KODEX 200 | 완료 | [spec/option_expiry.md](spec/option_expiry.md) | [research/옵션_만기일.md](research/옵션_만기일.md) |
 
 상태 값: `미착수` / `대기`(스펙 확정, 구현 전) / `진행중` / `완료` / `보류`
 

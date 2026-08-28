@@ -16,11 +16,23 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.measure.statistics import COL_MEAN, COL_SAMPLE_COUNT
+from verify_lab.measure.constants import (
+    COL_BASIS,
+    COL_EXCLUDED_REASON,
+    COL_FORWARD_RETURN,
+    COL_HORIZON,
+    REASON_NONE,
+    REASON_OUT_OF_RANGE,
+)
+from verify_lab.measure.statistics import COL_MEAN, COL_MEAN_P_VALUE, COL_SAMPLE_COUNT
 from verify_lab.studies.option_expiry.constants import (
     COL_DAILY_RETURN,
+    COL_EXPIRY_MONTH_NUMBER,
+    COL_HOLD_DAYS,
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
+    FRIDAY,
+    HORIZON_NEXT_WEEK_EXIT,
     KR_MONTHLY_EXPIRY,
     US_MONTHLY_EXPIRY,
     Dataset,
@@ -28,13 +40,22 @@ from verify_lab.studies.option_expiry.constants import (
     Regime,
     WitchingGroup,
 )
+from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
 from verify_lab.studies.option_expiry.runner import (
+    ANCHOR_EXPIRY_DATE,
+    ANCHOR_RULE_DATE,
+    COL_HOLIDAY_RULE,
+    COL_WEEK_ANCHOR,
+    _aggregate_by_month,
     _aggregate_daily,
     _annotate,
     _month_day_index,
+    _per_length,
     _regime_mask,
+    _rule_variants,
     _witching_mask,
 )
+from verify_lab.studies.option_expiry.weekly_exit import HolidayExit
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12
@@ -65,6 +86,7 @@ def _dataset(rule: object) -> Dataset:
         regimes=(),
         series=(PriceSeries(basis="합성", file_name="none.csv", primary=True),),
         price_decimals=4,
+        exit_weekdays=(FRIDAY,),
     )
 
 
@@ -259,6 +281,102 @@ class TestMasks:
 
         # Then
         assert mask.all()
+
+
+class TestWeeklyTradeAssembly:
+    """만기일 매수 → 다음주 청산 매매의 조립 계약을 고정한다."""
+
+    def test_길이별_변환은_제외행을_버리고_보유일수를_축으로_쓴다(self) -> None:
+        """
+        목적: 「같은 길이 단순 보유」와 견줄 수 있는 형태를 고정한다
+
+        제외된 행은 보유일수가 없어 어느 칸에도 속하지 못한다. **제외 건수는 묶음 표가 담당**하며,
+        여기서 빠지는 것이 정상이다.
+
+        Given: 유효 2행(보유 4·5일)과 제외 1행
+        When: 길이별로 바꾸면
+        Then: 제외행이 빠지고 구간 축이 보유일수가 된다
+        """
+        # Given
+        frame = pd.DataFrame(
+            {
+                COL_HOLD_DAYS: pd.array([4, 5, None], dtype="Int64"),
+                COL_HORIZON: [HORIZON_NEXT_WEEK_EXIT] * 3,
+                COL_EXCLUDED_REASON: [REASON_NONE, REASON_NONE, REASON_OUT_OF_RANGE],
+            }
+        )
+
+        # When
+        result = _per_length(frame)
+
+        # Then
+        assert len(result) == 2
+        assert result[COL_HORIZON].tolist() == [4, 5]
+
+    def test_만기월_축은_같은_달_베이스라인을_달고_나온다(self) -> None:
+        """
+        목적: **9월 약세가 만기 효과인지 그 달의 계절성인지 가를 수 있어야 한다**를 고정한다
+        (`docs/spec/option_expiry.md` 결정 ㉓)
+
+        같은 달 베이스라인 없이 월별 값만 내면 두 설명을 구별할 수 없다.
+
+        Given: 3월·9월에 신호가 있고 베이스라인은 전 월에 걸친 입력
+        When: 만기월 축으로 집계하면
+        Then: 신호가 있는 달만 나오고 각 행에 베이스라인 통계와 초과분이 함께 있다
+        """
+        # Given
+        signal = _long_form(["2026-03-20", "2026-09-18"], [0.02, -0.01])
+        baseline = _long_form(
+            ["2026-03-06", "2026-03-13", "2026-09-04", "2026-09-11", "2026-05-08"],
+            [0.01, 0.00, 0.00, 0.01, 0.05],
+        )
+
+        # When
+        result = _aggregate_by_month(signal, baseline, repeats=10, seed=0)
+
+        # Then
+        assert result[COL_EXPIRY_MONTH_NUMBER].tolist() == [3, 9], "신호가 없는 5월이 섞였습니다"
+        assert f"{COL_MEAN}_baseline" in result.columns, "같은 달 베이스라인이 빠졌습니다"
+        assert COL_MEAN_P_VALUE in result.columns, "만기월 칸에 검정이 빠졌습니다"
+        march = result[result[COL_EXPIRY_MONTH_NUMBER] == 3].iloc[0]
+        assert float(march[COL_MEAN]) == pytest.approx(0.02, abs=EXACT_TOLERANCE)
+        assert float(march[f"{COL_MEAN}_baseline"]) == pytest.approx(0.005, abs=EXACT_TOLERANCE)
+        assert float(march["MeanExcess"]) == pytest.approx(0.015, abs=EXACT_TOLERANCE)
+
+    def test_휴장_규칙_대조는_네_조합을_전부_낸다(self) -> None:
+        """
+        목적: 규칙 선택이 결론을 만들지 않았음을 보이려면 **네 값이 다 있어야 한다**를 고정한다
+        (결정 ㉔)
+
+        Given: 1년치 합성 시세와 만기일 표
+        When: 규칙 대조를 내면
+        Then: 주 기준 2가지 × 휴장 처리 2가지 = 4행이 나온다
+        """
+        # Given
+        days = pd.DatetimeIndex(pd.bdate_range("2026-01-01", "2026-12-31"))
+        df = _market([100.0 + index for index in range(len(days))], start="2026-01-01")
+        expiries = monthly_expiry_dates(pd.DatetimeIndex(df[COL_DATE]), US_MONTHLY_EXPIRY)
+
+        # When
+        result = _rule_variants(df, expiries, exit_weekday=FRIDAY)
+
+        # Then
+        assert len(result) == 4
+        assert set(result[COL_WEEK_ANCHOR]) == {ANCHOR_RULE_DATE, ANCHOR_EXPIRY_DATE}
+        assert set(result[COL_HOLIDAY_RULE]) == {rule.value for rule in HolidayExit}
+
+
+def _long_form(dates: Sequence[str], returns: Sequence[float]) -> pd.DataFrame:
+    """만기월 집계가 요구하는 최소 long-form 을 만든다."""
+    return pd.DataFrame(
+        {
+            COL_DATE: pd.to_datetime(list(dates)),
+            COL_BASIS: ["close"] * len(dates),
+            COL_HORIZON: [HORIZON_NEXT_WEEK_EXIT] * len(dates),
+            COL_FORWARD_RETURN: list(returns),
+            COL_EXCLUDED_REASON: [REASON_NONE] * len(dates),
+        }
+    )
 
 
 def test_월중_서수와_offset_이_함께_붙는다() -> None:
