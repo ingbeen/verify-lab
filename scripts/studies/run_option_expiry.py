@@ -14,24 +14,23 @@
 import argparse
 
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
-from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_SAMPLE_COUNT, COL_WIN_RATE
+from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_WIN_RATE
 from verify_lab.report.constants import PERCENT_DECIMALS, RATE_TO_PERCENT
-from verify_lab.report.tables import print_dataframe
+from verify_lab.report.tables import build_candidates_table, print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
     COL_EXIT_WEEKDAY,
-    COL_OFFSET,
+    COL_EXPIRY_MONTH_NUMBER,
     COL_TICKER,
     DATASETS,
     DISPLAY_EXIT_WEEKDAY,
-    DISPLAY_OFFSET,
+    DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
     STUDY_NAME,
 )
 from verify_lab.studies.option_expiry.runner import (
     StudyOutputs,
-    basis_gap,
-    headline_table,
+    candidates_headline,
     run_study,
     trade_headline,
 )
@@ -47,12 +46,6 @@ KEY_META_OPTION_EXPIRY = "option_expiry_study"
 # 산출물 파일명. 표 하나에 파일 하나이며 전부 long-form 이다
 FILE_EXPIRIES = "expiries.csv"
 FILE_SIGNALS = "signals.csv"
-FILE_DAILY = "daily_by_offset.csv"
-FILE_MONTH_POSITION = "daily_by_month_position.csv"
-FILE_FORWARD = "forward_summary.csv"
-FILE_EXCESS = "forward_excess.csv"
-FILE_TEST = "permutation.csv"
-FILE_BASIS_GAP = "basis_gap.csv"
 
 # 만기일 매수 → 다음주 청산 매매의 산출물. 접두사로 묶어 상대 거래일 표와 섞이지 않게 한다
 FILE_TRADE_SIGNALS = "weekly_trade_signals.csv"
@@ -61,7 +54,7 @@ FILE_TRADE_EXCESS = "weekly_trade_excess.csv"
 FILE_TRADE_TEST = "weekly_trade_permutation.csv"
 FILE_TRADE_BY_MONTH = "weekly_trade_by_month.csv"
 FILE_TRADE_BY_MONTH_HALVES = "weekly_trade_by_month_halves.csv"
-FILE_TRADE_RULE_VARIANTS = "weekly_trade_rule_variants.csv"
+FILE_CANDIDATES = "candidates.csv"
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,39 +95,21 @@ def _selected_datasets(keys: list[str] | None) -> tuple[object, ...]:
 
 
 def _display_headline(outputs: StudyOutputs) -> None:
-    """본검증 기준의 offset 별 일간 등락을 화면에 표시한다.
+    """본검증 기준의 **후보 판정과 매매 성적**을 화면에 표시한다.
+
+    후보 표를 먼저 낸다 — 화면에서 가장 먼저 봐야 할 것이 "어느 달·어느 방향"이기 때문이다.
 
     Args:
         outputs: 실행 산출물
     """
-    headline = headline_table(outputs)
-    if headline.empty:
-        logger.debug("표시할 요약 행이 없습니다")
-        return
+    candidates = candidates_headline(outputs)
+    if candidates.empty:
+        logger.debug("후보 판정을 통과하거나 보류된 칸이 없습니다")
+    else:
+        table = build_candidates_table(candidates, axis_column=COL_EXPIRY_MONTH_NUMBER, axis_label=DISPLAY_EXPIRY_MONTH)
+        table.insert(0, DISPLAY_TICKER, candidates[COL_TICKER].to_numpy())
+        print_dataframe(table, logger, title="후보 판정 — 통과·보류 (본검증 기준)")
 
-    table = headline[[COL_TICKER, COL_OFFSET, COL_SAMPLE_COUNT, COL_MEAN, COL_MEDIAN, COL_WIN_RATE]].copy()
-    for column in (COL_MEAN, COL_MEDIAN, COL_WIN_RATE):
-        table[column] = (table[column] * RATE_TO_PERCENT).round(PERCENT_DECIMALS)
-
-    table = table.rename(
-        columns={
-            COL_TICKER: DISPLAY_TICKER,
-            COL_OFFSET: DISPLAY_OFFSET,
-            COL_SAMPLE_COUNT: "표본",
-            COL_MEAN: "평균(%)",
-            COL_MEDIAN: "중앙값(%)",
-            COL_WIN_RATE: "승률(%)",
-        }
-    )
-    print_dataframe(table, logger, title="본검증 기준 · 전체 국면 · 전체 월 — 상대 거래일별 일간 등락")
-
-
-def _display_trade(outputs: StudyOutputs) -> None:
-    """만기일 매수 → 다음주 청산 매매의 묶음 성적을 화면에 표시한다.
-
-    Args:
-        outputs: 실행 산출물
-    """
     trade = trade_headline(outputs)
     if trade.empty:
         logger.debug("표시할 매매 요약 행이 없습니다")
@@ -154,7 +129,7 @@ def _display_trade(outputs: StudyOutputs) -> None:
             COL_EXCLUDED_COUNT: "제외",
             COL_MEAN: "평균(%)",
             COL_MEDIAN: "중앙값(%)",
-            COL_WIN_RATE: "승률(%)",
+            COL_WIN_RATE: "오른 비율(%)",
         }
     )
     print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 본검증 기준 · 전체 국면 · 전체 월")
@@ -176,22 +151,15 @@ def main() -> int:
     directory = create_run_directory(STUDY_NAME)
     save_table(directory, FILE_EXPIRIES, outputs.expiries)
     save_table(directory, FILE_SIGNALS, outputs.signals)
-    save_table(directory, FILE_DAILY, outputs.daily)
-    save_table(directory, FILE_MONTH_POSITION, outputs.month_position)
-    save_table(directory, FILE_FORWARD, outputs.forward)
-    save_table(directory, FILE_EXCESS, outputs.excess)
-    save_table(directory, FILE_TEST, outputs.test)
-    save_table(directory, FILE_BASIS_GAP, basis_gap(outputs))
     save_table(directory, FILE_TRADE_SIGNALS, outputs.trade_signals)
     save_table(directory, FILE_TRADE_SUMMARY, outputs.trade_summary)
     save_table(directory, FILE_TRADE_EXCESS, outputs.trade_excess)
     save_table(directory, FILE_TRADE_TEST, outputs.trade_test)
     save_table(directory, FILE_TRADE_BY_MONTH, outputs.trade_by_month)
     save_table(directory, FILE_TRADE_BY_MONTH_HALVES, outputs.trade_by_month_halves)
-    save_table(directory, FILE_TRADE_RULE_VARIANTS, outputs.trade_rule_variants)
+    save_table(directory, FILE_CANDIDATES, outputs.candidates)
 
     _display_headline(outputs)
-    _display_trade(outputs)
 
     summary = {**outputs.summary, "output_dir": str(directory)}
     save_run_summary(directory, summary)

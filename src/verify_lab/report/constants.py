@@ -68,6 +68,17 @@ DISPLAY_DOWN_RATE_P_VALUE = "내린 비율 우연확률"
 
 DISPLAY_TEST_NOTE = "비고"
 
+# 후보 판정 (measure/screening.py 의 결과)
+DISPLAY_DIRECTION = "방향"
+DISPLAY_HIT_RATE = "적중률(%)"
+DISPLAY_BASELINE_HIT_RATE = "기준선(%)"
+DISPLAY_BASELINE_GAP = "기준선 대비 차이(%p)"
+DISPLAY_P_VALUE = "우연확률"
+DISPLAY_PERIOD_COUNT = "시기 구간"
+DISPLAY_PERIOD_MIN_HIT_RATE = "가장 약한 시기(%)"
+DISPLAY_VERDICT = "판정"
+DISPLAY_FAILED_CRITERIA = "떨어진 기준"
+
 # ============================================================
 # 값 번역표
 # ============================================================

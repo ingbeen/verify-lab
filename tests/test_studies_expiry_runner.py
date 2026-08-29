@@ -51,26 +51,14 @@ from verify_lab.studies.option_expiry.constants import (
     US_MONTHLY_EXPIRY,
     Dataset,
     PriceSeries,
-    Regime,
-    WitchingGroup,
 )
-from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
 from verify_lab.studies.option_expiry.runner import (
-    ANCHOR_EXPIRY_DATE,
-    ANCHOR_RULE_DATE,
-    COL_HOLIDAY_RULE,
-    COL_WEEK_ANCHOR,
     _aggregate_by_month,
-    _aggregate_daily,
     _aggregate_month_halves,
     _annotate,
     _month_day_index,
     _per_length,
-    _regime_mask,
-    _rule_variants,
-    _witching_mask,
 )
-from verify_lab.studies.option_expiry.weekly_exit import HolidayExit
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12
@@ -103,82 +91,6 @@ def _dataset(rule: object) -> Dataset:
         price_decimals=4,
         exit_weekdays=(FRIDAY,),
     )
-
-
-class TestAggregateDaily:
-    """집계표가 자기 축을 잃지 않는지 고정한다."""
-
-    def test_축_컬럼이_집계표에_남는다(self) -> None:
-        """
-        목적: **행이 무엇에 대한 값인지 알 수 있어야 한다**를 고정한다
-
-        Given: offset 이 붙은 일간 등락 3행
-        When: offset 축으로 집계하면
-        Then: 결과에 offset 컬럼이 있고 값이 보존된다
-        """
-        # Given
-        frame = pd.DataFrame({COL_OFFSET: [-1.0, -1.0, 2.0], COL_DAILY_RETURN: [0.01, 0.03, -0.02]})
-
-        # When
-        result = _aggregate_daily(frame, COL_OFFSET)
-
-        # Then
-        assert COL_OFFSET in result.columns, "집계표에서 축 컬럼이 사라졌습니다"
-        assert result[COL_OFFSET].tolist() == [-1, 2]
-
-    def test_평균과_표본수가_맞는다(self) -> None:
-        """
-        목적: 산식을 손으로 계산한 값으로 고정한다
-
-        Given: offset -1 에 0.01 과 0.03
-        When: 집계하면
-        Then: 표본 2건, 평균 0.02
-        """
-        # Given
-        frame = pd.DataFrame({COL_OFFSET: [-1.0, -1.0, 2.0], COL_DAILY_RETURN: [0.01, 0.03, -0.02]})
-
-        # When
-        result = _aggregate_daily(frame, COL_OFFSET)
-
-        # Then
-        first = result[result[COL_OFFSET] == -1].iloc[0]
-        assert int(first[COL_SAMPLE_COUNT]) == 2
-        assert float(first[COL_MEAN]) == pytest.approx(0.02, abs=EXACT_TOLERANCE)
-
-    def test_값이_없는_날은_표본에서_빠진다(self) -> None:
-        """
-        목적: 경계 조건 — 첫날처럼 등락을 낼 수 없는 날의 처리를 고정한다
-
-        Given: 일간 등락이 비어 있는 행이 섞인 입력
-        When: 집계하면
-        Then: 그 행은 표본에 들어가지 않는다
-        """
-        # Given
-        frame = pd.DataFrame({COL_OFFSET: [-1.0, -1.0], COL_DAILY_RETURN: [float("nan"), 0.03]})
-
-        # When
-        result = _aggregate_daily(frame, COL_OFFSET)
-
-        # Then
-        assert int(result[COL_SAMPLE_COUNT].iloc[0]) == 1
-
-    def test_표본이_하나도_없으면_빈_표를_돌려준다(self) -> None:
-        """
-        목적: 경계 조건 — 표본 0건이 예외가 아니라 정상 결과임을 고정한다
-
-        Given: 일간 등락이 전부 비어 있는 입력
-        When: 집계하면
-        Then: 같은 스키마의 빈 표가 나온다
-        """
-        # Given
-        frame = pd.DataFrame({COL_OFFSET: [-1.0], COL_DAILY_RETURN: [float("nan")]})
-
-        # When
-        result = _aggregate_daily(frame, COL_OFFSET)
-
-        # Then
-        assert result.empty
-        assert COL_OFFSET in result.columns
 
 
 class TestAnnotate:
@@ -237,65 +149,6 @@ class TestAnnotate:
 
         # Then
         assert result.tolist() == [1, 2, 1, 2]
-
-
-class TestMasks:
-    """국면·위칭 축이 신호일만 자르는지 고정한다."""
-
-    def test_국면은_구간_밖의_날을_뺀다(self) -> None:
-        """
-        목적: 국면 경계가 날짜 기준으로 적용됨을 고정한다
-
-        Given: 2019-09-22 와 2019-09-23
-        When: 위클리 이후 국면 마스크를 만들면
-        Then: 앞날은 False, 뒷날은 True
-        """
-        # Given
-        dates = pd.Series(pd.to_datetime(["2019-09-20", "2019-09-23"]))
-
-        # When
-        mask = _regime_mask(dates, Regime(label="위클리", start="2019-09-23", end=None))
-
-        # Then
-        assert mask.tolist() == [False, True]
-
-    def test_위칭_축은_만기월로_가른다(self) -> None:
-        """
-        목적: 동시만기 분리가 **배정된 만기일의 달**로 이뤄짐을 고정한다
-
-        날짜의 달이 아니다 — 만기 다음 달로 넘어간 날도 자기가 붙은 만기의 성격을 따라야 한다.
-
-        Given: 만기월 3월과 4월
-        When: 동시만기 축과 그 여집합 축을 만들면
-        Then: 3월만 동시만기이고 여집합은 반대다
-        """
-        # Given
-        expiry_months = pd.Series([3, 4])
-
-        # When
-        witching = _witching_mask(expiry_months, WitchingGroup(label="동시만기", months=(3, 6, 9, 12)))
-        others = _witching_mask(expiry_months, WitchingGroup(label="단독", months=(3, 6, 9, 12), exclude=True))
-
-        # Then
-        assert witching.tolist() == [True, False]
-        assert others.tolist() == [False, True]
-
-    def test_전체_축은_아무것도_자르지_않는다(self) -> None:
-        """
-        목적: 경계 조건 — 자르지 않는 축의 정의를 고정한다
-
-        Given: 만기월 3월과 4월
-        When: 전체 축 마스크를 만들면
-        Then: 전부 True
-        """
-        # Given
-        expiry_months = pd.Series([3, 4])
-
-        # When
-        mask = _witching_mask(expiry_months, WitchingGroup(label="전체", months=None))
-
-        # Then
-        assert mask.all()
 
 
 class TestWeeklyTradeAssembly:
@@ -510,28 +363,6 @@ class TestWeeklyTradeAssembly:
         # Then
         assert len(result) == 2, "한 달이 보유일수별로 쪼개졌습니다"
         assert result[COL_SAMPLE_COUNT].tolist() == [12, 12]
-
-    def test_휴장_규칙_대조는_네_조합을_전부_낸다(self) -> None:
-        """
-        목적: 규칙 선택이 결론을 만들지 않았음을 보이려면 **네 값이 다 있어야 한다**를 고정한다
-        (결정 ㉔)
-
-        Given: 1년치 합성 시세와 만기일 표
-        When: 규칙 대조를 내면
-        Then: 주 기준 2가지 × 휴장 처리 2가지 = 4행이 나온다
-        """
-        # Given
-        days = pd.DatetimeIndex(pd.bdate_range("2026-01-01", "2026-12-31"))
-        df = _market([100.0 + index for index in range(len(days))], start="2026-01-01")
-        expiries = monthly_expiry_dates(pd.DatetimeIndex(df[COL_DATE]), US_MONTHLY_EXPIRY)
-
-        # When
-        result = _rule_variants(df, expiries, exit_weekday=FRIDAY)
-
-        # Then
-        assert len(result) == 4
-        assert set(result[COL_WEEK_ANCHOR]) == {ANCHOR_RULE_DATE, ANCHOR_EXPIRY_DATE}
-        assert set(result[COL_HOLIDAY_RULE]) == {rule.value for rule in HolidayExit}
 
 
 def _long_form(dates: Sequence[str], returns: Sequence[float]) -> pd.DataFrame:

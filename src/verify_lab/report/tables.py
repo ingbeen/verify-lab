@@ -26,6 +26,17 @@ from verify_lab.measure.constants import (
     COL_HORIZON,
     COL_SIGNAL_COUNT,
 )
+from verify_lab.measure.screening import (
+    COL_BASELINE_GAP,
+    COL_BASELINE_HIT_RATE,
+    COL_DIRECTION,
+    COL_FAILED_CRITERIA,
+    COL_HIT_RATE,
+    COL_P_VALUE,
+    COL_PERIOD_COUNT,
+    COL_PERIOD_MIN_HIT_RATE,
+    COL_VERDICT,
+)
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
     COL_DOWN_RATE_P_VALUE,
@@ -63,13 +74,18 @@ from verify_lab.report.constants import (
     COLUMN_GAP,
     DATE_FORMAT,
     DISPLAY_BASELINE,
+    DISPLAY_BASELINE_GAP,
+    DISPLAY_BASELINE_HIT_RATE,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
+    DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
     DISPLAY_DOWN_RATE_PERCENTILE,
     DISPLAY_EXCLUDED,
+    DISPLAY_FAILED_CRITERIA,
+    DISPLAY_HIT_RATE,
     DISPLAY_HORIZON,
     DISPLAY_MAX,
     DISPLAY_MEAN,
@@ -87,6 +103,9 @@ from verify_lab.report.constants import (
     DISPLAY_OBSERVED_MEAN,
     DISPLAY_OBSERVED_MEDIAN,
     DISPLAY_OBSERVED_UP_RATE,
+    DISPLAY_P_VALUE,
+    DISPLAY_PERIOD_COUNT,
+    DISPLAY_PERIOD_MIN_HIT_RATE,
     DISPLAY_POPULATION,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
@@ -97,6 +116,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
     DISPLAY_UP_RATE_PERCENTILE,
+    DISPLAY_VERDICT,
     EMPTY_MARK,
     HORIZON_LABELS,
     PERCENT_DECIMALS,
@@ -514,3 +534,40 @@ def _require_columns(table: pd.DataFrame, columns: Sequence[str], label: str) ->
     missing_columns = set(columns) - set(table.columns)
     if missing_columns:
         raise ValueError(f"{label} 표에 필수 컬럼이 누락되었습니다: {sorted(missing_columns)}")
+
+
+def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_label: str) -> pd.DataFrame:
+    """후보 판정 결과를 표시용으로 바꾼다.
+
+    비율은 백분율로, 우연확률은 확률 자릿수로 반올림한다. 시기를 쪼갤 수 없어 보류된 칸은
+    「가장 약한 시기」가 비어 있는데, **0 으로 채우지 않는다** — 0% 로 읽히기 때문이다.
+
+    Args:
+        candidates: `screening.screen_candidates` 의 결과
+        axis_column: 축 컬럼 이름
+        axis_label: 축의 표시 이름
+
+    Returns:
+        한글 레이블과 백분율로 바뀐 판정표
+
+    Raises:
+        ValueError: 축 컬럼이 없는 경우
+    """
+    if axis_column not in candidates.columns:
+        raise ValueError(f"판정표에 축 컬럼이 없습니다: {axis_column}")
+
+    return pd.DataFrame(
+        {
+            axis_label: candidates[axis_column].to_numpy(),
+            DISPLAY_SAMPLE_COUNT: candidates[COL_SAMPLE_COUNT].to_numpy(),
+            DISPLAY_DIRECTION: candidates[COL_DIRECTION].to_numpy(),
+            DISPLAY_HIT_RATE: _to_percent(candidates[COL_HIT_RATE]).to_numpy(),
+            DISPLAY_BASELINE_HIT_RATE: _to_percent(candidates[COL_BASELINE_HIT_RATE]).to_numpy(),
+            DISPLAY_BASELINE_GAP: _to_percent(candidates[COL_BASELINE_GAP]).to_numpy(),
+            DISPLAY_P_VALUE: candidates[COL_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
+            DISPLAY_PERIOD_COUNT: candidates[COL_PERIOD_COUNT].to_numpy(),
+            DISPLAY_PERIOD_MIN_HIT_RATE: _to_percent(candidates[COL_PERIOD_MIN_HIT_RATE]).to_numpy(),
+            DISPLAY_VERDICT: candidates[COL_VERDICT].to_numpy(),
+            DISPLAY_FAILED_CRITERIA: candidates[COL_FAILED_CRITERIA].to_numpy(),
+        }
+    )
