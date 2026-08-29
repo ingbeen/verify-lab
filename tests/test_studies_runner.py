@@ -35,14 +35,14 @@ from verify_lab.report.constants import (
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_BASIS,
     DISPLAY_DATE,
+    DISPLAY_DOWN_RATE,
+    DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
-    DISPLAY_REVERSE_RATE,
-    DISPLAY_REVERSE_RATE_EXCESS,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
-    DISPLAY_WIN_RATE,
+    DISPLAY_UP_RATE,
 )
 from verify_lab.studies.index_extreme.constants import (
     CONSECUTIVE_DIRECTION_LABELS,
@@ -421,26 +421,33 @@ class TestSignalGroupAxes:
         upward = wide_outputs.statistics[wide_outputs.statistics[DISPLAY_DIRECTION].isin(UPWARD_DIRECTIONS)]
 
         # When
-        total = upward[DISPLAY_WIN_RATE] + upward[DISPLAY_REVERSE_RATE]
+        total = upward[DISPLAY_UP_RATE] + upward[DISPLAY_DOWN_RATE]
 
         # Then
         assert not upward.empty
         assert bool((total <= 100.0 + RATE_TOLERANCE).all())
 
-    def test_하락_방향_신호군의_역방향_비율은_승률과_같다(self, wide_outputs: StudyOutputs) -> None:
+    def test_하락_방향_신호군도_두_비율을_그대로_낸다(self, wide_outputs: StudyOutputs) -> None:
         """
-        목적: 폭락·연속 하락 신호는 **오르는 것이 곧 역방향**이라 두 값이 일치한다
+        목적: **집계는 방향을 모른다.** 하락 방향 신호군에서도 오른 비율과 내린 비율이
+              각각의 사실로 남고, 어느 쪽이 "맞은 것"인지 정하지 않는다
+              (루트 `CLAUDE.md` 측정의 원칙 11).
 
         Given: 하락 방향 신호군의 집계
-        When: 역방향 비율과 승률을 비교했을 때
-        Then: 두 값이 모든 칸에서 같다
+        When: 두 비율을 더했을 때
+        Then: 합이 100% 를 넘지 않고, 두 값이 서로 다른 사실로 남아 있다
         """
         # Given
         downward = wide_outputs.statistics[wide_outputs.statistics[DISPLAY_DIRECTION].isin(DOWNWARD_DIRECTIONS)]
 
-        # When / Then
+        # When
+        total = downward[DISPLAY_UP_RATE] + downward[DISPLAY_DOWN_RATE]
+
+        # Then
         assert not downward.empty
-        assert downward[DISPLAY_REVERSE_RATE].tolist() == downward[DISPLAY_WIN_RATE].tolist()
+        assert bool((total <= 100.0 + RATE_TOLERANCE).all())
+        assert downward[DISPLAY_UP_RATE].notna().all()
+        assert downward[DISPLAY_DOWN_RATE].notna().all()
 
     def test_초과분표에도_역방향_비율_초과가_남는다(self, wide_outputs: StudyOutputs) -> None:
         """
@@ -452,7 +459,7 @@ class TestSignalGroupAxes:
         When: 컬럼 구성을 확인했을 때
         Then: 역방향 비율 초과 컬럼이 있다
         """
-        assert DISPLAY_REVERSE_RATE_EXCESS in wide_outputs.excess.columns
+        assert DISPLAY_DOWN_RATE_DIFF in wide_outputs.excess.columns
 
 
 class TestEventCount:
@@ -1170,23 +1177,26 @@ class TestReverseAllDirection:
         # Then
         assert actual == pytest.approx(expected, abs=RATE_TOLERANCE)
 
-    def test_역방향_전체의_역방향_비율은_승률과_같다(self, clustered_outputs: StudyOutputs) -> None:
+    def test_역방향_전체도_두_비율을_빈칸_없이_낸다(self, clustered_outputs: StudyOutputs) -> None:
         """
-        목적: 부호를 뒤집은 뒤에는 "수익률 > 0" 이 곧 "역방향 성공" 임을 고정한다
+        목적: 부호를 뒤집은 신호군에서도 두 비율이 **빈칸 없이** 남는다.
+              빈칸은 "계산 불가"로 읽히므로 값이 있으면 반드시 채운다.
 
-        두 값이 같은 것은 중복이 아니라 정의상의 일치다. **빈칸으로 두지 않는다** —
-        빈칸은 "계산 불가"로 읽힌다.
+        부호를 뒤집은 뒤에는 오른 비율이 곧 "방향이 맞은 비율"이지만,
+        그 해석은 결과를 읽는 쪽의 몫이고 집계는 두 사실을 그대로 남긴다.
 
         Given: 역방향 전체 신호군의 집계
-        When: 역방향 비율과 승률을 비교했을 때
-        Then: 모든 칸에서 같다
+        When: 두 비율을 확인했을 때
+        Then: 둘 다 빈칸이 없고 합이 100% 를 넘지 않는다
         """
         # Given / When
         combined = self._extreme_rows(clustered_outputs.statistics, DISPLAY_DIRECTION_REVERSE_ALL)
 
         # Then
         assert not combined.empty
-        assert combined[DISPLAY_REVERSE_RATE].tolist() == combined[DISPLAY_WIN_RATE].tolist()
+        assert combined[DISPLAY_UP_RATE].notna().all()
+        assert combined[DISPLAY_DOWN_RATE].notna().all()
+        assert bool(((combined[DISPLAY_UP_RATE] + combined[DISPLAY_DOWN_RATE]) <= 100.0 + RATE_TOLERANCE).all())
 
     def test_베이스라인_표본이_원본_모집단의_두_배다(self, clustered_outputs: StudyOutputs) -> None:
         """

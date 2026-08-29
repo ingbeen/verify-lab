@@ -12,6 +12,10 @@
 숫자를 만들어낸다.
 
 **유효 표본이 한 자릿수인 칸에는 검정을 붙이지 않는다.** 숫자를 만들어내는 것이 더 나쁘다.
+
+**평균·중앙값과 함께 방향 비율도 검정한다.** 오른 비율이 기준선보다 낮은 것은 탈락 사유가 아니라
+아래로 거는 신호이므로(루트 `CLAUDE.md` 측정의 원칙 11) 판정은 언제나 양측이다. 평균이 양수인데
+절반 넘게 내린 칸은 소수의 큰 사건이 평균을 만든 것이라, 비율 축이 없으면 그 칸을 놓친다.
 """
 
 import numpy as np
@@ -92,6 +96,16 @@ COL_MEAN_PERCENTILE = "MeanPercentile"
 COL_MEAN_P_VALUE = "MeanPValue"
 COL_MEDIAN_PERCENTILE = "MedianPercentile"
 COL_MEDIAN_P_VALUE = "MedianPValue"
+
+# 방향 비율의 검정 결과. **오른 비율과 내린 비율을 각각 둔다** — 둘은 여집합이 아니다.
+# 보합(수익률이 정확히 0)이 어느 쪽에도 들어가지 않아 두 비율의 합이 100% 에 못 미친다
+COL_OBSERVED_UP_RATE = "ObservedUpRate"
+COL_UP_RATE_PERCENTILE = "UpRatePercentile"
+COL_UP_RATE_P_VALUE = "UpRatePValue"
+COL_OBSERVED_DOWN_RATE = "ObservedDownRate"
+COL_DOWN_RATE_PERCENTILE = "DownRatePercentile"
+COL_DOWN_RATE_P_VALUE = "DownRatePValue"
+
 COL_TEST_NOTE = "TestNote"
 
 TEST_COLUMNS = [
@@ -106,6 +120,12 @@ TEST_COLUMNS = [
     COL_MEAN_P_VALUE,
     COL_MEDIAN_PERCENTILE,
     COL_MEDIAN_P_VALUE,
+    COL_OBSERVED_UP_RATE,
+    COL_UP_RATE_PERCENTILE,
+    COL_UP_RATE_P_VALUE,
+    COL_OBSERVED_DOWN_RATE,
+    COL_DOWN_RATE_PERCENTILE,
+    COL_DOWN_RATE_P_VALUE,
     COL_TEST_NOTE,
 ]
 
@@ -258,6 +278,10 @@ def permutation_test(
     평균과 중앙값을 모두 검정한다. **평균은 드문데 중앙값은 그렇지 않다면 소수 사건이
     결과를 만들었다는 신호**이며, 이 프로젝트가 반드시 드러내야 하는 상황이다.
 
+    **오른 비율과 내린 비율도 각각 검정한다.** 둘은 여집합이 아니다 — 보합이 어느 쪽에도
+    들어가지 않으므로 한쪽만 재고 나머지를 빼서 만들면 값이 부푼다. 판정은 양측이라
+    **기준선보다 낮은 비율도 유의하게 잡힌다** — 그것이 아래로 거는 신호다.
+
     p 값은 `(관측만큼 극단인 횟수 + 1) ÷ (반복 수 + 1)` 로 낸다. 0 이 나오면 "절대 우연이
     아니다"로 읽히지만 실제로는 반복 수의 한계일 뿐이다.
 
@@ -377,6 +401,14 @@ def _test_cell(
         COL_MEAN_P_VALUE: np.nan,
         COL_MEDIAN_PERCENTILE: np.nan,
         COL_MEDIAN_P_VALUE: np.nan,
+        # 관측 비율은 **검정하지 않는 칸에도 남긴다.** 표본이 적다는 것과 값이 없다는 것은 다르고,
+        # 비율은 표본 수와 함께 읽으면 그 자체로 사실이다
+        COL_OBSERVED_UP_RATE: float((observed > 0).mean()) if sample_count else np.nan,
+        COL_UP_RATE_PERCENTILE: np.nan,
+        COL_UP_RATE_P_VALUE: np.nan,
+        COL_OBSERVED_DOWN_RATE: float((observed < 0).mean()) if sample_count else np.nan,
+        COL_DOWN_RATE_PERCENTILE: np.nan,
+        COL_DOWN_RATE_P_VALUE: np.nan,
         COL_TEST_NOTE: NOTE_NONE,
     }
 
@@ -388,9 +420,11 @@ def _test_cell(
         row[COL_TEST_NOTE] = NOTE_POPULATION_TOO_SMALL
         return row
 
-    null_means, null_medians = _null_distribution(pool, sample_count, repeats, rng)
+    null_means, null_medians, null_up_rates, null_down_rates = _null_distribution(pool, sample_count, repeats, rng)
     observed_mean = float(observed.mean())
     observed_median = float(np.median(observed))
+    observed_up_rate = float((observed > 0).mean())
+    observed_down_rate = float((observed < 0).mean())
 
     row[COL_NULL_MEAN_P05] = float(np.quantile(null_means, NULL_LOWER_QUANTILE))
     row[COL_NULL_MEAN_P95] = float(np.quantile(null_means, NULL_UPPER_QUANTILE))
@@ -398,18 +432,25 @@ def _test_cell(
     row[COL_MEAN_P_VALUE] = _two_sided_p_value(null_means, observed_mean)
     row[COL_MEDIAN_PERCENTILE] = _percentile(null_medians, observed_median)
     row[COL_MEDIAN_P_VALUE] = _two_sided_p_value(null_medians, observed_median)
+    row[COL_UP_RATE_PERCENTILE] = _percentile(null_up_rates, observed_up_rate)
+    row[COL_UP_RATE_P_VALUE] = _two_sided_p_value(null_up_rates, observed_up_rate)
+    row[COL_DOWN_RATE_PERCENTILE] = _percentile(null_down_rates, observed_down_rate)
+    row[COL_DOWN_RATE_P_VALUE] = _two_sided_p_value(null_down_rates, observed_down_rate)
 
     return row
 
 
 def _null_distribution(
     pool: np.ndarray, size: int, repeats: int, rng: np.random.Generator
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """모집단에서 `size` 개를 비복원 추출하는 것을 `repeats` 회 반복한다.
 
     행마다 난수 키를 만들어 부분 정렬하는 방식으로 한 번에 벡터화한다.
     `rng.choice(..., replace=False)` 에 2차원 크기를 주면 **행별 비복원이 아니라
     전체 비복원**이 되어 원하는 추출이 되지 않는다.
+
+    **네 통계량을 같은 추출 표본에서 낸다.** 축마다 따로 뽑으면 같은 시드에서도 축끼리
+    다른 표본을 보게 되어, 한 칸 안에서 평균과 비율의 판정 근거가 어긋난다.
 
     Args:
         pool: 모집단 값
@@ -418,13 +459,18 @@ def _null_distribution(
         rng: 난수 생성기
 
     Returns:
-        반복별 평균 배열과 중앙값 배열
+        반복별 평균·중앙값·오른 비율·내린 비율 배열
     """
     keys = rng.random((repeats, pool.size))
     picked = np.argpartition(keys, size - 1, axis=1)[:, :size]
     samples = pool[picked]
 
-    return samples.mean(axis=1), np.median(samples, axis=1)
+    return (
+        samples.mean(axis=1),
+        np.median(samples, axis=1),
+        (samples > 0).mean(axis=1),
+        (samples < 0).mean(axis=1),
+    )
 
 
 def _percentile(null_values: np.ndarray, observed: float) -> float:

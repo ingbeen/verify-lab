@@ -27,23 +27,20 @@ from verify_lab.measure.constants import (
 )
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
 from verify_lab.measure.statistics import (
-    COL_LOSS_RATE,
-    COL_LOSS_RATE_EXCESS,
-    COL_WIN_RATE,
     excess,
     permutation_test,
     summarize,
 )
 from verify_lab.report.constants import (
     DISPLAY_BASIS,
+    DISPLAY_DOWN_RATE,
+    DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
-    DISPLAY_REVERSE_RATE,
-    DISPLAY_REVERSE_RATE_EXCESS,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_TEST_NOTE,
-    DISPLAY_WIN_RATE,
+    DISPLAY_UP_RATE,
     HORIZON_LABELS,
 )
 from verify_lab.report.tables import (
@@ -242,7 +239,7 @@ class TestStatisticsTable:
         summary = summarize(_close_only([0.10, 0.20]))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
         assert DISPLAY_HORIZON in table.columns
@@ -261,7 +258,7 @@ class TestStatisticsTable:
         summary = summarize(_close_only([0.10, 0.20]))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
         assert table[DISPLAY_HORIZON].tolist() == ["1일", "1개월"]
@@ -281,7 +278,7 @@ class TestStatisticsTable:
         summary = summarize(_close_only([0.10, 0.20]))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
         assert DISPLAY_BASIS not in table.columns
@@ -302,7 +299,7 @@ class TestStatisticsTable:
 
         # When / Then
         with pytest.raises(ValueError, match="기준"):
-            build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+            build_statistics_table(summary)
 
     def test_reverse_rate_comes_from_the_given_column(self) -> None:
         """
@@ -319,29 +316,30 @@ class TestStatisticsTable:
         summary = summarize(_close_only([0.10, -0.10, -0.20, -0.30], horizons=(1,)))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
-        assert table[DISPLAY_REVERSE_RATE].tolist() == [75.0]
-        assert table[DISPLAY_WIN_RATE].tolist() == [25.0]
+        assert table[DISPLAY_DOWN_RATE].tolist() == [75.0]
+        assert table[DISPLAY_UP_RATE].tolist() == [25.0]
 
-    def test_reverse_rate_can_be_the_win_rate(self) -> None:
+    def test_both_direction_rates_are_reported_as_they_are(self) -> None:
         """
-        목적: 하락 방향 신호에서는 **승률이 곧 역방향 비율**이다 (같은 값이 두 컬럼에 온다).
+        목적: **두 방향 비율을 있는 그대로 나란히 낸다.** 어느 쪽이 "이긴 것"인지
+              이 계층이 정하지 않는다 (루트 `CLAUDE.md` 측정의 원칙 11).
 
         Given: 상승 1건·하락 3건
-        When: 승률을 역방향으로 지정해 표를 만든다
-        Then: 두 컬럼이 모두 25% 다
+        When: 표를 만든다
+        Then: 오른 비율 25%, 내린 비율 75% 가 각각 나온다
         """
         # Given
         summary = summarize(_close_only([0.10, -0.10, -0.20, -0.30], horizons=(1,)))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_WIN_RATE)
+        table = build_statistics_table(summary)
 
         # Then
-        assert table[DISPLAY_REVERSE_RATE].tolist() == [25.0]
-        assert table[DISPLAY_WIN_RATE].tolist() == [25.0]
+        assert table[DISPLAY_UP_RATE].tolist() == [25.0]
+        assert table[DISPLAY_DOWN_RATE].tolist() == [75.0]
 
     def test_reverse_rate_is_not_one_minus_the_win_rate(self) -> None:
         """
@@ -358,11 +356,11 @@ class TestStatisticsTable:
         summary = summarize(_close_only([0.10, -0.10, 0.0, 0.0], horizons=(1,)))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
-        assert table[DISPLAY_WIN_RATE].tolist() == [25.0]
-        assert table[DISPLAY_REVERSE_RATE].tolist() == [25.0]
+        assert table[DISPLAY_UP_RATE].tolist() == [25.0]
+        assert table[DISPLAY_DOWN_RATE].tolist() == [25.0]
 
     def test_new_horizons_have_display_names(self) -> None:
         """
@@ -379,7 +377,7 @@ class TestStatisticsTable:
         summary = summarize(_close_only([0.10, 0.20], horizons=DEFAULT_HORIZONS))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
         assert table[DISPLAY_HORIZON].tolist() == ["1일", "2일", "3일", "1주", "2주", "1개월"]
@@ -396,11 +394,11 @@ class TestStatisticsTable:
         summary = summarize(_cell([0.10, 0.20]))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
         assert float(table[DISPLAY_MEAN].iloc[0]) == pytest.approx(15.0, abs=1e-9)
-        assert float(table[DISPLAY_WIN_RATE].iloc[0]) == pytest.approx(100.0, abs=1e-9)
+        assert float(table[DISPLAY_UP_RATE].iloc[0]) == pytest.approx(100.0, abs=1e-9)
 
     def test_keeps_sample_and_excluded_counts(self) -> None:
         """
@@ -414,7 +412,7 @@ class TestStatisticsTable:
         summary = summarize(_cell([0.10, 0.20, None]))
 
         # When
-        table = build_statistics_table(summary, reverse_rate_column=COL_LOSS_RATE)
+        table = build_statistics_table(summary)
 
         # Then
         assert int(table[DISPLAY_SAMPLE_COUNT].iloc[0]) == 2
@@ -437,7 +435,7 @@ class TestExcessAndTestTables:
         baseline = summarize(_cell([0.0, 0.10]))
 
         # When
-        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS)
+        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)})
 
         # Then
         assert set(table["베이스라인"]) == {BASELINE_NAME}
@@ -455,10 +453,10 @@ class TestExcessAndTestTables:
         baseline = summarize(_cell([0.0, 0.10]))
 
         # When
-        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS)
+        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)})
 
         # Then
-        assert float(table["평균 초과(%p)"].iloc[0]) == pytest.approx(10.0, abs=1e-9)
+        assert float(table["평균 차이(%p)"].iloc[0]) == pytest.approx(10.0, abs=1e-9)
 
     def test_excess_table_carries_the_reverse_rate(self) -> None:
         """
@@ -476,10 +474,10 @@ class TestExcessAndTestTables:
         baseline = summarize(_cell([0.10, 0.20, 0.30, -0.40]))
 
         # When
-        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS)
+        table = build_excess_table({BASELINE_NAME: excess(signal, baseline)})
 
         # Then
-        assert float(table[DISPLAY_REVERSE_RATE_EXCESS].iloc[0]) == pytest.approx(25.0, abs=1e-9)
+        assert float(table[DISPLAY_DOWN_RATE_DIFF].iloc[0]) == pytest.approx(25.0, abs=1e-9)
 
     def test_excess_and_test_tables_have_no_basis_column(self) -> None:
         """
@@ -495,9 +493,7 @@ class TestExcessAndTestTables:
         population = _cell([value / 1000 for value in range(-100, 100)])
 
         # When
-        excess_table = build_excess_table(
-            {BASELINE_NAME: excess(signal, baseline)}, reverse_rate_column=COL_LOSS_RATE_EXCESS
-        )
+        excess_table = build_excess_table({BASELINE_NAME: excess(signal, baseline)})
         test_table = build_test_table({"무작위 진입": permutation_test(_cell([0.09] * 12), population, repeats=50, seed=0)})
 
         # Then
@@ -520,7 +516,7 @@ class TestExcessAndTestTables:
         table = build_test_table({"무작위 진입": permutation_test(signal, population, repeats=50, seed=0)})
 
         # Then
-        p_value = float(table["p값"].iloc[0])
+        p_value = float(table["평균 우연확률"].iloc[0])
         assert 0.0 < p_value <= 1.0
 
     def test_untested_cell_shows_the_reason(self) -> None:
@@ -541,7 +537,7 @@ class TestExcessAndTestTables:
 
         # Then
         assert table[DISPLAY_TEST_NOTE].iloc[0] == "표본 부족으로 검정 불가"
-        assert pd.isna(table["p값"].iloc[0])
+        assert pd.isna(table["평균 우연확률"].iloc[0])
 
 
 class TestComparisonTable:
@@ -565,8 +561,8 @@ class TestComparisonTable:
         table = build_comparison_table({"단순 보유": first, "조건부": second}, test)
 
         # Then
-        assert "단순 보유 평균 초과(%p)" in table.columns
-        assert "조건부 평균 초과(%p)" in table.columns
+        assert "단순 보유 평균 차이(%p)" in table.columns
+        assert "조건부 평균 차이(%p)" in table.columns
 
     def test_keeps_the_test_note_column(self) -> None:
         """
@@ -604,7 +600,7 @@ class TestTerminalOutput:
         Then: 두 컬럼 사이에 여백이 있다
         """
         # Given
-        table = pd.DataFrame({"p값": [float("nan")], DISPLAY_TEST_NOTE: ["표본 부족으로 검정 불가"]})
+        table = pd.DataFrame({"평균 우연확률": [float("nan")], DISPLAY_TEST_NOTE: ["표본 부족으로 검정 불가"]})
         logger = logging.getLogger("test_report_tables")
 
         # When
@@ -677,7 +673,7 @@ class TestMarkdown:
         Then: 빈칸 자리에 표시 문자가 들어간다
         """
         # Given
-        table = pd.DataFrame({"구간": ["1년"], "p값": [float("nan")]})
+        table = pd.DataFrame({"구간": ["1년"], "평균 우연확률": [float("nan")]})
 
         # When
         lines = to_markdown(table).splitlines()

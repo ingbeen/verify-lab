@@ -28,6 +28,10 @@ from verify_lab.measure.constants import (
 )
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
+    COL_DOWN_RATE_P_VALUE,
+    COL_DOWN_RATE_PERCENTILE,
+    COL_LOSS_RATE,
+    COL_LOSS_RATE_EXCESS,
     COL_MAX,
     COL_MEAN,
     COL_MEAN_EXCESS,
@@ -40,12 +44,16 @@ from verify_lab.measure.statistics import (
     COL_MIN,
     COL_NULL_MEAN_P05,
     COL_NULL_MEAN_P95,
+    COL_OBSERVED_DOWN_RATE,
     COL_OBSERVED_MEAN,
     COL_OBSERVED_MEDIAN,
+    COL_OBSERVED_UP_RATE,
     COL_SAMPLE_COUNT,
     COL_SIGNAL_SAMPLE_COUNT,
     COL_STD,
     COL_TEST_NOTE,
+    COL_UP_RATE_P_VALUE,
+    COL_UP_RATE_PERCENTILE,
     COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
 )
@@ -57,32 +65,38 @@ from verify_lab.report.constants import (
     DISPLAY_BASELINE,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
+    DISPLAY_DOWN_RATE,
+    DISPLAY_DOWN_RATE_DIFF,
+    DISPLAY_DOWN_RATE_P_VALUE,
+    DISPLAY_DOWN_RATE_PERCENTILE,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
     DISPLAY_MAX,
     DISPLAY_MEAN,
-    DISPLAY_MEAN_EXCESS,
+    DISPLAY_MEAN_DIFF,
     DISPLAY_MEAN_P_VALUE,
     DISPLAY_MEAN_PERCENTILE,
     DISPLAY_MEDIAN,
-    DISPLAY_MEDIAN_EXCESS,
+    DISPLAY_MEDIAN_DIFF,
     DISPLAY_MEDIAN_P_VALUE,
     DISPLAY_MEDIAN_PERCENTILE,
     DISPLAY_MIN,
     DISPLAY_NULL_P05,
     DISPLAY_NULL_P95,
+    DISPLAY_OBSERVED_DOWN_RATE,
     DISPLAY_OBSERVED_MEAN,
     DISPLAY_OBSERVED_MEDIAN,
+    DISPLAY_OBSERVED_UP_RATE,
     DISPLAY_POPULATION,
-    DISPLAY_REVERSE_RATE,
-    DISPLAY_REVERSE_RATE_EXCESS,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_SIGNAL_SAMPLE,
     DISPLAY_STD,
     DISPLAY_TEST_NOTE,
-    DISPLAY_WIN_RATE,
-    DISPLAY_WIN_RATE_EXCESS,
+    DISPLAY_UP_RATE,
+    DISPLAY_UP_RATE_DIFF,
+    DISPLAY_UP_RATE_P_VALUE,
+    DISPLAY_UP_RATE_PERCENTILE,
     EMPTY_MARK,
     HORIZON_LABELS,
     PERCENT_DECIMALS,
@@ -151,16 +165,17 @@ def build_signal_table(frame: pd.DataFrame, signal_details: pd.DataFrame | None 
     return result
 
 
-def build_statistics_table(summary: pd.DataFrame, *, reverse_rate_column: str) -> pd.DataFrame:
+def build_statistics_table(summary: pd.DataFrame) -> pd.DataFrame:
     """칸별 집계를 표시용으로 바꾼다.
 
     행 순서는 **구간 오름차순**이다.
 
+    **오른 비율과 내린 비율을 그대로 나란히 둔다.** 어느 쪽이 "이긴 것"인지 이 계층이 정하지
+    않는다 — 오른 비율이 기준선보다 낮은 것은 탈락이 아니라 아래로 거는 신호이기 때문이다
+    (루트 `CLAUDE.md` 측정의 원칙 11). 둘은 여집합이 아니라 각각 사실이다.
+
     Args:
         summary: `statistics.summarize` 의 결과. 기준 하나만 담겨 있어야 한다
-        reverse_rate_column: `역방향 비율` 로 쓸 집계 컬럼. 상승 방향 신호면 하락 비율,
-            하락 방향 신호면 승률이다. **어느 쪽인지는 방향을 아는 `studies` 가 정한다** —
-            이 계층은 폭등·폭락을 모른 채 받은 값을 그리기만 한다
 
     Returns:
         한글 레이블과 백분율로 바뀐 집계표
@@ -169,7 +184,6 @@ def build_statistics_table(summary: pd.DataFrame, *, reverse_rate_column: str) -
         ValueError: 필요한 컬럼이 없거나 기준이 둘 이상인 경우
     """
     ordered = _sorted_single_basis_cells(summary, "집계")
-    _require_columns(ordered, [reverse_rate_column], "집계")
 
     return pd.DataFrame(
         {
@@ -179,8 +193,8 @@ def build_statistics_table(summary: pd.DataFrame, *, reverse_rate_column: str) -
             DISPLAY_SAMPLE_COUNT: ordered[COL_SAMPLE_COUNT].to_numpy(),
             DISPLAY_MEAN: _to_percent(ordered[COL_MEAN]).to_numpy(),
             DISPLAY_MEDIAN: _to_percent(ordered[COL_MEDIAN]).to_numpy(),
-            DISPLAY_WIN_RATE: _to_percent(ordered[COL_WIN_RATE]).to_numpy(),
-            DISPLAY_REVERSE_RATE: _to_percent(ordered[reverse_rate_column]).to_numpy(),
+            DISPLAY_UP_RATE: _to_percent(ordered[COL_WIN_RATE]).to_numpy(),
+            DISPLAY_DOWN_RATE: _to_percent(ordered[COL_LOSS_RATE]).to_numpy(),
             DISPLAY_MAX: _to_percent(ordered[COL_MAX]).to_numpy(),
             DISPLAY_MIN: _to_percent(ordered[COL_MIN]).to_numpy(),
             DISPLAY_STD: _to_percent(ordered[COL_STD]).to_numpy(),
@@ -188,31 +202,31 @@ def build_statistics_table(summary: pd.DataFrame, *, reverse_rate_column: str) -
     )
 
 
-def build_excess_table(excess_by_baseline: Mapping[str, pd.DataFrame], *, reverse_rate_column: str) -> pd.DataFrame:
-    """베이스라인별 초과분을 한 표로 쌓는다 (CSV 용).
+def build_excess_table(excess_by_baseline: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
+    """베이스라인별 **기준선 대비 차이**를 한 표로 쌓는다 (CSV 용).
 
     어느 베이스라인 대비인지를 컬럼으로 남기고, **양쪽 표본 수를 함께 둔다.**
     표본 수가 크게 다르다는 사실 자체가 해석의 일부다.
 
+    집계표와 같은 이유로 **두 방향 비율의 차이를 그대로 나란히 둔다** — 어느 쪽이 유리한지는
+    이 계층이 판단하지 않는다.
+
     Args:
         excess_by_baseline: 베이스라인 이름 → `statistics.excess` 결과
-        reverse_rate_column: `역방향 비율 초과` 로 쓸 초과분 컬럼. 상승 방향 신호면
-            하락 비율 초과, 하락 방향 신호면 승률 초과다
 
     Returns:
-        베이스라인 컬럼이 붙은 초과분표 (단위는 백분율 포인트)
+        베이스라인 컬럼이 붙은 차이표 (단위는 백분율 포인트)
 
     Raises:
         ValueError: 입력이 비었거나 필요한 컬럼이 없거나 기준이 둘 이상인 경우
     """
     if not excess_by_baseline:
-        raise ValueError("초과분 표가 비어 있습니다")
+        raise ValueError("기준선 대비 차이 표가 비어 있습니다")
 
     blocks: list[pd.DataFrame] = []
     for name, table in excess_by_baseline.items():
-        label = f"초과분({name})"
+        label = f"차이({name})"
         ordered = _sorted_single_basis_cells(table, label)
-        _require_columns(ordered, [reverse_rate_column], label)
         blocks.append(
             pd.DataFrame(
                 {
@@ -220,10 +234,10 @@ def build_excess_table(excess_by_baseline: Mapping[str, pd.DataFrame], *, revers
                     DISPLAY_HORIZON: [_horizon_label(value) for value in ordered[COL_HORIZON]],
                     DISPLAY_SIGNAL_SAMPLE: ordered[COL_SIGNAL_SAMPLE_COUNT].to_numpy(),
                     DISPLAY_BASELINE_SAMPLE: ordered[COL_BASELINE_SAMPLE_COUNT].to_numpy(),
-                    DISPLAY_MEAN_EXCESS: _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy(),
-                    DISPLAY_MEDIAN_EXCESS: _to_percent(ordered[COL_MEDIAN_EXCESS]).to_numpy(),
-                    DISPLAY_WIN_RATE_EXCESS: _to_percent(ordered[COL_WIN_RATE_EXCESS]).to_numpy(),
-                    DISPLAY_REVERSE_RATE_EXCESS: _to_percent(ordered[reverse_rate_column]).to_numpy(),
+                    DISPLAY_MEAN_DIFF: _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy(),
+                    DISPLAY_MEDIAN_DIFF: _to_percent(ordered[COL_MEDIAN_EXCESS]).to_numpy(),
+                    DISPLAY_UP_RATE_DIFF: _to_percent(ordered[COL_WIN_RATE_EXCESS]).to_numpy(),
+                    DISPLAY_DOWN_RATE_DIFF: _to_percent(ordered[COL_LOSS_RATE_EXCESS]).to_numpy(),
                 }
             )
         )
@@ -265,6 +279,12 @@ def build_test_table(test_by_population: Mapping[str, pd.DataFrame]) -> pd.DataF
                     DISPLAY_MEAN_P_VALUE: ordered[COL_MEAN_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
                     DISPLAY_MEDIAN_PERCENTILE: ordered[COL_MEDIAN_PERCENTILE].round(PERCENT_DECIMALS).to_numpy(),
                     DISPLAY_MEDIAN_P_VALUE: ordered[COL_MEDIAN_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
+                    DISPLAY_OBSERVED_UP_RATE: _to_percent(ordered[COL_OBSERVED_UP_RATE]).to_numpy(),
+                    DISPLAY_UP_RATE_PERCENTILE: ordered[COL_UP_RATE_PERCENTILE].round(PERCENT_DECIMALS).to_numpy(),
+                    DISPLAY_UP_RATE_P_VALUE: ordered[COL_UP_RATE_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
+                    DISPLAY_OBSERVED_DOWN_RATE: _to_percent(ordered[COL_OBSERVED_DOWN_RATE]).to_numpy(),
+                    DISPLAY_DOWN_RATE_PERCENTILE: ordered[COL_DOWN_RATE_PERCENTILE].round(PERCENT_DECIMALS).to_numpy(),
+                    DISPLAY_DOWN_RATE_P_VALUE: ordered[COL_DOWN_RATE_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
                     DISPLAY_TEST_NOTE: ordered[COL_TEST_NOTE].to_numpy(),
                 }
             )
@@ -284,13 +304,13 @@ def build_comparison_table(excess_by_baseline: Mapping[str, pd.DataFrame], test:
         test: 대표 모집단의 `statistics.permutation_test` 결과
 
     Returns:
-        구간 × 기준 한 줄에 베이스라인별 초과분과 검정 결과가 붙은 표
+        구간 × 기준 한 줄에 베이스라인별 차이와 검정 결과가 붙은 표
 
     Raises:
         ValueError: 입력이 비었거나 필요한 컬럼이 없는 경우
     """
     if not excess_by_baseline:
-        raise ValueError("초과분 표가 비어 있습니다")
+        raise ValueError("기준선 대비 차이 표가 비어 있습니다")
 
     ordered_test = _sorted_single_basis_cells(test, "검정")
     result = pd.DataFrame(
@@ -301,9 +321,9 @@ def build_comparison_table(excess_by_baseline: Mapping[str, pd.DataFrame], test:
     )
 
     for name, table in excess_by_baseline.items():
-        ordered = _sorted_single_basis_cells(table, f"초과분({name})")
-        result[f"{name} {DISPLAY_MEAN_EXCESS}"] = _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy()
-        result[f"{name} {DISPLAY_MEDIAN_EXCESS}"] = _to_percent(ordered[COL_MEDIAN_EXCESS]).to_numpy()
+        ordered = _sorted_single_basis_cells(table, f"차이({name})")
+        result[f"{name} {DISPLAY_MEAN_DIFF}"] = _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy()
+        result[f"{name} {DISPLAY_MEDIAN_DIFF}"] = _to_percent(ordered[COL_MEDIAN_EXCESS]).to_numpy()
 
     result[DISPLAY_MEAN_PERCENTILE] = ordered_test[COL_MEAN_PERCENTILE].round(PERCENT_DECIMALS).to_numpy()
     result[DISPLAY_MEAN_P_VALUE] = ordered_test[COL_MEAN_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy()

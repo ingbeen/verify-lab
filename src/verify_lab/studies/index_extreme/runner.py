@@ -30,10 +30,6 @@ from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, MovingAverageKind, be
 from verify_lab.measure.constants import COL_BASIS, COL_FORWARD_RETURN
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis, compute_forward_returns
 from verify_lab.measure.statistics import (
-    COL_LOSS_RATE,
-    COL_LOSS_RATE_EXCESS,
-    COL_WIN_RATE,
-    COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
     excess,
@@ -747,12 +743,6 @@ def _measure_spec(
         signal_summary = summarize(aggregated)
         normalized_returns.append(_reverse_normalized(aggregated, direction))
 
-        # 무엇이 "역방향"인지는 방향이 정한다. 상승 방향 신호는 인버스로 집행하므로 하락이
-        # 맞은 것이고, 하락 방향 신호는 그대로 사므로 상승이 맞은 것이다
-        upward = direction is Direction.UP
-        reverse_rate = COL_LOSS_RATE if upward else COL_WIN_RATE
-        reverse_rate_excess = COL_LOSS_RATE_EXCESS if upward else COL_WIN_RATE_EXCESS
-
         signal_blocks.append(
             _with_identity(
                 build_signal_table(returns, _signal_details(context, signals, direction, group_events)),
@@ -761,7 +751,7 @@ def _measure_spec(
         )
         statistics_blocks.append(
             _with_identity(
-                build_statistics_table(signal_summary, reverse_rate_column=reverse_rate),
+                build_statistics_table(signal_summary),
                 identity,
                 {DISPLAY_EVENT_COUNT: counts[DISPLAY_EVENT_COUNT]},
             )
@@ -769,8 +759,7 @@ def _measure_spec(
         excess_blocks.append(
             _with_identity(
                 build_excess_table(
-                    {name: excess(signal_summary, population.summary) for name, population in populations.items()},
-                    reverse_rate_column=reverse_rate_excess,
+                    {name: excess(signal_summary, population.summary) for name, population in populations.items()}
                 ),
                 identity,
                 counts,
@@ -866,16 +855,15 @@ def _measure_reverse_all(
         DISPLAY_EVENT_COUNT: _reverse_all_event_count(event_ids, combine=spec.combine_directions),
     }
 
-    # 부호를 뒤집은 뒤에는 "수익률 > 0" 이 곧 역방향 성공이므로 승률이 그대로 역방향 비율이다
+    # 부호를 뒤집은 뒤이므로 "오른 비율" 이 곧 방향이 맞은 비율이다
     statistics_block = _with_identity(
-        build_statistics_table(combined_summary, reverse_rate_column=COL_WIN_RATE),
+        build_statistics_table(combined_summary),
         identity,
         {DISPLAY_EVENT_COUNT: counts[DISPLAY_EVENT_COUNT]},
     )
     excess_block = _with_identity(
         build_excess_table(
-            {name: excess(combined_summary, population.summary) for name, population in symmetric_populations.items()},
-            reverse_rate_column=COL_WIN_RATE_EXCESS,
+            {name: excess(combined_summary, population.summary) for name, population in symmetric_populations.items()}
         ),
         identity,
         counts,

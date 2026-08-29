@@ -12,7 +12,7 @@
 
 | 순서 | 문서 | 왜 |
 | --- | --- | --- |
-| 1 | [../CLAUDE.md](../CLAUDE.md) | 프로젝트 규칙. 측정의 원칙 8개 |
+| 1 | [../CLAUDE.md](../CLAUDE.md) | 프로젝트 규칙. 측정의 원칙과 후보 판정 기준 |
 | 2 | [context/README.md](context/README.md) | **사용자의 현재 운용 상태와 이 프로젝트가 시작된 이유. 가장 중요** |
 | 3 | [ROADMAP.md](ROADMAP.md) | 검증 대상 목록과 Phase 진행 상태 |
 | 4 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 첫 검증의 확정 설계 |

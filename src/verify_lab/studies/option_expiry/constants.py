@@ -106,6 +106,24 @@ COL_EXIT_WEEKDAY: Final = "exit_weekday"
 # 만기월을 1~12 정수로 놓는 축. `COL_EXPIRY_MONTH` 는 "YYYY-MM" 문자열이라 12칸으로 묶이지 않는다
 COL_EXPIRY_MONTH_NUMBER: Final = "expiry_month_number"
 
+# 평균의 부호와 방향 비율이 어긋나는 칸인지 (루트 `CLAUDE.md` 측정의 원칙 13).
+# 평균이 양수인데 절반 넘게 내렸다면 소수의 큰 사건이 평균을 만든 것이라, 평균만 보면 그 칸을 놓친다
+COL_MEAN_RATE_CONFLICT: Final = "mean_rate_conflict"
+
+# 어긋남 판정의 경계 (비율, 0.5 = 50%). "절반을 넘었는가" 하나만 본다 —
+# 경계를 파라미터로 열면 결과를 보고 조정하게 된다
+HALF_RATE: Final = 0.5
+
+# 시기 분할 축. **국면(`Regime`)과 다른 물건이다** — 국면은 시장 구조가 바뀐 시점으로 나눈
+# 달력 경계라 칸마다 표본이 들쭉날쭉하지만, 이 축은 신호를 시간순으로 세어 균등하게 가른다.
+# 후보 판정 기준 4(시기를 쪼개도 유지되는가)는 **칸당 표본 하한**을 지켜야 하므로 이 축으로 잰다
+COL_TIME_HALF: Final = "time_half"
+DISPLAY_TIME_HALF_EARLY: Final = "앞 절반"
+DISPLAY_TIME_HALF_LATE: Final = "뒤 절반"
+
+# 시기를 쪼갤 수 있는 최소 표본. 절반으로 갈랐을 때 양쪽이 검정 하한(10건)을 넘어야 한다
+MIN_SAMPLE_FOR_HALVES: Final = 20
+
 # 묶음 집계에서 쓰는 구간 표지. 보유 거래일 수를 구간 축에 넣으면 **한 매매가 여러 칸으로 쪼개져**
 # 묶음 값이 나오지 않는다. 실제 보유일수로는 도달할 수 없는 음수를 써서 진짜 구간과 섞이지 않게 한다
 # (`docs/spec/option_expiry.md` 결정 ㉑)
@@ -302,6 +320,7 @@ DATASETS: Final = (
 # ============================================================
 
 DISPLAY_EXPIRY_MONTH: Final = "만기월"
+DISPLAY_MEAN_RATE_CONFLICT: Final = "평균-비율 어긋남"
 DISPLAY_RULE_DATE: Final = "규칙일"
 DISPLAY_EXPIRY_DATE: Final = "만기일"
 DISPLAY_ADVANCED_DAYS: Final = "앞당김(달력일)"

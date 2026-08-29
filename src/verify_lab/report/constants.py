@@ -4,7 +4,7 @@
 그 번역표를 여기 단일 관리한다. 레이블이 파일마다 흩어지면 화면과 CSV 의 헤더가 갈라진다.
 
 **저장 값의 단위는 백분율이다.** 반올림 자릿수는 `.claude/rules/python.md` 의 출력 반올림
-규칙을 따른다 — 수익률·승률 같은 백분율은 2자리, p 값 같은 확률은 4자리다.
+규칙을 따른다 — 수익률·비율 같은 백분율은 2자리, 우연확률 같은 확률은 4자리다.
 """
 
 from verify_lab.measure.forward_return import ReturnBasis
@@ -23,11 +23,12 @@ DISPLAY_SAMPLE_COUNT = "표본"
 
 DISPLAY_MEAN = "평균(%)"
 DISPLAY_MEDIAN = "중앙값(%)"
-DISPLAY_WIN_RATE = "승률(%)"
 
-# 신호가 걸린 방향의 **반대로** 움직인 비율. 상승 방향 신호면 하락 비율, 하락 방향 신호면 승률이다.
-# 어느 쪽인지는 방향을 아는 `studies` 가 정하며 이 계층은 받은 값을 그리기만 한다
-DISPLAY_REVERSE_RATE = "역방향 비율(%)"
+# 방향 비율은 **두 쪽을 그대로 나란히 둔다.** 어느 쪽이 "이긴 것"인지 정하지 않는다 —
+# 오른 비율이 기준선보다 낮은 것은 탈락이 아니라 아래로 거는 신호이기 때문이다
+# (루트 `CLAUDE.md` 측정의 원칙 11). 둘은 여집합이 아니다 — 보합이 어느 쪽에도 안 들어간다
+DISPLAY_UP_RATE = "오른 비율(%)"
+DISPLAY_DOWN_RATE = "내린 비율(%)"
 
 DISPLAY_MAX = "최고(%)"
 DISPLAY_MIN = "최악(%)"
@@ -38,20 +39,33 @@ DISPLAY_POPULATION = "모집단"
 DISPLAY_SIGNAL_SAMPLE = "신호 표본"
 DISPLAY_BASELINE_SAMPLE = "베이스라인 표본"
 
-# 초과분의 단위는 백분율 포인트다 — 백분율끼리의 차이이므로 %p 로 표기한다
-DISPLAY_MEAN_EXCESS = "평균 초과(%p)"
-DISPLAY_MEDIAN_EXCESS = "중앙값 초과(%p)"
-DISPLAY_WIN_RATE_EXCESS = "승률 초과(%p)"
-DISPLAY_REVERSE_RATE_EXCESS = "역방향 비율 초과(%p)"
+# 기준선 대비 차이의 단위는 백분율 포인트다 — 백분율끼리의 차이이므로 %p 로 표기한다.
+# **"초과"라고 쓰지 않는다** — 무엇 대비인지가 드러나지 않고, 음수일 때 "초과가 음수"라는
+# 말이 되어 읽는 사람이 한 번 더 번역해야 한다
+DISPLAY_MEAN_DIFF = "평균 차이(%p)"
+DISPLAY_MEDIAN_DIFF = "중앙값 차이(%p)"
+DISPLAY_UP_RATE_DIFF = "오른 비율 차이(%p)"
+DISPLAY_DOWN_RATE_DIFF = "내린 비율 차이(%p)"
 
 DISPLAY_OBSERVED_MEAN = "관측 평균(%)"
 DISPLAY_OBSERVED_MEDIAN = "관측 중앙값(%)"
 DISPLAY_NULL_P05 = "무작위 하위5%(%)"
 DISPLAY_NULL_P95 = "무작위 상위5%(%)"
+
+# **`p값` 대신 `우연확률` 로 적는다.** 뜻이 이름에 드러나야 한 줄 정의 없이 읽힌다
+# (루트 `CLAUDE.md` 결과 보고의 원칙 — 전문 용어보다 일상어)
 DISPLAY_MEAN_PERCENTILE = "평균 백분위"
-DISPLAY_MEAN_P_VALUE = "p값"
+DISPLAY_MEAN_P_VALUE = "평균 우연확률"
 DISPLAY_MEDIAN_PERCENTILE = "중앙값 백분위"
-DISPLAY_MEDIAN_P_VALUE = "중앙값 p값"
+DISPLAY_MEDIAN_P_VALUE = "중앙값 우연확률"
+
+DISPLAY_OBSERVED_UP_RATE = "관측 오른 비율(%)"
+DISPLAY_UP_RATE_PERCENTILE = "오른 비율 백분위"
+DISPLAY_UP_RATE_P_VALUE = "오른 비율 우연확률"
+DISPLAY_OBSERVED_DOWN_RATE = "관측 내린 비율(%)"
+DISPLAY_DOWN_RATE_PERCENTILE = "내린 비율 백분위"
+DISPLAY_DOWN_RATE_P_VALUE = "내린 비율 우연확률"
+
 DISPLAY_TEST_NOTE = "비고"
 
 # ============================================================

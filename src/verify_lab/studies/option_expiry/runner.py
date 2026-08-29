@@ -31,6 +31,9 @@ from verify_lab.measure.constants import (
 )
 from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
 from verify_lab.measure.statistics import (
+    COL_DOWN_RATE_P_VALUE,
+    COL_LOSS_RATE,
+    COL_LOSS_RATE_EXCESS,
     COL_MEAN,
     COL_MEAN_EXCESS,
     COL_MEAN_P_VALUE,
@@ -39,6 +42,7 @@ from verify_lab.measure.statistics import (
     COL_MEDIAN_P_VALUE,
     COL_SAMPLE_COUNT,
     COL_TEST_NOTE,
+    COL_UP_RATE_P_VALUE,
     COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
@@ -54,16 +58,22 @@ from verify_lab.studies.option_expiry.constants import (
     COL_EXPIRY_MONTH,
     COL_EXPIRY_MONTH_NUMBER,
     COL_HOLD_DAYS,
+    COL_MEAN_RATE_CONFLICT,
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
     COL_PRICE_BASIS,
     COL_REGIME,
     COL_RULE_DATE,
     COL_TICKER,
+    COL_TIME_HALF,
     COL_WITCHING,
     DATASETS,
+    DISPLAY_TIME_HALF_EARLY,
+    DISPLAY_TIME_HALF_LATE,
+    HALF_RATE,
     HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
+    MIN_SAMPLE_FOR_HALVES,
     OFFSET_HORIZONS,
     REGIME_ALL,
     WEEKDAY_LABELS,
@@ -111,6 +121,7 @@ class StudyOutputs:
         trade_excess: 두 베이스라인 대비 초과분 — 같은 요일 주간 보유 · 같은 길이 단순 보유
         trade_test: 그 매매의 순열 검정
         trade_by_month: 만기월(1~12)별 집계와 같은 달 베이스라인
+        trade_by_month_halves: 만기월 × 시기 앞뒤 절반 — 후보 판정 기준 4 를 재는 축
         trade_rule_variants: 휴장 처리 규칙 네 조합의 대조
         summary: 실행 파라미터와 핵심 수치
     """
@@ -127,6 +138,7 @@ class StudyOutputs:
     trade_excess: pd.DataFrame
     trade_test: pd.DataFrame
     trade_by_month: pd.DataFrame
+    trade_by_month_halves: pd.DataFrame
     trade_rule_variants: pd.DataFrame
     summary: dict[str, Any]
 
@@ -147,6 +159,7 @@ class _Accumulator:
     trade_excess: list[pd.DataFrame] = field(default_factory=list)
     trade_test: list[pd.DataFrame] = field(default_factory=list)
     trade_by_month: list[pd.DataFrame] = field(default_factory=list)
+    trade_by_month_halves: list[pd.DataFrame] = field(default_factory=list)
     trade_rule_variants: list[pd.DataFrame] = field(default_factory=list)
 
 
@@ -596,16 +609,119 @@ def _aggregate_by_month(
     merged = (
         signal_summary.merge(baseline_summary, on=[COL_BASIS, COL_HORIZON], suffixes=("", "_baseline"))
         .merge(
-            month_excess[[COL_BASIS, COL_HORIZON, COL_MEAN_EXCESS, COL_MEDIAN_EXCESS, COL_WIN_RATE_EXCESS]],
+            month_excess[
+                [
+                    COL_BASIS,
+                    COL_HORIZON,
+                    COL_MEAN_EXCESS,
+                    COL_MEDIAN_EXCESS,
+                    COL_WIN_RATE_EXCESS,
+                    COL_LOSS_RATE_EXCESS,
+                ]
+            ],
             on=[COL_BASIS, COL_HORIZON],
         )
         .merge(
-            month_test[[COL_BASIS, COL_HORIZON, COL_MEAN_P_VALUE, COL_MEDIAN_P_VALUE, COL_TEST_NOTE]],
+            month_test[
+                [
+                    COL_BASIS,
+                    COL_HORIZON,
+                    COL_MEAN_P_VALUE,
+                    COL_MEDIAN_P_VALUE,
+                    COL_UP_RATE_P_VALUE,
+                    COL_DOWN_RATE_P_VALUE,
+                    COL_TEST_NOTE,
+                ]
+            ],
             on=[COL_BASIS, COL_HORIZON],
         )
     )
+    merged[COL_MEAN_RATE_CONFLICT] = _mean_rate_conflict(merged)
 
     return merged.rename(columns={COL_HORIZON: COL_EXPIRY_MONTH_NUMBER}).drop(columns=[COL_BASIS])
+
+
+def _aggregate_month_halves(
+    signal: pd.DataFrame,
+    baseline: pd.DataFrame,
+    *,
+    repeats: int,
+    seed: int,
+) -> pd.DataFrame:
+    """만기월별로 신호를 시간순 **앞뒤 절반**으로 갈라 방향 비율을 낸다.
+
+    후보 판정 기준 4(시기를 쪼개도 방향이 유지되는가)를 재는 축이다.
+    **국면(`Regime`) 축으로는 이 기준을 잴 수 없다** — 국면은 시장 구조가 바뀐 달력 시점으로
+    나눈 것이라 칸마다 표본이 4~17건으로 들쭉날쭉하고, 10건 미만 칸에는 검정이 붙지 않는다
+    (측정의 원칙 12). 여기서는 신호를 시간순으로 세어 균등하게 갈라 양쪽 표본을 맞춘다.
+
+    **절반으로 갈랐을 때 한쪽이라도 검정 하한에 못 미치는 달은 내지 않는다.** 쪼갤 수 없다는
+    사실 자체가 결과이며, 억지로 쪼개 숫자를 만드는 것이 더 나쁘다.
+
+    Args:
+        signal: 신호군 long-form (유효 행)
+        baseline: 같은 요일 주간 보유 베이스라인 long-form (유효 행)
+        repeats: 순열 검정 반복 수
+        seed: 순열 검정 시드
+
+    Returns:
+        만기월 × 앞뒤 절반 집계. 쪼갤 수 없는 달은 행이 없다
+    """
+    blocks: list[pd.DataFrame] = []
+    months = sorted(set(signal[COL_DATE].dt.month.tolist()))
+
+    for month in months:
+        month_signal = signal[signal[COL_DATE].dt.month == month].sort_values(COL_DATE)
+        if len(month_signal) < MIN_SAMPLE_FOR_HALVES:
+            continue
+
+        month_baseline = baseline[baseline[COL_DATE].dt.month == month]
+        boundary = month_signal[COL_DATE].iloc[len(month_signal) // 2]
+        halves = (
+            (DISPLAY_TIME_HALF_EARLY, month_signal[COL_DATE] < boundary, month_baseline[COL_DATE] < boundary),
+            (DISPLAY_TIME_HALF_LATE, month_signal[COL_DATE] >= boundary, month_baseline[COL_DATE] >= boundary),
+        )
+        for label, signal_mask, baseline_mask in halves:
+            # **구간 축을 만기월로 덮어쓴다.** 입력은 보유일수를 축으로 갖고 있어(`_per_length`)
+            # 그대로 집계하면 한 달이 보유일수별로 쪼개져 앞뒤 표본이 어긋난다.
+            # `_aggregate_by_month` 와 같은 관용이다
+            half_signal = month_signal[signal_mask].assign(**{COL_HORIZON: month})
+            half_baseline = month_baseline[baseline_mask].assign(**{COL_HORIZON: month})
+            if half_signal.empty or half_baseline.empty:
+                continue
+
+            summary = summarize(half_signal)
+            test = permutation_test(half_signal, half_baseline, repeats=repeats, seed=seed)
+            merged = summary.merge(
+                test[[COL_BASIS, COL_HORIZON, COL_UP_RATE_P_VALUE, COL_DOWN_RATE_P_VALUE, COL_TEST_NOTE]],
+                on=[COL_BASIS, COL_HORIZON],
+            )
+            merged[COL_EXPIRY_MONTH_NUMBER] = month
+            merged[COL_TIME_HALF] = label
+            blocks.append(merged.drop(columns=[COL_BASIS, COL_HORIZON]))
+
+    if not blocks:
+        return pd.DataFrame()
+
+    return pd.concat(blocks, ignore_index=True)
+
+
+def _mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:
+    """평균의 부호와 방향 비율이 어긋나는 칸을 표시한다 (측정의 원칙 13).
+
+    평균이 양수인데 절반 넘게 내렸다면 **소수의 큰 사건이 평균을 만든 것**이고, 그 반대도 같다.
+    평균만 보고 방향을 읽으면 이런 칸에서 정반대로 판단하게 된다.
+
+    Args:
+        frame: 평균과 두 방향 비율이 들어 있는 집계 프레임
+
+    Returns:
+        어긋나는 칸이면 True 인 Series
+    """
+    mean_up_but_fell = (frame[COL_MEAN] > 0) & (frame[COL_LOSS_RATE] > HALF_RATE)
+    mean_down_but_rose = (frame[COL_MEAN] < 0) & (frame[COL_WIN_RATE] > HALF_RATE)
+
+    return mean_up_but_fell | mean_down_but_rose
 
 
 def _rule_variants(df: pd.DataFrame, expiries: pd.DataFrame, exit_weekday: int) -> pd.DataFrame:
@@ -682,6 +798,11 @@ def _run_weekly_trade(
         accumulator.trade_signals.append(_identify(raw.drop(columns=[COL_BASIS, COL_HORIZON]), **identity))
 
         accumulator.trade_rule_variants.append(_identify(_rule_variants(df, expiries, exit_weekday), **identity))
+
+        # 시기 2등분은 **전 구간의 신호를 시간순으로** 갈라야 의미가 있으므로 국면 루프 밖에서 낸다
+        halves = _aggregate_month_halves(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
+        if not halves.empty:
+            accumulator.trade_by_month_halves.append(_identify(halves, **identity))
 
         expiry_months = signal[COL_DATE].dt.month
         for regime in dataset.regimes:
@@ -843,6 +964,7 @@ def run_study(
         trade_excess=_concat(accumulator.trade_excess),
         trade_test=_concat(accumulator.trade_test),
         trade_by_month=_concat(accumulator.trade_by_month),
+        trade_by_month_halves=_concat(accumulator.trade_by_month_halves),
         trade_rule_variants=_concat(accumulator.trade_rule_variants),
         summary=summary,
     )
@@ -860,6 +982,7 @@ def run_study(
         "trade_excess": len(outputs.trade_excess),
         "trade_test": len(outputs.trade_test),
         "trade_by_month": len(outputs.trade_by_month),
+        "trade_by_month_halves": len(outputs.trade_by_month_halves),
         "trade_rule_variants": len(outputs.trade_rule_variants),
     }
 

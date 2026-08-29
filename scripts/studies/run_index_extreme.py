@@ -19,13 +19,13 @@ import pandas as pd
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.constants import (
+    DISPLAY_DOWN_RATE,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
     DISPLAY_MEDIAN,
-    DISPLAY_REVERSE_RATE,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
-    DISPLAY_WIN_RATE,
+    DISPLAY_UP_RATE,
     EXCESS_FILENAME,
     HORIZON_LABELS,
     SIGNALS_FILENAME,
@@ -118,8 +118,8 @@ EXCERPT_COLUMNS = [
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_MEAN,
     DISPLAY_MEDIAN,
-    DISPLAY_WIN_RATE,
-    DISPLAY_REVERSE_RATE,
+    DISPLAY_UP_RATE,
+    DISPLAY_DOWN_RATE,
 ]
 
 

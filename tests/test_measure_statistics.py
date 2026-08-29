@@ -31,6 +31,8 @@ from verify_lab.measure.constants import (
 from verify_lab.measure.forward_return import ReturnBasis
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
+    COL_DOWN_RATE_P_VALUE,
+    COL_DOWN_RATE_PERCENTILE,
     COL_LOSS_RATE,
     COL_LOSS_RATE_EXCESS,
     COL_MAX,
@@ -41,12 +43,17 @@ from verify_lab.measure.statistics import (
     COL_MEDIAN,
     COL_MEDIAN_EXCESS,
     COL_MEDIAN_P_VALUE,
+    COL_MEDIAN_PERCENTILE,
     COL_MIN,
+    COL_OBSERVED_DOWN_RATE,
     COL_OBSERVED_MEAN,
+    COL_OBSERVED_UP_RATE,
     COL_SAMPLE_COUNT,
     COL_SIGNAL_SAMPLE_COUNT,
     COL_STD,
     COL_TEST_NOTE,
+    COL_UP_RATE_P_VALUE,
+    COL_UP_RATE_PERCENTILE,
     COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
     EXCESS_COLUMNS,
@@ -510,3 +517,211 @@ class TestPermutationTest:
 
         with pytest.raises(ValueError, match="반복"):
             permutation_test(signal, population, repeats=0, seed=0)
+
+
+class TestDirectionRateTest:
+    """방향 비율 검정의 계약을 고정한다.
+
+    **오른 비율이 기준선보다 낮은 것은 탈락 사유가 아니라 아래로 거는 신호다**
+    (루트 `CLAUDE.md` 측정의 원칙 11). 그래서 판정은 언제나 양측이고,
+    평균이 놓치는 칸을 비율이 잡아내는지가 이 클래스의 핵심 계약이다.
+    """
+
+    def test_observed_rates_match_hand_count(self) -> None:
+        """
+        목적: 관측 비율이 손으로 센 값과 정확히 같다 — 산식이 곧 결론을 만든다.
+
+        Given: 오른 4건 · 내린 10건 · 보합 1건인 신호 15건
+        When: 검정한다
+        Then: 오른 비율 4/15, 내린 비율 10/15 가 그대로 나온다
+        """
+        # Given
+        signal = _cell([0.01] * 4 + [-0.02] * 10 + [0.0])
+        population = _cell(list(np.linspace(-0.05, 0.06, 300)))
+
+        # When
+        result = permutation_test(signal, population, repeats=200, seed=0)
+
+        # Then
+        assert _only(result, COL_OBSERVED_UP_RATE) == pytest.approx(4 / 15, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_OBSERVED_DOWN_RATE) == pytest.approx(10 / 15, abs=EXACT_TOLERANCE)
+
+    def test_up_and_down_rates_are_not_complements(self) -> None:
+        """
+        목적: **오른 비율과 내린 비율은 여집합이 아니다.** 보합이 어느 쪽에도 들어가지 않는다.
+              `1 − 오른 비율` 로 내린 비율을 만들면 보합이 하락으로 새어 들어가 값이 부푼다.
+
+        Given: 보합이 3건 섞인 신호 15건
+        When: 검정한다
+        Then: 두 비율의 합이 1 보다 작고, 모자란 몫이 정확히 보합 비율이다
+        """
+        # Given
+        signal = _cell([0.01] * 6 + [-0.02] * 6 + [0.0] * 3)
+        population = _cell(list(np.linspace(-0.05, 0.06, 300)))
+
+        # When
+        result = permutation_test(signal, population, repeats=200, seed=0)
+
+        # Then
+        up_rate = _only(result, COL_OBSERVED_UP_RATE)
+        down_rate = _only(result, COL_OBSERVED_DOWN_RATE)
+        assert up_rate + down_rate == pytest.approx(1 - 3 / 15, abs=EXACT_TOLERANCE)
+
+    def test_downward_signal_is_significant_in_two_sided_test(self) -> None:
+        """
+        목적: **오른 비율이 기준선보다 낮아도 유의하게 잡힌다.** 단측이면 이 칸을 놓친다.
+
+        Given: 모집단 오른 비율이 절반 근처인데, 신호 20건 중 16건이 내렸다
+        When: 검정한다
+        Then: 오른 비율 백분위가 하단이고 양쪽 비율의 p 값이 유의 수준 아래다
+        """
+        # Given
+        signal = _cell([-0.02] * 16 + [0.01] * 4)
+        population = _cell(list(np.linspace(-0.05, 0.06, 400)))
+
+        # When
+        result = permutation_test(signal, population, repeats=500, seed=0)
+
+        # Then
+        assert _only(result, COL_UP_RATE_PERCENTILE) <= 5.0
+        assert _only(result, COL_UP_RATE_P_VALUE) < 0.05
+        assert _only(result, COL_DOWN_RATE_P_VALUE) < 0.05
+
+    def test_rate_axis_catches_what_mean_misses(self) -> None:
+        """
+        목적: **평균이 양수인데 절반 넘게 내린 칸을 비율 축이 잡는다** (측정의 원칙 13).
+              소수의 큰 상승이 평균을 끌어올려도 방향 비율은 아래를 가리킨다.
+
+        Given: 크게 오른 2건이 평균을 양수로 만들지만 12건 중 10건은 내린 신호
+        When: 검정한다
+        Then: 관측 평균은 양수인데 내린 비율이 과반이다
+        """
+        # Given
+        signal = _cell([0.50, 0.45] + [-0.02] * 10)
+        population = _cell(list(np.linspace(-0.05, 0.06, 300)))
+
+        # When
+        result = permutation_test(signal, population, repeats=200, seed=0)
+
+        # Then
+        assert _only(result, COL_OBSERVED_MEAN) > 0
+        assert _only(result, COL_OBSERVED_DOWN_RATE) > 0.5
+
+    def test_same_seed_is_reproducible(self) -> None:
+        """
+        목적: 비율 축도 같은 시드에서 완전히 재현된다.
+
+        Given: 같은 신호군과 모집단
+        When: 같은 시드로 두 번 검정한다
+        Then: 두 결과가 완전히 같다
+        """
+        # Given
+        signal = _cell([0.01] * 5 + [-0.02] * 9)
+        population = _cell(list(np.linspace(-0.05, 0.06, 300)))
+
+        # When
+        first = permutation_test(signal, population, repeats=100, seed=3)
+        second = permutation_test(signal, population, repeats=100, seed=3)
+
+        # Then
+        pd.testing.assert_frame_equal(first, second)
+
+    def test_small_sample_leaves_rates_but_no_test(self) -> None:
+        """
+        목적: 유효 표본이 한 자릿수면 **비율도 검정하지 않는다.** 관측값은 남긴다 —
+              평균·중앙값과 같은 규칙이라 축마다 기준이 갈리지 않는다.
+
+        Given: 신호 9건
+        When: 검정한다
+        Then: 사유가 남고 비율의 백분위·p 값이 비어 있다. 관측 비율은 그대로 남는다
+        """
+        # Given
+        signal = _cell([-0.02] * 9)
+        population = _cell(list(np.linspace(-0.05, 0.06, 300)))
+
+        # When
+        result = permutation_test(signal, population, repeats=200, seed=0)
+
+        # Then
+        assert result[COL_TEST_NOTE].iloc[0] == NOTE_TOO_FEW_SAMPLES
+        assert pd.isna(_only(result, COL_UP_RATE_PERCENTILE))
+        assert pd.isna(_only(result, COL_UP_RATE_P_VALUE))
+        assert pd.isna(_only(result, COL_DOWN_RATE_P_VALUE))
+        assert _only(result, COL_OBSERVED_DOWN_RATE) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
+
+    def test_population_smaller_than_sample_is_not_tested(self) -> None:
+        """
+        목적: 모집단이 표본보다 작으면 비율도 검정하지 않는다.
+
+        Given: 신호 12건, 모집단 10건
+        When: 검정한다
+        Then: 사유가 남고 비율의 p 값이 비어 있다
+        """
+        # Given
+        signal = _cell([-0.02] * 12)
+        population = _cell([0.01] * 10)
+
+        # When
+        result = permutation_test(signal, population, repeats=100, seed=0)
+
+        # Then
+        assert result[COL_TEST_NOTE].iloc[0] == NOTE_POPULATION_TOO_SMALL
+        assert pd.isna(_only(result, COL_UP_RATE_P_VALUE))
+        assert pd.isna(_only(result, COL_DOWN_RATE_P_VALUE))
+
+    def test_rate_columns_are_in_the_contract(self) -> None:
+        """
+        목적: 방향 비율 컬럼이 검정표 스키마에 들어 있다 — 계층 간 계약이다.
+
+        Given: 정상적인 신호군과 모집단
+        When: 검정한다
+        Then: 결과 컬럼이 `TEST_COLUMNS` 와 정확히 같고 방향 비율 6개가 그 안에 있다
+        """
+        # Given
+        signal = _cell([0.01] * 12)
+        population = _cell(list(np.linspace(-0.05, 0.06, 300)))
+
+        # When
+        result = permutation_test(signal, population, repeats=50, seed=0)
+
+        # Then
+        assert list(result.columns) == TEST_COLUMNS
+        for column in (
+            COL_OBSERVED_UP_RATE,
+            COL_UP_RATE_PERCENTILE,
+            COL_UP_RATE_P_VALUE,
+            COL_OBSERVED_DOWN_RATE,
+            COL_DOWN_RATE_PERCENTILE,
+            COL_DOWN_RATE_P_VALUE,
+        ):
+            assert column in TEST_COLUMNS
+
+
+class TestPermutationTestRegression:
+    """비율 축을 더해도 **평균·중앙값 결과가 바뀌지 않는다**를 고정한다.
+
+    공통 계층이라 검증 두 개가 이 값에 걸려 있다. 값이 흔들리면 이미 낸 결과 문서가
+    재현되지 않으므로, 확인한 값을 그대로 박아 둔다.
+    """
+
+    def test_mean_and_median_results_are_unchanged(self) -> None:
+        """
+        목적: 같은 입력·같은 시드에서 평균·중앙값의 관측값과 판정이 그대로다.
+
+        Given: 신호 0.05 12건, 모집단 -0.10~0.10 200건, 반복 100회, 시드 7
+        When: 검정한다
+        Then: 관측 평균·중앙값과 백분위·p 값이 고정값과 일치한다
+        """
+        # Given
+        signal = _cell([0.05] * 12)
+        population = _cell(list(np.linspace(-0.10, 0.10, 200)))
+
+        # When
+        result = permutation_test(signal, population, repeats=100, seed=7)
+
+        # Then
+        assert _only(result, COL_OBSERVED_MEAN) == pytest.approx(0.05, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_MEAN_PERCENTILE) == pytest.approx(100.0, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_MEAN_P_VALUE) == pytest.approx(1 / 101, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_MEDIAN_PERCENTILE) == pytest.approx(99.0, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_MEDIAN_P_VALUE) == pytest.approx(7 / 101, abs=EXACT_TOLERANCE)

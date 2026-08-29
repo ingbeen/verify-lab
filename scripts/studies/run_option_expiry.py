@@ -60,6 +60,7 @@ FILE_TRADE_SUMMARY = "weekly_trade_summary.csv"
 FILE_TRADE_EXCESS = "weekly_trade_excess.csv"
 FILE_TRADE_TEST = "weekly_trade_permutation.csv"
 FILE_TRADE_BY_MONTH = "weekly_trade_by_month.csv"
+FILE_TRADE_BY_MONTH_HALVES = "weekly_trade_by_month_halves.csv"
 FILE_TRADE_RULE_VARIANTS = "weekly_trade_rule_variants.csv"
 
 
@@ -186,6 +187,7 @@ def main() -> int:
     save_table(directory, FILE_TRADE_EXCESS, outputs.trade_excess)
     save_table(directory, FILE_TRADE_TEST, outputs.trade_test)
     save_table(directory, FILE_TRADE_BY_MONTH, outputs.trade_by_month)
+    save_table(directory, FILE_TRADE_BY_MONTH_HALVES, outputs.trade_by_month_halves)
     save_table(directory, FILE_TRADE_RULE_VARIANTS, outputs.trade_rule_variants)
 
     _display_headline(outputs)

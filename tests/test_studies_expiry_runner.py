@@ -24,16 +24,30 @@ from verify_lab.measure.constants import (
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
-from verify_lab.measure.statistics import COL_MEAN, COL_MEAN_P_VALUE, COL_SAMPLE_COUNT
+from verify_lab.measure.statistics import (
+    COL_DOWN_RATE_P_VALUE,
+    COL_LOSS_RATE,
+    COL_LOSS_RATE_EXCESS,
+    COL_MEAN,
+    COL_MEAN_P_VALUE,
+    COL_SAMPLE_COUNT,
+    COL_UP_RATE_P_VALUE,
+    COL_WIN_RATE,
+)
 from verify_lab.studies.option_expiry.constants import (
     COL_DAILY_RETURN,
     COL_EXPIRY_MONTH_NUMBER,
     COL_HOLD_DAYS,
+    COL_MEAN_RATE_CONFLICT,
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
+    COL_TIME_HALF,
+    DISPLAY_TIME_HALF_EARLY,
+    DISPLAY_TIME_HALF_LATE,
     FRIDAY,
     HORIZON_NEXT_WEEK_EXIT,
     KR_MONTHLY_EXPIRY,
+    MIN_SAMPLE_FOR_HALVES,
     US_MONTHLY_EXPIRY,
     Dataset,
     PriceSeries,
@@ -48,6 +62,7 @@ from verify_lab.studies.option_expiry.runner import (
     COL_WEEK_ANCHOR,
     _aggregate_by_month,
     _aggregate_daily,
+    _aggregate_month_halves,
     _annotate,
     _month_day_index,
     _per_length,
@@ -342,6 +357,159 @@ class TestWeeklyTradeAssembly:
         assert float(march[COL_MEAN]) == pytest.approx(0.02, abs=EXACT_TOLERANCE)
         assert float(march[f"{COL_MEAN}_baseline"]) == pytest.approx(0.005, abs=EXACT_TOLERANCE)
         assert float(march["MeanExcess"]) == pytest.approx(0.015, abs=EXACT_TOLERANCE)
+
+    def test_만기월_축에_두_방향_비율과_각각의_우연확률이_붙는다(self) -> None:
+        """
+        목적: **아래로 치우친 달을 잡으려면 비율 축이 있어야 한다**를 고정한다
+        (루트 `CLAUDE.md` 측정의 원칙 11).
+
+        평균만 검정하면 "대부분의 해가 내렸는데 소수의 큰 상승이 평균을 올린" 달을 놓친다.
+
+        Given: 9월 신호 12건 중 9건이 내린 입력
+        When: 만기월 축으로 집계하면
+        Then: 두 방향 비율과 그 차이·우연확률이 모두 붙어 나온다
+        """
+        # Given
+        dates = [f"2026-09-{day:02d}" for day in range(1, 13)]
+        signal = _long_form(dates, [-0.01] * 9 + [0.02] * 3)
+        baseline = _long_form([f"2026-09-{day:02d}" for day in range(13, 28)], [0.01] * 8 + [-0.01] * 7)
+
+        # When
+        result = _aggregate_by_month(signal, baseline, repeats=50, seed=0)
+
+        # Then
+        row = result.iloc[0]
+        assert float(row[COL_WIN_RATE]) == pytest.approx(3 / 12, abs=EXACT_TOLERANCE)
+        assert float(row[COL_LOSS_RATE]) == pytest.approx(9 / 12, abs=EXACT_TOLERANCE)
+        for column in (COL_LOSS_RATE_EXCESS, COL_UP_RATE_P_VALUE, COL_DOWN_RATE_P_VALUE):
+            assert column in result.columns, f"{column} 이 만기월 축에서 빠졌습니다"
+
+    def test_평균과_방향_비율이_어긋나는_칸에_표시가_남는다(self) -> None:
+        """
+        목적: **평균이 양수인데 절반 넘게 내린 칸을 표시한다** (측정의 원칙 13).
+
+        실물 사례가 SPY 3월 만기다 — 평균은 양수인데 3분의 2가 내렸고,
+        평균만 보고 "오르는 달"로 기각했던 칸이다.
+
+        Given: 큰 상승 2건이 평균을 양수로 만들지만 12건 중 10건이 내린 9월 신호
+        When: 만기월 축으로 집계하면
+        Then: 어긋남 표시가 True 다
+        """
+        # Given
+        dates = [f"2026-09-{day:02d}" for day in range(1, 13)]
+        signal = _long_form(dates, [0.50, 0.45] + [-0.02] * 10)
+        baseline = _long_form([f"2026-09-{day:02d}" for day in range(13, 28)], [0.01] * 8 + [-0.01] * 7)
+
+        # When
+        result = _aggregate_by_month(signal, baseline, repeats=50, seed=0)
+
+        # Then
+        row = result.iloc[0]
+        assert float(row[COL_MEAN]) > 0
+        assert float(row[COL_LOSS_RATE]) > 0.5
+        assert bool(row[COL_MEAN_RATE_CONFLICT]) is True
+
+    def test_평균과_방향_비율이_같은_쪽이면_표시가_없다(self) -> None:
+        """
+        목적: 어긋남 표시가 **아무 칸에나 붙지 않는다**를 고정한다.
+
+        Given: 평균이 음수이고 대부분 내린 9월 신호 (두 축이 같은 쪽을 가리킨다)
+        When: 만기월 축으로 집계하면
+        Then: 어긋남 표시가 False 다
+        """
+        # Given
+        dates = [f"2026-09-{day:02d}" for day in range(1, 13)]
+        signal = _long_form(dates, [-0.02] * 10 + [0.01] * 2)
+        baseline = _long_form([f"2026-09-{day:02d}" for day in range(13, 28)], [0.01] * 8 + [-0.01] * 7)
+
+        # When
+        result = _aggregate_by_month(signal, baseline, repeats=50, seed=0)
+
+        # Then
+        row = result.iloc[0]
+        assert float(row[COL_MEAN]) < 0
+        assert bool(row[COL_MEAN_RATE_CONFLICT]) is False
+
+    def test_시기_2등분은_표본이_모자란_달을_내지_않는다(self) -> None:
+        """
+        목적: **쪼갤 수 없으면 쪼개지 않는다** (측정의 원칙 12).
+
+        후보 판정 기준 4 는 시기를 갈라 방향이 유지되는지 보는데, 절반씩 나눴을 때
+        검정 하한(10건)에 못 미치면 숫자를 만들어내는 것이 된다.
+
+        Given: 9월 신호가 하한 미만인 입력
+        When: 시기 2등분으로 집계하면
+        Then: 그 달의 행이 나오지 않는다
+        """
+        # Given
+        dates = [f"2026-09-{day:02d}" for day in range(1, MIN_SAMPLE_FOR_HALVES)]
+        signal = _long_form(dates, [-0.01] * len(dates))
+        baseline = _long_form([f"2026-09-{day:02d}" for day in range(20, 29)], [0.01] * 9)
+
+        # When
+        result = _aggregate_month_halves(signal, baseline, repeats=10, seed=0)
+
+        # Then
+        assert result.empty, "표본이 하한에 못 미치는 달이 쪼개졌습니다"
+
+    def test_시기_2등분은_앞뒤를_시간순으로_균등하게_가른다(self) -> None:
+        """
+        목적: 국면 축과 달리 **양쪽 표본을 맞춘다**를 고정한다.
+
+        국면은 달력 경계라 칸마다 표본이 들쭉날쭉하지만, 이 축은 신호를 시간순으로 세어
+        가르므로 기준 4 를 표본 하한을 지키며 잴 수 있다.
+
+        Given: 9월 신호 24건 (앞 12건은 내리고 뒤 12건은 오른다)
+        When: 시기 2등분으로 집계하면
+        Then: 앞뒤 두 행이 나오고 방향이 서로 반대로 갈린다
+        """
+        # Given
+        early = [f"2020-09-{day:02d}" for day in range(1, 13)]
+        late = [f"2026-09-{day:02d}" for day in range(1, 13)]
+        signal = _long_form(early + late, [-0.02] * 12 + [0.02] * 12)
+        baseline = _long_form(
+            [f"2020-09-{day:02d}" for day in range(13, 25)] + [f"2026-09-{day:02d}" for day in range(13, 25)],
+            [0.01] * 24,
+        )
+
+        # When
+        result = _aggregate_month_halves(signal, baseline, repeats=20, seed=0)
+
+        # Then
+        assert result[COL_TIME_HALF].tolist() == [DISPLAY_TIME_HALF_EARLY, DISPLAY_TIME_HALF_LATE]
+        assert result[COL_SAMPLE_COUNT].tolist() == [12, 12], "앞뒤 표본이 균등하지 않습니다"
+        first, second = result.iloc[0], result.iloc[1]
+        assert float(first[COL_LOSS_RATE]) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
+        assert float(second[COL_WIN_RATE]) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
+
+    def test_시기_2등분은_보유일수가_섞여도_한_칸으로_센다(self) -> None:
+        """
+        목적: 입력이 **보유일수를 구간 축으로** 갖고 있어도 한 달이 한 칸으로 집계된다.
+
+        그대로 집계하면 한 달이 보유일수별로 쪼개져 앞뒤 표본이 어긋난다.
+        실제 데이터에서 앞 14건 · 뒤 2건 처럼 갈라진 적이 있어 계약으로 고정한다.
+
+        Given: 9월 신호 24건의 보유일수가 4·5·6 으로 섞인 입력
+        When: 시기 2등분으로 집계하면
+        Then: 앞뒤 두 행만 나오고 표본이 12건씩 균등하다
+        """
+        # Given
+        early = [f"2020-09-{day:02d}" for day in range(1, 13)]
+        late = [f"2026-09-{day:02d}" for day in range(1, 13)]
+        signal = _long_form(early + late, [-0.02] * 12 + [0.02] * 12)
+        signal[COL_HORIZON] = [4, 5, 6] * 8
+        baseline = _long_form(
+            [f"2020-09-{day:02d}" for day in range(13, 25)] + [f"2026-09-{day:02d}" for day in range(13, 25)],
+            [0.01] * 24,
+        )
+        baseline[COL_HORIZON] = [4, 5, 6] * 8
+
+        # When
+        result = _aggregate_month_halves(signal, baseline, repeats=20, seed=0)
+
+        # Then
+        assert len(result) == 2, "한 달이 보유일수별로 쪼개졌습니다"
+        assert result[COL_SAMPLE_COUNT].tolist() == [12, 12]
 
     def test_휴장_규칙_대조는_네_조합을_전부_낸다(self) -> None:
         """
