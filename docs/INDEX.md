@@ -38,7 +38,7 @@
 | [../.claude/rules/reference.md](../.claude/rules/reference.md) | reference 폴더 읽기 전용 4금지 | `reference/**` Read 시점에 자동 |
 | [../.claude/rules/context.md](../.claude/rules/context.md) | 사용자 소유 문서 보호, 해석 시 붙잡을 맥락 | `docs/context/**` Read 시점에 자동 |
 | [../.claude/rules/strategy.md](../.claude/rules/strategy.md) | **매매 규칙 계층의 예외 규정** — 이 폴더에서만 손절·기간 설계가 허용되는 이유와 제약 | `docs/strategy/**`·`src/verify_lab/strategy/**`·`scripts/strategy/**` Read 시점에 자동 |
-| [../.claude/skills/verify-plan/SKILL.md](../.claude/skills/verify-plan/SKILL.md) | 계획서 작성 절차 (SoT) | `/verify-plan` 스킬 호출 |
+| `~/.claude/skills/impl-plan/SKILL.md` **(전역)** | 계획서 작성 절차 (SoT) — 저장소 밖이라 링크하지 않습니다 | `/impl-plan` 스킬 호출 |
 
 > **자동 로드는 편집이 아니라 읽기에서 걸립니다.** 기존 파일을 Read 하면 해당 경로의 규칙이 함께 들어옵니다.
 > 따라서 **기존 파일을 열지 않고 새 파일부터 만드는 경우**에만 규칙 문서를 직접 열면 됩니다.

@@ -140,7 +140,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | [.claude/rules/reference.md](.claude/rules/reference.md) | `reference/` 파일을 열었을 때 — 읽기 전용 4금지 | 자동 |
 | [.claude/rules/context.md](.claude/rules/context.md) | `docs/context/` 파일을 열었을 때 — 사용자 소유 문서 보호 | 자동 |
 | [.claude/rules/strategy.md](.claude/rules/strategy.md) | `strategy/` 경로 작업 — 매매 규칙 계층의 예외 규정과 제약 | 자동 |
-| `/verify-plan` 스킬 | 계획서 작성·갱신 | 호출 |
+| `/impl-plan` 스킬 (전역) | 계획서 작성·갱신 | 호출 |
 
 > **자동 로드는 파일을 "읽기만" 해도 걸립니다 — 단, `Read` 도구로 열었을 때입니다.**
 > 해당 경로의 파일을 Read 하는 순간 그 경로의 규칙 문서 본문이 함께 주입되는 것을
@@ -179,9 +179,10 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 위 예외를 제외한 모든 변경은 `docs/plans/`에 계획서를 작성해야 합니다.
 
-계획서 작성 절차 및 품질 게이트: `/verify-plan` 스킬([.claude/skills/verify-plan/SKILL.md](.claude/skills/verify-plan/SKILL.md))이 SoT입니다.
+계획서 작성 절차 및 품질 게이트: **전역 `/impl-plan` 스킬**(`~/.claude/skills/impl-plan/SKILL.md`)이 SoT입니다.
+여러 저장소가 공유하므로 이 프로젝트 고유의 값은 아래 「계획서 규약 — 이 프로젝트의 설정」 절에 있습니다.
 
-이 규칙은 하네스가 강제합니다 (`.claude/hooks/`).
+이 규칙은 하네스가 강제합니다 (전역 `~/.claude/hooks/`).
 
 - 문서(`docs/**`, `**/*.md`)를 제외한 파일을 편집할 때 계획서가 선행되지 않으면 권한 프롬프트가 뜹니다.
   차단이 아니라 확인이며, 세션당 한 번만 걸립니다.
