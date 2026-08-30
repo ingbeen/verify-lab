@@ -45,8 +45,6 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE,
 )
 from verify_lab.studies.index_extreme.constants import (
-    CONSECUTIVE_DIRECTION_LABELS,
-    CONSECUTIVE_LENGTHS,
     DATASETS,
     DECADE_PERIODS,
     DEFAULT_START_YEAR,
@@ -64,7 +62,6 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_RANK,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
-    DISPLAY_TEST_CONSECUTIVE,
     DISPLAY_TEST_EXTREME,
     DISPLAY_TICKER,
     DISPLAY_ZSCORE,
@@ -117,10 +114,10 @@ CLUSTERED_ROWS = 2_600
 CLUSTERED_OFFSET = 400
 
 # 상승 방향 신호군의 표시 이름. 이 방향에서는 **하락이 역방향**이다
-UPWARD_DIRECTIONS = (EXTREME_DIRECTION_LABELS[Direction.UP], CONSECUTIVE_DIRECTION_LABELS[Direction.UP])
+UPWARD_DIRECTIONS = (EXTREME_DIRECTION_LABELS[Direction.UP],)
 
 # 하락 방향 신호군의 표시 이름. 여집합으로 고르면 `역방향 전체` 까지 딸려 들어온다
-DOWNWARD_DIRECTIONS = (EXTREME_DIRECTION_LABELS[Direction.DOWN], CONSECUTIVE_DIRECTION_LABELS[Direction.DOWN])
+DOWNWARD_DIRECTIONS = (EXTREME_DIRECTION_LABELS[Direction.DOWN],)
 
 # 백분율 지표의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 RATE_TOLERANCE = 0.1
@@ -187,25 +184,6 @@ def _clustered_frame() -> pd.DataFrame:
     return _market_frame(dates, changes)
 
 
-def _alternating_changes(count: int) -> np.ndarray:
-    """3일 연속이 정확히 세 번만 나오는 등락률을 만든다.
-
-    배경은 하루씩 방향이 바뀌어 연속이 1로 유지되고, 심은 자리에서만 같은 방향이 3일 이어진다.
-    날짜가 달력 하루 간격이므로 신호 사이의 달력 간격이 행 간격과 같다 —
-    사건 묶기 창(달력 30일)의 경계를 손으로 잡을 수 있다.
-    """
-    signs = np.where(np.arange(count) % 2 == 0, 1, -1)
-
-    # 상승 → (20일) 하락 → (20일) 상승. 두 상승은 40일 떨어져 방향별로는 다른 사건이다
-    for end, sign in ((100, 1), (120, -1), (140, 1)):
-        signs[end - 3] = -sign
-        signs[end - 2 : end + 1] = sign
-        signs[end + 1] = -sign
-        signs[end + 2] = sign
-
-    return signs * 0.004
-
-
 def _write_dataset(
     directory: Path,
     frame: pd.DataFrame,
@@ -232,7 +210,6 @@ def _single_axis_run(dataset: Dataset, **overrides: object) -> StudyOutputs:
     """축을 하나씩만 남긴 실행. 손으로 셀 수 있는 크기로 줄인다."""
     axes: dict[str, object] = {
         "rank_cuts": (RANK_CUTS[1],),
-        "consecutive_lengths": (CONSECUTIVE_LENGTHS[0],),
         "start_years": (DEFAULT_START_YEAR,),
         "repeats": TEST_REPEATS,
     }
@@ -279,7 +256,7 @@ class TestSignalGroupAxes:
         """
         # Given
         summary = wide_outputs.summary
-        parameters = len(RANK_CUTS) + len(CONSECUTIVE_LENGTHS)
+        parameters = len(RANK_CUTS)
         windows = len(START_YEARS) + len(DECADE_PERIODS)
 
         # When
@@ -342,18 +319,17 @@ class TestSignalGroupAxes:
 
         Given: 실행 결과의 집계표
         When: 테스트별 파라미터 값을 모았을 때
-        Then: 테스트 A 는 순위 컷, 테스트 B 는 연속 일수만 담는다
+        Then: 순위 컷만 담고 다른 테스트 이름은 나오지 않는다
         """
         # Given
         statistics = wide_outputs.statistics
 
         # When
         extreme = set(statistics.loc[statistics[DISPLAY_TEST] == DISPLAY_TEST_EXTREME, DISPLAY_PARAMETER])
-        consecutive = set(statistics.loc[statistics[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE, DISPLAY_PARAMETER])
 
         # Then
         assert extreme == {f"K={cut}" for cut in RANK_CUTS}
-        assert consecutive == {f"N={length}" for length in CONSECUTIVE_LENGTHS}
+        assert set(statistics[DISPLAY_TEST]) == {DISPLAY_TEST_EXTREME}
 
     def test_각_신호군은_종가_구간만큼의_집계_칸을_낸다(self, wide_outputs: StudyOutputs) -> None:
         """
@@ -513,34 +489,27 @@ class TestEventCount:
         # Then
         assert event_ids == [1, 1, 1, 2]
 
-    def test_테스트_B_의_사건_수는_반대_방향_신호에_묶이지_않는다(self, tmp_path: Path) -> None:
+    def test_사건_번호는_두_방향을_합친_목록에_매겨진다(self, clustered_outputs: StudyOutputs) -> None:
         """
-        목적: 사건 번호의 기준이 테스트마다 다르다는 결정을 고정한다
+        목적: 폭등과 폭락이 같은 충격에서 나온다는 결정을 고정한다 (스펙 §7 결정 ⑫)
 
-        Given: 연속 상승 → (20일 뒤) 연속 하락 → (20일 뒤) 연속 상승 이 한 번씩 있는 시세.
-            두 상승은 40일 떨어져 있어 방향별로는 다른 사건이지만, 하락을 사이에 끼워 합치면
-            20일씩 이어져 한 사건이 된다
-        When: 연속 상승 신호군의 사건 수를 봤을 때
-        Then: 2개다 (방향별로 매겼다). 합집합으로 매겼다면 1개가 나온다
+        방향별로 매기면 "신호 4건 = 사건 2개"가 아니라 방향마다 따로 세어져,
+        결정 ③ 이 드러내려던 비독립성이 숨는다.
+
+        Given: 폭락·폭등이 섞인 사건 하나와 멀리 떨어진 사건 하나가 있는 시세
+        When: 방향별 신호군의 사건 번호를 모았을 때
+        Then: 두 방향이 같은 번호 체계를 공유한다 (합집합에 매겨졌다)
         """
         # Given
-        dates = pd.DatetimeIndex(pd.date_range("2011-01-03", periods=300, freq="D"))
-        dataset = _write_dataset(tmp_path, _market_frame(dates, _alternating_changes(len(dates) - 1)))
+        signals = clustered_outputs.signals
+        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_PERIOD] == PERIOD_ALL.label)]
 
         # When
-        outputs = _single_axis_run(dataset)
-        statistics = outputs.statistics
-        rows = statistics[
-            (statistics[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE) & (statistics[DISPLAY_PERIOD] == PERIOD_ALL.label)
-        ]
-        up = rows[rows[DISPLAY_DIRECTION] == "연속 상승"]
-        down = rows[rows[DISPLAY_DIRECTION] == "연속 하락"]
+        by_direction = {direction: set(group[DISPLAY_EVENT_ID]) for direction, group in rows.groupby(DISPLAY_DIRECTION)}
 
         # Then
-        assert set(up[DISPLAY_SIGNAL_COUNT]) == {2}
-        assert set(down[DISPLAY_SIGNAL_COUNT]) == {1}
-        assert set(up[DISPLAY_EVENT_COUNT]) == {2}
-        assert set(down[DISPLAY_EVENT_COUNT]) == {1}
+        assert len(by_direction) == 2
+        assert set().union(*by_direction.values()) == {1, 2}
 
     def test_신호_수와_사건_수가_초과분표와_검정표에도_함께_남는다(self, clustered_outputs: StudyOutputs) -> None:
         """
@@ -663,11 +632,11 @@ class TestPeriodFilter:
         """
         # Given
         signals = spanning_outputs.signals
-        consecutive = signals[signals[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE]
+        extreme = signals[signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME]
 
         # When
         by_period = {
-            label: set(consecutive.loc[consecutive[DISPLAY_PERIOD] == label, DISPLAY_DATE])
+            label: set(extreme.loc[extreme[DISPLAY_PERIOD] == label, DISPLAY_DATE])
             for label in (PERIOD_ALL.label, *(period.label for period in DECADE_PERIODS))
         }
 
@@ -686,9 +655,9 @@ class TestPeriodFilter:
         """
         # Given
         signals = spanning_outputs.signals
-        consecutive = signals[signals[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE]
-        whole = consecutive[consecutive[DISPLAY_PERIOD] == PERIOD_ALL.label]
-        decade = consecutive[consecutive[DISPLAY_PERIOD] == "2010년대"]
+        extreme = signals[signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME]
+        whole = extreme[extreme[DISPLAY_PERIOD] == PERIOD_ALL.label]
+        decade = extreme[extreme[DISPLAY_PERIOD] == "2010년대"]
 
         # When
         merged = decade.merge(whole, on=[DISPLAY_DATE, DISPLAY_DIRECTION], suffixes=("_decade", "_whole"))
@@ -705,25 +674,22 @@ class TestEmptySignalGroup:
         """
         목적: 표본이 조용히 사라지지 않는지 고정한다 (경계 조건)
 
-        Given: 하루도 빠짐없이 오르기만 하는 시세 — 연속 하락 신호가 나올 수 없다
-        When: 연속 하락을 포함한 축으로 실행했을 때
-        Then: 연속 하락 신호군이 집계표에 없고, 빠졌다는 사실이 요약에 남는다
+        Given: **2020년 이후만** 있는 시세 — 2010년대 구간에는 거래일이 하나도 없다
+        When: 시대 구간을 포함한 축으로 실행했을 때
+        Then: 2010년대 신호군이 집계표에 없고, 빠졌다는 사실이 요약에 남는다
         """
         # Given
-        dates = pd.DatetimeIndex(pd.bdate_range("2003-01-01", periods=CLUSTERED_ROWS))
-        rng = np.random.default_rng(SYNTHETIC_SEED)
-        dataset = _write_dataset(tmp_path, _market_frame(dates, rng.uniform(0.0005, 0.004, len(dates) - 1)))
+        dates = pd.DatetimeIndex(pd.bdate_range("2020-01-02", periods=CLUSTERED_ROWS))
+        dataset = _write_dataset(tmp_path, _market_frame(dates, _quiet_changes(len(dates) - 1)))
 
         # When
         outputs = _single_axis_run(dataset)
 
         # Then
         statistics = outputs.statistics
-        down = statistics[
-            (statistics[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE) & (statistics[DISPLAY_DIRECTION] == "연속 하락")
-        ]
-        assert down.empty
-        assert any(row[KEY_DIRECTION] == "연속 하락" for row in outputs.summary[KEY_EMPTY_SIGNAL_GROUPS])
+        decade = statistics[statistics[DISPLAY_PERIOD] == "2010년대"]
+        assert decade.empty
+        assert any(row[KEY_PERIOD] == "2010년대" for row in outputs.summary[KEY_EMPTY_SIGNAL_GROUPS])
 
     def test_측정_구간_끝이_데이터를_넘는_신호의_제외_건수가_보존된다(self, wide_outputs: StudyOutputs) -> None:
         """
@@ -828,7 +794,6 @@ class TestDeterminism:
         # Then
         assert summary[KEY_PERMUTATION] == {KEY_REPEATS: TEST_REPEATS, KEY_SEED: 0}
         assert parameters["rank_cuts"] == list(RANK_CUTS)
-        assert parameters["consecutive_lengths"] == list(CONSECUTIVE_LENGTHS)
         assert parameters["start_years"] == list(START_YEARS)
         assert parameters["horizons"] == list(DEFAULT_HORIZONS)
 
@@ -898,7 +863,6 @@ class TestMultipleDatasets:
         outputs = run_study(
             [raw, adjusted],
             rank_cuts=(RANK_CUTS[1],),
-            consecutive_lengths=(CONSECUTIVE_LENGTHS[0],),
             start_years=(DEFAULT_START_YEAR,),
             repeats=TEST_REPEATS,
         )
@@ -1235,33 +1199,6 @@ class TestReverseAllDirection:
         # Then
         assert set(combined[DISPLAY_EVENT_COUNT]) == {2}
 
-    def test_테스트_B_의_사건_수는_방향별_사건_수의_합이다(self, tmp_path: Path) -> None:
-        """
-        목적: 테스트 B 에서 두 방향을 한 사건으로 묶지 않는지 고정한다
-
-        결정 ⑭ 가 테스트 B 를 방향별로 나눈 이유가 그대로 남는다 — 합집합에 새로 번호를
-        매기면 신호가 촘촘해 30일 체인이 끊기지 않고 **사건 하나가 수년에 걸친다.**
-
-        Given: 연속 상승 2건(사건 2개)과 연속 하락 1건(사건 1개)이 있는 시세
-        When: 역방향 전체 신호군의 사건 수를 봤을 때
-        Then: 3개다 (2 + 1). 합집합으로 매겼다면 1개가 나온다
-        """
-        # Given
-        dates = pd.DatetimeIndex(pd.date_range("2011-01-03", periods=300, freq="D"))
-        dataset = _write_dataset(tmp_path, _market_frame(dates, _alternating_changes(len(dates) - 1)))
-
-        # When
-        statistics = _single_axis_run(dataset).statistics
-        combined = statistics[
-            (statistics[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE)
-            & (statistics[DISPLAY_PERIOD] == PERIOD_ALL.label)
-            & (statistics[DISPLAY_DIRECTION] == DISPLAY_DIRECTION_REVERSE_ALL)
-        ]
-
-        # Then
-        assert set(combined[DISPLAY_SIGNAL_COUNT]) == {3}
-        assert set(combined[DISPLAY_EVENT_COUNT]) == {3}
-
     def test_신호일_목록에는_역방향_전체_행이_없다(self, clustered_outputs: StudyOutputs) -> None:
         """
         목적: 원자료에 같은 날이 두 줄로 실리지 않는지 고정한다
@@ -1296,29 +1233,39 @@ class TestReverseAllDirection:
         """
         목적: 신호 0건 판정의 경계를 고정한다 (엣지 케이스)
 
-        Given: 연속 하락이 한 번도 없어 그 방향이 0건인 시세
+        **한 방향만 0건인 상황은 시대 구간에서 만든다.** 확장창 순위는 부호가 아니라 순위만
+        보므로 전 구간에서 한 방향을 0건으로 만들 수 없다 — 등락이 전부 양수여도 그중 가장
+        작은 값이 하락 순위 1위가 된다.
+
+        Given: 순위 축적 구간을 큰 등락으로 채우고 **2010년대에는 폭등만** 심은 시세
         When: 신호 0건으로 기록된 신호군을 봤을 때
-        Then: 연속 하락만 빠지고 역방향 전체는 집계에 남는다
+        Then: 그 구간의 폭락만 빠지고 역방향 전체는 집계에 남는다
         """
         # Given
-        dates = pd.DatetimeIndex(pd.date_range("2011-01-03", periods=300, freq="D"))
-        changes = _alternating_changes(len(dates) - 1)
-        changes[118:122] = 0.004  # 심어 둔 연속 하락을 상승으로 덮어 그 방향을 0건으로 만든다
+        dates = pd.DatetimeIndex(pd.bdate_range("2003-01-01", periods=5_200))
+        changes = _quiet_changes(len(dates) - 1)
+
+        # 1. 순위 축적 구간(집계 시작 전)을 컷보다 많은 등락으로 채운다.
+        #    이보다 큰 등락만 이후 구간에서 상위 컷에 든다
+        for offset in range(max(RANK_CUTS) + 2):
+            changes[100 + offset * 10] = ACCUMULATION_SHOCK
+            changes[105 + offset * 10] = -ACCUMULATION_SHOCK
+
+        # 2. 2010년대에 폭등 하나만 심는다. 그 구간의 폭락은 0건이 된다
+        position = int(dates.get_indexer([pd.Timestamp("2015-01-05")], method="nearest")[0])
+        changes[position - 1] = ACCUMULATION_SHOCK * 2
 
         # When
         dataset = _write_dataset(tmp_path, _market_frame(dates, changes))
         outputs = _single_axis_run(dataset)
-        empty_directions = {record[KEY_DIRECTION] for record in outputs.summary[KEY_EMPTY_SIGNAL_GROUPS]}
+        empty = [record for record in outputs.summary[KEY_EMPTY_SIGNAL_GROUPS] if record[KEY_PERIOD] == "2010년대"]
         statistics = outputs.statistics
         combined = statistics[
-            (statistics[DISPLAY_TEST] == DISPLAY_TEST_CONSECUTIVE)
-            & (statistics[DISPLAY_PERIOD] == PERIOD_ALL.label)
-            & (statistics[DISPLAY_DIRECTION] == DISPLAY_DIRECTION_REVERSE_ALL)
+            (statistics[DISPLAY_PERIOD] == "2010년대") & (statistics[DISPLAY_DIRECTION] == DISPLAY_DIRECTION_REVERSE_ALL)
         ]
 
         # Then
-        assert "연속 하락" in empty_directions
-        assert DISPLAY_DIRECTION_REVERSE_ALL not in empty_directions
+        assert {record[KEY_DIRECTION] for record in empty} == {EXTREME_DIRECTION_LABELS[Direction.DOWN]}
         assert not combined.empty
 
     def test_뒤를_잘라내도_역방향_전체는_방향별_신호의_합이다(self, tmp_path: Path) -> None:

@@ -218,7 +218,7 @@ poetry run python scripts/studies/run_index_extreme.py --dataset qqq
 poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
 ```
 
-- **강건성 조합을 한 실행에서 전부 산출합니다.** 신호군은 테스트 × 파라미터 × 시작연도 × 방향 ×
+- **강건성 조합을 한 실행에서 전부 산출합니다.** 신호군은 파라미터 × 시작연도 × 방향 ×
   시대 구간 × 데이터셋의 곱이며, 각 축의 값은 `docs/spec/index_extreme_events.md` 와
   `studies/index_extreme/constants.py` 가 정합니다. **실제 개수와 실행 시간은 실행 결과의
   마지막 줄과 `summary.json` 에 나옵니다**
@@ -226,12 +226,12 @@ poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
   "파라미터가 같았다"이고, 따로 돌리면 그 사실을 사람이 확인해야 합니다
 - `--dataset` 이 고를 수 있는 값은 `--help` 로 확인합니다. 목록의 SoT 는
   `studies/index_extreme/constants.py` 의 `DATASETS` 입니다
-- **방향 축에는 폭등·폭락(연속 상승·연속 하락) 외에 `역방향 전체` 가 있습니다.** 두 방향을 한
+- **방향 축에는 폭등·폭락 외에 `역방향 전체` 가 있습니다.** 두 방향을 한
   표본으로 묶되 상승 방향 신호의 수익률에 −1 을 곱해 역방향 진입 기준으로 부호를 맞춘 신호군이며,
   집계 3파일에만 나옵니다 (`signals.csv` 에는 없습니다). 근거는 스펙 §7 결정 ㉕ 입니다
 - 산출물은 `storage/results/<실행시각>_index_extreme/` 에 CSV 4개(`signals`·`statistics`·`excess`·`test`)와
   `summary.json` 으로 남습니다. 덮어쓰지 않고 실행 시각으로 쌓입니다
-- **순위 컷·연속 일수·집계 시작연도는 인자가 아닙니다.** 스펙이 확정한 목록을 전부 산출해 나란히
+- **순위 컷·집계 시작연도는 인자가 아닙니다.** 스펙이 확정한 목록을 전부 산출해 나란히
   보고하는 것이 이 검증의 설계이며, 값을 골라 넣는 노브로 쓰면 과최적화입니다
 
 ### 검증 #7 — 옵션 만기일
@@ -310,10 +310,9 @@ poetry run python scripts/strategy/run_reverse_trading.py --target qqq
 - **손절선·보유 한도·대상 목록은 인자가 아닙니다.** 확정된 규칙을 그대로 적용하는 것이 설계이며,
   값을 골라 넣는 노브로 쓰면 표본에 맞춘 튜닝이 됩니다. 값의 SoT 는
   `src/verify_lab/strategy/constants.py` 이고 근거는 규칙 문서 §3 입니다
-- **보유 한도는 전부 산출해 나란히 냅니다.** 한 포지션은 한도 하나만 가질 수 있으므로
-  한도별 결과는 자금 분할이 아니라 **비교표**입니다
+- **손절선은 -5% 하나, 보유 한도는 D+2 하나입니다** (2026-08-30 개정). 그전에는 손절 3분할과
+  한도 3종을 나란히 냈는데, 실측에서 -4%~-10% 가 평평해 분할의 존재 이유가 사라졌습니다
 - 산출물은 `storage/results/<실행시각>_reverse_trading/` 에 `trades.csv`(체결 내역),
-  `summary_by_target.csv`(대상별·한도별 집계), `summary.json` 으로 남습니다
-- `trades.csv` 는 **신호 하나가 손절 단계 수만큼의 행**입니다. 집계는 신호 단위이므로
-  조각을 그대로 세면 표본이 부풀어 승률이 왜곡됩니다
+  `summary_by_target.csv`(대상별 집계), `summary.json` 으로 남습니다
+- `trades.csv` 는 **신호 하나가 한 행**입니다
 - 실행 시간은 순열 검정이 없어 **수 초**입니다

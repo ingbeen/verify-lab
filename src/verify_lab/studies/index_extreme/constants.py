@@ -18,12 +18,9 @@ from verify_lab.common_constants import MARKET_DIR, PRICE_DECIMALS, PRICE_DECIMA
 class Direction(Enum):
     """등락 방향
 
-    두 테스트가 같은 방향 개념을 쓰되 부르는 이름이 다르다. 스펙은 테스트 A 를 폭등·폭락으로,
-    테스트 B 를 연속 상승·연속 하락으로 부른다.
-
     Attributes:
-        UP: 상승 — 테스트 A 의 폭등, 테스트 B 의 연속 상승
-        DOWN: 하락 — 테스트 A 의 폭락, 테스트 B 의 연속 하락
+        UP: 상승 — 폭등
+        DOWN: 하락 — 폭락
     """
 
     UP = "up"
@@ -37,13 +34,6 @@ class Direction(Enum):
 # 순위 컷. 메인은 10위이고 5·20 은 특정 값에만 붙은 우연인지 확인하기 위한 대조다
 DEFAULT_RANK_CUT: Final = 10
 RANK_CUTS: Final = (5, 10, 20)
-
-# ============================================================
-# 테스트 B — 연속 등락
-# ============================================================
-
-# 연속 일수. 전부 산출해 발생 빈도와 함께 보고한다
-CONSECUTIVE_LENGTHS: Final = (3, 4, 5, 6, 7, 8, 9, 10)
 
 # ============================================================
 # 집계 구간
@@ -168,24 +158,21 @@ DISPLAY_PERIOD: Final = "시대 구간"
 DISPLAY_GROUP_SIGNAL_COUNT: Final = "신호"
 DISPLAY_EVENT_COUNT: Final = "사건"
 
+# **`테스트` 컬럼 값은 바꾸지 않는다.** 연속 등락(테스트 B)을 분리한 뒤에도 이 이름을 그대로 두는 것은
+# 이전 산출물과 나란히 놓고 대조하기 위해서다 — 이름을 바꾸면 그 대조가 끊긴다
 DISPLAY_TEST_EXTREME: Final = "테스트 A(역대급 등락)"
-DISPLAY_TEST_CONSECUTIVE: Final = "테스트 B(연속 등락)"
 
-# 방향을 부르는 이름이 테스트마다 다르다. 스펙은 테스트 A 를 폭등·폭락으로,
-# 테스트 B 를 연속 상승·연속 하락으로 부른다
 EXTREME_DIRECTION_LABELS: Final = {Direction.UP: "폭등", Direction.DOWN: "폭락"}
-CONSECUTIVE_DIRECTION_LABELS: Final = {Direction.UP: "연속 상승", Direction.DOWN: "연속 하락"}
 
 # 두 방향을 한 표본으로 묶은 신호군의 이름. 상승 방향 신호의 수익률에 −1 을 곱해
-# **역방향으로 진입했을 때의 부호**로 통일한 값이며, 두 테스트가 같은 이름을 쓴다.
+# **역방향으로 진입했을 때의 부호**로 통일한 값이다.
 #
 # `전체` 로 두지 않는 이유는 **같은 표의 `시대 구간` 컬럼에 이미 `전체` 가 있기 때문**이다.
 # 한 행에 같은 문자열이 두 컬럼에 실리면 대조할 때 어느 축의 값인지 헷갈린다
 DISPLAY_DIRECTION_REVERSE_ALL: Final = "역방향 전체"
 
-# 파라미터는 테스트마다 뜻이 달라 한 컬럼에 접두사와 함께 담는다
+# 파라미터 컬럼에 접두사와 함께 담는다
 PARAMETER_PREFIX_RANK_CUT: Final = "K"
-PARAMETER_PREFIX_LENGTH: Final = "N"
 
 
 # ============================================================

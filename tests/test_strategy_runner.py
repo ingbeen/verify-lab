@@ -1,11 +1,11 @@
 """역방향 매매 실행 계층의 계약을 고정한다.
 
-이 계층이 틀리는 방식은 **집계 단위가 어긋나는 것**이다. 자금을 3등분했는데 조각을 표본으로
-세면 표본이 세 배로 부풀고 승률이 왜곡되는데, 표는 정상으로 보인다.
+이 계층이 틀리는 방식은 **집계 단위가 어긋나는 것**이다. 신호 하나가 여러 행이 되면
+표본이 부풀고 승률이 왜곡되는데, 표는 정상으로 보인다.
 
 핵심 계약은 넷이다.
-- 산출물 축은 **대상 × 보유 한도**의 곱이다
-- 집계는 **신호 단위**다. 조각은 평균으로 합쳐진다
+- 산출물 축은 **대상**뿐이다. 손절 분할과 보유 한도 축은 없다
+- 집계는 **신호 단위**다. 신호 하나가 체결 내역 한 행이다
 - 집계는 **원값으로** 한다. 반올림된 표에서 다시 평균을 내면 합계가 어긋난다
 - 신호 판정은 `studies` 가 소유한다. 이 계층은 **어느 날이 신호인가를 다시 정하지 않는다**
 """
@@ -29,19 +29,25 @@ from verify_lab.common_constants import (
 from verify_lab.report.constants import DISPLAY_EXCLUDED
 from verify_lab.strategy.constants import (
     DISPLAY_DATE,
-    DISPLAY_HOLD_LIMIT,
     DISPLAY_MEAN_HOLD,
     DISPLAY_RETURN,
     DISPLAY_SIGNAL_COUNT,
-    DISPLAY_STOP_LEVEL,
     DISPLAY_TOTAL,
-    HOLD_LIMITS,
+    HOLD_LIMIT,
     START_YEAR,
-    STOP_LOSS_LEVELS,
+    STOP_LOSS_LEVEL,
     TARGETS,
     Target,
 )
-from verify_lab.strategy.runner import IDENTITY_COLUMNS, KEY_TARGETS, StrategyOutputs, run_strategy
+from verify_lab.strategy.runner import (
+    IDENTITY_COLUMNS,
+    KEY_HOLD_LIMIT,
+    KEY_RULE,
+    KEY_STOP_LEVEL,
+    KEY_TARGETS,
+    StrategyOutputs,
+    run_strategy,
+)
 from verify_lab.studies.index_extreme.constants import Dataset
 
 # 합성 시세를 만드는 난수 시드. 시드 없는 난수는 금지다
@@ -130,146 +136,103 @@ def _target(directory: Path, *, rank_cut: int = 10, ticker: str = "합성", rows
 
 @pytest.fixture(scope="module")
 def outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs:
-    """합성 시세로 전 조합을 돈 실행 결과 (모듈 안에서 한 번만 만든다)."""
+    """합성 시세로 돈 실행 결과 (모듈 안에서 한 번만 만든다)."""
     return run_strategy([_target(tmp_path_factory.mktemp("strategy"))])
 
 
 class TestAxes:
     """산출물 축 계약"""
 
-    def test_집계는_대상과_보유_한도의_곱만큼_나온다(self, outputs: StrategyOutputs) -> None:
+    def test_집계는_대상마다_한_줄이다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 보유 한도가 축으로 산출되는지 고정한다
+        목적: 산출물 축이 대상 하나뿐인지 고정한다
 
-        Given: 대상 1종으로 돈 실행 결과
+        손절 분할과 보유 한도 축을 걷어냈으므로 대상 하나가 집계 한 줄이다.
+
+        Given: 대상 하나로 돈 실행 결과
         When: 집계 행 수를 봤을 때
-        Then: 보유 한도 수만큼이다
+        Then: 1행이다
         """
         # Given / When / Then
-        assert len(outputs.summary) == len(HOLD_LIMITS)
-        assert set(outputs.summary[DISPLAY_HOLD_LIMIT]) == {f"D+{limit}" for limit in HOLD_LIMITS}
+        assert len(outputs.summary) == 1
 
     def test_식별_컬럼이_두_표에_모두_앞에_붙는다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 어느 산출물을 열어도 어떤 설정의 결과인지 알 수 있는지 고정한다
+        목적: 조합을 한 파일에 쌓아도 어느 행이 어떤 설정인지 행 자체로 알 수 있게 한다
 
         Given: 실행 결과의 두 표
         When: 앞쪽 컬럼을 봤을 때
-        Then: 식별 컬럼이 순서대로 맨 앞에 있다
+        Then: 식별 컬럼이 정의된 순서 그대로 앞에 있다
         """
         # Given / When / Then
         for table in (outputs.trades, outputs.summary):
             assert list(table.columns[: len(IDENTITY_COLUMNS)]) == list(IDENTITY_COLUMNS)
 
-    def test_식별_컬럼은_네_개다(self) -> None:
+    def test_식별_컬럼은_세_개다(self) -> None:
         """
-        목적: 식별 컬럼 구성을 상수가 아니라 값으로 고정한다
+        목적: 보유 한도 축이 사라진 것을 값으로 고정한다
 
         Given: 식별 컬럼 정의
-        When: 구성을 봤을 때
-        Then: 종목·파라미터·시작연도·보유 한도 네 개다
+        When: 개수를 봤을 때
+        Then: 종목·파라미터·시작연도 셋이다
         """
         # Given / When / Then
-        assert IDENTITY_COLUMNS == ("종목", "파라미터", "시작연도", "보유 한도")
+        assert len(IDENTITY_COLUMNS) == 3
 
-    def test_체결_내역은_신호마다_손절_단계_수만큼_나온다(self, outputs: StrategyOutputs) -> None:
+    def test_체결_내역은_신호마다_한_행이다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 조각이 빠짐없이 청산되는지 고정한다
+        목적: 조각 축이 사라진 것을 고정한다
 
-        Given: 실행 결과의 체결 내역
-        When: 한도·날짜별 행 수를 셌을 때
-        Then: 전부 손절 단계 수와 같다
-        """
-        # Given / When
-        counted = outputs.trades.groupby([DISPLAY_HOLD_LIMIT, DISPLAY_DATE]).size()
+        3분할이던 시절에는 신호 하나가 세 행이었다. 그 상태로 표본을 세면
+        **표본이 세 배로 부풀고 승률이 왜곡된다.**
 
-        # Then
-        assert set(counted) == {len(STOP_LOSS_LEVELS)}
-
-    def test_손절_단계가_전부_산출된다(self, outputs: StrategyOutputs) -> None:
-        """
-        목적: 자금 3등분이 산출물에 드러나는지 고정한다
-
-        Given: 실행 결과의 체결 내역
-        When: 손절선 값을 모았을 때
-        Then: 상수와 같다
+        Given: 실행 결과
+        When: 날짜별 행 수를 셌을 때
+        Then: 모든 날짜가 한 행이다
         """
         # Given / When
-        levels = set(outputs.trades[DISPLAY_STOP_LEVEL])
+        counted = outputs.trades.groupby(DISPLAY_DATE).size()
 
         # Then
-        assert levels == {round(level * RATE_TO_PERCENT, 2) for level in STOP_LOSS_LEVELS}
+        assert set(counted) == {1}
+        assert len(outputs.trades) == int(outputs.summary.iloc[0][DISPLAY_SIGNAL_COUNT])
 
 
 class TestAggregation:
-    """집계 단위 계약"""
+    """집계 계약"""
 
-    def test_집계는_조각이_아니라_신호_단위다(self, outputs: StrategyOutputs) -> None:
+    def test_합계는_신호별_수익률의_합이다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 조각을 표본으로 세지 않는지 고정한다
+        목적: 집계를 **원값으로** 하는지 고정한다
 
-        조각을 세면 표본이 세 배로 부풀고 승률이 왜곡되는데 표는 정상으로 보인다.
+        반올림된 표에서 다시 평균을 내면 이중 반올림으로 합계가 어긋난다.
 
         Given: 실행 결과
-        When: 집계의 신호 수와 체결 내역의 날짜 수를 비교했을 때
-        Then: 같다 (체결 행 수의 1/3 이다)
-        """
-        # Given
-        row = outputs.summary.iloc[0]
-        block = outputs.trades[outputs.trades[DISPLAY_HOLD_LIMIT] == row[DISPLAY_HOLD_LIMIT]]
-
-        # When / Then
-        assert row[DISPLAY_SIGNAL_COUNT] == block[DISPLAY_DATE].nunique()
-        assert row[DISPLAY_SIGNAL_COUNT] == len(block) // len(STOP_LOSS_LEVELS)
-
-    def test_합계는_신호별_평균의_합이다(self, outputs: StrategyOutputs) -> None:
-        """
-        목적: 이중 반올림으로 합계가 어긋나지 않는지 고정한다
-
-        체결 내역은 저장 직전 반올림이 걸린 표다. 그것으로 다시 평균을 내면
-        **합계가 0.01%p 단위로 어긋난다.** 집계는 원값으로 해야 한다.
-
-        Given: 실행 결과
-        When: 체결 내역에서 신호별 평균을 다시 계산했을 때
+        When: 체결 내역의 수익률을 직접 더했을 때
         Then: 집계의 합계와 허용오차 안에서 같다
         """
         # Given
         row = outputs.summary.iloc[0]
-        block = outputs.trades[outputs.trades[DISPLAY_HOLD_LIMIT] == row[DISPLAY_HOLD_LIMIT]]
 
         # When
-        recomputed = block.groupby(DISPLAY_DATE)[DISPLAY_RETURN].mean().sum()
+        counted = float(outputs.trades[DISPLAY_RETURN].sum())
 
         # Then
-        assert row[DISPLAY_TOTAL] == pytest.approx(recomputed, abs=RATE_TOLERANCE)
+        assert float(row[DISPLAY_TOTAL]) == pytest.approx(counted, abs=RATE_TOLERANCE)
 
-    def test_보유일은_조각이_전부_청산된_날이다(self, outputs: StrategyOutputs) -> None:
+    def test_평균_보유일은_한도를_넘지_않는다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 보유일을 한도로 세지 않는지 고정한다
-
-        D+1 에 세 조각이 모두 청산되면 한도가 얼마든 보유일은 1이다.
+        목적: 보유일이 한도 안에 있는지 고정한다 (경계 조건)
 
         Given: 실행 결과
-        When: 한도별 평균 보유일을 봤을 때
-        Then: 한도 값을 넘지 않고, 1 이상이다
+        When: 평균 보유일을 봤을 때
+        Then: 1 이상 한도 이하다
         """
-        # Given / When / Then
-        for _, row in outputs.summary.iterrows():
-            limit = int(row[DISPLAY_HOLD_LIMIT].removeprefix("D+"))
-            assert 1.0 <= row[DISPLAY_MEAN_HOLD] <= limit
+        # Given / When
+        mean_hold = float(outputs.summary.iloc[0][DISPLAY_MEAN_HOLD])
 
-    def test_한도를_늘려도_신호_수는_같다(self, outputs: StrategyOutputs) -> None:
-        """
-        목적: 한도마다 표본이 달라지지 않는지 고정한다
-
-        표본이 달라지면 조합끼리 비교할 수 없다.
-
-        Given: 실행 결과의 집계
-        When: 한도별 신호 수를 봤을 때
-        Then: 전부 같다
-        """
-        # Given / When / Then
-        assert outputs.summary[DISPLAY_SIGNAL_COUNT].nunique() == 1
+        # Then
+        assert 1.0 <= mean_hold <= HOLD_LIMIT
 
 
 class TestSignalOwnership:
@@ -321,10 +284,10 @@ class TestSignalOwnership:
                 ),
                 rank_cut=10,
             )
-            results.append(run_strategy([target], hold_limits=(1,)).trades)
+            results.append(run_strategy([target]).trades)
 
         # When
-        merged = results[1].merge(results[0], on=[DISPLAY_DATE, DISPLAY_STOP_LEVEL], suffixes=("_cut", "_whole"))
+        merged = results[1].merge(results[0], on=[DISPLAY_DATE], suffixes=("_cut", "_whole"))
 
         # Then
         assert not merged.empty
@@ -332,7 +295,7 @@ class TestSignalOwnership:
 
 
 class TestTargetsInvariant:
-    """매매 대상 목록의 불변조건"""
+    """매매 대상과 규칙 상수의 불변조건"""
 
     def test_대상은_세_종이다(self) -> None:
         """
@@ -348,30 +311,32 @@ class TestTargetsInvariant:
         # Then
         assert pairs == {("KODEX 200", 10), ("QQQ", 10), ("QQQ", 20)}
 
-    def test_손절선은_세_단계이고_오름차순이다(self) -> None:
+    def test_손절선은_단일_5퍼센트다(self) -> None:
         """
-        목적: 손절 3분할 구성을 값으로 고정한다
+        목적: 확정된 손절선을 값으로 고정한다
 
-        Given: 손절선 목록
+        **-5% 는 성적이 가장 좋아서가 아니라 갭손절이 0건이 되는 첫 지점이라 고른 값**이다.
+        -4%~-10% 는 회당 평균이 +1.27~+1.46% 로 평평해 값 선택이 결과를 만들지 않는다.
+
+        Given: 손절선 상수
         When: 값을 봤을 때
-        Then: 4·5·6% 오름차순이다
+        Then: 0.05 하나다
         """
         # Given / When / Then
-        assert STOP_LOSS_LEVELS == (0.04, 0.05, 0.06)
-        assert list(STOP_LOSS_LEVELS) == sorted(STOP_LOSS_LEVELS)
+        assert STOP_LOSS_LEVEL == 0.05
 
-    def test_보유_한도는_세_값이다(self) -> None:
+    def test_보유_한도는_D_플러스_2다(self) -> None:
         """
-        목적: 한도 축 구성을 값으로 고정한다
+        목적: 확정된 보유 한도를 값으로 고정한다
 
-        하나만 두면 표본에 맞춘 튜닝이 된다.
+        3일 구간은 평균 우연확률이 0.2917 로 근거가 없다.
 
-        Given: 보유 한도 목록
+        Given: 보유 한도 상수
         When: 값을 봤을 때
-        Then: 1·2·3 이다
+        Then: 2 다
         """
         # Given / When / Then
-        assert HOLD_LIMITS == (1, 2, 3)
+        assert HOLD_LIMIT == 2
 
     def test_시작연도가_요약에_남는다(self, outputs: StrategyOutputs) -> None:
         """
@@ -388,6 +353,21 @@ class TestTargetsInvariant:
         assert record["start_year"] == START_YEAR
         assert record["signal_count"] > 0
 
+    def test_적용한_규칙이_요약에_남는다(self, outputs: StrategyOutputs) -> None:
+        """
+        목적: 산출물만 보고 어떤 손절선·한도로 돌았는지 알 수 있게 한다
+
+        Given: 실행 결과의 요약
+        When: 규칙 항목을 봤을 때
+        Then: 손절선(%)과 보유 한도가 남아 있다
+        """
+        # Given / When
+        rule = outputs.meta[KEY_RULE]
+
+        # Then
+        assert rule[KEY_STOP_LEVEL] == pytest.approx(STOP_LOSS_LEVEL * RATE_TO_PERCENT, abs=RATE_TOLERANCE)
+        assert rule[KEY_HOLD_LIMIT] == HOLD_LIMIT
+
 
 class TestSamplePreservation:
     """표본 보존 — 데이터 끝을 넘어가 버려진 신호가 건수로 남는다 (tests/CLAUDE.md 필수)."""
@@ -396,7 +376,6 @@ class TestSamplePreservation:
         """시세를 **마지막 신호일에서 끝나게** 잘라 실행한다.
 
         진입 다음 거래일이 아예 없으므로 그 신호는 **이익이든 손실이든 체결을 만들 수 없다.**
-        보유 구간을 한 칸만 남기면 D+1 에 이익 청산돼 제외가 생기지 않는다.
 
         신호일 인덱스는 `집계 시작 + 오프셋 + 1` 이다 — 등락률이 심긴 날의 **다음 종가**가
         그 등락을 갖기 때문이다. 시세 길이를 그보다 하나 크게 잡으면 신호일이 마지막 행이 된다.
@@ -404,7 +383,7 @@ class TestSamplePreservation:
         last_offset = SIGNAL_PLACEMENTS[-1][0]
         rows = _accumulation_index(1_400) + last_offset + 2
 
-        return run_strategy([_target(directory, rows=rows)], hold_limits=[3])
+        return run_strategy([_target(directory, rows=rows)])
 
     def test_체결하지_못한_신호가_제외_건수로_남는다(self, tmp_path: Path) -> None:
         """
@@ -412,7 +391,7 @@ class TestSamplePreservation:
               건수를 보고하지 않으면 표본이 줄어든 사실이 산출물에서 보이지 않는다.
 
         Given: 마지막 신호의 보유 구간이 잘린 시세
-        When: 보유 한도 3 으로 실행하면
+        When: 실행하면
         Then: 집계에 제외 건수가 1건 이상 실린다
         """
         # Given / When
@@ -427,7 +406,7 @@ class TestSamplePreservation:
               이 등식이 깨지면 표본이 어딘가로 사라진 것이다.
 
         Given: 마지막 신호의 보유 구간이 잘린 시세
-        When: 보유 한도 3 으로 실행하면
+        When: 실행하면
         Then: 집계의 신호 수 + 제외 수가 요약의 전체 신호 수와 같다
         """
         # Given / When
@@ -443,7 +422,7 @@ class TestSamplePreservation:
         목적: 제외가 없을 때 0 이 실린다. 빈칸으로 두면 "안 쟀다"로 읽힌다.
 
         Given: 모든 신호의 보유 구간이 데이터 안에 있는 시세
-        When: 전 조합을 돌면
+        When: 실행하면
         Then: 모든 행의 제외 건수가 0 이다
         """
         # Given / When / Then
@@ -464,15 +443,3 @@ class TestInputValidation:
         # Given / When / Then
         with pytest.raises(ValueError, match="대상"):
             run_strategy([])
-
-    def test_한도가_비면_거부한다(self, tmp_path: Path) -> None:
-        """
-        목적: 같은 이유로 한도 축도 막는다
-
-        Given: 빈 한도 목록
-        When: 실행했을 때
-        Then: ValueError 가 난다
-        """
-        # Given / When / Then
-        with pytest.raises(ValueError, match="한도"):
-            run_strategy([_target(tmp_path)], hold_limits=())

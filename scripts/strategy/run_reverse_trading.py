@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """역방향 매매 규칙 실행 CLI
 
-확정 규칙(손절 3분할 · 종가 집행 · 수익 시 전량 청산)을 **대상 3종 × 보유 한도 3종**에
-적용해 체결 내역과 집계를 낸다. 규칙 전문과 확정 근거는
+확정 규칙(단일 손절선 · 종가 집행 · 수익 시 즉시 청산)을 대상 3종에 적용해
+체결 내역과 집계를 낸다. 규칙 전문과 확정 근거는
 `docs/strategy/역방향_매매_규칙.md` 가 SoT다.
 
-**보유 한도를 하나로 고르지 않는다.** 한 포지션은 한도 하나만 가질 수 있으므로 한도별 결과는
-비교표이며, 하나를 골라 산출하면 표본에 맞춘 튜닝이 된다.
+**손절선과 보유 한도는 상수다.** 값을 옮겨 가며 성적을 보는 것은 과최적화이며,
+어느 값이 어떤 결과를 내는지는 규칙 문서 §3.1 의 격자에 이미 실측으로 남아 있다.
 
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
 """
@@ -20,8 +20,8 @@ from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.strategy.constants import (
     DISPLAY_START_YEAR,
-    HOLD_LIMITS,
-    STOP_LOSS_LEVELS,
+    HOLD_LIMIT,
+    STOP_LOSS_LEVEL,
     STRATEGY_NAME,
     TARGETS,
     Target,
@@ -54,7 +54,7 @@ def _build_parser() -> argparse.ArgumentParser:
     Returns:
         인자 파서
     """
-    parser = argparse.ArgumentParser(description="역방향 매매 규칙을 대상별·보유 한도별로 실행합니다.")
+    parser = argparse.ArgumentParser(description="역방향 매매 규칙을 대상별로 실행합니다.")
     parser.add_argument(
         "--target",
         nargs="+",
@@ -83,15 +83,13 @@ def _selected_targets(keys: list[str] | None) -> list[Target]:
 
 def _print_rule() -> None:
     """적용한 규칙을 먼저 보여준다."""
-    levels = " → ".join(f"-{level * RATE_TO_PERCENT:.0f}%" for level in STOP_LOSS_LEVELS)
-    limits = " / ".join(f"D+{limit}" for limit in HOLD_LIMITS)
-    logger.debug(f"진입: 신호일 종가 (자금 {len(STOP_LOSS_LEVELS)}등분)")
-    logger.debug(f"손절: {levels} — 전부 진입가 기준, 보유 기간 내내 고정")
-    logger.debug(f"청산: 종가가 진입가 위면 남은 전량 청산, 손실이면 한도까지 보유 ({limits})")
+    logger.debug("진입: 신호일 종가")
+    logger.debug(f"손절: -{STOP_LOSS_LEVEL * RATE_TO_PERCENT:.0f}% — 진입가 기준, 보유 기간 내내 고정")
+    logger.debug(f"청산: 종가가 진입가 위면 즉시 청산, 손실이면 D+{HOLD_LIMIT} 까지 보유")
 
 
 def _print_summary(outputs: StrategyOutputs) -> None:
-    """대상별·한도별 집계를 표로 보여준다.
+    """대상별 집계를 표로 보여준다.
 
     **저장하는 표를 그대로 화면에 낸다.** 따로 가공하면 반올림·부호 표기가 갈려
     화면에서 본 숫자를 CSV 에서 찾지 못한다. 시작연도는 상수라 화면에서만 뺀다.
@@ -100,7 +98,7 @@ def _print_summary(outputs: StrategyOutputs) -> None:
         outputs: 실행 산출물
     """
     table = outputs.summary.drop(columns=[DISPLAY_START_YEAR])
-    print_dataframe(table, logger, title="대상별 · 보유 한도별 성적")
+    print_dataframe(table, logger, title="대상별 성적")
 
 
 @cli_exception_handler
@@ -137,7 +135,8 @@ def main() -> int:
         KEY_META_REVERSE_TRADING,
         {
             "targets": [f"{target.dataset.ticker} K={target.rank_cut}" for target in targets],
-            "hold_limits": list(HOLD_LIMITS),
+            "stop_loss_level": round(STOP_LOSS_LEVEL * RATE_TO_PERCENT, 2),
+            "hold_limit": HOLD_LIMIT,
             "output": str(directory),
         },
     )

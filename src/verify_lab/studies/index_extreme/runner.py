@@ -44,10 +44,7 @@ from verify_lab.report.tables import (
     build_test_table,
 )
 from verify_lab.studies.index_extreme.annotations import assign_event_ids, reference_zscore
-from verify_lab.studies.index_extreme.consecutive import find_consecutive_events
 from verify_lab.studies.index_extreme.constants import (
-    CONSECUTIVE_DIRECTION_LABELS,
-    CONSECUTIVE_LENGTHS,
     DATASETS,
     DECADE_PERIODS,
     DEFAULT_START_YEAR,
@@ -65,13 +62,11 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_RANK,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
-    DISPLAY_TEST_CONSECUTIVE,
     DISPLAY_TEST_EXTREME,
     DISPLAY_TICKER,
     DISPLAY_ZSCORE,
     EVENT_GAP_DAYS,
     EXTREME_DIRECTION_LABELS,
-    PARAMETER_PREFIX_LENGTH,
     PARAMETER_PREFIX_RANK_CUT,
     PERIOD_ALL,
     RANK_CUTS,
@@ -217,16 +212,14 @@ class _TestSpec:
 
     Attributes:
         test_label: 표시용 테스트 이름
-        parameter_label: 표시용 파라미터 (`K=10` / `N=5`)
-        direction_labels: 방향의 표시 이름. 테스트마다 부르는 이름이 다르다
-        combine_directions: 사건 번호를 두 방향을 합친 목록에 매길지 여부
+        parameter_label: 표시용 파라미터 (`K=10`)
+        direction_labels: 방향의 표시 이름
         find: 시세와 방향·시작일을 받아 bool Series 를 내는 함수
     """
 
     test_label: str
     parameter_label: str
     direction_labels: Mapping[Direction, str]
-    combine_directions: bool
     find: Callable[[pd.DataFrame, Direction, pd.Timestamp], pd.Series]
 
 
@@ -234,14 +227,13 @@ def run_study(
     datasets: Sequence[Dataset] = DATASETS,
     *,
     rank_cuts: Sequence[int] = RANK_CUTS,
-    consecutive_lengths: Sequence[int] = CONSECUTIVE_LENGTHS,
     start_years: Sequence[int] = START_YEARS,
     repeats: int = DEFAULT_REPEAT_COUNT,
     seed: int = DEFAULT_RANDOM_SEED,
 ) -> StudyOutputs:
     """강건성 조합을 전부 돌고 산출물 네 표와 요약을 만든다.
 
-    신호군은 **테스트 × 파라미터 × 시작연도 × 방향 × 시대 구간 × 데이터셋**의 곱이다.
+    신호군은 **파라미터 × 시작연도 × 방향 × 시대 구간 × 데이터셋**의 곱이다.
     시대 구간(2010년대·2020년대)은 기본 시작연도에만 붙는다 — 모든 시작연도에 곱하면
     해석하기 어려운 조합이 생기고, 스펙이 이것을 축이 아니라 강건성 "체크"로 둔 취지에서 멀어진다.
 
@@ -250,8 +242,7 @@ def run_study(
 
     Args:
         datasets: 검증 대상 시세 목록. 국내 두 가격 기준을 함께 넘겨야 대조가 성립한다
-        rank_cuts: 테스트 A 의 순위 컷 목록
-        consecutive_lengths: 테스트 B 의 연속 일수 목록
+        rank_cuts: 순위 컷 목록
         start_years: 신호 집계 시작 연도 목록
         repeats: 순열 검정의 반복 수
         seed: 순열 검정의 난수 시드. 결과 문서에 기록해야 재현된다
@@ -262,9 +253,9 @@ def run_study(
     Raises:
         ValueError: 데이터셋이나 축이 비어 있는 경우, 시세를 읽을 수 없는 경우
     """
-    _validate_axes(datasets, rank_cuts, consecutive_lengths, start_years)
+    _validate_axes(datasets, rank_cuts, start_years)
 
-    specs = _build_specs(rank_cuts, consecutive_lengths)
+    specs = _build_specs(rank_cuts)
     signal_blocks: list[pd.DataFrame] = []
     statistics_blocks: list[pd.DataFrame] = []
     excess_blocks: list[pd.DataFrame] = []
@@ -322,7 +313,6 @@ def run_study(
         KEY_DATASETS: dataset_records,
         KEY_PARAMETERS: {
             "rank_cuts": list(rank_cuts),
-            "consecutive_lengths": list(consecutive_lengths),
             "start_years": list(start_years),
             "periods": [period.label for period in (PERIOD_ALL, *DECADE_PERIODS)],
             "horizons": list(DEFAULT_HORIZONS),
@@ -360,7 +350,6 @@ def run_study(
 def _validate_axes(
     datasets: Sequence[Dataset],
     rank_cuts: Sequence[int],
-    consecutive_lengths: Sequence[int],
     start_years: Sequence[int],
 ) -> None:
     """축이 하나라도 비어 있으면 즉시 막는다.
@@ -370,7 +359,6 @@ def _validate_axes(
     Args:
         datasets: 검증 대상 시세 목록
         rank_cuts: 순위 컷 목록
-        consecutive_lengths: 연속 일수 목록
         start_years: 집계 시작 연도 목록
 
     Raises:
@@ -382,50 +370,28 @@ def _validate_axes(
     if not rank_cuts:
         raise ValueError("순위 컷 목록이 비어 있습니다")
 
-    if not consecutive_lengths:
-        raise ValueError("연속 일수 목록이 비어 있습니다")
-
     if not start_years:
         raise ValueError("집계 시작 연도 목록이 비어 있습니다")
 
 
-def _build_specs(rank_cuts: Sequence[int], consecutive_lengths: Sequence[int]) -> list[_TestSpec]:
-    """두 테스트의 파라미터를 펼쳐 이벤트 정의 목록을 만든다.
-
-    **사건 번호의 기준이 테스트마다 다르다.** 테스트 A 는 급락과 급반등이 같은 충격에서 나오므로
-    두 방향을 합쳐 매기고, 테스트 B 는 방향별로 따로 매긴다 — 신호가 촘촘한 칸에서는 30일 체인이
-    끊기지 않아 합집합 사건 하나가 수년에 걸치고, 그러면 "같은 충격인가"를 더 이상 구분하지 못한다.
-    근거 수치는 `docs/spec/index_extreme_events.md` §7 결정 ⑭ 에 있다.
+def _build_specs(rank_cuts: Sequence[int]) -> list[_TestSpec]:
+    """순위 컷을 펼쳐 이벤트 정의 목록을 만든다.
 
     Args:
-        rank_cuts: 테스트 A 의 순위 컷 목록
-        consecutive_lengths: 테스트 B 의 연속 일수 목록
+        rank_cuts: 순위 컷 목록
 
     Returns:
-        테스트 A 를 먼저 담은 이벤트 정의 목록
+        순위 컷 순서의 이벤트 정의 목록
     """
-    specs = [
+    return [
         _TestSpec(
             test_label=DISPLAY_TEST_EXTREME,
             parameter_label=f"{PARAMETER_PREFIX_RANK_CUT}={cut}",
             direction_labels=EXTREME_DIRECTION_LABELS,
-            combine_directions=True,
             find=partial(_find_extreme, rank_cut=cut),
         )
         for cut in rank_cuts
     ]
-    specs.extend(
-        _TestSpec(
-            test_label=DISPLAY_TEST_CONSECUTIVE,
-            parameter_label=f"{PARAMETER_PREFIX_LENGTH}={length}",
-            direction_labels=CONSECUTIVE_DIRECTION_LABELS,
-            combine_directions=False,
-            find=partial(_find_consecutive, length=length),
-        )
-        for length in consecutive_lengths
-    )
-
-    return specs
 
 
 def _find_extreme(df: pd.DataFrame, direction: Direction, start: pd.Timestamp, *, rank_cut: int) -> pd.Series:
@@ -441,21 +407,6 @@ def _find_extreme(df: pd.DataFrame, direction: Direction, start: pd.Timestamp, *
         신호인 날이 True 인 bool Series
     """
     return find_extreme_move_events(df, direction=direction, rank_cut=rank_cut, start_date=start)
-
-
-def _find_consecutive(df: pd.DataFrame, direction: Direction, start: pd.Timestamp, *, length: int) -> pd.Series:
-    """테스트 B 신호를 고른다 (집계 시작일은 이벤트 정의가 소유한다).
-
-    Args:
-        df: 시세
-        direction: 연속 상승·연속 하락
-        start: 집계 시작일
-        length: 연속 일수
-
-    Returns:
-        신호인 날이 True 인 bool Series
-    """
-    return find_consecutive_events(df, direction=direction, length=length, start_date=start)
 
 
 def _build_context(dataset: Dataset) -> _Context:
@@ -700,7 +651,7 @@ def _measure_spec(
         within = context.frame[COL_DATE] <= end
         selected = {direction: signals & within for direction, signals in selected.items()}
 
-    event_ids = _event_ids(context.frame, selected, combine=spec.combine_directions)
+    event_ids = _event_ids(context.frame, selected)
 
     signal_blocks: list[pd.DataFrame] = []
     statistics_blocks: list[pd.DataFrame] = []
@@ -843,7 +794,7 @@ def _measure_reverse_all(
     combined_summary = summarize(combined)
     counts = {
         DISPLAY_GROUP_SIGNAL_COUNT: sum(int(signals.sum()) for signals in selected.values()),
-        DISPLAY_EVENT_COUNT: _reverse_all_event_count(event_ids, combine=spec.combine_directions),
+        DISPLAY_EVENT_COUNT: _reverse_all_event_count(event_ids),
     }
 
     # 부호를 뒤집은 뒤이므로 "오른 비율" 이 곧 방향이 맞은 비율이다
@@ -927,54 +878,35 @@ def _symmetric_populations(populations: Mapping[str, _Population]) -> dict[str, 
     return symmetric
 
 
-def _reverse_all_event_count(event_ids: Mapping[Direction, pd.Series], *, combine: bool) -> int:
+def _reverse_all_event_count(event_ids: Mapping[Direction, pd.Series]) -> int:
     """두 방향을 합친 신호군의 사건 수를 센다.
 
-    **합칠지 말지는 결정 ⑭ 이 테스트마다 정해 둔 것을 그대로 잇는다.** 테스트 A 는 이미 두
-    방향을 합친 목록에 번호를 매기므로 그 번호를 그대로 세면 되고, 테스트 B 는 방향별로
-    따로 매기므로 방향별 사건 수를 더한다 — 합집합에 새로 매기면 신호가 촘촘해 30일 체인이
-    끊기지 않고 사건 하나가 수년에 걸친다.
+    사건 번호가 이미 두 방향을 합친 목록에 매겨져 있으므로(`_event_ids`) 그 번호를 그대로 센다.
 
     Args:
         event_ids: 방향 → 그 방향 신호일의 사건 번호
-        combine: 사건 번호가 두 방향을 합친 목록에 매겨졌는지 여부
 
     Returns:
         사건 수
     """
-    if combine:
-        return int(pd.concat(list(event_ids.values())).nunique())
-
-    return sum(int(ids.nunique()) for ids in event_ids.values())
+    return int(pd.concat(list(event_ids.values())).nunique())
 
 
-def _event_ids(
-    frame: pd.DataFrame,
-    selected: Mapping[Direction, pd.Series],
-    *,
-    combine: bool,
-) -> dict[Direction, pd.Series]:
-    """방향별 신호일에 사건 번호를 매긴다.
+def _event_ids(frame: pd.DataFrame, selected: Mapping[Direction, pd.Series]) -> dict[Direction, pd.Series]:
+    """방향별 신호일에 **두 방향을 합쳐** 사건 번호를 매긴다.
 
-    **합칠지 말지가 결론을 바꾼다.** 테스트 A 는 급락과 급반등이 같은 충격에서 나오므로 합쳐야
-    "7건 = 사건 3개"가 나오고, 나누면 결정 ③ 이 드러내려던 비독립성이 숨는다. 반대로 테스트 B 는
-    신호가 촘촘해 합치면 30일 체인이 끊기지 않고 사건 하나가 수년에 걸쳐, 방향이 반대인 신호까지
-    한 충격으로 묶어 버린다.
+    **합치는 것이 결론을 만든다.** 급락과 급반등은 같은 충격에서 나오므로 합쳐야
+    "7건 = 사건 3개"가 나오고, 나누면 결정 ③ 이 드러내려던 비독립성이 숨는다.
+    합집합 사건이 최장 29일이라 "한 충격"이 성립한다는 실측이 근거다
+    (`docs/spec/index_extreme_events.md` §7 결정 ⑫).
 
     Args:
         frame: 시세
         selected: 방향 → 신호 bool Series
-        combine: 두 방향을 합친 목록에 번호를 매길지 여부
 
     Returns:
         방향 → 그 방향 신호일의 사건 번호
     """
-    if not combine:
-        return {
-            direction: assign_event_ids(frame.loc[signals, COL_DATE], EVENT_GAP_DAYS)
-            for direction, signals in selected.items()
-        }
-
     union = selected[Direction.UP] | selected[Direction.DOWN]
     numbered = assign_event_ids(frame.loc[union, COL_DATE], EVENT_GAP_DAYS)
 

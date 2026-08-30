@@ -27,7 +27,6 @@ from verify_lab.strategy.constants import (
     DISPLAY_EVENT_ID,
     DISPLAY_EXIT_REASON,
     DISPLAY_HOLD_DAYS,
-    DISPLAY_HOLD_LIMIT,
     DISPLAY_MAX,
     DISPLAY_MEAN,
     DISPLAY_MEAN_HOLD,
@@ -36,20 +35,18 @@ from verify_lab.strategy.constants import (
     DISPLAY_RETURN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_START_YEAR,
-    DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     DISPLAY_TOTAL,
     DISPLAY_WIN_RATE,
     HOLD_DAYS_DECIMALS,
-    HOLD_LIMIT_PREFIX,
-    HOLD_LIMITS,
+    HOLD_LIMIT,
     PARAMETER_PREFIX_RANK_CUT,
     START_YEAR,
-    STOP_LOSS_LEVELS,
+    STOP_LOSS_LEVEL,
     TARGETS,
     Target,
 )
-from verify_lab.strategy.reverse_trading import LegResult, average_return, simulate_signal
+from verify_lab.strategy.reverse_trading import TradeResult, simulate_signal
 from verify_lab.studies.index_extreme.annotations import assign_event_ids
 from verify_lab.studies.index_extreme.constants import EVENT_GAP_DAYS, EXTREME_DIRECTION_LABELS, Direction
 from verify_lab.studies.index_extreme.daily_change import daily_change_rate
@@ -64,7 +61,6 @@ IDENTITY_COLUMNS = (
     DISPLAY_TICKER,
     DISPLAY_PARAMETER,
     DISPLAY_START_YEAR,
-    DISPLAY_HOLD_LIMIT,
 )
 
 # ============================================================
@@ -84,8 +80,8 @@ KEY_PATH = "path"
 KEY_SIGNAL_COUNT = "signal_count"
 KEY_EVENT_COUNT = "event_count"
 
-KEY_STOP_LEVELS = "stop_loss_levels"
-KEY_HOLD_LIMITS = "hold_limits"
+KEY_STOP_LEVEL = "stop_loss_level"
+KEY_HOLD_LIMIT = "hold_limit"
 KEY_ENTRY = "entry"
 KEY_EXIT = "exit"
 
@@ -95,7 +91,7 @@ KEY_SUMMARY = "summary_by_target"
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 신호일 종가다. 15:20 판정 후 종가 단일가매매로 체결하는 것을 전제하며, 익일 시가 집행이 아니다"
 NOTE_STOP_BASE = "손절선은 전부 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
-NOTE_HOLD_LIMIT = "보유 한도는 자금을 나누는 축이 아니라 비교 축이다. 한 포지션은 한도 하나만 가질 수 있다"
+NOTE_HOLD_LIMIT = "보유 한도는 D+2 로 고정돼 있다. 이익이 나면 그날 즉시 청산하고 손실일 때만 한도까지 끈다"
 NOTE_INVERSE = "상승 방향 신호는 원지수 수익률에 -1 을 곱한 값이다. 인버스 상품의 손익이 아니며 일간 복리·보수·롤 비용은 반영되지 않는다"
 
 
@@ -104,8 +100,8 @@ class StrategyOutputs:
     """실행 산출물
 
     Attributes:
-        trades: 신호 × 손절 단계 × 보유 한도의 체결 내역
-        summary: 대상 × 보유 한도의 집계
+        trades: 신호별 체결 내역 (신호 하나가 한 행)
+        summary: 대상별 집계
         meta: 실행 파라미터와 핵심 수치
     """
 
@@ -116,13 +112,13 @@ class StrategyOutputs:
 
 @dataclass(frozen=True)
 class _Block:
-    """한 대상·한 한도의 결과
+    """한 대상의 결과
 
     Attributes:
         trades: 체결 내역 (표시용 — 값이 이미 반올림돼 있다)
         returns: 신호별 수익률 (비율 원값). **집계는 이 값으로 한다** —
             반올림된 표에서 다시 평균을 내면 이중 반올림으로 합계가 어긋난다
-        hold_days: 신호별 보유일. 조각마다 다르면 가장 늦게 청산된 날이다
+        hold_days: 신호별 보유일 (진입일로부터의 거래일 수)
         excluded_count: 보유 한도가 데이터 끝을 넘어가 체결을 만들지 못한 신호 수.
             **버린 건수를 세어 보고한다** — 조용히 사라진 표본은 생존편향을 만든다
     """
@@ -155,27 +151,24 @@ class _Signals:
 def run_strategy(
     targets: Sequence[Target] = TARGETS,
     *,
-    hold_limits: Sequence[int] = HOLD_LIMITS,
-    stop_levels: Sequence[float] = STOP_LOSS_LEVELS,
+    hold_limit: int = HOLD_LIMIT,
+    stop_level: float = STOP_LOSS_LEVEL,
 ) -> StrategyOutputs:
-    """대상과 보유 한도를 전부 돌고 체결 내역과 집계를 만든다.
+    """대상을 전부 돌고 체결 내역과 집계를 만든다.
 
     Args:
         targets: 매매 대상 목록
-        hold_limits: 보유 한도 목록 (거래일)
-        stop_levels: 손절선 목록 (비율)
+        hold_limit: 보유 한도 (거래일)
+        stop_level: 손절선 (비율)
 
     Returns:
         체결 내역·집계·실행 정보
 
     Raises:
-        ValueError: 축이 비어 있거나 시세를 읽을 수 없는 경우
+        ValueError: 대상이 비어 있거나 시세를 읽을 수 없는 경우
     """
     if not targets:
         raise ValueError("매매 대상이 비어 있습니다")
-
-    if not hold_limits:
-        raise ValueError("보유 한도 목록이 비어 있습니다")
 
     trade_blocks: list[pd.DataFrame] = []
     summary_rows: list[dict[str, Any]] = []
@@ -185,13 +178,12 @@ def run_strategy(
         signals = _find_signals(target)
         target_records.append(_target_record(target, signals))
 
-        for limit in hold_limits:
-            block = _measure(target, signals, hold_limit=limit, stop_levels=stop_levels)
-            if block.trades.empty:
-                continue
+        block = _measure(target, signals, hold_limit=hold_limit, stop_level=stop_level)
+        if block.trades.empty:
+            continue
 
-            trade_blocks.append(block.trades)
-            summary_rows.append(_summarize(target, block, limit))
+        trade_blocks.append(block.trades)
+        summary_rows.append(_summarize(target, block))
 
     trades = pd.concat(trade_blocks, ignore_index=True) if trade_blocks else pd.DataFrame()
     summary = pd.DataFrame(summary_rows)
@@ -200,8 +192,8 @@ def run_strategy(
         KEY_STRATEGY: "reverse_trading",
         KEY_TARGETS: target_records,
         KEY_RULE: {
-            KEY_STOP_LEVELS: [round(level * RATE_TO_PERCENT, PERCENT_DECIMALS) for level in stop_levels],
-            KEY_HOLD_LIMITS: list(hold_limits),
+            KEY_STOP_LEVEL: round(stop_level * RATE_TO_PERCENT, PERCENT_DECIMALS),
+            KEY_HOLD_LIMIT: hold_limit,
             KEY_ENTRY: NOTE_ENTRY,
             KEY_EXIT: NOTE_STOP_BASE,
         },
@@ -209,7 +201,10 @@ def run_strategy(
         KEY_NOTES: [NOTE_ENTRY, NOTE_STOP_BASE, NOTE_HOLD_LIMIT, NOTE_INVERSE],
     }
 
-    logger.debug(f"매매 실행 완료: 대상 {len(targets)}종 × 한도 {len(hold_limits)}종, 체결 {len(trades):,}건")
+    logger.debug(
+        f"매매 실행 완료: 대상 {len(targets)}종, 손절 -{stop_level * RATE_TO_PERCENT:.0f}%, "
+        f"한도 D+{hold_limit}, 체결 {len(trades):,}건"
+    )
 
     return StrategyOutputs(trades=trades, summary=summary, meta=meta)
 
@@ -255,9 +250,9 @@ def _measure(
     signals: _Signals,
     *,
     hold_limit: int,
-    stop_levels: Sequence[float],
+    stop_level: float,
 ) -> _Block:
-    """한 대상·한 한도의 체결 내역과 집계용 원값을 만든다.
+    """한 대상의 체결 내역과 집계용 원값을 만든다.
 
     **표시용 표와 집계용 값을 함께 낸다.** 표는 저장 직전 반올림이 걸린 값이라,
     그것으로 다시 평균을 내면 이중 반올림이 되어 합계가 어긋난다.
@@ -266,10 +261,10 @@ def _measure(
         target: 매매 대상
         signals: 신호 목록
         hold_limit: 보유 한도
-        stop_levels: 손절선 목록
+        stop_level: 손절선
 
     Returns:
-        체결 내역과 신호별 원값. 신호 하나가 손절 단계 수만큼의 행이 된다
+        체결 내역과 신호별 원값. **신호 하나가 한 행**이다
     """
     frame = signals.frame
     rows: list[dict[str, Any]] = []
@@ -278,22 +273,22 @@ def _measure(
     excluded_count = 0
 
     for order, position in enumerate(signals.positions):
-        legs = simulate_signal(
+        result = simulate_signal(
             frame,
             int(position),
             upward=bool(signals.upward[order]),
             hold_limit=hold_limit,
-            stop_levels=stop_levels,
+            stop_level=stop_level,
         )
-        if not legs:
-            # 보유 한도가 데이터 끝을 넘어간 신호다. 부분 체결을 남기면 조합마다 표본이 달라지므로
-            # 통째로 빼되 **몇 건이 왜 빠졌는지 세어 돌려준다** (표본 보존)
+        if result is None:
+            # 보유 한도가 데이터 끝을 넘어간 신호다. 조용히 넘기면 표본이 달라지므로
+            # 빼되 **몇 건이 왜 빠졌는지 세어 돌려준다** (표본 보존)
             excluded_count += 1
             continue
 
-        rows.extend(_trade_rows(target, signals, order, position, legs, hold_limit))
-        returns.append(average_return(legs))
-        hold_days.append(max(leg.hold_days for leg in legs))
+        rows.append(_trade_row(target, signals, order, position, result))
+        returns.append(result.return_rate)
+        hold_days.append(result.hold_days)
 
     return _Block(
         trades=pd.DataFrame(rows),
@@ -303,14 +298,13 @@ def _measure(
     )
 
 
-def _trade_rows(
+def _trade_row(
     target: Target,
     signals: _Signals,
     order: int,
     position: int,
-    legs: Sequence[LegResult],
-    hold_limit: int,
-) -> list[dict[str, Any]]:
+    result: TradeResult,
+) -> dict[str, Any]:
     """신호 하나의 체결 결과를 표 행으로 바꾼다.
 
     Args:
@@ -318,54 +312,39 @@ def _trade_rows(
         signals: 신호 목록
         order: 신호 목록 안에서의 순서
         position: 시세에서의 위치 인덱스
-        legs: 조각별 체결 결과
-        hold_limit: 보유 한도
+        result: 체결 결과
 
     Returns:
-        조각 수만큼의 행
+        표 한 줄
     """
     row = signals.frame.iloc[position]
     upward = bool(signals.upward[order])
     direction = Direction.UP if upward else Direction.DOWN
-    identity = {
+
+    return {
         DISPLAY_TICKER: target.dataset.ticker,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
         DISPLAY_START_YEAR: START_YEAR,
-        DISPLAY_HOLD_LIMIT: f"{HOLD_LIMIT_PREFIX}{hold_limit}",
+        DISPLAY_DATE: pd.Timestamp(row[COL_DATE]).strftime(DATE_FORMAT),
+        DISPLAY_DIRECTION: EXTREME_DIRECTION_LABELS[direction],
+        DISPLAY_ENTRY_PRICE: round(float(row[COL_CLOSE]), target.dataset.price_decimals),
+        DISPLAY_CHANGE_RATE: round(float(signals.change_rates[order]) * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_EVENT_ID: int(signals.event_ids[order]),
+        DISPLAY_EXIT_REASON: result.reason,
+        DISPLAY_HOLD_DAYS: result.hold_days,
+        DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
     }
 
-    return [
-        {
-            **identity,
-            DISPLAY_DATE: pd.Timestamp(row[COL_DATE]).strftime(DATE_FORMAT),
-            DISPLAY_DIRECTION: EXTREME_DIRECTION_LABELS[direction],
-            DISPLAY_ENTRY_PRICE: round(float(row[COL_CLOSE]), target.dataset.price_decimals),
-            DISPLAY_CHANGE_RATE: round(float(signals.change_rates[order]) * RATE_TO_PERCENT, PERCENT_DECIMALS),
-            DISPLAY_EVENT_ID: int(signals.event_ids[order]),
-            DISPLAY_STOP_LEVEL: round(leg.stop_level * RATE_TO_PERCENT, PERCENT_DECIMALS),
-            DISPLAY_EXIT_REASON: leg.reason,
-            DISPLAY_HOLD_DAYS: leg.hold_days,
-            DISPLAY_RETURN: round(leg.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
-        }
-        for leg in legs
-    ]
 
-
-def _summarize(target: Target, block: _Block, hold_limit: int) -> dict[str, Any]:
-    """한 대상·한 한도의 집계를 만든다.
-
-    **자금을 균등 분할했으므로 신호 하나의 수익률은 조각 수익률의 평균**이다.
-    조각을 그대로 세면 표본이 세 배로 부풀고 승률이 왜곡된다.
-
-    보유일은 **조각이 전부 청산된 날**이다. D+1 에 세 조각이 모두 손절되면 한도가 얼마든 1이다.
+def _summarize(target: Target, block: _Block) -> dict[str, Any]:
+    """한 대상의 집계를 만든다.
 
     **`신호 + 제외 = 그 대상의 전체 신호 수`** 가 성립한다. 「신호」는 체결을 만든 수이고
     「제외」는 보유 한도가 데이터 끝을 넘어가 버린 수다. 전체 신호 수는 실행 요약에 있다.
 
     Args:
         target: 매매 대상
-        block: 그 조합의 체결 내역과 원값
-        hold_limit: 보유 한도
+        block: 그 대상의 체결 내역과 원값
 
     Returns:
         집계 한 줄
@@ -377,7 +356,6 @@ def _summarize(target: Target, block: _Block, hold_limit: int) -> dict[str, Any]
         DISPLAY_TICKER: target.dataset.ticker,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
         DISPLAY_START_YEAR: START_YEAR,
-        DISPLAY_HOLD_LIMIT: f"{HOLD_LIMIT_PREFIX}{hold_limit}",
         DISPLAY_SIGNAL_COUNT: len(returns),
         DISPLAY_EXCLUDED: block.excluded_count,
         DISPLAY_EVENT_COUNT: int(block.trades[DISPLAY_EVENT_ID].nunique()),

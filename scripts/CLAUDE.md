@@ -48,7 +48,7 @@
 | `usdkrw_equivalence_study` | `studies/run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
 | `option_expiry_study` | `studies/run_option_expiry.py` | 결과 폴더, 검증한 종목, 만기 창 범위, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 **매매의 진입·제외 건수·보유 거래일수 분포**도 남는다 |
 | `index_extreme_study` | `studies/run_index_extreme.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
-| `reverse_trading_strategy` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 보유 한도 목록, 결과 폴더 |
+| `reverse_trading_strategy` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 손절선·보유 한도, 결과 폴더 |
 
 > **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —
 > 그리드는 채택되지 않아 2026-08-30 에 구현을 지웠고 기록하는 스크립트가 없다.
