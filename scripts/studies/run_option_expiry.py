@@ -4,18 +4,21 @@
 만기월(1~12)로 쪼개 방향 비율을 재고, 각 칸을 **1차 게이트와 등급**으로 판정한다.
 게이트를 넘지 못한 칸도 `candidates.csv` 에 사유와 함께 남는다 — 화면에서만 빠진다.
 
-가격 기준 두 벌(수정주가·원본가)을 함께 돌린다. 배당락이 만기일에 고정돼 있어 원본가에는
-한 방향 편향이 들어가는데, 두 기준의 차이가 곧 그 몫이라 **차이 자체가 검산**이 된다.
+가격 기준은 **원본가 하나**다. 사용자가 증권앱·차트에서 보는 가격이 곧 신호를 판정하고
+주문을 거는 가격이기 때문이다 (루트 `CLAUDE.md` 측정의 원칙 14).
 
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
 """
 
 import argparse
+from pathlib import Path
+
+import pandas as pd
 
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_WIN_RATE
 from verify_lab.report.constants import PERCENT_DECIMALS, RATE_TO_PERCENT
-from verify_lab.report.tables import build_candidates_table, print_dataframe
+from verify_lab.report.tables import build_candidates_table, print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
     COL_EXIT_WEEKDAY,
@@ -25,6 +28,9 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_EXIT_WEEKDAY,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
+    OUTPUT_LABELS,
+    PERCENT_OUTPUT_COLUMNS,
+    PROBABILITY_OUTPUT_COLUMNS,
     STUDY_NAME,
 )
 from verify_lab.studies.option_expiry.runner import (
@@ -62,7 +68,7 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
-    parser = argparse.ArgumentParser(description="옵션 만기일 기준 상대 거래일의 수익률을 측정합니다.")
+    parser = argparse.ArgumentParser(description="만기일 매수 → 다음주 청산 매매를 만기월별로 측정하고 판정합니다.")
     parser.add_argument(
         "--dataset",
         choices=[dataset.key for dataset in DATASETS],
@@ -94,7 +100,7 @@ def _selected_datasets(keys: list[str] | None) -> tuple[object, ...]:
 
 
 def _display_headline(outputs: StudyOutputs) -> None:
-    """본검증 기준의 **후보 판정과 매매 성적**을 화면에 표시한다.
+    """**후보 판정과 매매 성적**을 화면에 표시한다.
 
     후보 표를 먼저 낸다 — 화면에서 가장 먼저 봐야 할 것이 "어느 달·어느 방향"이기 때문이다.
 
@@ -110,7 +116,7 @@ def _display_headline(outputs: StudyOutputs) -> None:
         # 종목과 만기월만으로는 같은 달이 두 줄로 겹쳐 보인다
         table.insert(0, DISPLAY_EXIT_WEEKDAY, candidates[COL_EXIT_WEEKDAY].to_numpy())
         table.insert(0, DISPLAY_TICKER, candidates[COL_TICKER].to_numpy())
-        print_dataframe(table, logger, title="1차 후보 — 적중률 60% 이상 · 방향 기대값 양수 (본검증 기준 · 적중률 순)")
+        print_dataframe(table, logger, title="1차 후보 — 적중률 60% 이상 · 방향 기대값 양수 (적중률 순)")
         # 화면에서 사라진 칸이 어디 있는지 알려주지 않으면 「코드가 대신 판단한다」는 문제가 화면에 남는다
         logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {FILE_CANDIDATES} 에 만기월 순서로 있습니다")
 
@@ -136,7 +142,29 @@ def _display_headline(outputs: StudyOutputs) -> None:
             COL_WIN_RATE: "오른 비율(%)",
         }
     )
-    print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 본검증 기준 · 전체 월")
+    print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 전체 월")
+
+
+def _save(directory: Path, filename: str, table: pd.DataFrame) -> None:
+    """산출물을 **한글 헤더와 맞춘 단위로** 저장한다.
+
+    표마다 컬럼 구성이 다르므로 변환 대상은 그 표에 실제로 있는 것만 고른다.
+    사전에 없는 컬럼이 있으면 `to_display_columns` 가 예외를 던진다 — 컬럼을 새로 만들고
+    한글 이름을 빠뜨리면 그 자리에서 실패한다 (`scripts/CLAUDE.md` 산출물 저장).
+
+    Args:
+        directory: 저장할 폴더
+        filename: 파일 이름
+        table: 영문 헤더의 산출물
+    """
+    columns = set(table.columns)
+    display = to_display_columns(
+        table,
+        OUTPUT_LABELS,
+        percent_columns=[column for column in PERCENT_OUTPUT_COLUMNS if column in columns],
+        probability_columns=[column for column in PROBABILITY_OUTPUT_COLUMNS if column in columns],
+    )
+    save_table(directory, filename, display)
 
 
 @cli_exception_handler
@@ -153,15 +181,15 @@ def main() -> int:
     outputs = run_study(datasets, **kwargs)  # pyright: ignore[reportArgumentType]
 
     directory = create_run_directory(STUDY_NAME)
-    save_table(directory, FILE_EXPIRIES, outputs.expiries)
-    save_table(directory, FILE_SIGNALS, outputs.signals)
-    save_table(directory, FILE_TRADE_SIGNALS, outputs.trade_signals)
-    save_table(directory, FILE_TRADE_SUMMARY, outputs.trade_summary)
-    save_table(directory, FILE_TRADE_EXCESS, outputs.trade_excess)
-    save_table(directory, FILE_TRADE_TEST, outputs.trade_test)
-    save_table(directory, FILE_TRADE_BY_MONTH, outputs.trade_by_month)
-    save_table(directory, FILE_TRADE_BY_MONTH_HALVES, outputs.trade_by_month_halves)
-    save_table(directory, FILE_CANDIDATES, outputs.candidates)
+    _save(directory, FILE_EXPIRIES, outputs.expiries)
+    _save(directory, FILE_SIGNALS, outputs.signals)
+    _save(directory, FILE_TRADE_SIGNALS, outputs.trade_signals)
+    _save(directory, FILE_TRADE_SUMMARY, outputs.trade_summary)
+    _save(directory, FILE_TRADE_EXCESS, outputs.trade_excess)
+    _save(directory, FILE_TRADE_TEST, outputs.trade_test)
+    _save(directory, FILE_TRADE_BY_MONTH, outputs.trade_by_month)
+    _save(directory, FILE_TRADE_BY_MONTH_HALVES, outputs.trade_by_month_halves)
+    _save(directory, FILE_CANDIDATES, outputs.candidates)
 
     _display_headline(outputs)
 

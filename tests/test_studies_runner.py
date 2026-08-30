@@ -82,7 +82,6 @@ from verify_lab.studies.index_extreme.runner import (
     KEY_DATASETS,
     KEY_DAY_COUNT,
     KEY_DIRECTION,
-    KEY_EMA_UNDETERMINED,
     KEY_EMPTY_SIGNAL_GROUPS,
     KEY_EXCESS,
     KEY_PARAMETERS,
@@ -630,7 +629,6 @@ class TestBaselinePopulation:
 
         # Then
         assert dataset_info[KEY_SMA_UNDETERMINED] == DEFAULT_MA_WINDOW - 1
-        assert dataset_info[KEY_EMA_UNDETERMINED] == DEFAULT_MA_WINDOW - 1
 
     def test_이동평균_창이_차지_않으면_조건부_베이스라인이_빠지고_사유가_남는다(self, tmp_path: Path) -> None:
         """

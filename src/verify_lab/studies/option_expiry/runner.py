@@ -7,8 +7,8 @@ forward return·통계·후보 판정(`measure`)이 이미 있으므로, 하는 
 **만기 창의 거래일을 하나도 빼지 않고 원자료로 남긴다.** 사용자가 차트로 직접 대조하는
 산출물이므로 창을 좁혀 내지 않는다 (`docs/spec/option_expiry.md` 결정 ②).
 
-**가격 기준 두 벌을 함께 돌린다.** 배당락이 만기일에 고정돼 있어 원본가에는 한 방향 편향이
-들어가는데, 두 기준의 차이가 곧 그 몫이라 **차이 자체가 검산**이 된다(같은 문서 §3.4).
+**가격 기준은 원본가 하나다.** 사용자가 증권앱·차트에서 보는 가격이 곧 신호를 판정하고 주문을
+거는 가격이기 때문이다 (루트 `CLAUDE.md` 측정의 원칙 14).
 
 **자르는 것은 언제나 신호 선택이지 시세가 아니다.** 시기로 가를 때도 시세는 전 구간을
 그대로 두고 신호일만 고른다 — 시세를 먼저 자르면 경계에서 만기 간격이 달라져 offset 이 어긋난다.
@@ -50,6 +50,8 @@ from verify_lab.measure.statistics import (
     summarize,
 )
 from verify_lab.studies.option_expiry.constants import (
+    BASELINE_SUFFIX,
+    COL_BASELINE_KIND,
     COL_DAILY_RETURN,
     COL_EXIT_WEEKDAY,
     COL_EXPIRY_DATE,
@@ -59,7 +61,6 @@ from verify_lab.studies.option_expiry.constants import (
     COL_MEAN_RATE_CONFLICT,
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
-    COL_PRICE_BASIS,
     COL_RULE_DATE,
     COL_TICKER,
     COL_TIME_HALF,
@@ -72,7 +73,6 @@ from verify_lab.studies.option_expiry.constants import (
     MIN_SAMPLE_FOR_HALVES,
     WEEKDAY_LABELS,
     Dataset,
-    PriceSeries,
 )
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
 from verify_lab.studies.option_expiry.offsets import expiry_offsets
@@ -209,30 +209,28 @@ def _identify(frame: pd.DataFrame, **values: Any) -> pd.DataFrame:
     return identified
 
 
-def _run_series(
+def _run_dataset(
     dataset: Dataset,
-    series: PriceSeries,
     accumulator: _Accumulator,
     *,
     repeats: int,
     seed: int,
 ) -> dict[str, Any]:
-    """종목 하나의 가격 기준 하나를 전부 돌린다.
+    """종목 하나를 전부 돌린다.
 
     Args:
         dataset: 검증 대상 정의
-        series: 가격 기준 정의
         accumulator: 결과를 쌓는 자리
         repeats: 순열 검정 반복 수
         seed: 순열 검정 시드
 
     Returns:
-        이 가격 기준의 요약 수치
+        이 종목의 요약 수치
     """
-    df = load_market_csv(MARKET_DIR / series.file_name)
+    df = load_market_csv(MARKET_DIR / dataset.file_name)
     expiries, annotated = _annotate(df, dataset)
 
-    accumulator.expiries.append(_identify(expiries, **{COL_TICKER: dataset.ticker, COL_PRICE_BASIS: series.basis}))
+    accumulator.expiries.append(_identify(expiries, **{COL_TICKER: dataset.ticker}))
 
     inside_window = annotated[COL_OFFSET].notna()
 
@@ -241,16 +239,14 @@ def _run_series(
     signals = annotated.loc[inside_window, signal_columns].copy()
     signals[COL_EXPIRY_MONTH] = signals[COL_EXPIRY_DATE].dt.strftime("%Y-%m")
     signals[COL_OFFSET] = signals[COL_OFFSET].astype(int)
-    accumulator.signals.append(_identify(signals, **{COL_TICKER: dataset.ticker, COL_PRICE_BASIS: series.basis}))
+    accumulator.signals.append(_identify(signals, **{COL_TICKER: dataset.ticker}))
 
-    trade_records = _run_weekly_trade(df, dataset, series, expiries, accumulator, repeats=repeats, seed=seed)
+    trade_records = _run_weekly_trade(df, dataset, expiries, accumulator, repeats=repeats, seed=seed)
 
     expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
     return {
         "ticker": dataset.ticker,
-        "price_basis": series.basis,
-        "primary": series.primary,
-        "file": series.file_name,
+        "file": dataset.file_name,
         "rows": len(df),
         "period": f"{df[COL_DATE].iloc[0].date()} ~ {df[COL_DATE].iloc[-1].date()}",
         "expiry_count": len(expiries),
@@ -267,9 +263,8 @@ def _run_series(
 # 만기일 매수 → 다음주 청산
 # ============================================================
 
-# 초과분 표에서 어느 베이스라인과 견줬는지 밝히는 이름. 둘은 묻는 질문이 다르다
+# 어느 기준선과 견줬는지 밝히는 이름. 둘은 묻는 질문이 다르다
 # (`docs/spec/option_expiry.md` §3.7)
-COL_BASELINE = "baseline"
 BASELINE_WEEKLY = "같은 요일 주간 보유"
 BASELINE_MATCHED_LENGTH = "같은 길이 단순 보유"
 
@@ -397,7 +392,7 @@ def _aggregate_by_month(
     month_test = permutation_test(signal_by_month, baseline_by_month, repeats=repeats, seed=seed)
 
     merged = (
-        signal_summary.merge(baseline_summary, on=[COL_BASIS, COL_HORIZON], suffixes=("", "_baseline"))
+        signal_summary.merge(baseline_summary, on=[COL_BASIS, COL_HORIZON], suffixes=("", BASELINE_SUFFIX))
         .merge(
             month_excess[
                 [
@@ -517,7 +512,6 @@ def _mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:
 def _run_weekly_trade(
     df: pd.DataFrame,
     dataset: Dataset,
-    series: PriceSeries,
     expiries: pd.DataFrame,
     accumulator: _Accumulator,
     *,
@@ -529,7 +523,6 @@ def _run_weekly_trade(
     Args:
         df: 날짜 오름차순 시세
         dataset: 검증 대상 정의
-        series: 가격 기준 정의
         expiries: 만기일 표
         accumulator: 결과를 쌓는 자리
         repeats: 순열 검정 반복 수
@@ -542,7 +535,7 @@ def _run_weekly_trade(
 
     for exit_weekday in dataset.exit_weekdays:
         exit_label = WEEKDAY_LABELS[exit_weekday]
-        identity = {COL_TICKER: dataset.ticker, COL_PRICE_BASIS: series.basis, COL_EXIT_WEEKDAY: exit_label}
+        identity = {COL_TICKER: dataset.ticker, COL_EXIT_WEEKDAY: exit_label}
 
         signal, baseline = _weekly_trade_frames(df, dataset, expiries, exit_weekday)
 
@@ -616,10 +609,10 @@ def _record_trade_cell(
     accumulator.trade_summary.append(_identify(summarize(sliced), **row_identity))
 
     pooled_excess = excess(summarize(sliced), summarize(weekly_baseline))
-    accumulator.trade_excess.append(_identify(pooled_excess, **{**row_identity, COL_BASELINE: BASELINE_WEEKLY}))
+    accumulator.trade_excess.append(_identify(pooled_excess, **{**row_identity, COL_BASELINE_KIND: BASELINE_WEEKLY}))
 
     pooled_test = permutation_test(sliced, weekly_baseline, repeats=repeats, seed=seed)
-    accumulator.trade_test.append(_identify(pooled_test, **{**row_identity, COL_BASELINE: BASELINE_WEEKLY}))
+    accumulator.trade_test.append(_identify(pooled_test, **{**row_identity, COL_BASELINE_KIND: BASELINE_WEEKLY}))
 
     # 2. 보유 길이별 — 여기서만 「같은 길이 단순 보유」와 정확히 견줄 수 있다
     per_length = _per_length(sliced)
@@ -631,10 +624,14 @@ def _record_trade_cell(
 
     accumulator.trade_summary.append(_identify(summarize(per_length), **row_identity))
     length_excess = excess(summarize(per_length), summarize(length_baseline))
-    accumulator.trade_excess.append(_identify(length_excess, **{**row_identity, COL_BASELINE: BASELINE_MATCHED_LENGTH}))
+    accumulator.trade_excess.append(
+        _identify(length_excess, **{**row_identity, COL_BASELINE_KIND: BASELINE_MATCHED_LENGTH})
+    )
 
     length_test = permutation_test(per_length, length_baseline, repeats=repeats, seed=seed)
-    accumulator.trade_test.append(_identify(length_test, **{**row_identity, COL_BASELINE: BASELINE_MATCHED_LENGTH}))
+    accumulator.trade_test.append(
+        _identify(length_test, **{**row_identity, COL_BASELINE_KIND: BASELINE_MATCHED_LENGTH})
+    )
 
 
 def run_study(
@@ -660,17 +657,15 @@ def run_study(
         raise ValueError("검증 대상이 하나도 없습니다")
 
     accumulator = _Accumulator()
-    series_summaries: list[dict[str, Any]] = []
-
-    for dataset in datasets:
-        for series in dataset.series:
-            series_summaries.append(_run_series(dataset, series, accumulator, repeats=repeats, seed=seed))
+    dataset_summaries: list[dict[str, Any]] = [
+        _run_dataset(dataset, accumulator, repeats=repeats, seed=seed) for dataset in datasets
+    ]
 
     summary: dict[str, Any] = {
         "max_offset": MAX_OFFSET,
         "permutation_repeats": repeats,
         "permutation_seed": seed,
-        "series": series_summaries,
+        "datasets": dataset_summaries,
     }
 
     outputs = StudyOutputs(
@@ -717,7 +712,7 @@ def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
 
 
 def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
-    """본검증 기준·전체 월의 매매 묶음 성적을 뽑는다.
+    """전체 월의 매매 묶음 성적을 뽑는다.
 
     보유 길이별 칸은 빼고 **묶음 칸만** 남긴다 — 사용자가 물은 것은 매매 하나의 성적이다.
 
@@ -731,17 +726,14 @@ def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
     if summary.empty:
         return summary
 
-    primary_bases = {row["price_basis"] for row in outputs.summary["series"] if row["primary"]}
-    selected = summary[summary[COL_PRICE_BASIS].isin(primary_bases) & (summary[COL_HORIZON] == HORIZON_NEXT_WEEK_EXIT)]
-
-    return selected.reset_index(drop=True)
+    return summary[summary[COL_HORIZON] == HORIZON_NEXT_WEEK_EXIT].reset_index(drop=True)
 
 
 __all__ = ["StudyOutputs", "candidates_headline", "run_study", "trade_headline"]
 
 
 def candidates_headline(outputs: StudyOutputs) -> pd.DataFrame:
-    """본검증 기준의 **후보 칸만** 적중률 내림차순으로 뽑는다.
+    """**후보 칸만** 적중률 내림차순으로 뽑는다.
 
     제외된 칸은 산출물에 그대로 남기되 화면에는 내지 않는다 — 화면은 "지금 볼 것"을 위한
     자리이고, 전 칸은 `candidates.csv` 가 만기월 순서로 답한다.
@@ -760,9 +752,6 @@ def candidates_headline(outputs: StudyOutputs) -> pd.DataFrame:
     if candidates.empty:
         return candidates
 
-    primary_bases = {row["price_basis"] for row in outputs.summary["series"] if row["primary"]}
-    selected = candidates[
-        candidates[COL_PRICE_BASIS].isin(primary_bases) & (candidates[COL_SCREEN] == SCREEN_CANDIDATE)
-    ]
+    selected = candidates[candidates[COL_SCREEN] == SCREEN_CANDIDATE]
 
     return selected.sort_values(COL_HIT_RATE, ascending=False, kind="stable").reset_index(drop=True)

@@ -99,6 +99,12 @@
 - 검증 산출물은 덮어쓰지 않고 `storage/results/<실행시각>_<검증명>/`에 저장합니다
 - CSV 저장 시 반올림 규칙은 [.claude/rules/python.md](../.claude/rules/python.md)를 따릅니다
 - **신호일 전체 목록 CSV를 반드시 남깁니다.** 사용자가 차트로 직접 대조하기 위한 원자료입니다
+- **모든 CSV 컬럼 헤더는 한글입니다.** 저장 직전에 `COL_* → DISPLAY_*` 로 바꿔서 내보냅니다
+  (규칙의 SoT는 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 「내부/출력 분리」).
+  사용자가 직접 여는 파일이므로 영문 토큰이 그대로 나가면 안 됩니다.
+  용어는 [.claude/rules/docs.md](../.claude/rules/docs.md) 의 표준을 따릅니다 (승률 → 오른 비율 등)
+- **가격 기준 축을 만들지 않습니다.** 원본가 하나로 재므로 `price_basis` 같은 컬럼이 필요 없습니다
+  (루트 [CLAUDE.md](../CLAUDE.md) 측정의 원칙 14)
 
 ---
 

@@ -5,7 +5,8 @@
 손계산 값으로 박는다.
 
 핵심 계약은 세 가지다.
-- SMA 와 EMA 를 둘 다 낸다. 같은 데이터에서 두 판정이 갈릴 수 있고, 갈리는 것 자체가 정보다
+- **단순 이동평균(SMA) 하나만 쓴다.** 보통 쓰는 것으로 고정해야 과최적화를 막는다
+  (루트 `CLAUDE.md` 측정의 원칙 15)
 - **창이 차기 전에는 판정하지 않는다.** 판정하지 못한 일수를 함께 돌려준다
 - 뒤에 데이터가 더 붙어도 이미 지난 날의 판정이 달라지지 않는다 (look-ahead 감시)
 """
@@ -16,7 +17,7 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, MovingAverageKind, below_moving_average
+from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, below_moving_average
 
 
 def _market(closes: Sequence[float]) -> pd.DataFrame:
@@ -35,7 +36,7 @@ def _market(closes: Sequence[float]) -> pd.DataFrame:
     )
 
 
-# SMA 와 EMA 의 판정이 갈리도록 고른 종가. 손계산은 각 테스트 docstring 에 있다
+# 이동평균 판정이 갈리는 자리를 고른 종가. 손계산은 각 테스트 docstring 에 있다
 DIVERGING_CLOSES = [10.0, 20.0, 30.0, 24.0, 40.0]
 
 
@@ -56,47 +57,10 @@ class TestMovingAverageJudgement:
         df = _market(DIVERGING_CLOSES)
 
         # When
-        result = below_moving_average(df, window=3, kind=MovingAverageKind.SMA)
+        result = below_moving_average(df, window=3)
 
         # Then
         assert result.mask.tolist() == [False, False, False, True, False]
-
-    def test_ema_marks_days_below_the_exponential_average(self) -> None:
-        """
-        목적: EMA 판정은 **종가 < 직전까지의 지수이동평균** 이다 (평활계수 2/(N+1)).
-
-        Given: 같은 종가, 창 3일 → 평활계수 0.5
-        When: EMA 로 판정한다
-        Then: 아래인 날이 없다
-              (EMA 는 10 → 15 → 22.5 → 23.25 → 31.63 으로 흐르고,
-               4일차 종가 24 는 23.25 보다 위다 — SMA 판정과 갈린다)
-        """
-        # Given
-        df = _market(DIVERGING_CLOSES)
-
-        # When
-        result = below_moving_average(df, window=3, kind=MovingAverageKind.EMA)
-
-        # Then
-        assert result.mask.tolist() == [False, False, False, False, False]
-
-    def test_two_kinds_can_disagree(self) -> None:
-        """
-        목적: 두 방식이 갈릴 수 있다는 사실 자체를 고정한다 — 그래서 스펙이 둘 다 요구한다.
-
-        Given: 같은 시세
-        When: SMA 와 EMA 로 각각 판정한다
-        Then: 판정 결과가 다르다
-        """
-        # Given
-        df = _market(DIVERGING_CLOSES)
-
-        # When
-        sma = below_moving_average(df, window=3, kind=MovingAverageKind.SMA)
-        ema = below_moving_average(df, window=3, kind=MovingAverageKind.EMA)
-
-        # Then
-        assert sma.mask.tolist() != ema.mask.tolist()
 
     def test_default_window_is_two_hundred(self) -> None:
         """
@@ -124,30 +88,10 @@ class TestWindowShortage:
         df = _market(DIVERGING_CLOSES)
 
         # When
-        result = below_moving_average(df, window=3, kind=MovingAverageKind.SMA)
+        result = below_moving_average(df, window=3)
 
         # Then
         assert result.mask.tolist()[:2] == [False, False]
-        assert result.undetermined_count == 2
-
-    def test_ema_starts_judging_at_the_same_day_as_sma(self) -> None:
-        """
-        목적: EMA 도 창이 찬 뒤부터 판정한다.
-
-        지수이동평균은 첫날부터 값이 나오지만 초기값에 끌려다녀 기준이 되지 못한다.
-        두 방식의 판정 시작일이 다르면 표본 수부터 달라져 비교가 성립하지 않는다.
-
-        Given: 창 3일
-        When: EMA 로 판정한다
-        Then: 판정 불가 건수가 SMA 와 같은 2다
-        """
-        # Given
-        df = _market(DIVERGING_CLOSES)
-
-        # When
-        result = below_moving_average(df, window=3, kind=MovingAverageKind.EMA)
-
-        # Then
         assert result.undetermined_count == 2
 
     def test_window_longer_than_data_judges_nothing(self) -> None:
@@ -162,7 +106,7 @@ class TestWindowShortage:
         df = _market(DIVERGING_CLOSES)
 
         # When
-        result = below_moving_average(df, window=10, kind=MovingAverageKind.SMA)
+        result = below_moving_average(df, window=10)
 
         # Then
         assert not result.mask.any()
@@ -186,7 +130,7 @@ class TestLookAhead:
         df = _market([100.0, 120.0, 90.0, 110.0, 80.0, 130.0, 95.0, 105.0, 85.0, 115.0, 92.0, 108.0])
 
         def run(frame: pd.DataFrame) -> pd.DataFrame:
-            result = below_moving_average(frame, window=3, kind=MovingAverageKind.SMA)
+            result = below_moving_average(frame, window=3)
             return pd.DataFrame({COL_DATE: frame[COL_DATE], "Below": result.mask.astype(float)})
 
         # When / Then

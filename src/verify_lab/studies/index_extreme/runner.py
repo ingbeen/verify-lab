@@ -26,7 +26,7 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE
 from verify_lab.data.loader import load_market_csv
-from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, MovingAverageKind, below_moving_average
+from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, below_moving_average
 from verify_lab.measure.constants import COL_BASIS, COL_FORWARD_RETURN
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis, compute_forward_returns
 from verify_lab.measure.statistics import (
@@ -52,7 +52,6 @@ from verify_lab.studies.index_extreme.constants import (
     DECADE_PERIODS,
     DEFAULT_START_YEAR,
     DISPLAY_BASELINE_ALL,
-    DISPLAY_BASELINE_BELOW_EMA,
     DISPLAY_BASELINE_BELOW_SMA,
     DISPLAY_CHANGE_RATE,
     DISPLAY_CLOSE,
@@ -133,7 +132,6 @@ KEY_ROW_COUNT = "row_count"
 KEY_START_DATE = "start_date"
 KEY_END_DATE = "end_date"
 KEY_SMA_UNDETERMINED = "sma_undetermined_count"
-KEY_EMA_UNDETERMINED = "ema_undetermined_count"
 
 KEY_TEST = "test"
 KEY_PARAMETER = "parameter"
@@ -195,9 +193,7 @@ class _Context:
     zscores: pd.Series
     all_day_returns: pd.DataFrame
     below_sma: pd.Series
-    below_ema: pd.Series
     sma_undetermined: int
-    ema_undetermined: int
 
 
 @dataclass(frozen=True)
@@ -480,8 +476,7 @@ def _build_context(dataset: Dataset) -> _Context:
     """
     frame = load_market_csv(dataset.path)
     ranks = expanding_rank(frame)
-    sma = below_moving_average(frame, kind=MovingAverageKind.SMA)
-    ema = below_moving_average(frame, kind=MovingAverageKind.EMA)
+    sma = below_moving_average(frame)
 
     return _Context(
         dataset=dataset,
@@ -492,9 +487,7 @@ def _build_context(dataset: Dataset) -> _Context:
         zscores=reference_zscore(frame),
         all_day_returns=compute_forward_returns(frame, pd.Series(True, index=frame.index)),
         below_sma=sma.mask,
-        below_ema=ema.mask,
         sma_undetermined=sma.undetermined_count,
-        ema_undetermined=ema.undetermined_count,
     )
 
 
@@ -517,7 +510,6 @@ def _dataset_record(context: _Context) -> dict[str, Any]:
         KEY_START_DATE: str(dates.min().date()),
         KEY_END_DATE: str(dates.max().date()),
         KEY_SMA_UNDETERMINED: context.sma_undetermined,
-        KEY_EMA_UNDETERMINED: context.ema_undetermined,
     }
 
 
@@ -585,7 +577,6 @@ def _build_populations(context: _Context, start: pd.Timestamp, end: pd.Timestamp
     masks = {
         DISPLAY_BASELINE_ALL: window,
         DISPLAY_BASELINE_BELOW_SMA: window & context.below_sma,
-        DISPLAY_BASELINE_BELOW_EMA: window & context.below_ema,
     }
 
     populations: dict[str, _Population] = {}
@@ -620,7 +611,7 @@ def _population_records(
     Returns:
         요약 dict 목록
     """
-    names = (DISPLAY_BASELINE_ALL, DISPLAY_BASELINE_BELOW_SMA, DISPLAY_BASELINE_BELOW_EMA)
+    names = (DISPLAY_BASELINE_ALL, DISPLAY_BASELINE_BELOW_SMA)
 
     return [
         {

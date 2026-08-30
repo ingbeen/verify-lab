@@ -50,7 +50,6 @@ from verify_lab.studies.option_expiry.constants import (
     MIN_SAMPLE_FOR_HALVES,
     US_MONTHLY_EXPIRY,
     Dataset,
-    PriceSeries,
 )
 from verify_lab.studies.option_expiry.runner import (
     _aggregate_by_month,
@@ -86,7 +85,7 @@ def _dataset(rule: object) -> Dataset:
         key="synthetic",
         ticker="합성",
         rule=rule,  # pyright: ignore[reportArgumentType]
-        series=(PriceSeries(basis="합성", file_name="none.csv", primary=True),),
+        file_name="none.csv",
         price_decimals=4,
         exit_weekdays=(FRIDAY,),
     )

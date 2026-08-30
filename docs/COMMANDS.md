@@ -231,7 +231,7 @@ poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
 ### 검증 #7 — 옵션 만기일
 
 ```bash
-# 전 조합 실행 (기본값) — 종목 4개 × 가격 기준 2개 × 만기월 1~12
+# 전 조합 실행 (기본값) — 종목 4개(원본가) × 만기월 1~12
 # 「만기일 매수 → 다음주 금요일 매도」 매매를 재고 만기월별로 후보 판정한다
 poetry run python scripts/studies/run_option_expiry.py
 
@@ -249,10 +249,11 @@ poetry run python scripts/studies/run_option_expiry.py --repeats 200
 - 판정 규격(게이트 둘 + 등급 셋)의 SoT 는 루트 [CLAUDE.md](../CLAUDE.md) 「후보 판정 기준」이고,
   구현은 `src/verify_lab/measure/screening.py` 입니다
 
-- 선행 조건: `storage/market/` 에 **8개 파일**(QQQ·SPY·DIA·069500 각각 원본가·수정주가)이 있어야 합니다
+- 선행 조건: `storage/market/` 에 **원본가 4개 파일**(QQQ·SPY·DIA·069500)이 있어야 합니다
 - **하나의 만기월을 고르지 않습니다.** 12달을 전부 산출해 나란히 보고하고,
   한국은 **금요일·목요일 청산 두 벌**을 냅니다
 - 산출물은 `storage/results/<실행시각>_option_expiry/` 에 9개 CSV 와 `summary.json` 으로 남습니다.
+  **CSV 컬럼 헤더는 한글**이고 비율은 백분율로 저장됩니다.
   신호일 원자료는 `signals.csv`(만기 창 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
 - 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
   [spec/option_expiry.md](spec/option_expiry.md) 입니다

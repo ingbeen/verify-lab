@@ -542,6 +542,58 @@ def _require_columns(table: pd.DataFrame, columns: Sequence[str], label: str) ->
         raise ValueError(f"{label} 표에 필수 컬럼이 누락되었습니다: {sorted(missing_columns)}")
 
 
+def to_display_columns(
+    table: pd.DataFrame,
+    labels: Mapping[str, str],
+    *,
+    percent_columns: Sequence[str] = (),
+    probability_columns: Sequence[str] = (),
+) -> pd.DataFrame:
+    """저장 직전에 컬럼 헤더를 한글로 바꾸고 단위를 맞춘다.
+
+    **사전에 없는 컬럼이 하나라도 있으면 예외를 던진다.** 이것이 이 함수의 존재 이유다 —
+    컬럼을 새로 추가하고 한글 이름을 만들지 않으면 영문 토큰이 그대로 사용자에게 나가는데,
+    조용히 지나가면 발견되지 않는다 (`src/verify_lab/CLAUDE.md` 「내부/출력 분리」).
+
+    **단위 변환을 함께 하는 이유**: 헤더를 `평균(%)` 로 바꾸면서 값이 비율(0.003)이면
+    헤더가 거짓말이 된다. 이름과 단위는 한 자리에서 같이 정해야 어긋나지 않는다.
+
+    **사전은 호출자가 준다.** 이 계층은 어떤 검증이 자기를 쓰는지 몰라야 하므로
+    검증별 컬럼 이름을 알 수 없다.
+
+    Args:
+        table: 저장할 표 (영문 `COL_*` 헤더)
+        labels: `COL_* → 한글 레이블` 사전. 표의 모든 컬럼을 덮어야 한다
+        percent_columns: 비율(0~1)로 들어와 백분율로 내보낼 컬럼
+        probability_columns: 확률로 들어와 자릿수만 맞출 컬럼
+
+    Returns:
+        헤더가 한글이고 단위가 맞춰진 새 DataFrame. 컬럼 순서는 그대로다
+
+    Raises:
+        ValueError: 표가 비어 있거나, 사전이 덮지 못한 컬럼이 있는 경우,
+            변환 대상으로 지목한 컬럼이 표에 없는 경우
+    """
+    if table.empty:
+        raise ValueError("표가 비어 있습니다")
+
+    missing = [column for column in table.columns if column not in labels]
+    if missing:
+        raise ValueError(f"한글 이름이 없는 컬럼이 있습니다: {missing}")
+
+    unknown = [column for column in (*percent_columns, *probability_columns) if column not in table.columns]
+    if unknown:
+        raise ValueError(f"변환 대상 컬럼이 표에 없습니다: {unknown}")
+
+    converted = table.copy()
+    for column in percent_columns:
+        converted[column] = (converted[column] * RATE_TO_PERCENT).round(PERCENT_DECIMALS)
+    for column in probability_columns:
+        converted[column] = converted[column].round(PROBABILITY_DECIMALS)
+
+    return converted.rename(columns=dict(labels))
+
+
 def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_label: str) -> pd.DataFrame:
     """후보 판정 결과를 표시용으로 바꾼다.
 

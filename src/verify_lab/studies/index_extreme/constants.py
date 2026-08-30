@@ -213,7 +213,6 @@ ZSCORE_DECIMALS: Final = 2
 
 DISPLAY_BASELINE_ALL: Final = "단순 보유"
 DISPLAY_BASELINE_BELOW_SMA: Final = "조건부 SMA200"
-DISPLAY_BASELINE_BELOW_EMA: Final = "조건부 EMA200"
 
 
 # ============================================================

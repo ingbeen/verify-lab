@@ -71,6 +71,7 @@ from verify_lab.report.tables import (
     build_statistics_table,
     build_test_table,
     print_dataframe,
+    to_display_columns,
     to_markdown,
 )
 from verify_lab.utils.formatting import get_display_width
@@ -809,3 +810,122 @@ class TestCandidatesTable:
         # When / Then
         with pytest.raises(ValueError, match="축 컬럼"):
             build_candidates_table(candidates, axis_column="요일", axis_label="요일")
+
+
+class TestDisplayColumns:
+    """저장 직전 한글 변환의 계약을 고정한다.
+
+    이 계약이 없으면 `DISPLAY_*` 를 정의해두고 `rename` 에 연결하지 않는 실수가 조용히 지나간다 —
+    실제로 검증 #7 이 그렇게 영문 헤더로 나간 적이 있다.
+    """
+
+    def test_사전대로_한글_헤더가_붙는다(self) -> None:
+        """
+        목적: 저장용 표의 컬럼이 한글 레이블로 바뀐다.
+
+        Given: 영문 컬럼 두 개와 그 한글 사전
+        When: 변환하면
+        Then: 헤더가 한글이고 값과 순서는 그대로다
+        """
+        # Given
+        table = pd.DataFrame({"ticker": ["QQQ"], "SampleCount": [27]})
+        labels = {"ticker": "종목", "SampleCount": "표본"}
+
+        # When
+        result = to_display_columns(table, labels)
+
+        # Then
+        assert list(result.columns) == ["종목", "표본"]
+        assert result["종목"].iloc[0] == "QQQ"
+        assert int(result["표본"].iloc[0]) == 27
+
+    def test_사전에_없는_컬럼이_있으면_예외다(self) -> None:
+        """
+        목적: **이 테스트가 이 계약의 존재 이유다.** 컬럼을 새로 추가하고 한글 이름을 안 만들면
+              영문 헤더가 그대로 사용자에게 나간다. 조용히 통과시키지 않고 즉시 실패시킨다.
+
+        Given: 사전에 없는 컬럼이 섞인 표
+        When: 변환하면
+        Then: ValueError 가 나고 메시지에 빠진 컬럼 이름이 담긴다
+        """
+        # Given
+        table = pd.DataFrame({"ticker": ["QQQ"], "NewColumn": [1]})
+        labels = {"ticker": "종목"}
+
+        # When / Then
+        with pytest.raises(ValueError, match="NewColumn"):
+            to_display_columns(table, labels)
+
+    def test_원본_표를_바꾸지_않는다(self) -> None:
+        """
+        목적: 데이터 불변성. 변환이 원본을 건드리면 같은 표를 두 번 쓰는 자리에서 깨진다.
+
+        Given: 영문 컬럼 표
+        When: 변환하면
+        Then: 원본의 컬럼은 그대로다
+        """
+        # Given
+        table = pd.DataFrame({"ticker": ["QQQ"]})
+
+        # When
+        to_display_columns(table, {"ticker": "종목"})
+
+        # Then
+        assert list(table.columns) == ["ticker"]
+
+    def test_빈_표는_예외다(self) -> None:
+        """
+        목적: 빈 표를 조용히 내보내지 않는다 (`save_table` 과 같은 정책).
+
+        Given: 행이 없는 표
+        When: 변환하면
+        Then: ValueError
+        """
+        with pytest.raises(ValueError, match="비어"):
+            to_display_columns(pd.DataFrame({"ticker": []}), {"ticker": "종목"})
+
+    def test_비율_컬럼이_백분율로_바뀐다(self) -> None:
+        """
+        목적: 헤더에 `(%)` 를 붙이면 값도 백분율이어야 한다. 이름과 단위가 어긋나면
+              사용자가 0.003 을 3% 로 읽거나 그 반대로 읽는다.
+
+        Given: 비율 0.003123 이 담긴 컬럼
+        When: 백분율 컬럼으로 지목해 변환하면
+        Then: 0.31 (%) 이 된다 (백분율 2자리)
+        """
+        # Given
+        table = pd.DataFrame({"Mean": [0.003123]})
+
+        # When
+        result = to_display_columns(table, {"Mean": "평균(%)"}, percent_columns=["Mean"])
+
+        # Then
+        assert float(result["평균(%)"].iloc[0]) == pytest.approx(0.31, abs=1e-9)
+
+    def test_확률_컬럼은_자릿수만_맞춘다(self) -> None:
+        """
+        목적: 우연확률은 비율이 아니라 확률이므로 100 을 곱하지 않는다.
+
+        Given: 우연확률 0.0029970
+        When: 확률 컬럼으로 지목해 변환하면
+        Then: 값이 그대로이고 자릿수만 맞는다
+        """
+        # Given
+        table = pd.DataFrame({"PValue": [0.0029970]})
+
+        # When
+        result = to_display_columns(table, {"PValue": "우연확률"}, probability_columns=["PValue"])
+
+        # Then
+        assert float(result["우연확률"].iloc[0]) == pytest.approx(0.003, abs=1e-9)
+
+    def test_변환_대상이_표에_없으면_예외다(self) -> None:
+        """
+        목적: 컬럼 이름을 잘못 적으면 **조용히 변환되지 않은 채 나간다.** 즉시 실패시킨다.
+
+        Given: 표에 없는 컬럼을 백분율 대상으로 지목
+        When: 변환하면
+        Then: ValueError
+        """
+        with pytest.raises(ValueError, match="Missing"):
+            to_display_columns(pd.DataFrame({"Mean": [0.01]}), {"Mean": "평균(%)"}, percent_columns=["Missing"])
