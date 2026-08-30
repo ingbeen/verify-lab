@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🔄 In Progress
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-08-30 12:11
-**마지막 업데이트**: 2026-08-30 12:11
+**마지막 업데이트**: 2026-08-30 16:47
 **관련 범위**: measure, report, studies, strategy, utils, scripts
 **관련 문서**: 루트 `CLAUDE.md`, `src/verify_lab/CLAUDE.md`, `scripts/CLAUDE.md`, `tests/CLAUDE.md`, `.claude/rules/python.md`, `.claude/rules/docs.md`
 
@@ -42,12 +42,12 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: **아무도 호출하지 않는 정의를 지운다.** 저장소 전체의 정의 689개를 전수 집계해 확인한 목록만 다룬다
-- [ ] 목표 2: **계층 간 중복 정의된 상수를 통합한다** (`src/verify_lab/CLAUDE.md` 「상수 관리 3계층」이 "발견 즉시 통합"을 규정)
-- [ ] 목표 3: **정의만 있고 리터럴을 쓰던 곳이 상수를 쓰게 한다**
-- [ ] 목표 4: `pyright: ignore` 3곳을 **타입을 고쳐 근본 제거**한다
-- [ ] 목표 5: `utils/` 4개 파일의 **파이썬 문법 설명 주석을 걷어내고 설계 근거 주석은 전부 보존**한다
-- [ ] 목표 6: **산출물이 한 바이트도 바뀌지 않는다.** 이 계획서의 모든 변경은 동작 불변이다
+- [x] 목표 1: **아무도 호출하지 않는 정의를 지운다.** 저장소 전체의 정의 689개를 전수 집계해 확인한 목록만 다룬다
+- [x] 목표 2: **계층 간 중복 정의된 상수를 통합한다** (`src/verify_lab/CLAUDE.md` 「상수 관리 3계층」이 "발견 즉시 통합"을 규정)
+- [x] 목표 3: **정의만 있고 리터럴을 쓰던 곳이 상수를 쓰게 한다**
+- [x] 목표 4: `pyright: ignore` 3곳을 **타입을 고쳐 근본 제거**한다
+- [x] 목표 5: `utils/` 4개 파일의 **파이썬 문법 설명 주석을 걷어내고 설계 근거 주석은 전부 보존**한다
+- [x] 목표 6: **산출물이 한 바이트도 바뀌지 않는다.** 이 계획서의 모든 변경은 동작 불변이다
 
 ## 2) 비목표(Non-Goals)
 
@@ -168,16 +168,16 @@
 
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/impl-plan` 스킬)
 
-- [ ] 기능 요구사항 충족 (목표 1~6 전부)
-- [ ] 회귀/신규 테스트 추가 — 삭제한 대상을 참조하던 테스트를 정리하고, 상수 통합 후에도 값이 같은지 고정
-- [ ] `poetry run python validate_project.py` 통과 (failed=0, skipped=0; passed/failed/skipped 수 기록)
-- [ ] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
-- [ ] 필요한 문서 업데이트(`docs/COMMANDS.md` / CLAUDE.md / plan 등 — 각각 변경 여부 명시)
-- [ ] **세 검증을 재실행해 산출물이 직전과 동일함을 확인** (md5 대조)
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
+- [x] 기능 요구사항 충족 (목표 1~6 전부)
+- [x] 회귀/신규 테스트 추가 — 삭제한 대상을 참조하던 테스트를 정리하고, 상수 통합 후에도 값이 같은지 고정
+- [x] `poetry run python validate_project.py` 통과 (failed=0, skipped=0; passed/failed/skipped 수 기록)
+- [x] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
+- [x] 필요한 문서 업데이트(`docs/COMMANDS.md` / CLAUDE.md / plan 등 — 각각 변경 여부 명시)
+- [x] **세 검증을 재실행해 산출물이 직전과 동일함을 확인** (md5 대조)
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
       (결정 근거·실측 수치를 루트 `CLAUDE.md` 의 프로젝트 설정 절이 정한 목적지로 이관.
       `/impl-plan` 스킬 "근거 승격" 참고)
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -236,19 +236,19 @@
 
 **작업 내용**:
 
-- [ ] `measure/screening.py` — `SUPPORT_TOTAL_WITHOUT_PERIOD` 삭제
-- [ ] `utils/formatting.py` — `Align.CENTER` 와 `_format_cell` 의 CENTER 분기 삭제
-- [ ] `studies/option_expiry/weekly_exit.py` — `valid_count`·`excluded_count` 프로퍼티 삭제 (`entry_count` 는 유지)
-- [ ] `studies/option_expiry/offsets.py` — `unassigned_count` 프로퍼티 삭제
-- [ ] `studies/usdkrw_equivalence/regression.py` — `spread_excluding_edges` 필드·`MIN_YEARS_FOR_EDGE_SPREAD`·
+- [x] `measure/screening.py` — `SUPPORT_TOTAL_WITHOUT_PERIOD` 삭제
+- [x] `utils/formatting.py` — `Align.CENTER` 와 `_format_cell` 의 CENTER 분기 삭제
+- [x] `studies/option_expiry/weekly_exit.py` — `valid_count`·`excluded_count` 프로퍼티 삭제 (`entry_count` 는 유지)
+- [x] `studies/option_expiry/offsets.py` — `unassigned_count` 프로퍼티 삭제
+- [x] `studies/usdkrw_equivalence/regression.py` — `spread_excluding_edges` 필드·`MIN_YEARS_FOR_EDGE_SPREAD`·
       `alpha_daily` 필드 삭제 (`alpha_daily` 지역변수는 `alpha_annual` 계산에 필요하므로 유지)
-- [ ] `utils/logger.py` — `setup_logger` 의 `level` 파라미터와 `getattr` 폴백 삭제, DEBUG 고정
-- [ ] `utils/cli_helpers.py` — 모듈에 `logger` 가 없을 때의 폴백 삭제 (모든 CLI가 모듈 레벨 `logger` 를 정의함)
-- [ ] `report/constants.py` — `HORIZON_LABELS` 에서 `63`·`126`·`252` 삭제
-- [ ] `report/tables.py`·`report/__init__.py` — `to_markdown`·`build_comparison_table` 삭제
-- [ ] `studies/option_expiry/weekly_exit.py` — `HolidayExit` enum 과 `on_holiday` 인자·필드 삭제,
+- [x] `utils/logger.py` — `setup_logger` 의 `level` 파라미터와 `getattr` 폴백 삭제, DEBUG 고정
+- [x] `utils/cli_helpers.py` — 모듈에 `logger` 가 없을 때의 폴백 삭제 (모든 CLI가 모듈 레벨 `logger` 를 정의함)
+- [x] `report/constants.py` — `HORIZON_LABELS` 에서 `63`·`126`·`252` 삭제
+- [x] `report/tables.py`·`report/__init__.py` — `to_markdown`·`build_comparison_table` 삭제
+- [x] `studies/option_expiry/weekly_exit.py` — `HolidayExit` enum 과 `on_holiday` 인자·필드 삭제,
       `PREVIOUS` 분기만 남긴다. **docstring 에 결정 ⑱(직전 거래일)만 남기고 ㉔ 대조 서술은 걷어낸다**
-- [ ] 삭제한 대상을 참조하던 테스트 정리
+- [x] 삭제한 대상을 참조하던 테스트 정리
 
 ---
 
@@ -256,17 +256,17 @@
 
 **작업 내용**:
 
-- [ ] `common_constants.py` 에 **비율→백분율 계수**를 두고 `measure/statistics.py`·`report/constants.py`·
+- [x] `common_constants.py` 에 **비율→백분율 계수**를 두고 `measure/statistics.py`·`report/constants.py`·
       `studies/usdkrw_equivalence/constants.py` 가 그것을 쓰게 한다. 각 계층의 중복 정의는 삭제
-- [ ] `common_constants.py` 에 **원화 가격 자릿수**를 두고 `option_expiry`·`index_extreme` 의 중복 정의 삭제
-- [ ] `common_constants.py` 에 **KST 타임존**을 두고 `report/writer.py`·`utils/meta_manager.py` 가 그것을 쓰게 한다
-- [ ] `studies/usdkrw_equivalence/runner.py` — `"Nav"` 리터럴을 `COL_NAV` 로 교체
-- [ ] `studies/usdkrw_equivalence/runner.py` — `(ETF_BASE, ETF_LEVERAGE)` 4곳을 `ETF_TARGETS` 로 교체
-- [ ] `studies/usdkrw_equivalence/effective_cost.py` — `"raw"`·`"adjusted"`·`"nav"` 를 모듈 상수로 승격
-- [ ] `studies/option_expiry/runner.py` — `"advanced_days"` 를 `COL_ADVANCED_DAYS` 로 교체
-- [ ] `studies/option_expiry/constants.py` — `summary.json` 키를 `KEY_*` 상수로 정의하고
+- [x] `common_constants.py` 에 **원화 가격 자릿수**를 두고 `option_expiry`·`index_extreme` 의 중복 정의 삭제
+- [x] `common_constants.py` 에 **KST 타임존**을 두고 `report/writer.py`·`utils/meta_manager.py` 가 그것을 쓰게 한다
+- [x] `studies/usdkrw_equivalence/runner.py` — `"Nav"` 리터럴을 `COL_NAV` 로 교체
+- [x] `studies/usdkrw_equivalence/runner.py` — `(ETF_BASE, ETF_LEVERAGE)` 4곳을 `ETF_TARGETS` 로 교체
+- [x] `studies/usdkrw_equivalence/effective_cost.py` — `"raw"`·`"adjusted"`·`"nav"` 를 모듈 상수로 승격
+- [x] `studies/option_expiry/runner.py` — `"advanced_days"` 를 `COL_ADVANCED_DAYS` 로 교체
+- [x] `studies/option_expiry/constants.py` — `summary.json` 키를 `KEY_*` 상수로 정의하고
       `runner.py`·`scripts/studies/run_option_expiry.py` 가 그것을 쓰게 한다 (`index_extreme` 관용에 맞춤)
-- [ ] 상수 이동 후에도 **값이 같은지** 테스트로 고정
+- [x] 상수 이동 후에도 **값이 같은지** 테스트로 고정
 
 ---
 
@@ -274,16 +274,16 @@
 
 **작업 내용**:
 
-- [ ] `scripts/studies/run_option_expiry.py` — `_selected_datasets` 반환 타입을 `tuple[Dataset, ...]` 로 좁히고
+- [x] `scripts/studies/run_option_expiry.py` — `_selected_datasets` 반환 타입을 `tuple[Dataset, ...]` 로 좁히고
       `Dataset` 을 import. `:181`·`:202` 의 `pyright: ignore` **2개 제거**
-- [ ] `report/tables.py` — `_horizon_label` 이 정수를 받도록 좁히고 호출부에서 변환.
+- [x] `report/tables.py` — `_horizon_label` 이 정수를 받도록 좁히고 호출부에서 변환.
       `:450` 의 `pyright: ignore` **1개 제거**
-- [ ] `utils/formatting.py`·`cli_helpers.py`·`meta_manager.py`·`logger.py` —
+- [x] `utils/formatting.py`·`cli_helpers.py`·`meta_manager.py`·`logger.py` —
       **"학습 포인트" 블록과 파이썬 문법 설명 주석을 걷어낸다.** 로직은 한 줄도 바꾸지 않는다
-- [ ] 같은 4개 파일에서 **설계 근거 주석은 전부 보존**한다 —
+- [x] 같은 4개 파일에서 **설계 근거 주석은 전부 보존**한다 —
       `print_row` 의 공백 2칸 보정 이유, `_find_project_root` 의 10단계 제한,
       `MAX_HISTORY_COUNT` 의 존재 이유, `propagate = False` 의 이유 등
-- [ ] Docstring 은 Google 스타일과 한글 유지 (`.claude/rules/python.md`)
+- [x] Docstring 은 Google 스타일과 한글 유지 (`.claude/rules/python.md`)
 
 ---
 
@@ -291,19 +291,19 @@
 
 **작업 내용**
 
-- [ ] `docs/ROADMAP.md` 출력 계약 표에서 마크다운 렌더링 행을 정리하고 **왜 지웠는지**(호출 0건)를 남긴다
-- [ ] `src/verify_lab/CLAUDE.md` 의 「상수 관리 3계층」 서술이 통합 결과와 맞는지 확인
-- [ ] `common_constants.py` 모듈 docstring 을 통합된 상수 범위에 맞게 갱신
-- [ ] `docs/COMMANDS.md:31` 테스트 통과 기준선을 **이 계획서 완료 시점의 실제 값**으로 조정하고 갱신 시점 병기
-- [ ] 자동 포맷 적용 (`poetry run black .`)
-- [ ] **검증 #1·#5·#7 과 역방향 매매를 재실행해 산출물 md5 가 직전 실행과 동일함을 확인**
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] `docs/ROADMAP.md` 출력 계약 표에서 마크다운 렌더링 행을 정리하고 **왜 지웠는지**(호출 0건)를 남긴다
+- [x] `src/verify_lab/CLAUDE.md` 의 「상수 관리 3계층」 서술이 통합 결과와 맞는지 확인
+- [x] `common_constants.py` 모듈 docstring 을 통합된 상수 범위에 맞게 갱신
+- [x] `docs/COMMANDS.md:31` 테스트 통과 기준선을 **이 계획서 완료 시점의 실제 값**으로 조정하고 갱신 시점 병기
+- [x] 자동 포맷 적용 (`poetry run black .`)
+- [x] **검증 #1·#5·#7 과 역방향 매매를 재실행해 산출물 md5 가 직전 실행과 동일함을 확인**
+- [x] 변경 기능 및 전체 플로우 최종 검증
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
 
 **Validation**:
 
-- [ ] `poetry run python validate_project.py` (passed=\_\_, failed=\_\_, skipped=\_\_)
+- [x] `poetry run python validate_project.py` (passed=558, failed=0, skipped=0)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 
@@ -372,9 +372,21 @@
 > 현재 수집되는 테스트는 **582개**다. `docs/COMMANDS.md` 의 기준선(`1034`)은
 > 그리드 삭제가 반영되지 않아 낡았으며, `PLAN_judgment_contract_fix.md` 가 먼저 바로잡는다.
 
+### 실행 중 알게 된 것
+
+| # | 발견 | 처리 |
+| --- | --- | --- |
+| 1 | **`ETF_TARGETS` 를 쓰자 테스트가 깨졌다** — 그 튜플은 모듈 로드 시점에 굳으므로, 테스트가 `ETF_BASE`·`ETF_LEVERAGE` 만 monkeypatch 하면 목록 순회가 **진짜 파일을 읽는다** | 테스트가 세 이름을 모두 갈아끼우게 고쳤다. **묶음 상수를 쓰는 코드는 patch 대상이 하나 늘어난다**는 것을 테스트 주석에 남겼다 |
+| 2 | `HORIZON_LABELS` 를 줄이자 **테스트가 낡은 구간(252일)을 예시로 쓰고 있던 것**이 드러났다 | 측정 구간이 단기로 확정된 뒤 쓰이지 않는 값이므로 현재 구간(21일)으로 예시를 맞췄다 |
+| 3 | `cli_helpers` 의 로거 폴백을 지우면서 **조용한 통과를 즉시 실패로** 바꿨다 | 모듈에 `logger` 가 없으면 `RuntimeError` 를 던진다. 모든 실행 스크립트가 모듈 레벨 로거를 두는 것이 관용이므로, 없다는 것은 구성이 잘못됐다는 뜻이다 |
+| 4 | `logger.py`·`cli_helpers.py` 는 **Phase 1 의 데드코드 제거와 Phase 3 의 주석 정리 대상이 겹쳤다** | 같은 파일을 두 번 열지 않도록 Phase 3 에서 한 번에 처리했다. 계획서의 Phase 경계와 다르지만 결과는 같다 |
+
 ### 진행 로그 (KST)
 
 - 2026-08-30 12:11: 계획서 작성. 전수 분석 13개 항목 중 동작 불변 정리에 해당하는 것을 모았다
+- 2026-08-30 12:2x: 자체 검증에서 세 가지를 보강했다 (위 「진행 로그」 앞 절 참고)
+- 2026-08-30 16:4x: Phase 1~3 완료. 데드코드 10종 제거, 상수 3종 통합,
+  `pyright: ignore` 3개 **근본 제거**(타입을 좁혀 해결), `utils/` 4파일 주석 정리
 - 2026-08-30 12:2x: 자체 검증에서 세 가지를 보강했다 — ① Non-Goals 가 "계약을 안 바꾼다"고 하면서
   ROADMAP 출력 계약을 고치는 모순을 예외 명시로 해소 ② `docs/COMMANDS.md` 를 변경 대상에 포함
   ③ `common_constants.py` docstring 갱신을 누락했던 것을 추가

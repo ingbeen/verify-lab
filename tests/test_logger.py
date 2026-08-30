@@ -104,23 +104,15 @@ def test_propagation_is_disabled() -> None:
     assert setup_logger("verify_lab.test.propagate").propagate is False
 
 
-def test_level_argument_is_applied() -> None:
+def test_level_is_debug() -> None:
     """
-    목적: 로그 레벨 인자가 반영됨을 고정한다.
+    목적: 로거 레벨이 DEBUG 로 고정됨을 확인한다.
 
-    Given: WARNING 레벨 지정
-    When: 로거를 초기화한다
-    Then: 레벨이 WARNING 이다
-    """
-    assert setup_logger("verify_lab.test.level", level="WARNING").level == logging.WARNING
+    레벨을 인자로 받지 않는다 — 호출부가 전부 기본값만 썼고, 레벨을 낮추면
+    비즈니스 로직의 실행 흐름 로그가 통째로 사라진다.
 
-
-def test_default_level_is_debug() -> None:
-    """
-    목적: 레벨을 지정하지 않았을 때의 기본값을 고정한다.
-
-    Given: 레벨 미지정
-    When: 로거를 초기화한다
+    Given: 새 이름의 로거
+    When: 초기화한다
     Then: 레벨이 DEBUG 다
     """
     assert setup_logger("verify_lab.test.default_level").level == logging.DEBUG

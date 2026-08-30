@@ -14,7 +14,7 @@ CSV 에서 찾지 못하고, 그러면 사용자가 직접 대조한다는 이 �
 
 import logging
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, SupportsInt
 
 import pandas as pd
 
@@ -368,8 +368,11 @@ def _basis_label(basis: object) -> str:
     return BASIS_LABELS.get(str(basis), str(basis))
 
 
-def _horizon_label(horizon: object) -> str:
+def _horizon_label(horizon: SupportsInt) -> str:
     """측정 구간을 표시 이름으로 바꾼다.
+
+    구간은 정수로 들어온다. pandas 컬럼을 순회하면 numpy 정수가 오므로 `int` 가 아니라
+    `SupportsInt` 로 받는다 — 둘 다 정수로 바꿀 수 있다는 사실만 요구하면 충분하다.
 
     Args:
         horizon: 구간 (거래일)
@@ -377,7 +380,7 @@ def _horizon_label(horizon: object) -> str:
     Returns:
         표시 이름 (표에 없는 구간이면 거래일 수 그대로)
     """
-    days = int(horizon)  # pyright: ignore[reportArgumentType]
+    days = int(horizon)
 
     return HORIZON_LABELS.get(days, f"{days}일")
 

@@ -235,6 +235,7 @@ HORIZON_NEXT_WEEK_EXIT: Final = -1
 # 검증 대상 시세
 # ============================================================
 
+
 @dataclass(frozen=True)
 class Dataset:
     """검증 대상 종목 하나

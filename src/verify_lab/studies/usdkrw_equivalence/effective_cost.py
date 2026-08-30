@@ -47,6 +47,11 @@ COST_RETURN_COLUMNS = [
     COL_THEORETICAL_RETURN,
 ]
 
+# 조정 배율을 낼 때만 쓰는 중간 컬럼. 세 계열을 한 표에 합치므로 이름이 겹치면 안 된다
+_COL_RAW_CLOSE = "RawClose"
+_COL_ADJUSTED_CLOSE = "AdjustedClose"
+_COL_RAW_NAV = "RawNav"
+
 
 def build_adjusted_nav(target: EtfTarget) -> pd.DataFrame:
     """분배금이 조정된 NAV 계열을 만든다.
@@ -64,19 +69,21 @@ def build_adjusted_nav(target: EtfTarget) -> pd.DataFrame:
         FileNotFoundError: 입력 파일이 없는 경우
         ValueError: 세 계열에 겹치는 날이 없거나, 원본가에 0 이하가 있는 경우
     """
-    raw = load_market_csv(target.raw_price_path)[[COL_DATE, COL_CLOSE]].rename(columns={COL_CLOSE: "raw"})
-    adjusted = load_market_csv(target.price_path)[[COL_DATE, COL_CLOSE]].rename(columns={COL_CLOSE: "adjusted"})
-    nav = load_series_csv(target.nav_path).rename(columns={COL_VALUE: "nav"})
+    raw = load_market_csv(target.raw_price_path)[[COL_DATE, COL_CLOSE]].rename(columns={COL_CLOSE: _COL_RAW_CLOSE})
+    adjusted = load_market_csv(target.price_path)[[COL_DATE, COL_CLOSE]].rename(
+        columns={COL_CLOSE: _COL_ADJUSTED_CLOSE}
+    )
+    nav = load_series_csv(target.nav_path).rename(columns={COL_VALUE: _COL_RAW_NAV})
 
     merged = raw.merge(adjusted, on=COL_DATE).merge(nav, on=COL_DATE)
 
     if merged.empty:
         raise ValueError(f"원본가·수정주가·NAV 에 겹치는 날이 없습니다: {target.ticker}")
 
-    if (merged["raw"] <= 0).any():
+    if (merged[_COL_RAW_CLOSE] <= 0).any():
         raise ValueError(f"원본가에 0 이하 값이 있어 조정 배율을 낼 수 없습니다: {target.ticker}")
 
-    merged[COL_CLOSE] = merged["nav"] * (merged["adjusted"] / merged["raw"])
+    merged[COL_CLOSE] = merged[_COL_RAW_NAV] * (merged[_COL_ADJUSTED_CLOSE] / merged[_COL_RAW_CLOSE])
 
     return merged[[COL_DATE, COL_CLOSE]]
 

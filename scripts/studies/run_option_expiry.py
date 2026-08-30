@@ -33,8 +33,14 @@ from verify_lab.studies.option_expiry.constants import (
     PERCENT_OUTPUT_COLUMNS,
     PROBABILITY_OUTPUT_COLUMNS,
     STUDY_NAME,
+    Dataset,
 )
 from verify_lab.studies.option_expiry.runner import (
+    KEY_DATASETS,
+    KEY_MAX_OFFSET,
+    KEY_PERMUTATION_REPEATS,
+    KEY_PERMUTATION_SEED,
+    KEY_ROW_COUNTS,
     StudyOutputs,
     candidates_headline,
     run_study,
@@ -85,7 +91,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _selected_datasets(keys: list[str] | None) -> tuple[object, ...]:
+def _selected_datasets(keys: list[str] | None) -> tuple[Dataset, ...]:
     """실행할 대상 목록을 고른다.
 
     Args:
@@ -179,7 +185,7 @@ def main() -> int:
     datasets = _selected_datasets(args.dataset)
 
     kwargs = {} if args.repeats is None else {"repeats": args.repeats}
-    outputs = run_study(datasets, **kwargs)  # pyright: ignore[reportArgumentType]
+    outputs = run_study(datasets, **kwargs)
 
     directory = create_run_directory(STUDY_NAME)
     _save(directory, FILE_EXPIRIES, outputs.expiries)
@@ -200,11 +206,11 @@ def main() -> int:
         KEY_META_OPTION_EXPIRY,
         {
             "output_dir": str(directory),
-            "datasets": [dataset.key for dataset in datasets],  # pyright: ignore[reportAttributeAccessIssue]
-            "max_offset": summary["max_offset"],
-            "permutation_repeats": summary["permutation_repeats"],
-            "permutation_seed": summary["permutation_seed"],
-            "row_counts": summary["row_counts"],
+            KEY_DATASETS: [dataset.key for dataset in datasets],
+            KEY_MAX_OFFSET: summary[KEY_MAX_OFFSET],
+            KEY_PERMUTATION_REPEATS: summary[KEY_PERMUTATION_REPEATS],
+            KEY_PERMUTATION_SEED: summary[KEY_PERMUTATION_SEED],
+            KEY_ROW_COUNTS: summary[KEY_ROW_COUNTS],
         },
     )
 

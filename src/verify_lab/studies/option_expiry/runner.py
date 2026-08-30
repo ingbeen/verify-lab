@@ -85,6 +85,32 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# ============================================================
+# summary.json 키 (영문 snake_case — `index_extreme` 과 같은 관용)
+# ============================================================
+
+KEY_MAX_OFFSET = "max_offset"
+KEY_PERMUTATION_REPEATS = "permutation_repeats"
+KEY_PERMUTATION_SEED = "permutation_seed"
+KEY_DATASETS = "datasets"
+KEY_ROW_COUNTS = "row_counts"
+
+KEY_TICKER = "ticker"
+KEY_FILE = "file"
+KEY_ROWS = "rows"
+KEY_PERIOD = "period"
+KEY_EXPIRY_COUNT = "expiry_count"
+KEY_ADVANCED_COUNT = "advanced_count"
+KEY_INSIDE_WINDOW_DAYS = "inside_window_days"
+KEY_EXPIRY_WEEKDAYS = "expiry_weekdays"
+KEY_WEEKLY_TRADE = "weekly_trade"
+
+KEY_EXIT_WEEKDAY = "exit_weekday"
+KEY_ENTRY_COUNT = "entry_count"
+KEY_EXCLUDED_COUNT = "excluded_count"
+KEY_HOLD_DAYS = "hold_days"
+KEY_BASELINE_ENTRY_COUNT = "baseline_entry_count"
+
 
 @dataclass(frozen=True)
 class StudyOutputs:
@@ -246,17 +272,17 @@ def _run_dataset(
 
     expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
     return {
-        "ticker": dataset.ticker,
-        "file": dataset.file_name,
-        "rows": len(df),
-        "period": f"{df[COL_DATE].iloc[0].date()} ~ {df[COL_DATE].iloc[-1].date()}",
-        "expiry_count": len(expiries),
-        "advanced_count": int((expiries[COL_ADVANCED_DAYS] > 0).sum()),
-        "inside_window_days": int(inside_window.sum()),
+        KEY_TICKER: dataset.ticker,
+        KEY_FILE: dataset.file_name,
+        KEY_ROWS: len(df),
+        KEY_PERIOD: f"{df[COL_DATE].iloc[0].date()} ~ {df[COL_DATE].iloc[-1].date()}",
+        KEY_EXPIRY_COUNT: len(expiries),
+        KEY_ADVANCED_COUNT: int((expiries[COL_ADVANCED_DAYS] > 0).sum()),
+        KEY_INSIDE_WINDOW_DAYS: int(inside_window.sum()),
         # 만기일이 실제로 무슨 요일이었나. 미국은 셋째 금요일, 한국은 둘째 목요일이 규칙이지만
         # 휴장 앞당김으로 벗어나는 달이 있어 그 비율 자체가 보고 대상이다
-        "expiry_weekdays": _count_labels(np.asarray(expiry_weekdays), WEEKDAY_LABELS),
-        "weekly_trade": trade_records,
+        KEY_EXPIRY_WEEKDAYS: _count_labels(np.asarray(expiry_weekdays), WEEKDAY_LABELS),
+        KEY_WEEKLY_TRADE: trade_records,
     }
 
 
@@ -569,11 +595,11 @@ def _run_weekly_trade(
         valid = signal[signal[COL_EXCLUDED_REASON] == REASON_NONE]
         records.append(
             {
-                "exit_weekday": exit_label,
-                "entry_count": len(signal),
-                "excluded_count": len(signal) - len(valid),
-                "hold_days": _count_labels(valid[COL_HOLD_DAYS].to_numpy(dtype=int)),
-                "baseline_entry_count": len(baseline),
+                KEY_EXIT_WEEKDAY: exit_label,
+                KEY_ENTRY_COUNT: len(signal),
+                KEY_EXCLUDED_COUNT: len(signal) - len(valid),
+                KEY_HOLD_DAYS: _count_labels(valid[COL_HOLD_DAYS].to_numpy(dtype=int)),
+                KEY_BASELINE_ENTRY_COUNT: len(baseline),
             }
         )
 
@@ -663,10 +689,10 @@ def run_study(
     ]
 
     summary: dict[str, Any] = {
-        "max_offset": MAX_OFFSET,
-        "permutation_repeats": repeats,
-        "permutation_seed": seed,
-        "datasets": dataset_summaries,
+        KEY_MAX_OFFSET: MAX_OFFSET,
+        KEY_PERMUTATION_REPEATS: repeats,
+        KEY_PERMUTATION_SEED: seed,
+        KEY_DATASETS: dataset_summaries,
     }
 
     outputs = StudyOutputs(
@@ -682,7 +708,7 @@ def run_study(
         summary=summary,
     )
 
-    summary["row_counts"] = {
+    summary[KEY_ROW_COUNTS] = {
         "expiries": len(outputs.expiries),
         "signals": len(outputs.signals),
         "trade_signals": len(outputs.trade_signals),
