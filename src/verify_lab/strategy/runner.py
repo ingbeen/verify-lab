@@ -15,9 +15,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
-from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS, RATE_TO_PERCENT
+from verify_lab.report.constants import DATE_FORMAT, DISPLAY_EXCLUDED, PERCENT_DECIMALS
 from verify_lab.strategy.constants import (
     DISPLAY_CHANGE_RATE,
     DISPLAY_DATE,
@@ -123,11 +123,14 @@ class _Block:
         returns: 신호별 수익률 (비율 원값). **집계는 이 값으로 한다** —
             반올림된 표에서 다시 평균을 내면 이중 반올림으로 합계가 어긋난다
         hold_days: 신호별 보유일. 조각마다 다르면 가장 늦게 청산된 날이다
+        excluded_count: 보유 한도가 데이터 끝을 넘어가 체결을 만들지 못한 신호 수.
+            **버린 건수를 세어 보고한다** — 조용히 사라진 표본은 생존편향을 만든다
     """
 
     trades: pd.DataFrame
     returns: list[float]
     hold_days: list[int]
+    excluded_count: int
 
 
 @dataclass(frozen=True)
@@ -272,6 +275,7 @@ def _measure(
     rows: list[dict[str, Any]] = []
     returns: list[float] = []
     hold_days: list[int] = []
+    excluded_count = 0
 
     for order, position in enumerate(signals.positions):
         legs = simulate_signal(
@@ -282,14 +286,21 @@ def _measure(
             stop_levels=stop_levels,
         )
         if not legs:
-            # 보유 한도가 데이터 끝을 넘어간 신호다. 부분 체결을 남기면 조합마다 표본이 달라진다
+            # 보유 한도가 데이터 끝을 넘어간 신호다. 부분 체결을 남기면 조합마다 표본이 달라지므로
+            # 통째로 빼되 **몇 건이 왜 빠졌는지 세어 돌려준다** (표본 보존)
+            excluded_count += 1
             continue
 
         rows.extend(_trade_rows(target, signals, order, position, legs, hold_limit))
         returns.append(average_return(legs))
         hold_days.append(max(leg.hold_days for leg in legs))
 
-    return _Block(trades=pd.DataFrame(rows), returns=returns, hold_days=hold_days)
+    return _Block(
+        trades=pd.DataFrame(rows),
+        returns=returns,
+        hold_days=hold_days,
+        excluded_count=excluded_count,
+    )
 
 
 def _trade_rows(
@@ -348,6 +359,9 @@ def _summarize(target: Target, block: _Block, hold_limit: int) -> dict[str, Any]
 
     보유일은 **조각이 전부 청산된 날**이다. D+1 에 세 조각이 모두 손절되면 한도가 얼마든 1이다.
 
+    **`신호 + 제외 = 그 대상의 전체 신호 수`** 가 성립한다. 「신호」는 체결을 만든 수이고
+    「제외」는 보유 한도가 데이터 끝을 넘어가 버린 수다. 전체 신호 수는 실행 요약에 있다.
+
     Args:
         target: 매매 대상
         block: 그 조합의 체결 내역과 원값
@@ -365,6 +379,7 @@ def _summarize(target: Target, block: _Block, hold_limit: int) -> dict[str, Any]
         DISPLAY_START_YEAR: START_YEAR,
         DISPLAY_HOLD_LIMIT: f"{HOLD_LIMIT_PREFIX}{hold_limit}",
         DISPLAY_SIGNAL_COUNT: len(returns),
+        DISPLAY_EXCLUDED: block.excluded_count,
         DISPLAY_EVENT_COUNT: int(block.trades[DISPLAY_EVENT_ID].nunique()),
         DISPLAY_TOTAL: round(float(percent.sum()), PERCENT_DECIMALS),
         DISPLAY_MEAN: round(float(percent.mean()), PERCENT_DECIMALS),

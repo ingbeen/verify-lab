@@ -14,9 +14,8 @@ CSV 결과 파일의 메타데이터를 JSON으로 관리하고,
 import json
 from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
-from verify_lab.common_constants import META_JSON_PATH
+from verify_lab.common_constants import KST, META_JSON_PATH
 
 # 메타데이터 관리 상수
 # meta.json에 저장할 최대 실행 이력 개수
@@ -96,7 +95,7 @@ def _add_timestamp(metadata: MetaDict) -> MetaDict:
     result = metadata.copy()
 
     # KST 타임스탬프 추가 (명시적으로 Asia/Seoul 타임존 지정)
-    now = datetime.now(UTC).astimezone(ZoneInfo("Asia/Seoul"))
+    now = datetime.now(UTC).astimezone(KST)
     result["timestamp"] = now.isoformat(timespec="seconds")
 
     return result

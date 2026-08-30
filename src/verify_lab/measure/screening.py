@@ -24,6 +24,10 @@
 
 **시기를 쪼갤 수 없으면 등급의 분모가 줄 뿐이다** (측정의 원칙 12). 표본이 모자라 물을 수
 없었던 항목을 미충족으로 세면, 표본이 작다는 이유로 두 번 깎인다.
+
+**전체 축과 시기 축이 같은 컬럼을 읽는다.** 방향이 「아래」면 두 축 모두 내린 비율을 그대로
+쓴다 — 한쪽만 `1 − 오른 비율` 로 만들면 **보합이 「내림」으로 새어** 시기 항목이 관대해진다.
+두 방향 비율은 여집합이 아니며, 그 정의는 `statistics.summarize` 가 소유한다.
 """
 
 from typing import Final
@@ -70,9 +74,6 @@ MAX_P_VALUE: Final = 0.05
 # 시기별 적중률의 하한 (비율, 0.55 = 55%). 전체 하한보다 낮다 —
 # 쪼개면 표본이 절반이 되어 흔들림이 커지므로, 같은 선을 요구하면 실체가 있는 칸도 떨어진다
 MIN_PERIOD_HIT_RATE: Final = 0.55
-
-# 시기를 물을 수 없는 칸의 등급 분모. 나머지 둘은 언제나 물을 수 있다
-SUPPORT_TOTAL_WITHOUT_PERIOD: Final = 2
 
 # ============================================================
 # 판정 결과 스키마
@@ -131,6 +132,10 @@ REQUIRED_SUMMARY_COLUMNS: Final = [
     COL_LOSS_RATE_EXCESS,
 ]
 
+# 시기 집계표에서 읽는 입력 컬럼. **두 방향 비율이 모두 있어야 한다** —
+# 시기 항목도 전체 축과 같은 컬럼을 읽기 때문이며, 하나만 받아 나머지를 만들면 보합이 샌다
+REQUIRED_PERIOD_COLUMNS: Final = [COL_WIN_RATE, COL_LOSS_RATE]
+
 
 def screen_candidates(
     summary: pd.DataFrame,
@@ -160,6 +165,14 @@ def screen_candidates(
     missing = [column for column in required if column not in summary.columns]
     if missing:
         raise ValueError(f"집계표에 필수 컬럼이 없습니다: {missing}")
+
+    # 시기표도 같은 강도로 본다. 컬럼이 없는 채로 넘기면 판정이 죽거나 시기 항목이 조용히 빠진다
+    if not periods.empty:
+        missing_periods = [
+            column for column in (axis_column, *REQUIRED_PERIOD_COLUMNS) if column not in periods.columns
+        ]
+        if missing_periods:
+            raise ValueError(f"시기 집계표에 필수 컬럼이 없습니다: {missing_periods}")
 
     rows = [
         _screen_cell(cell.iloc[0], periods, axis_column=axis_column)
@@ -193,11 +206,12 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
     expected_value = -float(row[COL_MEAN]) if downward else float(row[COL_MEAN])
 
     cell_periods = periods[periods[axis_column] == row[axis_column]] if not periods.empty else periods
-    period_rates = (
-        [float(1.0 - value if downward else value) for value in cell_periods[COL_WIN_RATE]]
-        if not cell_periods.empty
-        else []
-    )
+
+    # 시기 항목도 전체 축과 **같은 컬럼**을 읽는다. `1 − 오른 비율` 로 내린 비율을 만들면
+    # **보합이 통째로 「내림」으로 새어** 값이 부풀고 등급이 관대해진다 — 두 비율은 여집합이 아니다
+    # (`statistics.summarize` 의 방향 비율 정의)
+    rate_column = COL_LOSS_RATE if downward else COL_WIN_RATE
+    period_rates = [float(value) for value in cell_periods[rate_column]] if not cell_periods.empty else []
 
     screened = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
 

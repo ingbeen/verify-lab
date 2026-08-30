@@ -21,6 +21,7 @@
 import numpy as np
 import pandas as pd
 
+from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_COUNT,
@@ -146,8 +147,6 @@ DEFAULT_RANDOM_SEED = 0
 # 귀무분포에서 함께 보고하는 분위 (0~1 비율)
 NULL_LOWER_QUANTILE = 0.05
 NULL_UPPER_QUANTILE = 0.95
-
-RATE_TO_PERCENT = 100
 
 
 def summarize(frame: pd.DataFrame) -> pd.DataFrame:

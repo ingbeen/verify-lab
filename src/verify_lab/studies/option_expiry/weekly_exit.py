@@ -21,7 +21,6 @@
 """
 
 from dataclasses import dataclass
-from enum import Enum
 
 import numpy as np
 import pandas as pd
@@ -85,25 +84,6 @@ RETURN_COLUMNS = [
 REQUIRED_MARKET_COLUMNS = [COL_DATE, COL_CLOSE]
 
 
-class HolidayExit(Enum):
-    """청산 목표일이 휴장일 때 어느 쪽으로 갈 것인가
-
-    본검증은 `PREVIOUS` 다 — 만기 앞당김이 이미 쓰는 관용이라 저장소 안에 휴장 규칙이 하나로
-    유지되고, "그 주 안에서 나온다"는 의도가 지켜진다. `NEXT` 는 **대조 전용**이며,
-    규칙 선택이 결론을 만들지 않았음을 보이기 위해 함께 산출한다
-    (`docs/spec/option_expiry.md` 결정 ⑱·㉔).
-
-    목표일이 거래일이면 두 값은 같은 답을 낸다.
-
-    Attributes:
-        PREVIOUS: 직전 거래일에 청산 (본검증)
-        NEXT: 다음 거래일에 청산 (대조)
-    """
-
-    PREVIOUS = "직전 거래일 청산"
-    NEXT = "다음 거래일 청산"
-
-
 @dataclass(frozen=True)
 class WeeklyExitSchedule:
     """진입일별 청산 일정
@@ -112,12 +92,10 @@ class WeeklyExitSchedule:
         frame: 진입일·주 기준일·목표일·청산일·보유 거래일수·제외 사유를 담은 DataFrame.
             **제외된 진입도 행으로 남는다** — 값만 비어 있고 사유가 붙는다
         exit_weekday: 청산 목표 요일 (월=0 ~ 일=6)
-        on_holiday: 목표일이 휴장일 때 적용한 규칙
     """
 
     frame: pd.DataFrame
     exit_weekday: int
-    on_holiday: HolidayExit
 
     @property
     def entry_count(self) -> int:
@@ -128,24 +106,6 @@ class WeeklyExitSchedule:
         """
         return len(self.frame)
 
-    @property
-    def excluded_count(self) -> int:
-        """청산일을 확정하지 못해 제외된 진입 수.
-
-        Returns:
-            제외된 진입의 수
-        """
-        return int((self.frame[COL_EXCLUDED_REASON] != REASON_NONE).sum())
-
-    @property
-    def valid_count(self) -> int:
-        """청산일이 확정된 진입 수.
-
-        Returns:
-            유효한 진입의 수
-        """
-        return self.entry_count - self.excluded_count
-
 
 def weekly_exit_schedule(
     trading_days: pd.DatetimeIndex,
@@ -153,7 +113,6 @@ def weekly_exit_schedule(
     week_reference_dates: pd.DatetimeIndex,
     *,
     exit_weekday: int,
-    on_holiday: HolidayExit = HolidayExit.PREVIOUS,
 ) -> WeeklyExitSchedule:
     """진입일마다 「주 기준일이 속한 주의 다음 주 지정 요일」 청산일을 정한다.
 
@@ -166,7 +125,6 @@ def weekly_exit_schedule(
         entry_dates: 진입일 목록. 전부 `trading_days` 안에 있어야 한다
         week_reference_dates: 주를 세는 기준일. `entry_dates` 와 길이가 같아야 한다
         exit_weekday: 청산 목표 요일 (월=0 ~ 일=6)
-        on_holiday: 목표일이 휴장일 때의 규칙. 본검증은 직전 거래일이며 다음 거래일은 대조 전용이다
 
     Returns:
         진입일별 청산 일정
@@ -187,7 +145,7 @@ def weekly_exit_schedule(
         raise ValueError(f"진입일과 주 기준일의 길이가 다릅니다: 진입일 {len(entry_dates)}개, 주 기준일 {len(week_reference_dates)}개")
 
     if len(entry_dates) == 0:
-        return WeeklyExitSchedule(frame=_empty_schedule(), exit_weekday=exit_weekday, on_holiday=on_holiday)
+        return WeeklyExitSchedule(frame=_empty_schedule(), exit_weekday=exit_weekday)
 
     entry_positions = np.asarray(trading_days.get_indexer(entry_dates), dtype=np.int64)
     if entry_positions.min() < 0:
@@ -199,17 +157,11 @@ def weekly_exit_schedule(
     week_monday = week_reference_dates - pd.to_timedelta(week_reference_dates.dayofweek, unit="D")
     target_dates = week_monday + pd.to_timedelta(DAYS_TO_NEXT_WEEK + exit_weekday, unit="D")
 
-    # 2. 청산 위치를 정한다. 목표일이 거래일이면 두 규칙 모두 그날 자신을 가리킨다 —
-    #    갈리는 것은 목표일이 휴장인 달뿐이다
-    if on_holiday is HolidayExit.PREVIOUS:
-        exit_positions = np.asarray(trading_days.searchsorted(target_dates, side="right"), dtype=np.int64) - 1
-    else:
-        exit_positions = np.asarray(trading_days.searchsorted(target_dates, side="left"), dtype=np.int64)
+    # 2. 목표일이 휴장이면 **직전 거래일**에 청산한다 (결정 ⑱). 목표일이 거래일이면 그날 자신이다
+    exit_positions = np.asarray(trading_days.searchsorted(target_dates, side="right"), dtype=np.int64) - 1
 
     # 3. 목표일이 데이터 끝을 넘으면 청산일을 확정할 수 없다. 값을 지어내지 않는다 —
-    #    있는 데이터까지 잡으면 보유 기간이 다른 표본이 같은 평균에 섞인다.
-    #    두 규칙 모두 같은 조건이다: 직전 거래일 규칙은 정의상 그렇고, 다음 거래일 규칙은
-    #    목표일이 마지막 거래일보다 뒤면 잡을 거래일이 아예 없다
+    #    있는 데이터까지 잡으면 보유 기간이 다른 표본이 같은 평균에 섞인다
     out_of_range = target_dates > trading_days[-1]
     no_trading_day = ~out_of_range & (exit_positions <= entry_positions)
 
@@ -236,10 +188,10 @@ def weekly_exit_schedule(
     excluded = int((~usable).sum())
     logger.debug(
         f"청산 일정 산출: 진입 {len(frame):,}건, 제외 {excluded:,}건, 청산 요일 {exit_weekday}, "
-        f"휴장 규칙 {on_holiday.value}, 보유 분포 {frame[COL_HOLD_DAYS].value_counts().sort_index().to_dict()}"
+        f"보유 분포 {frame[COL_HOLD_DAYS].value_counts().sort_index().to_dict()}"
     )
 
-    return WeeklyExitSchedule(frame=frame, exit_weekday=exit_weekday, on_holiday=on_holiday)
+    return WeeklyExitSchedule(frame=frame, exit_weekday=exit_weekday)
 
 
 def weekly_exit_returns(df: pd.DataFrame, schedule: WeeklyExitSchedule) -> pd.DataFrame:
@@ -324,4 +276,4 @@ def _empty_returns() -> pd.DataFrame:
     return empty[RETURN_COLUMNS]
 
 
-__all__ = ["HolidayExit", "WeeklyExitSchedule", "weekly_exit_returns", "weekly_exit_schedule"]
+__all__ = ["WeeklyExitSchedule", "weekly_exit_returns", "weekly_exit_schedule"]

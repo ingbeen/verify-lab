@@ -23,10 +23,8 @@ class Align(Enum):
     - 문자열보다 안전: 오타 방지, IDE 자동완성 지원
     """
 
-    # 각 상수는 "이름 = 값" 형태로 정의
-    LEFT = "left"  # 왼쪽 정렬
-    RIGHT = "right"  # 오른쪽 정렬
-    CENTER = "center"  # 가운데 정렬
+    LEFT = "left"
+    RIGHT = "right"
 
 
 def get_display_width(text: str) -> int:
@@ -84,17 +82,10 @@ def _format_cell(text: str, width: int, align: Align = Align.LEFT) -> str:
     if available_padding <= 0:
         return content
 
-    # 정렬 방향에 따라 패딩 적용
-    if align == Align.LEFT:
+    if align is Align.LEFT:
         return content + " " * available_padding
 
-    if align == Align.RIGHT:
-        return " " * available_padding + content
-
-    # CENTER: 좌우 균등 분배
-    left_padding = available_padding // 2
-    right_padding = available_padding - left_padding
-    return " " * left_padding + content + " " * right_padding
+    return " " * available_padding + content
 
 
 def _format_row(cells: list[tuple[str, int, Align]], indent: int = 2) -> str:

@@ -43,7 +43,6 @@ from verify_lab.studies.option_expiry.constants import (
 )
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
 from verify_lab.studies.option_expiry.weekly_exit import (
-    HolidayExit,
     WeeklyExitSchedule,
     weekly_exit_returns,
     weekly_exit_schedule,
@@ -271,35 +270,6 @@ class TestHolidayAndRange:
         assert row[COL_EXIT_DATE] == pd.Timestamp("2026-07-23")
         assert int(row[COL_HOLD_DAYS]) == 4
 
-    def test_다음_거래일_규칙은_휴장일_때만_갈린다(self) -> None:
-        """
-        목적: 대조 규칙의 계약을 고정한다 (결정 ⑱·㉔)
-
-        목표일이 거래일이면 두 규칙이 같은 답을 내야 한다. 그래야 네 조합 대조표의 차이가
-        **오직 휴장 달에서만** 나온다고 읽을 수 있다.
-
-        Given: 목표일 2026-07-24(금)만 휴장인 달력
-        When: 두 휴장 규칙으로 각각 일정을 만들면
-        Then: 그 달만 청산일이 갈리고(23일 대 27일) 나머지 달은 같다
-        """
-        # Given
-        days = _trading_days("2026-06-01", "2026-08-31", holidays=["2026-07-24"])
-        expiries = monthly_expiry_dates(days, US_MONTHLY_EXPIRY)
-        entries = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE])
-        references = pd.DatetimeIndex(expiries[COL_RULE_DATE])
-
-        # When
-        previous = weekly_exit_schedule(days, entries, references, exit_weekday=FRIDAY)
-        following = weekly_exit_schedule(days, entries, references, exit_weekday=FRIDAY, on_holiday=HolidayExit.NEXT)
-
-        # Then
-        assert _row_for(previous.frame, "2026-07-17")[COL_EXIT_DATE] == pd.Timestamp("2026-07-23")
-        assert _row_for(following.frame, "2026-07-17")[COL_EXIT_DATE] == pd.Timestamp("2026-07-27")
-
-        merged = previous.frame.merge(following.frame, on=COL_DATE, suffixes=("_prev", "_next"))
-        untouched = merged[merged[COL_DATE] != pd.Timestamp("2026-07-17")]
-        assert (untouched[f"{COL_EXIT_DATE}_prev"] == untouched[f"{COL_EXIT_DATE}_next"]).all(), "목표일이 거래일인 달까지 갈렸습니다"
-
     def test_목표일이_데이터_끝을_넘으면_제외하고_사유를_남긴다(self) -> None:
         """
         목적: **값을 지어내지 않음**을 고정한다 (결정 ⑲)
@@ -337,8 +307,11 @@ class TestHolidayAndRange:
         schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
 
         # Then
-        assert schedule.entry_count == schedule.valid_count + schedule.excluded_count
-        assert schedule.excluded_count == 1
+        valid = int((schedule.frame[COL_EXCLUDED_REASON] == REASON_NONE).sum())
+        excluded = int((schedule.frame[COL_EXCLUDED_REASON] != REASON_NONE).sum())
+
+        assert schedule.entry_count == valid + excluded
+        assert excluded == 1
 
     def test_모든_청산일은_거래일이고_진입일보다_뒤다(self) -> None:
         """

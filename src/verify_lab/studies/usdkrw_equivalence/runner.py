@@ -19,9 +19,9 @@ from typing import Any
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_VALUE
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_VALUE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv, load_series_csv
-from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS, RATE_TO_PERCENT
+from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
 from verify_lab.studies.usdkrw_equivalence.alignment import align_to_etf_calendar, to_market_dates
 from verify_lab.studies.usdkrw_equivalence.constants import (
     ALPHA_REFERENCE,
@@ -32,6 +32,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_ACTUAL_RETURN,
     COL_DRIFT,
     COL_ETF_CLOSE,
+    COL_NAV,
     COL_PREMIUM_ABS_MEAN,
     COL_PREMIUM_MAX,
     COL_PREMIUM_MEAN,
@@ -76,6 +77,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     DISPLAY_YEAR,
     ETF_BASE,
     ETF_LEVERAGE,
+    ETF_TARGETS,
     FAIL_MARK,
     KRW_RATE_PATH,
     LEVERAGE_ALPHA_MAX,
@@ -184,7 +186,7 @@ def run_equivalence(
 
     krw_rate = load_series_csv(KRW_RATE_PATH)
     usd_rate = load_series_csv(USD_RATE_PATH)
-    prices = {target.key: load_market_csv(target.price_path) for target in (ETF_BASE, ETF_LEVERAGE)}
+    prices = {target.key: load_market_csv(target.price_path) for target in ETF_TARGETS}
 
     equivalence_rows: list[dict[str, Any]] = []
     drift_rows: list[pd.DataFrame] = []
@@ -195,7 +197,7 @@ def run_equivalence(
     for source in sources:
         spot = _load_spot(source)
         aligned = {}
-        for target in (ETF_BASE, ETF_LEVERAGE):
+        for target in ETF_TARGETS:
             result = align_to_etf_calendar(prices[target.key], spot, krw_rate, usd_rate)
             aligned[target.key] = result.frame
             alignment_counts[f"{source.key}:{target.key}"] = result.counts
@@ -214,12 +216,12 @@ def run_equivalence(
                 for variant in _variants(_leverage_returns(aligned[ETF_BASE.key], aligned[ETF_LEVERAGE.key]))
             ]
 
-    premium_rows = [_premium_frame(target) for target in (ETF_BASE, ETF_LEVERAGE)]
+    premium_rows = [_premium_frame(target) for target in ETF_TARGETS]
 
     # 실효 총비용은 **NAV 기준**이라 시장가의 프리미엄 잡음이 섞이지 않는다.
     # 환율 계열은 확정된 종가를 쓴다 (`docs/spec/usdkrw_grid.md` 결정 C15)
     cost_spot = _load_spot(SPOT_CLOSE)
-    cost_rows = [_effective_cost_row(target, cost_spot, krw_rate, usd_rate) for target in (ETF_BASE, ETF_LEVERAGE)]
+    cost_rows = [_effective_cost_row(target, cost_spot, krw_rate, usd_rate) for target in ETF_TARGETS]
 
     equivalence = pd.DataFrame(equivalence_rows)
     drift = pd.concat(drift_rows, ignore_index=True)
@@ -234,7 +236,7 @@ def run_equivalence(
             "spot": {source.key: str(source.path) for source in sources},
             "krw_rate": str(KRW_RATE_PATH),
             "usd_rate": str(USD_RATE_PATH),
-            **{target.key: str(target.price_path) for target in (ETF_BASE, ETF_LEVERAGE)},
+            **{target.key: str(target.price_path) for target in ETF_TARGETS},
         },
         KEY_ALIGNMENT: alignment_counts,
         KEY_THRESHOLDS: {
@@ -453,13 +455,13 @@ def _premium_frame(target: EtfTarget) -> pd.DataFrame:
         ValueError: 종가와 NAV 에 겹치는 날이 없는 경우
     """
     price = load_market_csv(target.raw_price_path)[[COL_DATE, COL_CLOSE]].rename(columns={COL_CLOSE: COL_ETF_CLOSE})
-    nav = load_series_csv(target.nav_path).rename(columns={COL_VALUE: "Nav"})
+    nav = load_series_csv(target.nav_path).rename(columns={COL_VALUE: COL_NAV})
     merged = price.merge(nav, on=COL_DATE)
 
     if merged.empty:
         raise ValueError(f"종가와 NAV 에 겹치는 날이 없습니다: {target.ticker}")
 
-    result = annual_premium(merged[COL_DATE], merged[COL_ETF_CLOSE], merged["Nav"])
+    result = annual_premium(merged[COL_DATE], merged[COL_ETF_CLOSE], merged[COL_NAV])
     table = result.frame
 
     return pd.DataFrame(

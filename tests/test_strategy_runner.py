@@ -24,8 +24,9 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VOLUME,
     PRICE_DECIMALS,
+    RATE_TO_PERCENT,
 )
-from verify_lab.report.constants import RATE_TO_PERCENT
+from verify_lab.report.constants import DISPLAY_EXCLUDED
 from verify_lab.strategy.constants import (
     DISPLAY_DATE,
     DISPLAY_HOLD_LIMIT,
@@ -49,8 +50,22 @@ SYNTHETIC_SEED = 20260823
 # 순위 축적 구간에 심는 등락의 크기. 집계 구간에서는 이보다 큰 등락만 신호가 된다
 ACCUMULATION_SHOCK = 0.05
 
+# 합성 시세의 시작일. 집계 시작연도 이전 구간이 순위 축적에 쓰인다
+MARKET_START = "2005-01-03"
+
+# 집계 구간에 심는 신호의 위치(집계 시작일 기준 오프셋)와 방향.
+# **뒤를 잘라 「데이터 끝을 넘어가는 신호」를 만들 때 마지막 값을 쓴다**
+SIGNAL_PLACEMENTS = ((60, -1), (140, 1), (260, -1))
+
 # 백분율 지표의 허용오차 (tests/CLAUDE.md)
 RATE_TOLERANCE = 0.1
+
+
+def _accumulation_index(rows: int) -> int:
+    """집계 시작연도의 첫 거래일이 몇 번째 행인지 낸다."""
+    dates = pd.DatetimeIndex(pd.bdate_range(MARKET_START, periods=rows))
+
+    return int(np.flatnonzero(dates >= pd.Timestamp(f"{START_YEAR}-01-01"))[0])
 
 
 def _market(rows: int = 1_400) -> pd.DataFrame:
@@ -60,17 +75,19 @@ def _market(rows: int = 1_400) -> pd.DataFrame:
     집계 시작연도 이전 구간이 순위 축적에 쓰이므로 그만큼 길이가 필요하다.
     """
     rng = np.random.default_rng(SYNTHETIC_SEED)
-    dates = pd.DatetimeIndex(pd.bdate_range("2005-01-03", periods=rows))
+    dates = pd.DatetimeIndex(pd.bdate_range(MARKET_START, periods=rows))
     changes = rng.normal(0.0002, 0.004, rows - 1)
 
     # 1. 집계 시작 전에 순위 컷을 채운다 (신호가 아니다)
-    accumulation = int(np.flatnonzero(dates >= pd.Timestamp(f"{START_YEAR}-01-01"))[0])
+    accumulation = _accumulation_index(rows)
     for offset in range(25):
         changes[offset * 8] = ACCUMULATION_SHOCK
         changes[offset * 8 + 4] = -ACCUMULATION_SHOCK
 
     # 2. 집계 구간에 더 큰 등락을 심는다
-    for offset, sign in ((60, -1), (140, 1), (260, -1)):
+    for offset, sign in SIGNAL_PLACEMENTS:
+        if accumulation + offset >= len(changes):
+            continue
         changes[accumulation + offset] = 0.09 * sign
 
     closes = 100.0 * np.cumprod(np.concatenate([[1.0], 1.0 + changes]))
@@ -88,14 +105,20 @@ def _market(rows: int = 1_400) -> pd.DataFrame:
     )
 
 
-def _target(directory: Path, *, rank_cut: int = 10, ticker: str = "합성") -> Target:
+def _target(directory: Path, *, rank_cut: int = 10, ticker: str = "합성", rows: int = 1_400) -> Target:
     """합성 시세를 저장하고 그 파일을 가리키는 대상을 만든다.
 
     실경로 `storage/` 를 건드리지 않도록 언제나 임시 디렉터리에 쓴다.
+
+    Args:
+        directory: 저장할 임시 디렉터리
+        rank_cut: 순위 컷
+        ticker: 종목 표시 이름 (파일명에도 쓰인다)
+        rows: 시세 행 수. **줄이면 뒤쪽 신호의 보유 구간이 데이터 끝을 넘어간다**
     """
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{ticker}.csv"
-    saved = _market()
+    saved = _market(rows)
     saved[COL_DATE] = saved[COL_DATE].dt.strftime("%Y-%m-%d")
     saved.to_csv(path, index=False)
 
@@ -364,6 +387,67 @@ class TestTargetsInvariant:
         # Then
         assert record["start_year"] == START_YEAR
         assert record["signal_count"] > 0
+
+
+class TestSamplePreservation:
+    """표본 보존 — 데이터 끝을 넘어가 버려진 신호가 건수로 남는다 (tests/CLAUDE.md 필수)."""
+
+    def _trimmed_outputs(self, directory: Path) -> StrategyOutputs:
+        """시세를 **마지막 신호일에서 끝나게** 잘라 실행한다.
+
+        진입 다음 거래일이 아예 없으므로 그 신호는 **이익이든 손실이든 체결을 만들 수 없다.**
+        보유 구간을 한 칸만 남기면 D+1 에 이익 청산돼 제외가 생기지 않는다.
+
+        신호일 인덱스는 `집계 시작 + 오프셋 + 1` 이다 — 등락률이 심긴 날의 **다음 종가**가
+        그 등락을 갖기 때문이다. 시세 길이를 그보다 하나 크게 잡으면 신호일이 마지막 행이 된다.
+        """
+        last_offset = SIGNAL_PLACEMENTS[-1][0]
+        rows = _accumulation_index(1_400) + last_offset + 2
+
+        return run_strategy([_target(directory, rows=rows)], hold_limits=[3])
+
+    def test_체결하지_못한_신호가_제외_건수로_남는다(self, tmp_path: Path) -> None:
+        """
+        목적: 보유 한도가 데이터 끝을 넘어간 신호를 **조용히 버리지 않는다.**
+              건수를 보고하지 않으면 표본이 줄어든 사실이 산출물에서 보이지 않는다.
+
+        Given: 마지막 신호의 보유 구간이 잘린 시세
+        When: 보유 한도 3 으로 실행하면
+        Then: 집계에 제외 건수가 1건 이상 실린다
+        """
+        # Given / When
+        outputs = self._trimmed_outputs(tmp_path)
+
+        # Then
+        assert int(outputs.summary.iloc[0][DISPLAY_EXCLUDED]) >= 1
+
+    def test_신호_수와_제외_수의_합이_전체_신호_수다(self, tmp_path: Path) -> None:
+        """
+        목적: **`신호 수 = 집계된 표본 + 제외된 표본`** 이 성립한다.
+              이 등식이 깨지면 표본이 어딘가로 사라진 것이다.
+
+        Given: 마지막 신호의 보유 구간이 잘린 시세
+        When: 보유 한도 3 으로 실행하면
+        Then: 집계의 신호 수 + 제외 수가 요약의 전체 신호 수와 같다
+        """
+        # Given / When
+        outputs = self._trimmed_outputs(tmp_path)
+
+        # Then
+        row = outputs.summary.iloc[0]
+        counted = int(row[DISPLAY_SIGNAL_COUNT]) + int(row[DISPLAY_EXCLUDED])
+        assert counted == int(outputs.meta[KEY_TARGETS][0]["signal_count"])
+
+    def test_전부_체결되면_제외가_0이다(self, outputs: StrategyOutputs) -> None:
+        """
+        목적: 제외가 없을 때 0 이 실린다. 빈칸으로 두면 "안 쟀다"로 읽힌다.
+
+        Given: 모든 신호의 보유 구간이 데이터 안에 있는 시세
+        When: 전 조합을 돌면
+        Then: 모든 행의 제외 건수가 0 이다
+        """
+        # Given / When / Then
+        assert outputs.summary[DISPLAY_EXCLUDED].tolist() == [0] * len(outputs.summary)
 
 
 class TestInputValidation:

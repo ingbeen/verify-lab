@@ -41,6 +41,7 @@ from verify_lab.studies.index_extreme.constants import (
     DISPLAY_EVENT_COUNT,
     DISPLAY_PARAMETER,
     DISPLAY_PERIOD,
+    DISPLAY_PRICE_BASIS,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
     DISPLAY_TICKER,
@@ -67,7 +68,6 @@ from verify_lab.studies.index_extreme.runner import (
     run_study,
 )
 from verify_lab.utils.cli_helpers import cli_exception_handler
-from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
 
@@ -76,20 +76,10 @@ logger = get_logger(__name__)
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_INDEX_EXTREME = "index_extreme_study"
 
-# 데이터셋 개요 표의 컬럼 정의 (컬럼명, 폭, 정렬)
-DATASET_COLUMNS = [
-    ("종목", 12, Align.LEFT),
-    ("가격기준", 12, Align.LEFT),
-    ("행 수", 10, Align.RIGHT),
-    ("기간", 26, Align.LEFT),
-    ("파일", 30, Align.LEFT),
-]
-
-# 산출물 표의 컬럼 정의
-OUTPUT_COLUMNS = [
-    ("파일", 20, Align.LEFT),
-    ("행 수", 12, Align.RIGHT),
-]
+# 터미널 표의 컬럼 이름. **폭은 적지 않는다** — `print_dataframe` 이 내용에서 계산한다
+DISPLAY_ROW_COUNT = "행 수"
+DISPLAY_PERIOD_RANGE = "기간"
+DISPLAY_FILE = "파일"
 
 # 저장할 파일과 요약의 행 수 키. 출력 계약이 확정한 CSV 4개다
 OUTPUT_FILES = (
@@ -98,9 +88,6 @@ OUTPUT_FILES = (
     (EXCESS_FILENAME, KEY_EXCESS),
     (TEST_FILENAME, KEY_TEST_TABLE),
 )
-
-# 컬럼 사이 여백. 오른쪽 정렬 컬럼은 값이 칸 끝에 붙어 다음 컬럼과 맞닿는다
-COLUMN_GAP = "  "
 
 # 터미널에 실을 발췌의 축. 전 조합은 CSV 에 있고, 화면은 기본 설정만 훑는 자리다.
 # 집계는 한 기준으로만 나오므로(runner.AGGREGATED_BASIS) 기준으로 거를 것이 없다
@@ -168,20 +155,26 @@ def _selected_datasets(keys: list[str]) -> list[Dataset]:
 def _print_datasets(outputs: StudyOutputs) -> None:
     """어떤 시세로 쟀는지 표로 보여준다.
 
+    **폭을 손으로 적지 않는다.** `print_dataframe` 이 내용에서 폭을 계산하고 오른쪽 정렬
+    컬럼의 여백을 값에 직접 달아, 헤더가 다음 컬럼과 맞닿는 문제를 구조적으로 막는다.
+    행 수는 **숫자로 넘겨** 자릿수가 오른쪽으로 정렬되게 한다.
+
     Args:
         outputs: 실행 산출물
     """
-    rows = [
+    table = pd.DataFrame(
         [
-            record[KEY_TICKER],
-            record[KEY_PRICE_BASIS],
-            f"{record[KEY_ROW_COUNT]:,}",
-            f"{COLUMN_GAP}{record[KEY_START_DATE]} ~ {record[KEY_END_DATE]}",
-            Path(record[KEY_PATH]).name,
+            {
+                DISPLAY_TICKER: record[KEY_TICKER],
+                DISPLAY_PRICE_BASIS: record[KEY_PRICE_BASIS],
+                DISPLAY_ROW_COUNT: record[KEY_ROW_COUNT],
+                DISPLAY_PERIOD_RANGE: f"{record[KEY_START_DATE]} ~ {record[KEY_END_DATE]}",
+                DISPLAY_FILE: Path(record[KEY_PATH]).name,
+            }
+            for record in outputs.summary[KEY_DATASETS]
         ]
-        for record in outputs.summary[KEY_DATASETS]
-    ]
-    TableLogger(DATASET_COLUMNS, logger).print_table(rows, title="검증 대상 시세")
+    )
+    print_dataframe(table, logger, title="검증 대상 시세")
 
 
 def _print_excerpt(outputs: StudyOutputs) -> None:
@@ -252,8 +245,10 @@ def _print_outputs(outputs: StudyOutputs, directory: Path) -> None:
         directory: 결과 폴더
     """
     row_counts = outputs.summary[KEY_ROW_COUNTS]
-    rows = [[filename, f"{row_counts[key]:,}"] for filename, key in OUTPUT_FILES]
-    TableLogger(OUTPUT_COLUMNS, logger).print_table(rows, title=f"산출물 (저장 폴더: {directory})")
+    table = pd.DataFrame(
+        [{DISPLAY_FILE: filename, DISPLAY_ROW_COUNT: row_counts[key]} for filename, key in OUTPUT_FILES]
+    )
+    print_dataframe(table, logger, title=f"산출물 (저장 폴더: {directory})")
 
 
 @cli_exception_handler

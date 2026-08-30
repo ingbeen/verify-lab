@@ -51,6 +51,7 @@ from verify_lab.measure.statistics import (
 )
 from verify_lab.studies.option_expiry.constants import (
     BASELINE_SUFFIX,
+    COL_ADVANCED_DAYS,
     COL_BASELINE_KIND,
     COL_DAILY_RETURN,
     COL_EXIT_WEEKDAY,
@@ -250,7 +251,7 @@ def _run_dataset(
         "rows": len(df),
         "period": f"{df[COL_DATE].iloc[0].date()} ~ {df[COL_DATE].iloc[-1].date()}",
         "expiry_count": len(expiries),
-        "advanced_count": int((expiries["advanced_days"] > 0).sum()),
+        "advanced_count": int((expiries[COL_ADVANCED_DAYS] > 0).sum()),
         "inside_window_days": int(inside_window.sum()),
         # 만기일이 실제로 무슨 요일이었나. 미국은 셋째 금요일, 한국은 둘째 목요일이 규칙이지만
         # 휴장 앞당김으로 벗어나는 달이 있어 그 비율 자체가 보고 대상이다

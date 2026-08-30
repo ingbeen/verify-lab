@@ -21,7 +21,7 @@
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_DATE
+from verify_lab.common_constants import COL_DATE, RATE_TO_PERCENT
 from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_ACTUAL_RETURN,
     COL_DAY_COUNT,
@@ -33,7 +33,6 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_THEORETICAL_RETURN,
     COL_USD_RATE,
     DAYS_PER_YEAR,
-    RATE_PERCENT_TO_RATIO,
     TheoreticalModel,
 )
 
@@ -79,7 +78,7 @@ def build_returns(aligned: pd.DataFrame, model: TheoreticalModel) -> pd.DataFram
     frame[COL_SPOT_RETURN] = frame[COL_SPOT].pct_change()
 
     # 2. 이자. **직전 행의 금리**를 그 구간 내내 적용한다 — 구간이 끝난 뒤의 금리를 쓰면 미래 참조다
-    annual_rate = _annual_rate(frame, model).shift(1) / RATE_PERCENT_TO_RATIO
+    annual_rate = _annual_rate(frame, model).shift(1) / RATE_TO_PERCENT
     frame[COL_RATE_CONTRIBUTION] = annual_rate * frame[COL_DAY_COUNT] / DAYS_PER_YEAR
 
     # 3. 현물과 이자를 곱으로 결합한다

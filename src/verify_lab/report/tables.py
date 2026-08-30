@@ -18,7 +18,7 @@ from typing import Any
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_DATE
+from verify_lab.common_constants import COL_DATE, RATE_TO_PERCENT
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_COUNT,
@@ -126,7 +126,6 @@ from verify_lab.report.constants import (
     HORIZON_LABELS,
     PERCENT_DECIMALS,
     PROBABILITY_DECIMALS,
-    RATE_TO_PERCENT,
     SUPPORT_SEPARATOR,
 )
 from verify_lab.utils.formatting import Align, TableLogger, get_display_width
@@ -319,45 +318,6 @@ def build_test_table(test_by_population: Mapping[str, pd.DataFrame]) -> pd.DataF
     return pd.concat(blocks, ignore_index=True)
 
 
-def build_comparison_table(excess_by_baseline: Mapping[str, pd.DataFrame], test: pd.DataFrame) -> pd.DataFrame:
-    """베이스라인을 **열로 펼친** 비교 표를 만든다 (터미널·마크다운용).
-
-    베이스라인마다 행을 쌓으면 같은 구간의 값이 흩어져 한눈에 비교되지 않는다. 대신
-    검정은 한 벌만 싣는다 — 터미널은 훑어보는 자리이고, 모집단별 검정 전체는 CSV 에 남는다.
-
-    Args:
-        excess_by_baseline: 베이스라인 이름 → `statistics.excess` 결과
-        test: 대표 모집단의 `statistics.permutation_test` 결과
-
-    Returns:
-        구간 × 기준 한 줄에 베이스라인별 차이와 검정 결과가 붙은 표
-
-    Raises:
-        ValueError: 입력이 비었거나 필요한 컬럼이 없는 경우
-    """
-    if not excess_by_baseline:
-        raise ValueError("기준선 대비 차이 표가 비어 있습니다")
-
-    ordered_test = _sorted_single_basis_cells(test, "검정")
-    result = pd.DataFrame(
-        {
-            DISPLAY_HORIZON: [_horizon_label(value) for value in ordered_test[COL_HORIZON]],
-            DISPLAY_SAMPLE_COUNT: ordered_test[COL_SAMPLE_COUNT].to_numpy(),
-        }
-    )
-
-    for name, table in excess_by_baseline.items():
-        ordered = _sorted_single_basis_cells(table, f"차이({name})")
-        result[f"{name} {DISPLAY_MEAN_DIFF}"] = _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy()
-        result[f"{name} {DISPLAY_MEDIAN_DIFF}"] = _to_percent(ordered[COL_MEDIAN_EXCESS]).to_numpy()
-
-    result[DISPLAY_MEAN_PERCENTILE] = ordered_test[COL_MEAN_PERCENTILE].round(PERCENT_DECIMALS).to_numpy()
-    result[DISPLAY_MEAN_P_VALUE] = ordered_test[COL_MEAN_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy()
-    result[DISPLAY_TEST_NOTE] = ordered_test[COL_TEST_NOTE].to_numpy()
-
-    return result
-
-
 def print_dataframe(table: pd.DataFrame, logger: logging.Logger, title: str | None = None) -> None:
     """표를 터미널에 출력한다.
 
@@ -394,36 +354,6 @@ def print_dataframe(table: pd.DataFrame, logger: logging.Logger, title: str | No
 
     rows = [list(row) for row in zip(*rendered, strict=True)]
     TableLogger(columns, logger).print_table(rows, title)
-
-
-def to_markdown(table: pd.DataFrame) -> str:
-    """표를 마크다운 표 문자열로 바꾼다.
-
-    `pandas.to_markdown()` 은 `tabulate` 패키지를 요구하는데 이 프로젝트 의존성에 없다.
-    표 하나를 그리려고 의존성을 늘리지 않는다.
-
-    Args:
-        table: 표시용 표
-
-    Returns:
-        마크다운 표 문자열 (헤더·구분선·데이터 행)
-
-    Raises:
-        ValueError: 표가 비어 있는 경우
-    """
-    if table.empty:
-        raise ValueError("표가 비어 있습니다")
-
-    headers = [str(name) for name in table.columns]
-    lines = [
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join(["---"] * len(headers)) + " |",
-    ]
-    lines.extend(
-        "| " + " | ".join(_cell_text(value) for value in row) + " |" for row in table.itertuples(index=False, name=None)
-    )
-
-    return "\n".join(lines)
 
 
 def _basis_label(basis: object) -> str:
@@ -467,6 +397,9 @@ def _to_percent(values: pd.Series) -> pd.Series:
 def _cell_text(value: Any) -> str:
     """표 한 칸을 문자열로 바꾼다. 값이 없으면 표시 문자를 쓴다.
 
+    **정수에는 천 단위 구분자를 붙인다.** 신호 수·행 수처럼 자릿수를 눈으로 세는 값이라
+    구분자가 없으면 자리를 잘못 읽는다. 실수는 이미 반올림된 상태로 들어오므로 건드리지 않는다.
+
     Args:
         value: 셀 값
 
@@ -475,6 +408,9 @@ def _cell_text(value: Any) -> str:
     """
     if value is None or value == "" or (isinstance(value, float) and pd.isna(value)):
         return EMPTY_MARK
+
+    if pd.api.types.is_integer(value):
+        return f"{value:,}"
 
     return str(value)
 

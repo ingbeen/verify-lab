@@ -86,14 +86,29 @@ def _summary(
     )
 
 
-def _periods(rates: list[float], *, axis_value: int = 9, sample: int = 15) -> pd.DataFrame:
-    """시기별 집계표를 만든다. `rates` 는 각 구간의 오른 비율이다."""
+def _periods(
+    rates: list[float],
+    *,
+    loss_rates: list[float] | None = None,
+    axis_value: int = 9,
+    sample: int = 15,
+) -> pd.DataFrame:
+    """시기별 집계표를 만든다.
+
+    Args:
+        rates: 각 구간의 오른 비율
+        loss_rates: 각 구간의 내린 비율. `None` 이면 **보합이 없다고 보고** `1 − 오른 비율` 로 채운다.
+            **두 비율은 여집합이 아니므로**(보합이 어느 쪽에도 안 들어간다) 보합이 있는 칸을
+            만들려면 반드시 명시한다
+        axis_value: 축 값
+        sample: 구간별 표본 수
+    """
     return pd.DataFrame(
         {
             AXIS: [axis_value] * len(rates),
             COL_SAMPLE_COUNT: [sample] * len(rates),
             COL_WIN_RATE: rates,
-            COL_LOSS_RATE: [1.0 - rate for rate in rates],
+            COL_LOSS_RATE: [1.0 - rate for rate in rates] if loss_rates is None else loss_rates,
         }
     )
 
@@ -595,6 +610,37 @@ class TestAxisIndependence:
         with pytest.raises(ValueError, match=COL_MEAN):
             screen_candidates(summary, _strong_periods(), axis_column=AXIS)
 
+    def test_시기표에_내린_비율이_없으면_예외다(self) -> None:
+        """
+        목적: 시기표도 집계표와 **같은 강도로** 검증한다.
+              컬럼이 없는 채로 넘어가면 판정이 KeyError 로 죽거나 조용히 건너뛴다.
+
+        Given: 내린 비율이 빠진 시기표
+        When: 판정하면
+        Then: ValueError 가 나고 메시지에 빠진 컬럼이 담긴다
+        """
+        # Given
+        periods = _strong_periods().drop(columns=[COL_LOSS_RATE])
+
+        # When / Then
+        with pytest.raises(ValueError, match=COL_LOSS_RATE):
+            screen_candidates(_down_summary(), periods, axis_column=AXIS)
+
+    def test_시기표에_축_컬럼이_없으면_예외다(self) -> None:
+        """
+        목적: 축이 없으면 어느 칸의 시기인지 모른다. 조용히 빈 결과로 넘기지 않는다.
+
+        Given: 축 컬럼이 빠진 시기표
+        When: 판정하면
+        Then: ValueError 가 난다
+        """
+        # Given
+        periods = _strong_periods().drop(columns=[AXIS])
+
+        # When / Then
+        with pytest.raises(ValueError, match=AXIS):
+            screen_candidates(_down_summary(), periods, axis_column=AXIS)
+
 
 class TestFormula:
     """산식을 손으로 계산한 값으로 박는다 (tests/CLAUDE.md 필수)."""
@@ -615,6 +661,88 @@ class TestFormula:
         row = result.iloc[0]
         assert float(row[COL_HIT_RATE]) == pytest.approx(0.73, abs=EXACT_TOLERANCE)
         assert float(row[COL_BASELINE_GAP]) == pytest.approx(0.23, abs=EXACT_TOLERANCE)
+
+    def test_시기_적중률은_내린_비율을_직접_읽는다(self) -> None:
+        """
+        목적: 시기 항목도 전체 축과 **같은 컬럼**을 읽는다 (판정식 단일화).
+              `1 − 오른 비율` 로 만들면 **보합이 통째로 「내림」으로 새어** 등급이 관대해진다.
+
+        Given: 오른 30% · 내린 50% 인 시기 두 칸 (보합 20%)
+        When: 「아래」 방향 칸을 판정하면
+        Then: 시기 적중률이 내린 비율 0.50 이다 (`1 − 0.30 = 0.70` 이 아니다)
+        """
+        # Given
+        periods = _periods([0.30, 0.30], loss_rates=[0.50, 0.50])
+
+        # When
+        result = screen_candidates(_down_summary(), periods, axis_column=AXIS)
+
+        # Then
+        assert float(result.iloc[0][COL_PERIOD_MIN_HIT_RATE]) == pytest.approx(0.50, abs=EXACT_TOLERANCE)
+
+    def test_보합이_있으면_시기_항목이_미충족이_된다(self) -> None:
+        """
+        목적: 위 버그가 **판정을 뒤집는다**는 것을 고정한다.
+              실제 내린 비율 0.50 은 하한 0.55 에 못 미치는데, `1 − 0.30 = 0.70` 은 넘는다.
+
+        Given: 오른 30% · 내린 50% 인 시기 두 칸 (보합 20%)
+        When: 등급이 만점인 「아래」 방향 칸을 판정하면
+        Then: 시기 항목이 미충족으로 남는다
+        """
+        # Given
+        periods = _periods([0.30, 0.30], loss_rates=[0.50, 0.50])
+
+        # When
+        result = screen_candidates(_down_summary(), periods, axis_column=AXIS)
+
+        # Then
+        assert SUPPORT_PERIOD in str(result.iloc[0][COL_UNMET_SUPPORT])
+
+    def test_보합이_없으면_두_방식의_값이_같다(self) -> None:
+        """
+        목적: 수정이 **기존 결과를 바꾸지 않는** 범위를 고정한다 (회귀 보호).
+              보합이 0인 칸에서는 `내린 비율 == 1 − 오른 비율` 이라 값이 그대로여야 한다.
+
+        Given: 오른 29% · 내린 71% 인 시기 칸 (보합 0)
+        When: 「아래」 방향 칸을 판정하면
+        Then: 시기 적중률이 0.71 이고 시기 항목이 충족된다
+        """
+        # Given
+        periods = _periods([0.29, 0.25])
+
+        # When
+        result = screen_candidates(_down_summary(), periods, axis_column=AXIS)
+
+        # Then
+        row = result.iloc[0]
+        assert float(row[COL_PERIOD_MIN_HIT_RATE]) == pytest.approx(0.71, abs=EXACT_TOLERANCE)
+        assert SUPPORT_PERIOD not in str(row[COL_UNMET_SUPPORT])
+
+    def test_위_방향은_오른_비율을_직접_읽는다(self) -> None:
+        """
+        목적: 「위」 방향은 보합과 무관하게 오른 비율을 그대로 쓴다 (대칭 확인).
+
+        Given: 오른 72% · 내린 20% 인 시기 두 칸 (보합 8%)
+        When: 「위」 방향 칸을 판정하면
+        Then: 시기 적중률이 0.72 다
+        """
+        # Given
+        summary = _summary(
+            win_rate=0.72,
+            loss_rate=0.20,
+            win_excess=0.20,
+            loss_excess=-0.20,
+            up_p=0.004,
+            down_p=0.004,
+            mean=0.006,
+        )
+        periods = _periods([0.72, 0.72], loss_rates=[0.20, 0.20])
+
+        # When
+        result = screen_candidates(summary, periods, axis_column=AXIS)
+
+        # Then
+        assert float(result.iloc[0][COL_PERIOD_MIN_HIT_RATE]) == pytest.approx(0.72, abs=EXACT_TOLERANCE)
 
     def test_시기_최솟값이_기록된다(self) -> None:
         """

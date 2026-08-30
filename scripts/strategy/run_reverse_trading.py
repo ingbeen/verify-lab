@@ -13,20 +13,13 @@
 
 import argparse
 
-from verify_lab.report.constants import PERCENT_DECIMALS, RATE_TO_PERCENT
+import pandas as pd
+
+from verify_lab.common_constants import RATE_TO_PERCENT
+from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.strategy.constants import (
-    DISPLAY_EVENT_COUNT,
-    DISPLAY_HOLD_LIMIT,
-    DISPLAY_MAX,
-    DISPLAY_MEAN,
-    DISPLAY_MEAN_HOLD,
-    DISPLAY_MIN,
-    DISPLAY_PARAMETER,
-    DISPLAY_SIGNAL_COUNT,
-    DISPLAY_TICKER,
-    DISPLAY_TOTAL,
-    DISPLAY_WIN_RATE,
+    DISPLAY_START_YEAR,
     HOLD_LIMITS,
     STOP_LOSS_LEVELS,
     STRATEGY_NAME,
@@ -35,7 +28,6 @@ from verify_lab.strategy.constants import (
 )
 from verify_lab.strategy.runner import KEY_SUMMARY, KEY_TRADES, StrategyOutputs, run_strategy
 from verify_lab.utils.cli_helpers import cli_exception_handler
-from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
 
@@ -48,23 +40,9 @@ KEY_META_REVERSE_TRADING = "reverse_trading_strategy"
 TRADES_FILENAME = "trades.csv"
 SUMMARY_FILENAME = "summary_by_target.csv"
 
-# 집계 표의 컬럼 정의 (컬럼명, 폭, 정렬)
-SUMMARY_COLUMNS = [
-    (DISPLAY_TICKER, 11, Align.LEFT),
-    (DISPLAY_PARAMETER, 8, Align.LEFT),
-    (DISPLAY_HOLD_LIMIT, 8, Align.LEFT),
-    (DISPLAY_SIGNAL_COUNT, 6, Align.RIGHT),
-    (DISPLAY_EVENT_COUNT, 6, Align.RIGHT),
-    (DISPLAY_TOTAL, 10, Align.RIGHT),
-    (DISPLAY_MEAN, 9, Align.RIGHT),
-    (DISPLAY_WIN_RATE, 9, Align.RIGHT),
-    (DISPLAY_MAX, 9, Align.RIGHT),
-    (DISPLAY_MIN, 9, Align.RIGHT),
-    (DISPLAY_MEAN_HOLD, 12, Align.RIGHT),
-]
-
-# 산출물 표의 컬럼 정의
-OUTPUT_COLUMNS = [("파일", 26, Align.LEFT), ("행 수", 8, Align.RIGHT)]
+# 산출물 표의 컬럼 이름. **폭은 적지 않는다** — `print_dataframe` 이 내용에서 계산한다
+DISPLAY_FILE = "파일"
+DISPLAY_ROW_COUNT = "행 수"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -115,31 +93,23 @@ def _print_rule() -> None:
 def _print_summary(outputs: StrategyOutputs) -> None:
     """대상별·한도별 집계를 표로 보여준다.
 
+    **저장하는 표를 그대로 화면에 낸다.** 따로 가공하면 반올림·부호 표기가 갈려
+    화면에서 본 숫자를 CSV 에서 찾지 못한다. 시작연도는 상수라 화면에서만 뺀다.
+
     Args:
         outputs: 실행 산출물
     """
-    rows = [
-        [
-            row[DISPLAY_TICKER],
-            row[DISPLAY_PARAMETER],
-            row[DISPLAY_HOLD_LIMIT],
-            f"{row[DISPLAY_SIGNAL_COUNT]:,}",
-            f"{row[DISPLAY_EVENT_COUNT]:,}",
-            f"{row[DISPLAY_TOTAL]:+.{PERCENT_DECIMALS}f}",
-            f"{row[DISPLAY_MEAN]:+.{PERCENT_DECIMALS}f}",
-            f"{row[DISPLAY_WIN_RATE]:.{PERCENT_DECIMALS}f}",
-            f"{row[DISPLAY_MAX]:+.{PERCENT_DECIMALS}f}",
-            f"{row[DISPLAY_MIN]:+.{PERCENT_DECIMALS}f}",
-            f"{row[DISPLAY_MEAN_HOLD]:.2f}",
-        ]
-        for _, row in outputs.summary.iterrows()
-    ]
-    TableLogger(SUMMARY_COLUMNS, logger).print_table(rows, title="대상별 · 보유 한도별 성적")
+    table = outputs.summary.drop(columns=[DISPLAY_START_YEAR])
+    print_dataframe(table, logger, title="대상별 · 보유 한도별 성적")
 
 
 @cli_exception_handler
-def main() -> None:
-    """역방향 매매 규칙을 실행하고 산출물을 저장한다."""
+def main() -> int:
+    """역방향 매매 규칙을 실행하고 산출물을 저장한다.
+
+    Returns:
+        종료 코드 (성공 0)
+    """
     args = _build_parser().parse_args()
     targets = _selected_targets(args.target)
 
@@ -153,8 +123,14 @@ def main() -> None:
     save_run_summary(directory, outputs.meta)
 
     counts = outputs.meta["row_counts"]
-    TableLogger(OUTPUT_COLUMNS, logger).print_table(
-        [[TRADES_FILENAME, f"{counts[KEY_TRADES]:,}"], [SUMMARY_FILENAME, f"{counts[KEY_SUMMARY]:,}"]],
+    print_dataframe(
+        pd.DataFrame(
+            [
+                {DISPLAY_FILE: TRADES_FILENAME, DISPLAY_ROW_COUNT: counts[KEY_TRADES]},
+                {DISPLAY_FILE: SUMMARY_FILENAME, DISPLAY_ROW_COUNT: counts[KEY_SUMMARY]},
+            ]
+        ),
+        logger,
         title=f"산출물 (저장 폴더: {directory})",
     )
     save_metadata(
@@ -167,6 +143,8 @@ def main() -> None:
     )
     logger.debug(f"체결 {counts[KEY_TRADES]:,}건, 집계 {counts[KEY_SUMMARY]:,}행을 산출했습니다")
 
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

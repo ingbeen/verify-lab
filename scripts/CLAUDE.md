@@ -46,10 +46,13 @@
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `usdkrw_equivalence_study` | `studies/run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
-| `usdkrw_grid_strategy` | `strategy/run_usdkrw_grid.py` | 실행 파라미터, 기간과 재조정 횟수, 청산 체결 건수, 결과 폴더 |
-| `usdkrw_grid_robustness` | `strategy/run_usdkrw_grid_robustness.py` | 축·실행 정의와 고유 실행 수, 결론 뒤집힘 판정, 경로 순위 판정, 금리차 부호의 표본 구조, 결과 폴더 |
 | `option_expiry_study` | `studies/run_option_expiry.py` | 결과 폴더, 검증한 종목, 만기 창 범위, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 **매매의 진입·제외 건수·보유 거래일수 분포**도 남는다 |
 | `index_extreme_study` | `studies/run_index_extreme.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
+| `reverse_trading_strategy` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 보유 한도 목록, 결과 폴더 |
+
+> **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —
+> 그리드는 채택되지 않아 2026-08-30 에 구현을 지웠고 기록하는 스크립트가 없다.
+> 기각 근거는 [docs/ROADMAP.md](../docs/ROADMAP.md) 「G5 이후 — 트랙 종료」에 있다.
 
 ---
 

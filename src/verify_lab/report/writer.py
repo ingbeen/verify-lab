@@ -12,18 +12,16 @@ from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from verify_lab.common_constants import RESULTS_DIR
+from verify_lab.common_constants import KST, RESULTS_DIR
 from verify_lab.report.constants import CSV_ENCODING, RUN_SUMMARY_FILENAME
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 # 결과 폴더 이름의 시각 부분. 실행 시각은 KST 기준이다
-KST = ZoneInfo("Asia/Seoul")
 RUN_DIRECTORY_TIME_FORMAT = "%Y%m%d_%H%M%S"
 
 

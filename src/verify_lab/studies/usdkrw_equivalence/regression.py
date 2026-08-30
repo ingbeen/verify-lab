@@ -25,9 +25,6 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     TRADING_DAYS_PER_YEAR,
 )
 
-# 양끝 해를 빼고도 폭을 낼 수 있는 최소 연도 수
-MIN_YEARS_FOR_EDGE_SPREAD = 3
-
 
 @dataclass(frozen=True)
 class RegressionResult:
@@ -37,7 +34,6 @@ class RegressionResult:
         sample_count: 표본 수
         correlation: 두 계열의 상관계수
         beta: 회귀 기울기
-        alpha_daily: 절편 (일간, 비율)
         alpha_annual: 절편의 연환산 (거래일 250배, 비율)
         r_squared: 결정계수
         tracking_error: 잔차 표준편차 × √250 (비율)
@@ -46,7 +42,6 @@ class RegressionResult:
     sample_count: int
     correlation: float
     beta: float
-    alpha_daily: float
     alpha_annual: float
     r_squared: float
     tracking_error: float
@@ -59,12 +54,10 @@ class AnnualDriftResult:
     Attributes:
         frame: 연도 · 거래일 수 · 실제 누적 · 이론 누적 · 괴리 (전부 비율)
         spread: 연도별 괴리의 최대 − 최소
-        spread_excluding_edges: 첫 해와 마지막 해를 뺀 폭. 연도가 셋 미만이면 `None`
     """
 
     frame: pd.DataFrame
     spread: float
-    spread_excluding_edges: float | None
 
 
 def fit_regression(x: pd.Series, y: pd.Series) -> RegressionResult:
@@ -110,7 +103,6 @@ def fit_regression(x: pd.Series, y: pd.Series) -> RegressionResult:
         sample_count=len(x_values),
         correlation=correlation,
         beta=beta,
-        alpha_daily=alpha_daily,
         alpha_annual=alpha_daily * TRADING_DAYS_PER_YEAR,
         # 절편이 있는 단순 회귀에서는 결정계수가 상관계수의 제곱과 같다
         r_squared=correlation**2,
@@ -168,14 +160,8 @@ def annual_drift(
     summary[COL_DRIFT] = summary[COL_ACTUAL_CUMULATIVE] - summary[COL_THEORETICAL_CUMULATIVE]
 
     drifts = summary[COL_DRIFT]
-    spread = float(drifts.max() - drifts.min())
 
-    spread_excluding_edges: float | None = None
-    if len(summary) >= MIN_YEARS_FOR_EDGE_SPREAD:
-        middle = drifts.iloc[1:-1]
-        spread_excluding_edges = float(middle.max() - middle.min())
-
-    return AnnualDriftResult(frame=summary, spread=spread, spread_excluding_edges=spread_excluding_edges)
+    return AnnualDriftResult(frame=summary, spread=float(drifts.max() - drifts.min()))
 
 
 def _compound(returns: pd.Series) -> float:

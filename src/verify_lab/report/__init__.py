@@ -6,20 +6,17 @@
 
 from .tables import (
     build_candidates_table,
-    build_comparison_table,
     build_excess_table,
     build_signal_table,
     build_statistics_table,
     build_test_table,
     print_dataframe,
     to_display_columns,
-    to_markdown,
 )
 from .writer import create_run_directory, save_run_summary, save_table
 
 __all__ = [
     "build_candidates_table",
-    "build_comparison_table",
     "build_excess_table",
     "build_signal_table",
     "build_statistics_table",
@@ -29,5 +26,4 @@ __all__ = [
     "save_run_summary",
     "save_table",
     "to_display_columns",
-    "to_markdown",
 ]

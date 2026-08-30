@@ -49,15 +49,6 @@ class OffsetAssignment:
         """
         return len(self.frame)
 
-    @property
-    def unassigned_count(self) -> int:
-        """어느 만기의 창에도 들지 않은 날의 수.
-
-        Returns:
-            배정되지 않은 날의 수
-        """
-        return self.total_days - len(self.frame)
-
 
 def expiry_offsets(
     trading_days: pd.DatetimeIndex,

@@ -115,34 +115,32 @@ def synthetic_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[S
 
     monkeypatch.setattr(runner_module, "KRW_RATE_PATH", tmp_path / "CD91.csv")
     monkeypatch.setattr(runner_module, "USD_RATE_PATH", tmp_path / "DTB3.csv")
-    monkeypatch.setattr(
-        runner_module,
-        "ETF_BASE",
-        EtfTarget(
-            "base",
-            "BASE",
-            "합성 1배",
-            tmp_path / "base.csv",
-            tmp_path / "base.csv",
-            tmp_path / "base_nav.csv",
-            exposure=1,
-            published_ter=0.0025,
-        ),
+    base = EtfTarget(
+        "base",
+        "BASE",
+        "합성 1배",
+        tmp_path / "base.csv",
+        tmp_path / "base.csv",
+        tmp_path / "base_nav.csv",
+        exposure=1,
+        published_ter=0.0025,
     )
-    monkeypatch.setattr(
-        runner_module,
-        "ETF_LEVERAGE",
-        EtfTarget(
-            "lev",
-            "LEV",
-            "합성 2배",
-            tmp_path / "leverage.csv",
-            tmp_path / "leverage.csv",
-            tmp_path / "leverage_nav.csv",
-            exposure=2,
-            published_ter=0.0045,
-        ),
+    leverage = EtfTarget(
+        "lev",
+        "LEV",
+        "합성 2배",
+        tmp_path / "leverage.csv",
+        tmp_path / "leverage.csv",
+        tmp_path / "leverage_nav.csv",
+        exposure=2,
+        published_ter=0.0045,
     )
+
+    # **세 이름을 모두 갈아끼운다.** `ETF_TARGETS` 는 모듈 로드 시점에 굳은 튜플이라
+    # 개별 이름만 바꾸면 목록 순회가 진짜 파일을 읽는다
+    monkeypatch.setattr(runner_module, "ETF_BASE", base)
+    monkeypatch.setattr(runner_module, "ETF_LEVERAGE", leverage)
+    monkeypatch.setattr(runner_module, "ETF_TARGETS", (base, leverage))
 
     return (
         SpotSource("close", "종가형", tmp_path / "close.csv", needs_publication_shift=False),

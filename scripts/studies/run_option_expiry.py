@@ -15,9 +15,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_WIN_RATE
-from verify_lab.report.constants import PERCENT_DECIMALS, RATE_TO_PERCENT
+from verify_lab.report.constants import PERCENT_DECIMALS
 from verify_lab.report.tables import build_candidates_table, print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (

@@ -24,7 +24,7 @@ from typing import Any
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, below_moving_average
 from verify_lab.measure.constants import COL_BASIS, COL_FORWARD_RETURN
@@ -36,7 +36,7 @@ from verify_lab.measure.statistics import (
     permutation_test,
     summarize,
 )
-from verify_lab.report.constants import BASIS_LABELS, PERCENT_DECIMALS, RATE_TO_PERCENT
+from verify_lab.report.constants import BASIS_LABELS, PERCENT_DECIMALS
 from verify_lab.report.tables import (
     build_excess_table,
     build_signal_table,

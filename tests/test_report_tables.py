@@ -65,14 +65,12 @@ from verify_lab.report.constants import (
 )
 from verify_lab.report.tables import (
     build_candidates_table,
-    build_comparison_table,
     build_excess_table,
     build_signal_table,
     build_statistics_table,
     build_test_table,
     print_dataframe,
     to_display_columns,
-    to_markdown,
 )
 from verify_lab.utils.formatting import get_display_width
 
@@ -96,7 +94,7 @@ def _cell(
     )
 
 
-def _both_bases(values: list[float | None], horizons: tuple[int, ...] = (1, 252)) -> pd.DataFrame:
+def _both_bases(values: list[float | None], horizons: tuple[int, ...] = (1, 21)) -> pd.DataFrame:
     """기준 2종 × 지정 구간을 모두 채운 long-form 프레임을 만든다."""
     return pd.concat(
         [_cell(values, basis=basis, horizon=horizon) for basis in ReturnBasis for horizon in horizons],
@@ -140,9 +138,9 @@ class TestSignalTable:
         """
         목적: 펼쳐진 컬럼 이름이 "기준 구간"이다 — 어느 값인지 헤더만 보고 알 수 있어야 한다.
 
-        Given: 종가·익일시가 × 1일·1년
+        Given: 종가·익일시가 × 1일·1개월
         When: 신호일 목록을 만든다
-        Then: 날짜 컬럼 뒤에 "종가 1일 … 익일시가 1년" 이 붙는다
+        Then: 날짜 컬럼 뒤에 "종가 1일 … 익일시가 1개월" 이 붙는다
         """
         # Given
         frame = _both_bases([0.10])
@@ -151,7 +149,7 @@ class TestSignalTable:
         table = build_signal_table(frame)
 
         # Then
-        assert list(table.columns) == ["날짜", "종가 1일", "종가 1년", "익일시가 1일", "익일시가 1년"]
+        assert list(table.columns) == ["날짜", "종가 1일", "종가 1개월", "익일시가 1일", "익일시가 1개월"]
 
     def test_columns_cover_only_the_pairs_present_in_the_frame(self) -> None:
         """
@@ -160,15 +158,15 @@ class TestSignalTable:
         기준마다 측정 구간이 다르므로(익일시가는 1일만) 데카르트 곱으로 컬럼을 펼치면
         값이 영영 채워지지 않는 빈 칸이 생기고, 그것은 "수익률 없음"으로 읽힌다.
 
-        Given: 종가 1일·1년 + 익일시가 1일
+        Given: 종가 1일·1개월 + 익일시가 1일
         When: 신호일 목록을 만든다
-        Then: 익일시가 1년 컬럼이 생기지 않는다
+        Then: 익일시가 1개월 컬럼이 생기지 않는다
         """
         # Given
         frame = pd.concat(
             [
                 _cell([0.10], basis=ReturnBasis.CLOSE, horizon=1),
-                _cell([0.20], basis=ReturnBasis.CLOSE, horizon=252),
+                _cell([0.20], basis=ReturnBasis.CLOSE, horizon=21),
                 _cell([0.30], basis=ReturnBasis.NEXT_OPEN, horizon=1),
             ],
             ignore_index=True,
@@ -178,7 +176,7 @@ class TestSignalTable:
         table = build_signal_table(frame)
 
         # Then
-        assert list(table.columns) == ["날짜", "종가 1일", "종가 1년", "익일시가 1일"]
+        assert list(table.columns) == ["날짜", "종가 1일", "종가 1개월", "익일시가 1일"]
 
     def test_values_are_percent_with_two_decimals(self) -> None:
         """
@@ -562,51 +560,6 @@ class TestExcessAndTestTables:
         assert pd.isna(table["평균 우연확률"].iloc[0])
 
 
-class TestComparisonTable:
-    """터미널·마크다운용 비교 표를 고정한다."""
-
-    def test_baselines_become_columns(self) -> None:
-        """
-        목적: 베이스라인을 **열로 펼쳐** 한 화면에서 나란히 비교한다.
-
-        Given: 베이스라인 2종의 초과분과 검정 결과
-        When: 비교 표를 만든다
-        Then: 베이스라인마다 평균 초과 컬럼이 생긴다
-        """
-        # Given
-        signal_summary = summarize(_cell([0.10, 0.20]))
-        first = excess(signal_summary, summarize(_cell([0.0, 0.10])))
-        second = excess(signal_summary, summarize(_cell([0.05, 0.05])))
-        test = permutation_test(_cell([0.10, 0.20]), _cell([0.0, 0.10]), repeats=10, seed=0)
-
-        # When
-        table = build_comparison_table({"단순 보유": first, "조건부": second}, test)
-
-        # Then
-        assert "단순 보유 평균 차이(%p)" in table.columns
-        assert "조건부 평균 차이(%p)" in table.columns
-
-    def test_keeps_the_test_note_column(self) -> None:
-        """
-        목적: 비교 표에도 검정 사유가 남는다 — 검증 #1 은 이 칸이 전부 "검정 불가"가 된다.
-
-        Given: 표본이 부족한 신호
-        When: 비교 표를 만든다
-        Then: 비고 컬럼에 사유가 있다
-        """
-        # Given
-        signal = _cell([0.10, 0.20])
-        signal_summary = summarize(signal)
-        excess_table = excess(signal_summary, summarize(_cell([0.0, 0.10])))
-        test = permutation_test(signal, _cell([0.0, 0.10]), repeats=10, seed=0)
-
-        # When
-        table = build_comparison_table({"단순 보유": excess_table}, test)
-
-        # Then
-        assert table[DISPLAY_TEST_NOTE].iloc[0] == "표본 부족으로 검정 불가"
-
-
 class TestTerminalOutput:
     """터미널 출력의 폭 계산을 고정한다."""
 
@@ -662,57 +615,6 @@ class TestTerminalOutput:
         """
         with pytest.raises(ValueError, match="비어"):
             print_dataframe(pd.DataFrame({"구간": []}), logging.getLogger("test_report_tables"))
-
-
-class TestMarkdown:
-    """마크다운 표 변환을 고정한다."""
-
-    def test_renders_header_separator_and_rows(self) -> None:
-        """
-        목적: 마크다운 표에 헤더·구분선·행이 모두 나온다.
-
-        Given: 2행짜리 표
-        When: 마크다운으로 바꾼다
-        Then: 세 번째 줄부터 데이터 행이고 두 번째 줄이 구분선이다
-        """
-        # Given
-        table = pd.DataFrame({"구간": ["1일", "1년"], "평균(%)": [2.22, 44.09]})
-
-        # When
-        lines = to_markdown(table).splitlines()
-
-        # Then
-        assert lines[0] == "| 구간 | 평균(%) |"
-        assert lines[1] == "| --- | --- |"
-        assert lines[2] == "| 1일 | 2.22 |"
-
-    def test_empty_value_becomes_a_dash(self) -> None:
-        """
-        목적: 빈 값이 표를 깨뜨리지 않는다. 칸이 비면 마크다운 열이 어긋난다.
-
-        Given: 값이 없는 칸
-        When: 마크다운으로 바꾼다
-        Then: 빈칸 자리에 표시 문자가 들어간다
-        """
-        # Given
-        table = pd.DataFrame({"구간": ["1년"], "평균 우연확률": [float("nan")]})
-
-        # When
-        lines = to_markdown(table).splitlines()
-
-        # Then
-        assert lines[2] == "| 1년 | - |"
-
-    def test_rejects_empty_table(self) -> None:
-        """
-        목적: 빈 표를 조용히 빈 문자열로 내보내지 않는다.
-
-        Given: 행이 없는 표
-        When: 마크다운으로 바꾼다
-        Then: ValueError
-        """
-        with pytest.raises(ValueError, match="비어"):
-            to_markdown(pd.DataFrame({"구간": []}))
 
 
 class TestCandidatesTable:

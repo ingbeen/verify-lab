@@ -12,7 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Final
 
-from verify_lab.common_constants import MARKET_DIR, PRICE_DECIMALS
+from verify_lab.common_constants import MARKET_DIR, PRICE_DECIMALS, PRICE_DECIMALS_KRW
 
 
 class Direction(Enum):
@@ -104,11 +104,6 @@ DECADE_PERIODS: Final = (
 # ============================================================
 # 검증 대상 시세
 # ============================================================
-
-# 종가 반올림 자릿수. KRX 원화 가격은 정수이므로 소수 자리를 붙이지 않는다
-# (`.claude/rules/python.md` 출력 반올림 규칙표). 소수가 나오는 시장은 `PRICE_DECIMALS` 를 쓴다 —
-# 원시 시세를 저장한 자릿수와 갈라지지 않도록 정의를 `common_constants` 한 곳에 둔다
-PRICE_DECIMALS_KRW: Final = 0
 
 DISPLAY_PRICE_BASIS_RAW: Final = "원본가"
 

@@ -34,7 +34,7 @@ def test_perfect_line_recovers_slope_and_intercept() -> None:
 
     # Then
     assert result.beta == pytest.approx(2.0, abs=1e-9)
-    assert result.alpha_daily == pytest.approx(0.001, abs=1e-9)
+    assert result.alpha_annual == pytest.approx(0.001 * TRADING_DAYS_PER_YEAR, abs=1e-9)
     assert result.r_squared == pytest.approx(1.0, abs=1e-9)
     assert result.correlation == pytest.approx(1.0, abs=1e-9)
 
@@ -71,7 +71,7 @@ def test_tracking_error_is_residual_std_times_sqrt_250() -> None:
     result = fit_regression(x, y)
 
     # Then
-    residual = y - (result.alpha_daily + result.beta * x)
+    residual = y - (result.alpha_annual / TRADING_DAYS_PER_YEAR + result.beta * x)
     expected = float(residual.std(ddof=1)) * np.sqrt(TRADING_DAYS_PER_YEAR)
 
     assert result.tracking_error == pytest.approx(expected, abs=1e-12)
@@ -205,35 +205,3 @@ def test_annual_drift_spread_is_max_minus_min() -> None:
     drifts = result.frame[COL_DRIFT]
 
     assert result.spread == pytest.approx(float(drifts.max() - drifts.min()), abs=1e-12)
-
-
-def test_annual_drift_edge_spread_excludes_first_and_last_year() -> None:
-    """
-    목적: 양끝 해를 뺀 폭도 함께 나옴을 고정한다.
-
-    첫 해와 마지막 해는 대개 부분 연도라 괴리가 작게 나오고, 그대로 두면 폭이 축소돼 보인다.
-
-    Given: 4개 연도짜리 표본
-    When: 연도별 괴리를 낸다
-    Then: 양끝을 뺀 폭이 가운데 두 해만으로 계산된다
-    """
-    # Given
-    dates = pd.to_datetime(["2023-06-02", "2024-06-02", "2025-06-02", "2026-06-02"])
-    result = annual_drift(dates, pd.Series([0.10, 0.03, 0.01, 0.09]), pd.Series([0.01] * 4))
-
-    # Then: 가운데 두 해의 괴리는 0.02 와 0.00
-    assert result.spread_excluding_edges == pytest.approx(0.02, abs=1e-12)
-
-
-def test_annual_drift_edge_spread_is_none_with_too_few_years() -> None:
-    """
-    목적: 연도가 셋 미만이면 양끝 제외 폭을 계산하지 않음을 고정한다 (경계 조건).
-
-    Given: 2개 연도짜리 표본
-    When: 연도별 괴리를 낸다
-    Then: 양끝 제외 폭이 없다
-    """
-    dates = pd.to_datetime(["2025-06-02", "2026-06-02"])
-    result = annual_drift(dates, pd.Series([0.02, 0.01]), pd.Series([0.01, 0.01]))
-
-    assert result.spread_excluding_edges is None

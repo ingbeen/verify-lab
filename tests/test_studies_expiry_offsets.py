@@ -133,8 +133,8 @@ class TestExpiryOffsets:
         result = expiry_offsets(days, expiries, max_offset=2)
 
         # Then
-        assert result.assigned_count + result.unassigned_count == len(days)
         assert result.total_days == len(days)
+        assert result.assigned_count == 5  # 만기일 ±2 거래일
 
     def test_두_만기의_창이_겹치면_가까운_쪽에_배정한다(self) -> None:
         """
@@ -210,7 +210,7 @@ class TestExpiryOffsets:
 
         # Then
         assert result.assigned_count == 0
-        assert result.unassigned_count == len(days)
+        assert result.total_days == len(days)
 
     def test_거래일에_없는_만기일은_예외다(self) -> None:
         """

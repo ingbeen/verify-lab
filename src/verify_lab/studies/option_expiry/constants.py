@@ -10,7 +10,7 @@
 from dataclasses import dataclass
 from typing import Final
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, PRICE_DECIMALS
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, PRICE_DECIMALS, PRICE_DECIMALS_KRW
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_COUNT,
@@ -234,10 +234,6 @@ HORIZON_NEXT_WEEK_EXIT: Final = -1
 # ============================================================
 # 검증 대상 시세
 # ============================================================
-
-# 원화 정수 가격은 소수 자리를 붙이지 않는다 (`.claude/rules/python.md` 반올림 규칙표)
-PRICE_DECIMALS_KRW: Final = 0
-
 
 @dataclass(frozen=True)
 class Dataset:
