@@ -1,17 +1,16 @@
-"""검증 #7 실행 — 만기 기준 상대 거래일을 전부 돌고 산출물을 조립한다
+"""검증 #7 실행 — 만기일 매수 → 다음주 청산 매매를 재고 산출물을 조립한다
 
 이 모듈은 **계산 규칙을 새로 만들지 않는다.** 만기일 달력과 offset 배정(`studies`),
-forward return 과 통계(`measure`)가 이미 있으므로, 하는 일은 그것을 조합해 돌리고
+forward return·통계·후보 판정(`measure`)이 이미 있으므로, 하는 일은 그것을 조합해 돌리고
 사람이 읽을 형태로 쌓는 것이다.
 
-**한 실행에서 offset 전 범위를 돌린다.** 하나를 골라 내는 순간 측정이 아니라 과최적화가 되고,
-문헌이 말하는 "만기 1주 전"은 정의에 따라 부호가 뒤집히므로 전부 나란히 놓아야 판단할 수 있다
-(`docs/spec/option_expiry.md` 결정 ②).
+**만기 창의 거래일을 하나도 빼지 않고 원자료로 남긴다.** 사용자가 차트로 직접 대조하는
+산출물이므로 창을 좁혀 내지 않는다 (`docs/spec/option_expiry.md` 결정 ②).
 
 **가격 기준 두 벌을 함께 돌린다.** 배당락이 만기일에 고정돼 있어 원본가에는 한 방향 편향이
 들어가는데, 두 기준의 차이가 곧 그 몫이라 **차이 자체가 검산**이 된다(같은 문서 §3.4).
 
-**자르는 것은 언제나 신호 선택이지 시세가 아니다.** 국면·위칭으로 자를 때도 시세는 전 구간을
+**자르는 것은 언제나 신호 선택이지 시세가 아니다.** 시기로 가를 때도 시세는 전 구간을
 그대로 두고 신호일만 고른다 — 시세를 먼저 자르면 경계에서 만기 간격이 달라져 offset 이 어긋난다.
 """
 
@@ -30,7 +29,7 @@ from verify_lab.measure.constants import (
     REASON_NONE,
 )
 from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
-from verify_lab.measure.screening import COL_VERDICT, VERDICT_HELD, VERDICT_PASS, screen_candidates
+from verify_lab.measure.screening import COL_HIT_RATE, COL_SCREEN, SCREEN_CANDIDATE, screen_candidates
 from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
     COL_LOSS_RATE,
@@ -61,11 +60,9 @@ from verify_lab.studies.option_expiry.constants import (
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
     COL_PRICE_BASIS,
-    COL_REGIME,
     COL_RULE_DATE,
     COL_TICKER,
     COL_TIME_HALF,
-    COL_WITCHING,
     DATASETS,
     DISPLAY_TIME_HALF_EARLY,
     DISPLAY_TIME_HALF_LATE,
@@ -73,10 +70,7 @@ from verify_lab.studies.option_expiry.constants import (
     HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
     MIN_SAMPLE_FOR_HALVES,
-    OFFSET_HORIZONS,
-    REGIME_ALL,
     WEEKDAY_LABELS,
-    WITCHING_GROUPS,
     Dataset,
     PriceSeries,
 )
@@ -90,15 +84,6 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 산출물의 식별 컬럼. 모든 표 앞머리에 같은 순서로 붙어 조합을 되짚을 수 있게 한다
-IDENTITY_COLUMNS = [COL_TICKER, COL_PRICE_BASIS, COL_REGIME, COL_WITCHING, COL_OFFSET]
-
-# 순열 검정을 돌릴 범위. 국면·위칭까지 곱하면 검정 수가 수천 건이 되는데, 그렇게 쪼갠 칸은
-# 표본이 수십 건이라 검정의 검정력이 없다. **전체 국면·전체 월에서만** 돌리고 나머지 축은
-# 표본 수·평균·중앙값·승률로 보고한다 — 무엇을 안 돌렸는지 요약에 남긴다
-PERMUTATION_REGIME = REGIME_ALL.label
-PERMUTATION_WITCHING = WITCHING_GROUPS[0].label
-
 
 @dataclass(frozen=True)
 class StudyOutputs:
@@ -108,12 +93,12 @@ class StudyOutputs:
         expiries: 종목별 만기일 목록 (규칙일·만기일·앞당김)
         signals: 만기 창에 든 거래일 전체 목록 (사용자가 차트로 직접 대조하는 원자료)
         trade_signals: 만기일 매수 → 다음주 청산 매매의 신호일 원자료
-        trade_summary: 그 매매의 묶음 집계 (국면 × 만기 종류)
-        trade_excess: 두 베이스라인 대비 초과분 — 같은 요일 주간 보유 · 같은 길이 단순 보유
+        trade_summary: 그 매매의 묶음 집계와 보유 길이별 집계
+        trade_excess: 두 기준선 대비 차이 — 같은 요일 주간 보유 · 같은 길이 단순 보유
         trade_test: 그 매매의 순열 검정
-        trade_by_month: 만기월(1~12)별 집계와 같은 달 베이스라인
-        trade_by_month_halves: 만기월 × 시기 앞뒤 절반 — 후보 판정 기준 4 를 재는 축
-        candidates: 후보 판정 결과 — 네 기준을 통과한 칸과 떨어진 사유
+        trade_by_month: 만기월(1~12)별 집계와 같은 달 기준선
+        trade_by_month_halves: 만기월 × 시기 앞뒤 절반 — 판정의 시기 항목을 재는 축
+        candidates: 후보 판정 결과 — 전 칸의 1차 판정과 등급 (제외된 칸도 남는다)
         summary: 실행 파라미터와 핵심 수치
     """
 
@@ -288,12 +273,6 @@ COL_BASELINE = "baseline"
 BASELINE_WEEKLY = "같은 요일 주간 보유"
 BASELINE_MATCHED_LENGTH = "같은 길이 단순 보유"
 
-# 휴장 처리 규칙 대조에서 쓰는 축 이름 (결정 ㉔)
-COL_WEEK_ANCHOR = "week_anchor"
-COL_HOLIDAY_RULE = "holiday_rule"
-ANCHOR_RULE_DATE = "규칙일 기준"
-ANCHOR_EXPIRY_DATE = "실제 만기일 기준"
-
 
 def _weekly_trade_frames(
     df: pd.DataFrame,
@@ -354,21 +333,21 @@ def _per_length(frame: pd.DataFrame) -> pd.DataFrame:
     return valid
 
 
-def _matched_length_baseline(market: pd.DataFrame, regime_mask: pd.Series, lengths: list[int]) -> pd.DataFrame:
-    """같은 국면의 전 거래일을 신호와 같은 보유 길이로 잡은 베이스라인을 만든다.
+def _matched_length_baseline(market: pd.DataFrame, lengths: list[int]) -> pd.DataFrame:
+    """전 거래일을 신호와 같은 보유 길이로 잡은 베이스라인을 만든다.
 
     종가 기준만 남긴다. 익일 시가 칸은 이 매매의 정의에 없고, 남겨두면 신호군과 칸 구성이
-    달라져 초과분 계산이 성립하지 않는다.
+    달라져 기준선 대비 차이 계산이 성립하지 않는다.
 
     Args:
         market: 시세 전체
-        regime_mask: 국면 구간에 든 날
         lengths: 신호에 나타난 보유 거래일 수 목록
 
     Returns:
         길이별 칸을 갖는 long-form
     """
-    baseline = compute_forward_returns(market, regime_mask, horizons=sorted(set(lengths)))
+    every_day = pd.Series(True, index=market.index)
+    baseline = compute_forward_returns(market, every_day, horizons=sorted(set(lengths)))
 
     return baseline[baseline[COL_BASIS] == ReturnBasis.CLOSE.value]
 
@@ -461,9 +440,9 @@ def _aggregate_month_halves(
 ) -> pd.DataFrame:
     """만기월별로 신호를 시간순 **앞뒤 절반**으로 갈라 방향 비율을 낸다.
 
-    후보 판정 기준 4(시기를 쪼개도 방향이 유지되는가)를 재는 축이다.
-    **국면(`Regime`) 축으로는 이 기준을 잴 수 없다** — 국면은 시장 구조가 바뀐 달력 시점으로
-    나눈 것이라 칸마다 표본이 4~17건으로 들쭉날쭉하고, 10건 미만 칸에는 검정이 붙지 않는다
+    후보 판정의 **시기 항목**(시기를 쪼개도 방향이 유지되는가)을 재는 축이다.
+    **달력 경계로 자르면 이 항목을 잴 수 없다** — 시장 구조가 바뀐 시점으로 나누면 칸마다
+    표본이 4~17건으로 들쭉날쭉하고, 10건 미만 칸에는 검정이 붙지 않는다
     (측정의 원칙 12). 여기서는 신호를 시간순으로 세어 균등하게 갈라 양쪽 표본을 맞춘다.
 
     **절반으로 갈랐을 때 한쪽이라도 검정 하한에 못 미치는 달은 내지 않는다.** 쪼갤 수 없다는
@@ -572,13 +551,13 @@ def _run_weekly_trade(
         raw[COL_EXPIRY_MONTH_NUMBER] = raw[COL_DATE].dt.month
         accumulator.trade_signals.append(_identify(raw.drop(columns=[COL_BASIS, COL_HORIZON]), **identity))
 
-        # 시기 2등분은 **전 구간의 신호를 시간순으로** 갈라야 의미가 있으므로 국면 루프 밖에서 낸다
+        # 시기 2등분은 **전 구간의 신호를 시간순으로** 갈라야 의미가 있다
         halves = _aggregate_month_halves(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
         if not halves.empty:
             accumulator.trade_by_month_halves.append(_identify(halves, **identity))
 
-        # 후보 판정은 **전체 시기 · 만기월 축**에서만 낸다. 국면으로 자른 칸은 표본이
-        # 수십 건이라 기준 3(우연확률)이 성립하지 않고, 시기 축과 역할이 겹친다
+        # 후보 판정은 **전체 시기 · 만기월 축**에서만 낸다. 달력 경계로 자른 칸은 표본이
+        # 수십 건이라 우연확률이 성립하지 않고, 시기 축과 역할이 겹친다
         by_month = _aggregate_by_month(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
         accumulator.candidates.append(
             _identify(
@@ -589,11 +568,9 @@ def _run_weekly_trade(
 
         accumulator.trade_by_month.append(_identify(by_month, **identity))
 
-        # 매매 하나의 묶음 성적. **국면·만기 종류로 쪼개지 않는다** — 그 축들은 표본이 수십 건이라
-        # 판정력이 없고, 시기 분할(기준 4)이 같은 질문에 더 균등한 표본으로 답한다
-        _record_trade_cell(
-            signal, baseline, df, pd.Series(True, index=df.index), identity, accumulator, repeats=repeats, seed=seed
-        )
+        # 매매 하나의 묶음 성적. **시기 축 말고는 쪼개지 않는다** — 달력 경계로 자른 칸은
+        # 표본이 수십 건이라 판정력이 없고, 시기 2등분이 같은 질문에 더 균등한 표본으로 답한다
+        _record_trade_cell(signal, baseline, df, identity, accumulator, repeats=repeats, seed=seed)
 
         valid = signal[signal[COL_EXCLUDED_REASON] == REASON_NONE]
         records.append(
@@ -611,9 +588,8 @@ def _run_weekly_trade(
 
 def _record_trade_cell(
     sliced: pd.DataFrame,
-    regime_baseline: pd.DataFrame,
+    weekly_baseline: pd.DataFrame,
     market: pd.DataFrame,
-    regime_mask: pd.Series,
     row_identity: dict[str, Any],
     accumulator: _Accumulator,
     *,
@@ -629,9 +605,8 @@ def _record_trade_cell(
 
     Args:
         sliced: 이 칸의 신호군 long-form
-        regime_baseline: 같은 국면의 「같은 요일 주간 보유」 long-form
+        weekly_baseline: 「같은 요일 주간 보유」 long-form
         market: 시세 전체
-        regime_mask: 국면 구간에 든 날
         row_identity: 식별 컬럼 값
         accumulator: 결과를 쌓는 자리
         repeats: 순열 검정 반복 수
@@ -640,10 +615,10 @@ def _record_trade_cell(
     # 1. 묶음 — 이 매매 하나의 성적이다
     accumulator.trade_summary.append(_identify(summarize(sliced), **row_identity))
 
-    pooled_excess = excess(summarize(sliced), summarize(regime_baseline))
+    pooled_excess = excess(summarize(sliced), summarize(weekly_baseline))
     accumulator.trade_excess.append(_identify(pooled_excess, **{**row_identity, COL_BASELINE: BASELINE_WEEKLY}))
 
-    pooled_test = permutation_test(sliced, regime_baseline, repeats=repeats, seed=seed)
+    pooled_test = permutation_test(sliced, weekly_baseline, repeats=repeats, seed=seed)
     accumulator.trade_test.append(_identify(pooled_test, **{**row_identity, COL_BASELINE: BASELINE_WEEKLY}))
 
     # 2. 보유 길이별 — 여기서만 「같은 길이 단순 보유」와 정확히 견줄 수 있다
@@ -652,7 +627,7 @@ def _record_trade_cell(
         return
 
     lengths = sorted({int(value) for value in per_length[COL_HORIZON]})
-    length_baseline = _matched_length_baseline(market, regime_mask, lengths)
+    length_baseline = _matched_length_baseline(market, lengths)
 
     accumulator.trade_summary.append(_identify(summarize(per_length), **row_identity))
     length_excess = excess(summarize(per_length), summarize(length_baseline))
@@ -693,10 +668,8 @@ def run_study(
 
     summary: dict[str, Any] = {
         "max_offset": MAX_OFFSET,
-        "horizons": list(OFFSET_HORIZONS),
         "permutation_repeats": repeats,
         "permutation_seed": seed,
-        "permutation_scope": f"국면 「{PERMUTATION_REGIME}」 · 만기 종류 「{PERMUTATION_WITCHING}」 에서만 실행",
         "series": series_summaries,
     }
 
@@ -744,7 +717,7 @@ def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
 
 
 def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
-    """본검증 기준·전체 국면·전체 월의 매매 묶음 성적을 뽑는다.
+    """본검증 기준·전체 월의 매매 묶음 성적을 뽑는다.
 
     보유 길이별 칸은 빼고 **묶음 칸만** 남긴다 — 사용자가 물은 것은 매매 하나의 성적이다.
 
@@ -768,23 +741,28 @@ __all__ = ["StudyOutputs", "candidates_headline", "run_study", "trade_headline"]
 
 
 def candidates_headline(outputs: StudyOutputs) -> pd.DataFrame:
-    """본검증 기준의 **통과·보류 칸만** 뽑는다.
+    """본검증 기준의 **후보 칸만** 적중률 내림차순으로 뽑는다.
 
-    탈락 칸은 산출물에 남기되 화면에는 내지 않는다 — 화면은 "지금 볼 것"을 위한 자리이고,
-    왜 떨어졌는지는 `candidates.csv` 의 사유 컬럼이 답한다.
+    제외된 칸은 산출물에 그대로 남기되 화면에는 내지 않는다 — 화면은 "지금 볼 것"을 위한
+    자리이고, 전 칸은 `candidates.csv` 가 만기월 순서로 답한다.
+
+    **정렬이 여기 있는 이유**: 판정 계층(`measure`)은 축을 모르므로 무엇을 먼저 보여줄지
+    정할 수 없다. 동률이 흔해(적중률이 표본의 분수라 값이 겹친다) **안정 정렬**을 써서
+    같은 적중률 안에서는 종목·만기월 순서가 유지되게 한다.
 
     Args:
         outputs: 실행 산출물
 
     Returns:
-        통과·보류 칸만 남긴 판정표. 하나도 없으면 빈 표
+        후보 칸만 남긴 판정표. 하나도 없으면 빈 표
     """
     candidates = outputs.candidates
     if candidates.empty:
         return candidates
 
     primary_bases = {row["price_basis"] for row in outputs.summary["series"] if row["primary"]}
+    selected = candidates[
+        candidates[COL_PRICE_BASIS].isin(primary_bases) & (candidates[COL_SCREEN] == SCREEN_CANDIDATE)
+    ]
 
-    return candidates[
-        candidates[COL_PRICE_BASIS].isin(primary_bases) & candidates[COL_VERDICT].isin([VERDICT_PASS, VERDICT_HELD])
-    ].reset_index(drop=True)
+    return selected.sort_values(COL_HIT_RATE, ascending=False, kind="stable").reset_index(drop=True)

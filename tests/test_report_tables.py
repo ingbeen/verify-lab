@@ -26,7 +26,24 @@ from verify_lab.measure.constants import (
     REASON_OUT_OF_RANGE,
 )
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
+from verify_lab.measure.screening import (
+    COL_BASELINE_GAP,
+    COL_BASELINE_HIT_RATE,
+    COL_DIRECTION,
+    COL_EXPECTED_VALUE,
+    COL_HIT_RATE,
+    COL_P_VALUE,
+    COL_PERIOD_COUNT,
+    COL_PERIOD_MIN_HIT_RATE,
+    COL_SCREEN,
+    COL_SUPPORT_COUNT,
+    COL_SUPPORT_TOTAL,
+    COL_UNMET_SUPPORT,
+    DIRECTION_DOWN,
+    SCREEN_CANDIDATE,
+)
 from verify_lab.measure.statistics import (
+    COL_SAMPLE_COUNT,
     excess,
     permutation_test,
     summarize,
@@ -36,14 +53,18 @@ from verify_lab.report.constants import (
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_EXCLUDED,
+    DISPLAY_EXPECTED_VALUE,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
+    DISPLAY_PERIOD_MIN_HIT_RATE,
     DISPLAY_SAMPLE_COUNT,
+    DISPLAY_SUPPORT,
     DISPLAY_TEST_NOTE,
     DISPLAY_UP_RATE,
     HORIZON_LABELS,
 )
 from verify_lab.report.tables import (
+    build_candidates_table,
     build_comparison_table,
     build_excess_table,
     build_signal_table,
@@ -691,3 +712,100 @@ class TestMarkdown:
         """
         with pytest.raises(ValueError, match="비어"):
             to_markdown(pd.DataFrame({"구간": []}))
+
+
+class TestCandidatesTable:
+    """후보 판정표의 표시 계약을 고정한다."""
+
+    # 축 컬럼 이름. 이 계층은 축을 모르므로 검증 쪽 상수를 끌어오지 않는다
+    AXIS_COLUMN = "expiry_month_number"
+
+    @staticmethod
+    def _candidates(*, support_count: int, support_total: int, period_min: float) -> pd.DataFrame:
+        """판정표 한 줄을 만든다."""
+        return pd.DataFrame(
+            {
+                TestCandidatesTable.AXIS_COLUMN: [9],
+                COL_SAMPLE_COUNT: [27],
+                COL_DIRECTION: [DIRECTION_DOWN],
+                COL_HIT_RATE: [0.6667],
+                COL_EXPECTED_VALUE: [0.010578],
+                COL_BASELINE_HIT_RATE: [0.4522],
+                COL_BASELINE_GAP: [0.2145],
+                COL_P_VALUE: [0.013],
+                COL_PERIOD_COUNT: [2 if support_total == 3 else 0],
+                COL_PERIOD_MIN_HIT_RATE: [period_min],
+                COL_SCREEN: [SCREEN_CANDIDATE],
+                COL_SUPPORT_COUNT: [support_count],
+                COL_SUPPORT_TOTAL: [support_total],
+                COL_UNMET_SUPPORT: [""],
+            }
+        )
+
+    def test_등급이_분모와_함께_표시된다(self) -> None:
+        """
+        목적: **분모를 떼지 않는다.** 시기를 못 잰 칸은 `2/2` 가 되는데 이는 `3/3` 과
+              같은 뜻이 아니며, 분모를 지우면 표본이 작은 칸이 만점처럼 보인다.
+
+        Given: 시기를 재서 3항목을 물은 칸
+        When: 표시용으로 바꾸면
+        Then: 등급이 "3/3" 이다
+        """
+        # Given
+        candidates = self._candidates(support_count=3, support_total=3, period_min=0.6428)
+
+        # When
+        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+
+        # Then
+        assert table[DISPLAY_SUPPORT].iloc[0] == "3/3"
+
+    def test_시기를_못_잰_칸은_분모가_2다(self) -> None:
+        """
+        목적: 물을 수 있었던 항목 수가 표시에 그대로 드러난다.
+
+        Given: 시기 분할이 없어 2항목만 물은 칸
+        When: 표시용으로 바꾸면
+        Then: 등급이 "2/2" 이고 가장 약한 시기가 **0 으로 채워지지 않는다**
+        """
+        # Given
+        candidates = self._candidates(support_count=2, support_total=2, period_min=float("nan"))
+
+        # When
+        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+
+        # Then
+        assert table[DISPLAY_SUPPORT].iloc[0] == "2/2"
+        assert pd.isna(table[DISPLAY_PERIOD_MIN_HIT_RATE].iloc[0])
+
+    def test_방향_기대값이_백분율로_실린다(self) -> None:
+        """
+        목적: 기대값은 비율로 들어와 **백분율로 표시**된다. 단위가 섞이면 0.01% 와 1% 를 혼동한다.
+
+        Given: 기대값 0.010578 (비율)
+        When: 표시용으로 바꾸면
+        Then: 1.06 (%) 이다
+        """
+        # Given
+        candidates = self._candidates(support_count=3, support_total=3, period_min=0.6428)
+
+        # When
+        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+
+        # Then
+        assert float(table[DISPLAY_EXPECTED_VALUE].iloc[0]) == pytest.approx(1.06, abs=0.005)
+
+    def test_축_컬럼이_없으면_예외다(self) -> None:
+        """
+        목적: 축을 잘못 지정하면 조용히 빈 표를 내지 않는다.
+
+        Given: 축 이름이 다른 판정표
+        When: 표시용으로 바꾸면
+        Then: ValueError
+        """
+        # Given
+        candidates = self._candidates(support_count=3, support_total=3, period_min=0.6428)
+
+        # When / Then
+        with pytest.raises(ValueError, match="축 컬럼"):
+            build_candidates_table(candidates, axis_column="요일", axis_label="요일")

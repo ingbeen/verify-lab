@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""검증 #7 실행 — 옵션 만기일 기준 상대 거래일의 수익률
+"""검증 #7 실행 — 만기일 매수 → 다음주 청산 매매와 만기월별 후보 판정
 
-만기일을 0 으로 두고 앞뒤 상대 거래일을 **전부** 산출한다. 문헌이 말하는 "만기 1주 전"은
-정의에 따라 부호가 뒤집히므로 하나를 골라 내지 않는다
-(`docs/spec/option_expiry.md` 결정 ②).
+만기월(1~12)로 쪼개 방향 비율을 재고, 각 칸을 **1차 게이트와 등급**으로 판정한다.
+게이트를 넘지 못한 칸도 `candidates.csv` 에 사유와 함께 남는다 — 화면에서만 빠진다.
 
 가격 기준 두 벌(수정주가·원본가)을 함께 돌린다. 배당락이 만기일에 고정돼 있어 원본가에는
 한 방향 편향이 들어가는데, 두 기준의 차이가 곧 그 몫이라 **차이 자체가 검산**이 된다.
@@ -104,11 +103,16 @@ def _display_headline(outputs: StudyOutputs) -> None:
     """
     candidates = candidates_headline(outputs)
     if candidates.empty:
-        logger.debug("후보 판정을 통과하거나 보류된 칸이 없습니다")
+        logger.debug("1차 게이트를 넘은 칸이 없습니다")
     else:
         table = build_candidates_table(candidates, axis_column=COL_EXPIRY_MONTH_NUMBER, axis_label=DISPLAY_EXPIRY_MONTH)
+        # 청산 요일까지 붙여야 칸이 유일해진다 — 한국은 금요일·목요일 두 벌이라
+        # 종목과 만기월만으로는 같은 달이 두 줄로 겹쳐 보인다
+        table.insert(0, DISPLAY_EXIT_WEEKDAY, candidates[COL_EXIT_WEEKDAY].to_numpy())
         table.insert(0, DISPLAY_TICKER, candidates[COL_TICKER].to_numpy())
-        print_dataframe(table, logger, title="후보 판정 — 통과·보류 (본검증 기준)")
+        print_dataframe(table, logger, title="1차 후보 — 적중률 60% 이상 · 방향 기대값 양수 (본검증 기준 · 적중률 순)")
+        # 화면에서 사라진 칸이 어디 있는지 알려주지 않으면 「코드가 대신 판단한다」는 문제가 화면에 남는다
+        logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {FILE_CANDIDATES} 에 만기월 순서로 있습니다")
 
     trade = trade_headline(outputs)
     if trade.empty:
@@ -132,7 +136,7 @@ def _display_headline(outputs: StudyOutputs) -> None:
             COL_WIN_RATE: "오른 비율(%)",
         }
     )
-    print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 본검증 기준 · 전체 국면 · 전체 월")
+    print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 본검증 기준 · 전체 월")
 
 
 @cli_exception_handler
@@ -169,7 +173,6 @@ def main() -> int:
             "output_dir": str(directory),
             "datasets": [dataset.key for dataset in datasets],  # pyright: ignore[reportAttributeAccessIssue]
             "max_offset": summary["max_offset"],
-            "horizons": summary["horizons"],
             "permutation_repeats": summary["permutation_repeats"],
             "permutation_seed": summary["permutation_seed"],
             "row_counts": summary["row_counts"],

@@ -231,8 +231,8 @@ poetry run python scripts/studies/run_index_extreme.py --repeats 5000 --seed 42
 ### 검증 #7 — 옵션 만기일
 
 ```bash
-# 전 조합 실행 (기본값) — 종목 4개 × 가격 기준 2개 × 국면 × 위칭 × offset -10~+10
-# 그리고 「만기일 매수 → 다음주 금요일 매도」 매매와 만기월별 집계
+# 전 조합 실행 (기본값) — 종목 4개 × 가격 기준 2개 × 만기월 1~12
+# 「만기일 매수 → 다음주 금요일 매도」 매매를 재고 만기월별로 후보 판정한다
 poetry run python scripts/studies/run_option_expiry.py
 
 # 종목 하나만 (qqq · spy · dia · kodex200)
@@ -242,14 +242,18 @@ poetry run python scripts/studies/run_option_expiry.py --dataset kodex200
 poetry run python scripts/studies/run_option_expiry.py --repeats 200
 ```
 
-- **산출물은 9개 CSV 이고, 가장 먼저 볼 것은 `candidates.csv`** 입니다 — 후보 판정 기준 네 개를
-  통과한 칸과 떨어진 사유가 들어 있습니다. 화면에도 실행 직후 그 표가 먼저 나옵니다
+- **산출물은 9개 CSV 이고, 가장 먼저 볼 것은 `candidates.csv`** 입니다 — 전 칸의 1차 판정과
+  등급이 들어 있습니다. 화면에도 실행 직후 그 표가 먼저 나옵니다
+- **화면에는 1차 게이트를 넘은 칸만, `candidates.csv` 에는 전 칸이** 남습니다.
+  화면은 적중률 내림차순이고 CSV 는 만기월 순서입니다 — **제외된 칸도 값이 그대로 있습니다**
+- 판정 규격(게이트 둘 + 등급 셋)의 SoT 는 루트 [CLAUDE.md](../CLAUDE.md) 「후보 판정 기준」이고,
+  구현은 `src/verify_lab/measure/screening.py` 입니다
 
 - 선행 조건: `storage/market/` 에 **8개 파일**(QQQ·SPY·DIA·069500 각각 원본가·수정주가)이 있어야 합니다
-- **하나의 창을 고르지 않습니다.** 만기 앞뒤 21개 자리를 전부 산출해 나란히 보고합니다.
-  매매도 마찬가지로 **휴장 처리 규칙 네 조합**을 전부 내고, 한국은 **금요일·목요일 청산 두 벌**을 냅니다
-- 산출물은 `storage/results/<실행시각>_option_expiry/` 에 14개 CSV 로 남습니다.
-  신호일 원자료는 `signals.csv`(상대 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
+- **하나의 만기월을 고르지 않습니다.** 12달을 전부 산출해 나란히 보고하고,
+  한국은 **금요일·목요일 청산 두 벌**을 냅니다
+- 산출물은 `storage/results/<실행시각>_option_expiry/` 에 9개 CSV 와 `summary.json` 으로 남습니다.
+  신호일 원자료는 `signals.csv`(만기 창 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
 - 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
   [spec/option_expiry.md](spec/option_expiry.md) 입니다
 

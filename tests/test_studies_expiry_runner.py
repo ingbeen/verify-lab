@@ -86,7 +86,6 @@ def _dataset(rule: object) -> Dataset:
         key="synthetic",
         ticker="합성",
         rule=rule,  # pyright: ignore[reportArgumentType]
-        regimes=(),
         series=(PriceSeries(basis="합성", file_name="none.csv", primary=True),),
         price_decimals=4,
         exit_weekdays=(FRIDAY,),

@@ -51,9 +51,6 @@ KR_MONTHLY_EXPIRY: Final = ExpiryRule(label="둘째 목요일", weekday=THURSDAY
 # 하나를 고르지 않고 이 범위를 전부 산출해 나란히 보고한다 (측정의 원칙 1)
 MAX_OFFSET: Final = 10
 
-# 동시만기(위칭)가 있는 달. 미국·한국 모두 분기 말 달에 선물 만기가 겹친다
-WITCHING_MONTHS: Final = (3, 6, 9, 12)
-
 
 # ============================================================
 # DataFrame 컬럼
@@ -75,8 +72,6 @@ COL_DAILY_RETURN: Final = "daily_return"
 # 산출물의 식별 컬럼 — 어떤 조합에서 나온 행인지
 COL_TICKER: Final = "ticker"
 COL_PRICE_BASIS: Final = "price_basis"
-COL_REGIME: Final = "regime"
-COL_WITCHING: Final = "witching"
 
 
 # ============================================================
@@ -114,9 +109,9 @@ COL_MEAN_RATE_CONFLICT: Final = "mean_rate_conflict"
 # 경계를 파라미터로 열면 결과를 보고 조정하게 된다
 HALF_RATE: Final = 0.5
 
-# 시기 분할 축. **국면(`Regime`)과 다른 물건이다** — 국면은 시장 구조가 바뀐 시점으로 나눈
-# 달력 경계라 칸마다 표본이 들쭉날쭉하지만, 이 축은 신호를 시간순으로 세어 균등하게 가른다.
-# 후보 판정 기준 4(시기를 쪼개도 유지되는가)는 **칸당 표본 하한**을 지켜야 하므로 이 축으로 잰다
+# 시기 분할 축. 신호를 **시간순으로 세어 균등하게** 가른다 — 시장 구조가 바뀐 시점으로 나누는
+# 달력 경계 방식은 칸마다 표본이 들쭉날쭉해 쓰지 않는다(`docs/spec/option_expiry.md` 결정 ㉖).
+# 후보 판정의 시기 항목은 **칸당 표본 하한**을 지켜야 하므로 이 축으로 잰다
 COL_TIME_HALF: Final = "time_half"
 DISPLAY_TIME_HALF_EARLY: Final = "앞 절반"
 DISPLAY_TIME_HALF_LATE: Final = "뒤 절반"
@@ -131,78 +126,6 @@ HORIZON_NEXT_WEEK_EXIT: Final = -1
 
 
 # ============================================================
-# 측정 구간
-# ============================================================
-
-# offset 을 앵커로 잰 forward return 의 구간 (거래일). "만기주 전체" 같은 창은
-# (앵커 offset, 구간) 조합으로 표현된다 — 예: 미국 만기주 = 앵커 -5 · 구간 5
-OFFSET_HORIZONS: Final = (1, 2, 3, 5, 10)
-
-
-# ============================================================
-# 분리 축 — 위칭과 국면
-# ============================================================
-
-
-@dataclass(frozen=True)
-class WitchingGroup:
-    """동시만기 여부로 나눈 집계 축
-
-    Attributes:
-        label: 표시 이름
-        months: 포함할 만기월. `None` 이면 자르지 않는다
-        exclude: True 면 `months` 를 제외한 나머지를 뜻한다
-    """
-
-    label: str
-    months: tuple[int, ...] | None
-    exclude: bool = False
-
-
-WITCHING_GROUPS: Final = (
-    WitchingGroup(label="전체", months=None),
-    WitchingGroup(label="동시만기(3·6·9·12월)", months=WITCHING_MONTHS),
-    WitchingGroup(label="옵션 단독(그 외 8개월)", months=WITCHING_MONTHS, exclude=True),
-)
-
-
-@dataclass(frozen=True)
-class Regime:
-    """시장 구조가 바뀐 시점으로 나눈 집계 축
-
-    경계는 **결과를 보기 전에** 정한다. 나중에 자르면 결과를 보고 자른 것이 된다
-    (`docs/spec/option_expiry.md` 결정 ⑨).
-
-    Attributes:
-        label: 표시 이름
-        start: 이 날부터 포함 (`None` 이면 앞을 자르지 않는다)
-        end: 이 날까지 포함 (`None` 이면 뒤를 자르지 않는다)
-    """
-
-    label: str
-    start: str | None
-    end: str | None
-
-
-REGIME_ALL: Final = Regime(label="전체", start=None, end=None)
-
-# 미국 — 위클리 옵션(2005)과 0DTE 확산(2022)으로 만기가 흩어졌다
-US_REGIMES: Final = (
-    REGIME_ALL,
-    Regime(label="~2004 (월물 중심)", start=None, end="2004-12-31"),
-    Regime(label="2005~2021 (위클리)", start="2005-01-01", end="2021-12-31"),
-    Regime(label="2022~ (0DTE)", start="2022-01-01", end=None),
-)
-
-# 한국 — 위클리옵션 상장일이 경계다
-KR_REGIMES: Final = (
-    REGIME_ALL,
-    Regime(label="~2019-09-22 (월물만)", start=None, end="2019-09-22"),
-    Regime(label="2019-09-23~ (위클리)", start="2019-09-23", end=None),
-)
-
-
-# ============================================================
 # 검증 대상 시세
 # ============================================================
 
@@ -211,9 +134,6 @@ PRICE_DECIMALS_KRW: Final = 0
 
 DISPLAY_BASIS_ADJUSTED: Final = "수정주가"
 DISPLAY_BASIS_RAW: Final = "원본가"
-
-# 만기 창 밖의 날로 만든 베이스라인의 이름
-DISPLAY_BASELINE_OUTSIDE: Final = "만기 창 밖"
 
 
 @dataclass(frozen=True)
@@ -242,7 +162,6 @@ class Dataset:
         key: 실행 인자로 고르는 이름
         ticker: 종목 표시 이름
         rule: 그 시장의 월물 만기 규칙
-        regimes: 그 시장의 국면 분할 축
         series: 가격 기준별 파일
         price_decimals: 종가를 저장할 때의 반올림 자릿수
         exit_weekdays: 달력 기준 청산의 목표 요일. 첫 번째가 본검증이고 나머지는 대조다.
@@ -253,7 +172,6 @@ class Dataset:
     key: str
     ticker: str
     rule: ExpiryRule
-    regimes: tuple[Regime, ...]
     series: tuple[PriceSeries, ...]
     price_decimals: int
     exit_weekdays: tuple[int, ...]
@@ -264,7 +182,6 @@ DATASETS: Final = (
         key="qqq",
         ticker="QQQ",
         rule=US_MONTHLY_EXPIRY,
-        regimes=US_REGIMES,
         series=(
             PriceSeries(basis=DISPLAY_BASIS_ADJUSTED, file_name="QQQ_adjusted_max.csv", primary=True),
             PriceSeries(basis=DISPLAY_BASIS_RAW, file_name="QQQ_max.csv", primary=False),
@@ -276,7 +193,6 @@ DATASETS: Final = (
         key="spy",
         ticker="SPY",
         rule=US_MONTHLY_EXPIRY,
-        regimes=US_REGIMES,
         series=(
             PriceSeries(basis=DISPLAY_BASIS_ADJUSTED, file_name="SPY_adjusted_max.csv", primary=True),
             PriceSeries(basis=DISPLAY_BASIS_RAW, file_name="SPY_max.csv", primary=False),
@@ -290,7 +206,6 @@ DATASETS: Final = (
         key="dia",
         ticker="DIA",
         rule=US_MONTHLY_EXPIRY,
-        regimes=US_REGIMES,
         series=(
             PriceSeries(basis=DISPLAY_BASIS_ADJUSTED, file_name="DIA_adjusted_max.csv", primary=True),
             PriceSeries(basis=DISPLAY_BASIS_RAW, file_name="DIA_max.csv", primary=False),
@@ -302,7 +217,6 @@ DATASETS: Final = (
         key="kodex200",
         ticker="KODEX 200",
         rule=KR_MONTHLY_EXPIRY,
-        regimes=KR_REGIMES,
         series=(
             # 국내 수정주가는 조회 시점 기준 최근 3,000거래일만 존재한다. 그래서 본검증 구간이
             # 원본가보다 짧다 — 그 사실 자체를 결과에 적는다 (결정 ⑬)
@@ -327,8 +241,6 @@ DISPLAY_ADVANCED_DAYS: Final = "앞당김(달력일)"
 DISPLAY_OFFSET: Final = "상대 거래일"
 DISPLAY_TICKER: Final = "종목"
 DISPLAY_PRICE_BASIS: Final = "가격기준"
-DISPLAY_REGIME: Final = "국면"
-DISPLAY_WITCHING: Final = "만기 종류"
 DISPLAY_MONTH_DAY_INDEX: Final = "월중 서수"
 DISPLAY_DAILY_RETURN: Final = "일간 등락률(%)"
 DISPLAY_CLOSE: Final = "종가"

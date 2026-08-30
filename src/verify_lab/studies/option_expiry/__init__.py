@@ -23,7 +23,6 @@ from .constants import (
     MAX_OFFSET,
     STUDY_NAME,
     US_MONTHLY_EXPIRY,
-    WITCHING_MONTHS,
     ExpiryRule,
 )
 from .expiry_calendar import monthly_expiry_dates, nth_weekday_of_month
@@ -39,7 +38,6 @@ __all__ = [
     "MAX_OFFSET",
     "STUDY_NAME",
     "US_MONTHLY_EXPIRY",
-    "WITCHING_MONTHS",
     "ExpiryRule",
     "OffsetAssignment",
     "expiry_offsets",

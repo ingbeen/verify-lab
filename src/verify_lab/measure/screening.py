@@ -1,16 +1,29 @@
 """후보 판정 — 축별 집계표에서 방향성 우위 후보를 걸러낸다
 
-루트 `CLAUDE.md` 「후보 판정 기준」의 네 조건을 코드로 옮긴 것이다. 규격만 문서에 두면
-판정이 매번 일회용 스크립트로 이루어져 재현되지 않고 산출물에도 남지 않는다.
+루트 `CLAUDE.md` 「후보 판정 기준」을 코드로 옮긴 것이다. 규격만 문서에 두면 판정이 매번
+일회용 스크립트로 이루어져 재현되지 않고 산출물에도 남지 않는다.
+
+**판정은 두 겹이며 역할이 다르다.**
+
+- **1차 게이트** (적중률 · 방향 기대값) — 볼 목록에 올릴지를 가른다
+- **등급** (기준선 대비 차이 · 우연확률 · 시기 안정성) — 얼마나 믿을 만한지를 알려주되 **떨어뜨리지 않는다**
+
+세 지표를 게이트로 쓰면 코드가 사용자 대신 판단하게 된다(측정의 원칙 1). 그렇다고 적중률
+하나만 게이트로 두면 **기준선과 사실상 같은 칸까지 통과한다** — 주식은 원래 자주 올라
+오른 비율이 절반을 넘는 칸이 흔하기 때문이다. 그래서 게이트에 방향 기대값을 함께 둔다.
+
+**방향 기대값은 「같은 금액을 반복 투자했을 때 남는 수익률」이다.** 적중률만 보면
+"방향은 맞지만 걸면 손실"인 칸을 거르지 못한다 — 자주 조금 맞고 가끔 크게 틀리는 칸이 실재한다.
 
 **축을 모른다.** 만기월이든 요일이든 시기든, 축 컬럼 이름을 인자로 받아 그대로 쓴다.
 어떤 축을 돌릴지는 그 검증이 정하고, 이 모듈은 받은 칸을 판정하기만 한다.
+**정렬도 하지 않는다** — 무엇을 먼저 보여줄지는 표시 계층의 몫이다.
 
 **방향을 가리지 않는다** (측정의 원칙 11). 오른 비율이 기준선보다 낮은 칸은 탈락이 아니라
 **아래로 거는 후보**다. 판정은 기준선에서 얼마나 멀어졌는가(크기)로 하고, 부호는 방향을 알려줄 뿐이다.
 
-**시기를 쪼갤 수 없으면 탈락이 아니라 보류다** (측정의 원칙 12). 표본이 모자란 것과
-기준에 못 미치는 것은 다르며, 둘을 같이 묶으면 나중에 "왜 떨어졌나"를 되물을 수 없다.
+**시기를 쪼갤 수 없으면 등급의 분모가 줄 뿐이다** (측정의 원칙 12). 표본이 모자라 물을 수
+없었던 항목을 미충족으로 세면, 표본이 작다는 이유로 두 번 깎인다.
 """
 
 from typing import Final
@@ -21,6 +34,7 @@ from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
     COL_LOSS_RATE,
     COL_LOSS_RATE_EXCESS,
+    COL_MEAN,
     COL_SAMPLE_COUNT,
     COL_UP_RATE_P_VALUE,
     COL_WIN_RATE,
@@ -31,16 +45,24 @@ from verify_lab.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # ============================================================
-# 판정 기준 (루트 CLAUDE.md 「후보 판정 기준」이 SoT)
+# 1차 게이트 (루트 CLAUDE.md 「후보 판정 기준」이 SoT)
+# ============================================================
+
+# 방향 적중률의 하한 (비율, 0.60 = 60%). 크기가 커도 적중률이 낮으면 집행할 수 없다
+MIN_HIT_RATE: Final = 0.60
+
+# 방향 기대값의 하한 (비율, 0.0 = 0%). **초과**여야 통과한다 — 반복 투자해 0 이 남는 것은 우위가 아니다.
+# 거래비용을 반영하기로 하면 이 값이 그 자리다. 지금은 맨몸 성적이므로 0 이다 (측정의 원칙 10)
+MIN_EXPECTED_VALUE: Final = 0.0
+
+# ============================================================
+# 등급 — 떨어뜨리지 않고 얼마나 믿을 만한지만 알려준다
 # ============================================================
 
 # 기준선 대비 차이의 하한 (비율, 0.10 = 10%p). **방향 무관 절대값이다.**
 # 같은 적중률 60% 가 오르는 쪽에서는 기준선(55~59%) 대비 +2~5%p 에 불과하고
-# 내리는 쪽에서는 기준선(41~45%) 대비 +15~19%p 다. 이 기준이 없으면 오르는 쪽이 부당하게 쉽게 통과한다
+# 내리는 쪽에서는 기준선(41~45%) 대비 +15~19%p 다
 MIN_BASELINE_GAP: Final = 0.10
-
-# 방향 적중률의 하한 (비율, 0.60 = 60%). 크기가 커도 적중률이 낮으면 집행할 수 없다
-MIN_HIT_RATE: Final = 0.60
 
 # 우연확률의 상한. 관습적인 선이며 자연법칙이 아니다 — 0.049 와 0.051 은 사실상 같다
 MAX_P_VALUE: Final = 0.05
@@ -49,51 +71,60 @@ MAX_P_VALUE: Final = 0.05
 # 쪼개면 표본이 절반이 되어 흔들림이 커지므로, 같은 선을 요구하면 실체가 있는 칸도 떨어진다
 MIN_PERIOD_HIT_RATE: Final = 0.55
 
+# 시기를 물을 수 없는 칸의 등급 분모. 나머지 둘은 언제나 물을 수 있다
+SUPPORT_TOTAL_WITHOUT_PERIOD: Final = 2
+
 # ============================================================
 # 판정 결과 스키마
 # ============================================================
 
 COL_DIRECTION = "Direction"
 COL_HIT_RATE = "HitRate"
+COL_EXPECTED_VALUE = "ExpectedValue"
 COL_BASELINE_HIT_RATE = "BaselineHitRate"
 COL_BASELINE_GAP = "BaselineGap"
 COL_P_VALUE = "PValue"
 COL_PERIOD_MIN_HIT_RATE = "PeriodMinHitRate"
 COL_PERIOD_COUNT = "PeriodCount"
-COL_VERDICT = "Verdict"
-COL_FAILED_CRITERIA = "FailedCriteria"
+COL_SCREEN = "Screen"
+COL_SUPPORT_COUNT = "SupportCount"
+COL_SUPPORT_TOTAL = "SupportTotal"
+COL_UNMET_SUPPORT = "UnmetSupport"
 
 # 방향. 신호가 기준선에서 어느 쪽으로 멀어졌는가
 DIRECTION_UP: Final = "위"
 DIRECTION_DOWN: Final = "아래"
 
-# 판정. **보류는 탈락이 아니다** — 시기를 쪼갤 표본이 모자라 기준 4 를 물을 수 없었다는 뜻이다
-VERDICT_PASS: Final = "통과"
-VERDICT_FAIL: Final = "탈락"
-VERDICT_HELD: Final = "보류"
+# 1차 판정. **제외는 「우위가 없다」가 아니라 「이 목록에서는 빼둔다」이다** — 값은 산출물에 그대로 남는다
+SCREEN_CANDIDATE: Final = "후보"
+SCREEN_EXCLUDED: Final = "제외"
 
-# 떨어진 기준의 번호. 왜 떨어졌는지가 남지 않으면 기준을 조정했을 때 무엇이 달라지는지 알 수 없다
-CRITERION_GAP: Final = "1(차이)"
-CRITERION_HIT_RATE: Final = "2(적중률)"
-CRITERION_P_VALUE: Final = "3(우연확률)"
-CRITERION_PERIOD: Final = "4(시기)"
+# 등급 항목의 이름. 무엇이 부족한지가 남지 않으면 기준을 조정했을 때 무엇이 달라지는지 알 수 없다
+SUPPORT_GAP: Final = "차이"
+SUPPORT_P_VALUE: Final = "우연확률"
+SUPPORT_PERIOD: Final = "시기"
 
 SCREENING_COLUMNS: Final = [
     COL_SAMPLE_COUNT,
     COL_DIRECTION,
     COL_HIT_RATE,
+    COL_EXPECTED_VALUE,
     COL_BASELINE_HIT_RATE,
     COL_BASELINE_GAP,
     COL_P_VALUE,
     COL_PERIOD_COUNT,
     COL_PERIOD_MIN_HIT_RATE,
-    COL_VERDICT,
-    COL_FAILED_CRITERIA,
+    COL_SCREEN,
+    COL_SUPPORT_COUNT,
+    COL_SUPPORT_TOTAL,
+    COL_UNMET_SUPPORT,
 ]
 
-# 집계표에서 읽는 입력 컬럼. 신호와 기준선의 두 방향 비율이 모두 있어야 한다
+# 집계표에서 읽는 입력 컬럼. 신호와 기준선의 두 방향 비율에 더해 **평균이 반드시 있어야 한다** —
+# 평균 없이 게이트를 통과시키면 방향은 맞지만 걸면 손실인 칸이 후보로 올라간다
 REQUIRED_SUMMARY_COLUMNS: Final = [
     COL_SAMPLE_COUNT,
+    COL_MEAN,
     COL_WIN_RATE,
     COL_LOSS_RATE,
     COL_WIN_RATE_EXCESS,
@@ -107,22 +138,20 @@ def screen_candidates(
     *,
     axis_column: str,
 ) -> pd.DataFrame:
-    """축의 각 칸을 후보 판정 기준 네 개로 거른다.
+    """축의 각 칸을 1차 게이트로 가르고 나머지 세 지표로 등급을 매긴다.
 
     **방향은 절대 비율이 아니라 기준선과의 거리로 정한다.** 주식은 원래 자주 올라
     오른 비율이 절반을 넘는 칸이 흔하므로, 절대 비율로 정하면 기준선보다 낮은 칸도 「위」가 된다.
 
-    **보류는 탈락이 아니다.** 앞 세 기준을 통과했는데 시기를 쪼갤 표본이 없으면 보류로 남긴다 —
-    기준 4 를 물을 수 없었다는 뜻이지 못 넘었다는 뜻이 아니다. 이미 다른 기준에 걸린 칸은
-    보류로 두지 않는다. 통과 가능성이 남은 것처럼 읽히기 때문이다.
+    **제외된 칸도 행이 그대로 남는다.** 산출물에서 사라지면 사용자가 되짚을 수 없다.
 
     Args:
         summary: 축별 집계표. `REQUIRED_SUMMARY_COLUMNS` 와 두 방향의 우연확률이 있어야 한다
-        periods: 축 × 시기 집계표. 비어 있으면 그 칸은 보류가 된다
+        periods: 축 × 시기 집계표. 비어 있으면 그 칸의 등급 분모가 준다
         axis_column: 축 컬럼 이름. 만기월·요일 등 무엇이든 받는다
 
     Returns:
-        축 컬럼 뒤에 `SCREENING_COLUMNS` 가 붙은 판정표
+        축 컬럼 뒤에 `SCREENING_COLUMNS` 가 붙은 판정표. **축 오름차순**이며 정렬은 하지 않는다
 
     Raises:
         ValueError: 필요한 컬럼이 없는 경우
@@ -138,9 +167,8 @@ def screen_candidates(
     ]
     result = pd.DataFrame(rows, columns=[axis_column, *SCREENING_COLUMNS])
 
-    passed = int((result[COL_VERDICT] == VERDICT_PASS).sum())
-    held = int((result[COL_VERDICT] == VERDICT_HELD).sum())
-    logger.debug(f"후보 판정 완료: {len(result)}칸 중 통과 {passed} · 보류 {held}")
+    candidates = int((result[COL_SCREEN] == SCREEN_CANDIDATE).sum())
+    logger.debug(f"후보 판정 완료: {len(result)}칸 중 후보 {candidates}")
 
     return result
 
@@ -161,6 +189,9 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
     gap = float(row[COL_LOSS_RATE_EXCESS] if downward else row[COL_WIN_RATE_EXCESS])
     p_value = float(row[COL_DOWN_RATE_P_VALUE if downward else COL_UP_RATE_P_VALUE])
 
+    # 아래로 거는 신호는 주가가 내릴 때 버는 것이므로 평균의 부호를 뒤집는다
+    expected_value = -float(row[COL_MEAN]) if downward else float(row[COL_MEAN])
+
     cell_periods = periods[periods[axis_column] == row[axis_column]] if not periods.empty else periods
     period_rates = (
         [float(1.0 - value if downward else value) for value in cell_periods[COL_WIN_RATE]]
@@ -168,33 +199,32 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
         else []
     )
 
-    failed: list[str] = []
-    if abs(gap) < MIN_BASELINE_GAP:
-        failed.append(CRITERION_GAP)
-    if hit_rate < MIN_HIT_RATE:
-        failed.append(CRITERION_HIT_RATE)
-    if p_value >= MAX_P_VALUE:
-        failed.append(CRITERION_P_VALUE)
-    if period_rates and min(period_rates) < MIN_PERIOD_HIT_RATE:
-        failed.append(CRITERION_PERIOD)
+    screened = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
 
-    if failed:
-        verdict = VERDICT_FAIL
-    elif not period_rates:
-        verdict = VERDICT_HELD
-    else:
-        verdict = VERDICT_PASS
+    # 시기 항목은 **물을 수 있었을 때만** 등급에 넣는다. 표본이 모자라 못 물은 것을
+    # 미충족으로 세면 표본이 작다는 이유로 두 번 깎인다
+    checks: list[tuple[str, bool]] = [
+        (SUPPORT_GAP, abs(gap) >= MIN_BASELINE_GAP),
+        (SUPPORT_P_VALUE, p_value < MAX_P_VALUE),
+    ]
+    if period_rates:
+        checks.append((SUPPORT_PERIOD, min(period_rates) >= MIN_PERIOD_HIT_RATE))
+
+    unmet = [name for name, met in checks if not met]
 
     return {
         axis_column: row[axis_column],
         COL_SAMPLE_COUNT: int(row[COL_SAMPLE_COUNT]),
         COL_DIRECTION: DIRECTION_DOWN if downward else DIRECTION_UP,
         COL_HIT_RATE: hit_rate,
+        COL_EXPECTED_VALUE: expected_value,
         COL_BASELINE_HIT_RATE: hit_rate - gap,
         COL_BASELINE_GAP: gap,
         COL_P_VALUE: p_value,
         COL_PERIOD_COUNT: len(period_rates),
         COL_PERIOD_MIN_HIT_RATE: min(period_rates) if period_rates else float("nan"),
-        COL_VERDICT: verdict,
-        COL_FAILED_CRITERIA: " · ".join(failed),
+        COL_SCREEN: SCREEN_CANDIDATE if screened else SCREEN_EXCLUDED,
+        COL_SUPPORT_COUNT: len(checks) - len(unmet),
+        COL_SUPPORT_TOTAL: len(checks),
+        COL_UNMET_SUPPORT: " · ".join(unmet),
     }
