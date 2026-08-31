@@ -41,7 +41,6 @@ from verify_lab.strategy.constants import (
     HOLD_DAYS_DECIMALS,
     HOLD_LIMIT,
     PARAMETER_PREFIX_RANK_CUT,
-    START_YEAR,
     STOP_LOSS_LEVEL,
     TARGETS,
     Target,
@@ -226,7 +225,7 @@ def _find_signals(target: Target) -> _Signals:
         ValueError: 시세가 검증을 통과하지 못한 경우
     """
     frame = load_market_csv(target.dataset.path)
-    start = pd.Timestamp(year=START_YEAR, month=1, day=1)
+    start = pd.Timestamp(year=target.start_year, month=1, day=1)
     selected = {
         direction: find_extreme_move_events(frame, direction=direction, rank_cut=target.rank_cut, start_date=start)
         for direction in Direction
@@ -324,7 +323,7 @@ def _trade_row(
     return {
         DISPLAY_TICKER: target.dataset.ticker,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
-        DISPLAY_START_YEAR: START_YEAR,
+        DISPLAY_START_YEAR: target.start_year,
         DISPLAY_DATE: pd.Timestamp(row[COL_DATE]).strftime(DATE_FORMAT),
         DISPLAY_DIRECTION: EXTREME_DIRECTION_LABELS[direction],
         DISPLAY_ENTRY_PRICE: round(float(row[COL_CLOSE]), target.dataset.price_decimals),
@@ -355,7 +354,7 @@ def _summarize(target: Target, block: _Block) -> dict[str, Any]:
     return {
         DISPLAY_TICKER: target.dataset.ticker,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
-        DISPLAY_START_YEAR: START_YEAR,
+        DISPLAY_START_YEAR: target.start_year,
         DISPLAY_SIGNAL_COUNT: len(returns),
         DISPLAY_EXCLUDED: block.excluded_count,
         DISPLAY_EVENT_COUNT: int(block.trades[DISPLAY_EVENT_ID].nunique()),
@@ -381,7 +380,7 @@ def _target_record(target: Target, signals: _Signals) -> dict[str, Any]:
     return {
         KEY_TICKER: target.dataset.ticker,
         KEY_RANK_CUT: target.rank_cut,
-        KEY_START_YEAR: START_YEAR,
+        KEY_START_YEAR: target.start_year,
         KEY_PATH: str(target.dataset.path),
         KEY_SIGNAL_COUNT: len(signals.positions),
         KEY_EVENT_COUNT: int(pd.Series(signals.event_ids).nunique()),

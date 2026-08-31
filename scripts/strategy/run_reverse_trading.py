@@ -91,13 +91,17 @@ def _print_rule() -> None:
 def _print_summary(outputs: StrategyOutputs) -> None:
     """대상별 집계를 표로 보여준다.
 
-    **저장하는 표를 그대로 화면에 낸다.** 따로 가공하면 반올림·부호 표기가 갈려
-    화면에서 본 숫자를 CSV 에서 찾지 못한다. 시작연도는 상수라 화면에서만 뺀다.
+    **저장하는 표를 그대로 화면에 낸다.** 열을 빼거나 따로 가공하면 반올림·부호 표기가 갈려
+    화면에서 본 행을 CSV 에서 찾지 못한다. 시작연도도 대상마다 다른 값이라 함께 낸다.
+
+    시작연도만 문자열로 바꾸는 것은 **연도가 개수가 아니라 식별자**이기 때문이다.
+    표 출력이 정수에 붙이는 천 단위 구분자가 연도에 걸리면 `2,005` 가 되어 CSV 의 `2005` 와
+    달라진다 — 화면과 CSV 를 맞추기 위한 변환이지 값을 가공하는 것이 아니다.
 
     Args:
         outputs: 실행 산출물
     """
-    table = outputs.summary.drop(columns=[DISPLAY_START_YEAR])
+    table = outputs.summary.astype({DISPLAY_START_YEAR: str})
     print_dataframe(table, logger, title="대상별 성적")
 
 

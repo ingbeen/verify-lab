@@ -10,6 +10,7 @@
 - 신호 판정은 `studies` 가 소유한다. 이 계층은 **어느 날이 신호인가를 다시 정하지 않는다**
 """
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +33,7 @@ from verify_lab.strategy.constants import (
     DISPLAY_MEAN_HOLD,
     DISPLAY_RETURN,
     DISPLAY_SIGNAL_COUNT,
+    DISPLAY_START_YEAR,
     DISPLAY_TOTAL,
     HOLD_LIMIT,
     START_YEAR,
@@ -59,6 +61,14 @@ ACCUMULATION_SHOCK = 0.05
 # 합성 시세의 시작일. 집계 시작연도 이전 구간이 순위 축적에 쓰인다
 MARKET_START = "2005-01-03"
 
+# 시세 첫 해. 여기부터 세면 순위 축적 구간까지 신호로 잡히므로 **더 많은 신호**가 나온다
+MARKET_START_YEAR = int(MARKET_START[:4])
+
+# 합성 시세에 신호를 심는 기준 연도. **프로덕션 `START_YEAR` 와 일부러 분리한다** —
+# 테스트 데이터가 프로덕션 상수를 따라다니면 그 값을 옮길 때마다 신호 배치가 통째로 흔들려,
+# 정작 상수 변경의 영향을 테스트가 잡지 못한다
+SYNTHETIC_START_YEAR = 2008
+
 # 집계 구간에 심는 신호의 위치(집계 시작일 기준 오프셋)와 방향.
 # **뒤를 잘라 「데이터 끝을 넘어가는 신호」를 만들 때 마지막 값을 쓴다**
 SIGNAL_PLACEMENTS = ((60, -1), (140, 1), (260, -1))
@@ -68,10 +78,10 @@ RATE_TOLERANCE = 0.1
 
 
 def _accumulation_index(rows: int) -> int:
-    """집계 시작연도의 첫 거래일이 몇 번째 행인지 낸다."""
+    """신호를 심는 기준 연도의 첫 거래일이 몇 번째 행인지 낸다."""
     dates = pd.DatetimeIndex(pd.bdate_range(MARKET_START, periods=rows))
 
-    return int(np.flatnonzero(dates >= pd.Timestamp(f"{START_YEAR}-01-01"))[0])
+    return int(np.flatnonzero(dates >= pd.Timestamp(f"{SYNTHETIC_START_YEAR}-01-01"))[0])
 
 
 def _market(rows: int = 1_400) -> pd.DataFrame:
@@ -111,7 +121,14 @@ def _market(rows: int = 1_400) -> pd.DataFrame:
     )
 
 
-def _target(directory: Path, *, rank_cut: int = 10, ticker: str = "합성", rows: int = 1_400) -> Target:
+def _target(
+    directory: Path,
+    *,
+    rank_cut: int = 10,
+    ticker: str = "합성",
+    rows: int = 1_400,
+    start_year: int = SYNTHETIC_START_YEAR,
+) -> Target:
     """합성 시세를 저장하고 그 파일을 가리키는 대상을 만든다.
 
     실경로 `storage/` 를 건드리지 않도록 언제나 임시 디렉터리에 쓴다.
@@ -121,6 +138,7 @@ def _target(directory: Path, *, rank_cut: int = 10, ticker: str = "합성", rows
         rank_cut: 순위 컷
         ticker: 종목 표시 이름 (파일명에도 쓰인다)
         rows: 시세 행 수. **줄이면 뒤쪽 신호의 보유 구간이 데이터 끝을 넘어간다**
+        start_year: 이 해부터 신호로 센다. 앞 구간은 순위 축적에만 쓰인다
     """
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{ticker}.csv"
@@ -131,6 +149,7 @@ def _target(directory: Path, *, rank_cut: int = 10, ticker: str = "합성", rows
     return Target(
         dataset=Dataset(key="synthetic", ticker=ticker, price_basis="원본가", path=path, price_decimals=PRICE_DECIMALS),
         rank_cut=rank_cut,
+        start_year=start_year,
     )
 
 
@@ -297,19 +316,90 @@ class TestSignalOwnership:
 class TestTargetsInvariant:
     """매매 대상과 규칙 상수의 불변조건"""
 
-    def test_대상은_세_종이다(self) -> None:
+    def test_대상은_네_종이다(self) -> None:
         """
         목적: 대상이 조용히 늘거나 줄지 않는지 값으로 고정한다
 
+        **두 종목 × 두 컷이고 시작연도는 하나로 통일돼 있다.** 종목마다 구간이 갈리면
+        산출물의 시작연도 열을 읽는 사람이 그 차이에 뜻이 있다고 오해한다.
+
         Given: 매매 대상 목록
-        When: 종목과 순위 컷을 모았을 때
-        Then: KODEX 200 K=10, QQQ K=10, QQQ K=20 세 종이다
+        When: 종목·순위 컷·시작연도를 모았을 때
+        Then: 두 종목 × 두 컷 네 종이고 시작연도가 전부 같다
         """
         # Given / When
-        pairs = {(target.dataset.ticker, target.rank_cut) for target in TARGETS}
+        triples = {(target.dataset.ticker, target.rank_cut, target.start_year) for target in TARGETS}
 
         # Then
-        assert pairs == {("KODEX 200", 10), ("QQQ", 10), ("QQQ", 20)}
+        assert triples == {
+            ("KODEX 200", 10, START_YEAR),
+            ("KODEX 200", 20, START_YEAR),
+            ("QQQ", 10, START_YEAR),
+            ("QQQ", 20, START_YEAR),
+        }
+
+    def test_시작연도는_2005다(self) -> None:
+        """
+        목적: 확정된 백테스트 구간을 값으로 고정한다
+
+        **2005 는 성적이 아니라 표본 근거로 고른 값이다** — 순위 축적 550거래일에서
+        "상위 10위"가 상위 1.8% 라 극단의 뜻이 유지되고(등락률 하한 4.29%),
+        사건 수가 K=10 은 9→12 · K=20 은 13→20 으로 늘어난다.
+
+        Given: 시작연도 상수
+        When: 값을 봤을 때
+        Then: 2005 다
+        """
+        # Given / When / Then
+        assert START_YEAR == 2005
+
+    def test_시작연도를_앞당겨도_늦은_구간_판정이_같다(self, tmp_path: Path) -> None:
+        """
+        목적: 시작연도가 순위 축적을 자르지 않는다는 계약을 고정한다 (미래 참조 감시)
+
+        순위는 데이터 시작부터 확장창으로 쌓고, 시작연도는 **어느 날부터 신호로 셀지**만
+        거른다. 그래서 시작연도를 앞당기면 앞 구간이 더해질 뿐 **뒤 구간의 판정은 바뀌지
+        않는다.** 이 포함관계가 깨지면 순위 축적이 시작연도에 오염된 것이다.
+
+        Given: 같은 시세를 보는 두 대상 (시작연도만 다르다)
+        When: 각각 매매를 돌렸을 때
+        Then: 늦은 시작연도의 신호일이 이른 쪽에 전부 포함되고, 이른 쪽이 더 많다
+        """
+        # Given — 시세 첫 해부터 세는 쪽과 신호를 심은 해부터 세는 쪽
+        early = _target(tmp_path, start_year=MARKET_START_YEAR)
+        late = replace(early, start_year=SYNTHETIC_START_YEAR)
+
+        # When
+        early_dates = set(run_strategy([early]).trades[DISPLAY_DATE])
+        late_dates = set(run_strategy([late]).trades[DISPLAY_DATE])
+
+        # Then — 늦은 쪽이 비어 있으면 진부분집합이 공짜로 성립하므로 함께 고정한다
+        assert late_dates
+        assert late_dates < early_dates
+
+    def test_대상마다_제_시작연도가_행에_실린다(self, tmp_path: Path) -> None:
+        """
+        목적: 시작연도가 대상별 값으로 산출물에 실리는지 고정한다
+
+        모듈 상수 하나였을 때는 이 컬럼이 언제나 같은 값이라 죽어 있었다. **한 실행에 구간이
+        다른 두 대상을 넣어**, 행마다 제 값이 실리는지를 본다 — 기본값과 같은지가 아니라
+        **대상별 전달**이 계약이다.
+
+        Given: 시작연도만 다른 두 대상
+        When: 한 번에 돌렸을 때
+        Then: 집계와 실행 요약이 두 값을 모두 싣는다
+        """
+        # Given
+        early = _target(tmp_path, start_year=MARKET_START_YEAR)
+        late = replace(early, start_year=SYNTHETIC_START_YEAR)
+        expected = {MARKET_START_YEAR, SYNTHETIC_START_YEAR}
+
+        # When
+        result = run_strategy([early, late])
+
+        # Then
+        assert set(result.summary[DISPLAY_START_YEAR]) == expected
+        assert {record["start_year"] for record in result.meta[KEY_TARGETS]} == expected
 
     def test_손절선은_단일_5퍼센트다(self) -> None:
         """
@@ -350,7 +440,7 @@ class TestTargetsInvariant:
         record = outputs.meta[KEY_TARGETS][0]
 
         # Then
-        assert record["start_year"] == START_YEAR
+        assert record["start_year"] == SYNTHETIC_START_YEAR
         assert record["signal_count"] > 0
 
     def test_적용한_규칙이_요약에_남는다(self, outputs: StrategyOutputs) -> None:
