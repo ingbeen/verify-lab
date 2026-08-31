@@ -72,6 +72,10 @@ DISPLAY_TEST_NOTE = "비고"
 DISPLAY_DIRECTION = "방향"
 DISPLAY_HIT_RATE = "적중률(%)"
 DISPLAY_EXPECTED_VALUE = "방향 기대값(%)"
+# 회당 기대값에 표본 수를 곱한 값 — 같은 금액을 표본 수만큼 반복 투자했을 때의 단순 합이다.
+# 신호가 드물거나 보유가 며칠짜리인 매매법은 **회당 평균이 구조적으로 작게 나와** 크기 감각을
+# 주지 못하므로 둘을 나란히 둔다 (루트 `CLAUDE.md` 측정의 원칙 16)
+DISPLAY_TOTAL_RETURN = "합산 수익률(%)"
 DISPLAY_BASELINE_HIT_RATE = "기준선(%)"
 DISPLAY_BASELINE_GAP = "기준선 대비 차이(%p)"
 DISPLAY_P_VALUE = "우연확률"

@@ -153,3 +153,77 @@ HOLD_DAYS_DECIMALS: Final = 2
 
 # 결과 폴더 이름 뒤에 붙는 이름
 STRATEGY_NAME: Final = "reverse_trading"
+
+
+# ============================================================
+# 옵션 만기일 매매 — 손절 격자
+# ============================================================
+
+# **아직 확정된 규칙이 아니다.** 손절선을 고르기 위한 격자이며, 값 선택은 이 격자를 본
+# 사용자가 한다 (루트 `CLAUDE.md` 측정의 원칙 1).
+#
+# 하한을 -1% 로 연 것은 이 매매의 표준편차가 2.26~3.31% 라 **-1% 대에서 이미 노이즈 손절이
+# 나올 것으로 보기 때문**이다. 역방향 매매는 보유가 1~2거래일이라 -2% 부터 열어도 됐지만
+# 여기는 5~6거래일이라 손절선이 닿는 빈도가 다르다.
+# 상한 -10% 는 전체 월 합계 최악(QQQ -10.65% · SPY -11.16% · DIA -12.14% ·
+# KODEX 200 -13.44%)을 다 덮지는 않지만, 그보다 넓히면 손절이 사실상 무손절과 같아진다 —
+# 무손절 자체는 `None` 행으로 따로 낸다
+EXPIRY_STOP_LEVELS: Final = tuple(round(0.010 + 0.005 * step, 4) for step in range(19))
+
+# 무손절 행의 표기. 격자표에서 손절선 칸에 들어가며, `.claude/rules/strategy.md` 가
+# **무손절 성적을 함께 산출하도록** 요구한다 — 손절의 실질 효용은 수익이 아니라 최악 통제라
+# 대조 없이는 무엇을 막았는지 보이지 않는다
+NO_STOP_LABEL: Final = "무손절"
+
+
+@dataclass(frozen=True)
+class ExpiryCell:
+    """옵션 만기일 매매의 대상 칸 하나
+
+    Attributes:
+        dataset_key: `studies.option_expiry` 의 데이터셋 이름
+        expiry_month: 만기월 (1~12)
+        bet_down: 아래로 거는 칸인지 여부. 참이면 원지수가 내려야 이익이다
+    """
+
+    dataset_key: str
+    expiry_month: int
+    bet_down: bool
+
+
+# `docs/research/옵션_만기일.md` 0장의 **1차 게이트를 넘고 등급 3/3 을 받은 7칸**이다.
+# 전부 금요일 청산이며, 순서는 그 문서의 표와 같다(방향 기대값 내림차순이 아니라 문서 순서).
+#
+# **미국 9월 세 칸은 같은 날 같은 방향이라 독립된 세 번의 기회가 아니다.** QQQ·SPY·DIA 는
+# 같은 시장의 지수 ETF로 상관이 매우 높아 사실상 한 번의 베팅이며, 산출물을 읽을 때
+# 세 번의 확인으로 세면 안 된다 (결과 문서 §12A.6).
+#
+# **칸을 여기서 좁히지 않는다.** 비용을 넣으면 DIA 6월이 얇아지지만, 손절을 넣으면 칸마다
+# 다르게 깎이므로 지금 자르면 순서가 거꾸로다. 채택 범위는 격자를 본 뒤 사용자가 정한다
+EXPIRY_CELLS: Final = (
+    ExpiryCell(dataset_key="dia", expiry_month=12, bet_down=False),
+    ExpiryCell(dataset_key="kodex200", expiry_month=9, bet_down=False),
+    ExpiryCell(dataset_key="dia", expiry_month=6, bet_down=True),
+    ExpiryCell(dataset_key="spy", expiry_month=9, bet_down=True),
+    ExpiryCell(dataset_key="dia", expiry_month=9, bet_down=True),
+    ExpiryCell(dataset_key="spy", expiry_month=12, bet_down=False),
+    ExpiryCell(dataset_key="qqq", expiry_month=9, bet_down=True),
+)
+
+# 방향 표기. `measure/screening.py` 의 `DIRECTION_UP`·`DIRECTION_DOWN` 과 같은 말을 쓴다 —
+# 판정표와 격자표를 나란히 놓고 읽으므로 갈라지면 안 된다
+EXPIRY_DIRECTION_DOWN: Final = "아래"
+EXPIRY_DIRECTION_UP: Final = "위"
+
+DISPLAY_EXPIRY_MONTH: Final = "만기월"
+DISPLAY_ENTRY_DATE: Final = "진입일"
+DISPLAY_TARGET_DATE: Final = "청산 목표일"
+DISPLAY_EXIT_DATE: Final = "청산일"
+DISPLAY_EXIT_PRICE: Final = "청산가"
+DISPLAY_EXCLUDED_COUNT: Final = "제외"
+DISPLAY_STDEV: Final = "표준편차(%)"
+DISPLAY_GAP_STOP_COUNT: Final = "갭손절"
+DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
+
+# 결과 폴더 이름 뒤에 붙는 이름
+EXPIRY_STRATEGY_NAME: Final = "expiry_trading"
