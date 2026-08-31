@@ -401,3 +401,90 @@ class TestJudgementOrder:
         assert result is not None
         assert result.reason == EXIT_INTRADAY_STOP
         assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+
+
+class TestTakeProfitSwitch:
+    """익절 스위치 계약 — 옵션 만기일 매매가 이 함수를 함께 쓰기 위한 축
+
+    두 매매의 차이는 **종가 익절 단계 하나뿐**이라 판정식을 두 벌 만들지 않고 스위치로 가른다.
+    **기본값은 켜짐이며, 역방향 매매의 동작은 한 자리도 바뀌지 않아야 한다.**
+    """
+
+    def test_기본값은_익절_켜짐이다(self) -> None:
+        """
+        목적: 역방향 매매의 기존 동작이 기본값으로 유지되는지 고정한다
+
+        **이 계약이 깨지면 확정된 규칙의 성적이 조용히 달라진다.**
+
+        Given: 다음날 종가가 +2% 인 시세
+        When: 스위치를 넘기지 않고 체결했을 때
+        Then: 이익 청산이다 (D+1 에 나간다)
+        """
+        # Given
+        frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_PROFIT
+        assert result.hold_days == 1
+
+    def test_익절을_끄면_이익이어도_한도까지_보유한다(self) -> None:
+        """
+        목적: 스위치가 실제로 익절 단계를 건너뛰는지 고정한다
+
+        Given: D+1 에 +2%, D+2 에 +4% 인 시세
+        When: `take_profit=False` 로 체결했을 때
+        Then: D+1 의 +2% 가 아니라 **한도일의 +4%** 로 청산된다
+        """
+        # Given
+        frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_LIMIT
+        assert result.hold_days == 2
+        assert result.return_rate == pytest.approx(0.04, abs=RATE_TOLERANCE)
+
+    def test_익절을_꺼도_손절은_그대로_걸린다(self) -> None:
+        """
+        목적: 스위치가 손절 경로를 건드리지 않는지 고정한다
+
+        Given: D+1 에 장중 -7% 까지 밀린 시세
+        When: `take_profit=False` 로 체결했을 때
+        Then: 손절선 가격에 체결된다
+        """
+        # Given
+        frame = _frame([_signal_day(), (99.5, 100.0, 93.0, 94.0), (94.0, 96.0, 93.5, 95.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_INTRADAY_STOP
+        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+
+    def test_익절을_꺼도_갭_판정이_먼저다(self) -> None:
+        """
+        목적: 스위치가 판정 순서를 흔들지 않는지 고정한다 (엣지 케이스)
+
+        Given: 시가가 -8% 로 열린 다음날
+        When: `take_profit=False` 로 체결했을 때
+        Then: 갭 청산이며 시가로 체결된다
+        """
+        # Given
+        frame = _frame([_signal_day(), (92.0, 95.0, 90.0, 94.0), (94.0, 96.0, 93.0, 95.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_GAP_STOP
+        assert result.return_rate == pytest.approx(-0.08, abs=RATE_TOLERANCE)

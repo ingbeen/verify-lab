@@ -52,6 +52,7 @@ def simulate_signal(
     upward: bool,
     hold_limit: int,
     stop_level: float = STOP_LOSS_LEVEL,
+    take_profit: bool = True,
 ) -> TradeResult | None:
     """신호일 하나에 매매 규칙을 적용해 체결 결과를 낸다.
 
@@ -59,11 +60,17 @@ def simulate_signal(
 
     1. 시가가 손절선 아래면 **그 시가로** 청산한다 (손절선보다 더 잃는다)
     2. 장중 최악이 손절선을 터치하면 **손절가로** 청산한다
-    3. 종가가 진입가보다 위면 **그날 종가로** 청산한다
+    3. 종가가 진입가보다 위면 **그날 종가로** 청산한다 (`take_profit` 이 참일 때만)
     4. 손실이면 다음 날로 넘기고, 한도일에는 손실이어도 종가로 청산한다
 
     **손절선은 진입가 기준이며 보유 기간 내내 바뀌지 않는다.** 매일 갱신하면 손실이
     이어질 때 손절선이 따라 내려가 최악이 무제한으로 열린다.
+
+    **3단계를 끄는 스위치가 있는 이유**는 청산이 달력 기준인 매매법이 이 판정식을 함께 쓰기
+    때문이다. 옵션 만기일 매매는 다음 주 지정 요일에 파는 것이 정의라 중간 익절이 없다
+    (`strategy/expiry_trading.py`). 두 매매의 차이가 이 단계 하나뿐이므로 판정식을 두 벌
+    만들지 않는다 — 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오는 함정을
+    두 곳에서 관리하게 된다.
 
     Args:
         frame: 날짜 오름차순 시세 (`data/loader.py` 가 검증해 돌려준 형태)
@@ -71,6 +78,8 @@ def simulate_signal(
         upward: 상승 방향 신호(폭등)인지 여부. 참이면 인버스로 진입하므로 부호가 뒤집힌다
         hold_limit: 보유 한도 (거래일, 1 이상)
         stop_level: 손절선 (비율, 0.05 = 5%)
+        take_profit: 종가가 진입가 위면 그날 청산할지 여부. 거짓이면 손절이 걸리지 않는 한
+            **한도일까지 보유한다**
 
     Returns:
         체결 결과. 측정 구간이 데이터를 넘어가면 `None`
@@ -104,8 +113,8 @@ def simulate_signal(
         if worst_rate <= -stop_level:
             return TradeResult(-stop_level, EXIT_INTRADAY_STOP, day)
 
-        # 3. 이익이면 그날 종가로 청산하고 끝낸다
-        if close_rate > 0:
+        # 3. 이익이면 그날 종가로 청산하고 끝낸다. 청산이 달력 기준인 매매법은 이 단계를 끈다
+        if take_profit and close_rate > 0:
             return TradeResult(close_rate, EXIT_PROFIT, day)
 
         # 4. 한도일에는 손실이어도 청산한다

@@ -26,6 +26,7 @@ from verify_lab.measure.screening import (
     COL_SCREEN,
     COL_SUPPORT_COUNT,
     COL_SUPPORT_TOTAL,
+    COL_TOTAL_RETURN,
     COL_UNMET_SUPPORT,
     DIRECTION_DOWN,
     DIRECTION_UP,
@@ -781,3 +782,105 @@ class TestFormula:
 
         # Then
         assert sorted(result[AXIS].tolist()) == [3, 6, 9]
+
+
+class TestTotalReturn:
+    """합산 수익률 계약 (루트 `CLAUDE.md` 측정의 원칙 16)
+
+    신호가 드물거나 보유가 며칠짜리인 매매법은 **회당 평균이 구조적으로 작게 나온다.**
+    회당 값만 적으면 크기 감각이 없고 왕복 수수료와 견줘야 할 값인지도 보이지 않으므로,
+    **같은 금액을 표본 수만큼 반복 투자했을 때의 단순 합**을 같은 표에 둔다.
+
+    **게이트는 회당 기대값 그대로다** — 합산은 표시용이며 기준을 바꾸지 않는다.
+    """
+
+    def test_합산은_기대값_곱하기_표본_수다(self) -> None:
+        """
+        목적: 합산 수익률의 산식을 고정한다
+
+        Given: 평균 -0.5% · 표본 30건인 「아래」 칸 (아래로 걸면 회당 +0.5%)
+        When: 판정하면
+        Then: 합산이 +15% 다
+        """
+        # Given
+        summary = _down_summary()
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        row = result.iloc[0]
+        assert float(row[COL_TOTAL_RETURN]) == pytest.approx(0.005 * 30, abs=EXACT_TOLERANCE)
+
+    def test_표본이_다르면_회당과_합산의_순서가_갈릴_수_있다(self) -> None:
+        """
+        목적: **합산을 표본 수 없이 비교하면 안 되는 이유**를 계약으로 남긴다
+
+        실물 사례가 그대로 재현된다 — 옵션 만기일에서 회당은 KODEX 200 9월(23건 +1.25%)이
+        SPY 9월(33건 +0.88%)을 앞서지만 합산은 뒤집힌다.
+
+        Given: 회당이 큰 소표본 칸과 회당이 작은 대표본 칸
+        When: 판정하면
+        Then: **회당의 대소와 합산의 대소가 반대**다
+        """
+        # Given
+        small = _down_summary(mean=-0.0125).assign(**{AXIS: 9, COL_SAMPLE_COUNT: 23})
+        large = _down_summary(mean=-0.0088).assign(**{AXIS: 12, COL_SAMPLE_COUNT: 33})
+        summary = pd.concat([small, large], ignore_index=True)
+        periods = pd.concat([_strong_periods().assign(**{AXIS: value}) for value in (9, 12)], ignore_index=True)
+
+        # When
+        result = screen_candidates(summary, periods, axis_column=AXIS).set_index(AXIS)
+
+        # Then
+        assert float(result.loc[9, COL_EXPECTED_VALUE]) > float(result.loc[12, COL_EXPECTED_VALUE])
+        assert float(result.loc[9, COL_TOTAL_RETURN]) < float(result.loc[12, COL_TOTAL_RETURN])
+
+    def test_아래_방향은_합산도_부호가_뒤집힌다(self) -> None:
+        """
+        목적: 합산이 회당과 **같은 방향 규칙**을 쓰는지 고정한다 (엣지 케이스)
+
+        Given: 평균이 **양수**인 「아래」 칸 (걸면 잃는다 — SPY 3월이 실물 사례)
+        When: 판정하면
+        Then: 합산도 음수다
+        """
+        # Given
+        summary = _down_summary(mean=0.003)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        row = result.iloc[0]
+        assert float(row[COL_TOTAL_RETURN]) == pytest.approx(-0.003 * 30, abs=EXACT_TOLERANCE)
+
+    def test_합산은_게이트_판정을_바꾸지_않는다(self) -> None:
+        """
+        목적: 합산이 표시용이라는 원칙 16 의 단서를 고정한다
+
+        표본이 1건이면 합산은 회당과 같아 작아지지만, 게이트는 회당 기대값으로만 판정한다.
+
+        Given: 표본 1건인 「아래」 칸
+        When: 판정하면
+        Then: 여전히 후보다
+        """
+        # Given
+        summary = _down_summary().assign(**{COL_SAMPLE_COUNT: 1})
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert result.iloc[0][COL_SCREEN] == SCREEN_CANDIDATE
+
+    def test_합산_컬럼이_판정표_스키마에_있다(self) -> None:
+        """
+        목적: 산출물 컬럼 목록에서 빠지지 않는지 고정한다
+
+        `candidates.csv` 를 사용자가 직접 열어 읽으므로 스키마가 계약이다.
+
+        Given: 판정표 스키마
+        When: 컬럼을 봤을 때
+        Then: 합산 수익률이 들어 있다
+        """
+        assert COL_TOTAL_RETURN in SCREENING_COLUMNS

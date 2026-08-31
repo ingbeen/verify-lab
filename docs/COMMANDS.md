@@ -125,6 +125,22 @@ poetry run python scripts/data/check_kodex_distribution.py --ticker 069500
 - 판정 기준: **만기 창 안 분배락이 0건**이면 원본가로 재도 만기 측정에 편향이 없습니다.
   실측 결과와 해석은 [spec/option_expiry.md](spec/option_expiry.md) §7.5 에 있습니다
 
+#### 만기 매매 보유 구간의 배당락 실측 (검증 #7 후보 7칸)
+
+위 스크립트가 **만기 창 전체**를 보는 것과 달리, 이쪽은 **「만기일 매수 → 다음주 금요일 매도」의
+보유 구간에만** 배당락이 들어가는지 봅니다. 같은 진입·청산 날짜로 원본가와 수정주가의 수익률을
+각각 계산해 빼므로 **임계값을 정할 필요가 없습니다.**
+
+```bash
+poetry run python scripts/data/check_expiry_dividend.py
+```
+
+- **외부 서버에 요청하지 않습니다.** 원본가와 수정주가 파일이 종목마다 둘 다 있어야 합니다
+- 「아래」 칸에서 차이가 **양수면 원본가 성적이 그만큼 과대평가**돼 있습니다 —
+  원본가에서 보이는 그 하락은 배당락이 만든 것이라 인버스로도 공매도로도 못 먹습니다
+- 실측 결과는 [research/옵션_만기일.md](research/옵션_만기일.md) §3.2.1 에 있습니다.
+  **QQQ 9월만 8건 걸리고 나머지 미국 다섯 칸은 0건**입니다
+
 #### KODEX 200 수집
 
 ```bash
@@ -322,4 +338,28 @@ poetry run python scripts/strategy/run_reverse_trading.py --target qqq
   근거는 규칙 문서 §3.3 입니다. **QQQ 는 2005·2008 의 신호 집합이 완전히 같아** 통일해도 성적이 같습니다
 - **KODEX 200 K=20 은 확정 규칙이 아니라 비교축입니다.** 확정 대상은 규칙 문서 §1.1 이 정하며,
   K=20 을 함께 내는 것은 두 컷을 나란히 놓고 판단하기 위해서입니다
+- 실행 시간은 순열 검정이 없어 **수 초**입니다
+
+### 옵션 만기일 매매 — 손절 격자
+
+**아직 확정된 규칙이 아닙니다.** 손절선을 고르기 위한 재료를 내는 스크립트이며,
+값 선택은 격자를 본 사용자가 합니다 (루트 `CLAUDE.md` 측정의 원칙 1).
+
+```bash
+# 전 칸 × 전 손절선 (기본값)
+poetry run python scripts/strategy/run_expiry_trading.py
+
+# 특정 종목만
+poetry run python scripts/strategy/run_expiry_trading.py --ticker qqq
+```
+
+- **손절선은 인자가 아닙니다.** −1.0% ~ −10.0% 를 0.5%p 간격으로 **전부** 내고
+  **무손절 행을 칸마다 함께** 냅니다 — 손절이 무엇을 막았는지는 무손절과 견줘야 보입니다
+- 대상은 `docs/research/옵션_만기일.md` 0장의 **등급 3/3 7칸**이고 SoT 는
+  `src/verify_lab/strategy/constants.py` 의 `EXPIRY_CELLS` 입니다
+- **미국 9월 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향**이라 독립된 세 번의 기회가 아닙니다
+- 산출물은 `storage/results/<실행시각>_expiry_trading/` 에 `stop_loss_grid.csv`(격자표),
+  `trades.csv`(체결 원자료), `summary.json` 으로 남습니다
+- **무손절 행이 결과 문서 12A.4 의 방향 기대값과 맞는지** 먼저 확인하세요.
+  안 맞으면 `measure` 와 `strategy` 두 계층 중 하나가 틀린 것입니다
 - 실행 시간은 순열 검정이 없어 **수 초**입니다

@@ -15,6 +15,12 @@
 **방향 기대값은 「같은 금액을 반복 투자했을 때 남는 수익률」이다.** 적중률만 보면
 "방향은 맞지만 걸면 손실"인 칸을 거르지 못한다 — 자주 조금 맞고 가끔 크게 틀리는 칸이 실재한다.
 
+**회당 기대값과 함께 합산 수익률을 낸다** (루트 `CLAUDE.md` 측정의 원칙 16). 신호가 드물거나
+보유가 며칠짜리인 매매법은 회당 평균이 구조적으로 작게 나와 크기 감각을 주지 못하고, 왕복
+수수료와 견줄 값인지도 그 자리에서 보이지 않는다. **표본 수가 같은 표에 있어야 한다** —
+합산은 표본이 많을수록 커지므로 표본 없이 칸끼리 비교하면 기간이 긴 칸이 자동으로 이긴다.
+**게이트는 회당 기대값 그대로이며 합산은 표시용이다.**
+
 **축을 모른다.** 만기월이든 요일이든 시기든, 축 컬럼 이름을 인자로 받아 그대로 쓴다.
 어떤 축을 돌릴지는 그 검증이 정하고, 이 모듈은 받은 칸을 판정하기만 한다.
 **정렬도 하지 않는다** — 무엇을 먼저 보여줄지는 표시 계층의 몫이다.
@@ -82,6 +88,7 @@ MIN_PERIOD_HIT_RATE: Final = 0.55
 COL_DIRECTION = "Direction"
 COL_HIT_RATE = "HitRate"
 COL_EXPECTED_VALUE = "ExpectedValue"
+COL_TOTAL_RETURN = "TotalReturn"
 COL_BASELINE_HIT_RATE = "BaselineHitRate"
 COL_BASELINE_GAP = "BaselineGap"
 COL_P_VALUE = "PValue"
@@ -110,6 +117,7 @@ SCREENING_COLUMNS: Final = [
     COL_DIRECTION,
     COL_HIT_RATE,
     COL_EXPECTED_VALUE,
+    COL_TOTAL_RETURN,
     COL_BASELINE_HIT_RATE,
     COL_BASELINE_GAP,
     COL_P_VALUE,
@@ -205,6 +213,11 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
     # 아래로 거는 신호는 주가가 내릴 때 버는 것이므로 평균의 부호를 뒤집는다
     expected_value = -float(row[COL_MEAN]) if downward else float(row[COL_MEAN])
 
+    # 같은 금액을 표본 수만큼 반복 투자했을 때의 단순 합 (측정의 원칙 16). 신호가 드문
+    # 매매법은 회당 평균이 구조적으로 작아 크기 감각을 주지 못하므로 둘을 나란히 낸다.
+    # **게이트에는 쓰지 않는다** — 표시용이며 판정 기준을 바꾸지 않는다
+    total_return = expected_value * int(row[COL_SAMPLE_COUNT])
+
     cell_periods = periods[periods[axis_column] == row[axis_column]] if not periods.empty else periods
 
     # 시기 항목도 전체 축과 **같은 컬럼**을 읽는다. `1 − 오른 비율` 로 내린 비율을 만들면
@@ -232,6 +245,7 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
         COL_DIRECTION: DIRECTION_DOWN if downward else DIRECTION_UP,
         COL_HIT_RATE: hit_rate,
         COL_EXPECTED_VALUE: expected_value,
+        COL_TOTAL_RETURN: total_return,
         COL_BASELINE_HIT_RATE: hit_rate - gap,
         COL_BASELINE_GAP: gap,
         COL_P_VALUE: p_value,
