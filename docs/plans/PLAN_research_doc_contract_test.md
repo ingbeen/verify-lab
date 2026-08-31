@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🟡 Draft
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-08-31 10:55
-**마지막 업데이트**: 2026-08-31 10:55
+**마지막 업데이트**: 2026-08-31 11:31
 **관련 범위**: tests, docs
 **관련 문서**: `tests/CLAUDE.md`, `docs/research/CLAUDE.md`, `.claude/rules/docs.md`, `.claude/rules/python.md`
 
@@ -42,9 +42,9 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: `docs/research/CLAUDE.md` 의 규칙 중 **기계가 채점할 수 있는 것만** 골라 테스트로 고정한다
-- [ ] 목표 2: 그 문서가 스스로 「기계가 검사하지 않습니다」라고 적어 둔 **「관련 파일」 표의 죽은 경로**를 잡는다
-- [ ] 목표 3: 검사 함수가 **실제로 위반을 잡는다는 것**을 합성 문서로 증명한다 (그린으로만 끝내지 않는다)
+- [x] 목표 1: `docs/research/CLAUDE.md` 의 규칙 중 **기계가 채점할 수 있는 것만** 골라 테스트로 고정한다
+- [x] 목표 2: 그 문서가 스스로 「기계가 검사하지 않습니다」라고 적어 둔 **「관련 파일」 표의 죽은 경로**를 잡는다
+- [x] 목표 3: 검사 함수가 **실제로 위반을 잡는다는 것**을 합성 문서로 증명한다 (그린으로만 끝내지 않는다)
 
 ## 2) 비목표(Non-Goals)
 
@@ -131,16 +131,17 @@
 
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/impl-plan` 스킬)
 
-- [ ] `tests/test_research_docs.py` 가 현행 5개 문서에 대해 전부 통과한다
-- [ ] 합성 위반 문서 6종(§Phase 2)에서 **각 검사가 실패를 잡는다**
-- [ ] `docs/research/CLAUDE.md` 의 「기계가 검사하지 않습니다」 문구가 사실에 맞게 정정됐다
-- [ ] `docs/research/CLAUDE.md` 에 묘비 어휘가 명시됐다
-- [ ] `poetry run python validate_project.py` 통과 (failed=0, skipped=0; passed/failed/skipped 수 기록)
-- [ ] `poetry run black .` 실행 완료 (마지막 Phase에서 자동 포맷 적용)
-- [ ] 필요한 문서 업데이트 — `docs/COMMANDS.md` **변경 없음**(새 실행 명령어 없음) / `docs/INDEX.md` **변경 없음**(`tests/` 는 등록 대상 폴더가 아님)
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
-      (묘비 어휘 규약과 그 근거는 `docs/research/CLAUDE.md` 로, 검사 항목 목록은 테스트 코드 자체로 이관)
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] `tests/test_research_docs.py` 가 현행 5개 문서에 대해 전부 통과한다
+- [x] 합성 위반 문서 6종(§Phase 2)에서 **각 검사가 실패를 잡는다**
+- [x] `docs/research/CLAUDE.md` 의 「기계가 검사하지 않습니다」 문구가 사실에 맞게 정정됐다
+- [x] `docs/research/CLAUDE.md` 에 묘비 어휘가 명시됐다
+- [x] `poetry run python validate_project.py` 통과 (**passed=583, failed=0, skipped=0** · Ruff·PyRight 통과)
+- [x] `poetry run black .` 실행 완료 (`tests/test_research_docs.py` 1건 재포맷)
+- [x] 필요한 문서 업데이트 — `docs/COMMANDS.md` **변경 없음**(새 실행 명령어 없음) / `docs/INDEX.md` **변경 없음**(`tests/` 는 등록 대상 폴더가 아님)
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
+      (묘비 어휘 규약과 그 근거는 `docs/research/CLAUDE.md` 로, 묘비 예외의 설계 근거는
+      `tests/test_research_docs.py` 모듈 docstring 으로, 검사 항목 목록은 테스트 코드 자체로 이관)
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -166,20 +167,22 @@
 
 **작업 내용**:
 
-- [ ] `tests/test_research_docs.py` 신설, 대상은 `docs/research/*.md` 중 `CLAUDE.md` 제외
-- [ ] 검사 1 — 파일명에 `RESEARCH_` 접두사가 없다
-- [ ] 검사 2 — `## 관련 파일` 절이 있다
-- [ ] 검사 3 — `한계` · `재현 방법` 장이 `##` 수준 제목으로 있다 (`## 15. 한계`, `## 8. 재현 방법 — ...` 을 모두 허용)
-- [ ] 검사 4 — 머리말에 `데이터 기간` 표기가 있다
-- [ ] 검사 5 — **「관련 파일」 절의 마크다운 링크가 전부 실재한다** (외부 URL·앵커 제외)
-- [ ] 검사 6 — **「관련 파일」 절의 인라인 코드 경로**가 실재한다.
+- [x] `tests/test_research_docs.py` 신설, 대상은 `docs/research/*.md` 중 `CLAUDE.md` 제외
+- [x] 검사 1 — 파일명에 `RESEARCH_` 접두사가 없다
+- [x] 검사 2 — `## 관련 파일` 절이 있다
+- [x] 검사 3 — `한계` · `재현 방법` 장이 `##` 수준 제목으로 있다 (`## 15. 한계`, `## 8. 재현 방법 — ...` 을 모두 허용)
+- [x] 검사 4 — 머리말에 `데이터 기간` 표기가 있다
+- [x] 검사 5 — **「관련 파일」 절의 마크다운 링크가 전부 실재한다** (외부 URL·앵커 제외)
+- [x] 검사 6 — **「관련 파일」 절의 인라인 코드 경로**가 실재한다.
       묘비 어휘가 있는 행은 건너뛰고, 글롭은 1건 이상 매치를 요구한다
-- [ ] 검사 7 — 본문이 `docs/plans/` 를 참조하지 않는다
-- [ ] 실패 메시지에 **파일명과 어긋난 경로**를 넣는다 (`test_index.py` 와 같은 형식)
+- [x] 검사 7 — 본문이 `docs/plans/` 를 참조하지 않는다
+- [x] 실패 메시지에 **파일명과 어긋난 경로**를 넣는다 (`test_index.py` 와 같은 형식).
+      검사 6 은 허용 묘비 어휘를 메시지에 함께 적는다 (§7 리스크의 완화책)
+- [x] 대상이 비어 있으면 조용히 통과하는 것을 막는 `test_research_documents_exist` 를 함께 둔다
 
 **Validation**:
 
-- [ ] `poetry run python -m pytest tests/test_research_docs.py` 통과 (5개 문서 전부)
+- [x] `poetry run python -m pytest tests/test_research_docs.py` 통과 (5개 문서 × 7검사 + 합성 케이스, 47건)
 
 ---
 
@@ -190,15 +193,19 @@
 
 **작업 내용**:
 
-- [ ] 합성 위반 6종 — ① 접두사 있음 ② 「관련 파일」 절 없음 ③ 「한계」 장 없음
+- [x] 합성 위반 6종 — ① 접두사 있음 ② 「관련 파일」 절 없음 ③ 「한계」 장 없음
       ④ 「관련 파일」의 링크가 없는 경로 ⑤ 인라인 경로가 없는 파일(묘비 아님) ⑥ 계획서 참조
-- [ ] **묘비 행은 통과한다**를 별도로 고정한다 — 실물(`연속_등락.md`) 형식을 그대로 본뜬다
-- [ ] **글롭이 0건 매치면 실패한다**를 고정한다
-- [ ] 실제 `docs/` 를 건드리지 않는다 (`tmp_path` 격리, `tests/CLAUDE.md` §5)
+- [x] **묘비 행은 통과한다**를 별도로 고정한다 — 실물(`연속_등락.md`) 형식을 그대로 본뜬다
+- [x] **글롭이 0건 매치면 실패한다**를 고정한다
+- [x] 실제 `docs/` 를 건드리지 않는다 (`fake_root` 픽스처가 `tmp_path` 위에 합성 저장소를 만든다)
+- [x] 경계 조건 추가 — 외부 URL·앵커는 검사 대상 아님, 경로가 아닌 인라인 코드(`--series ...`·
+      자리표시자 `<검증명>`)는 제외, 머리말 판정이 본문까지 훑지 않음
 
 **Validation**:
 
-- [ ] `poetry run python -m pytest tests/test_research_docs.py` 통과 (합성 케이스 포함)
+- [x] `poetry run python -m pytest tests/test_research_docs.py` 통과 (합성 케이스 포함, 47건)
+- [x] **묘비 예외를 끄면 실제로 4개 경로가 걸린다**를 실행으로 확인 —
+      `달러_조달_방식.md` 2건 · `연속_등락.md` 2건. 검사가 그 행까지 닿는다는 증거다
 
 ---
 
@@ -206,19 +213,19 @@
 
 **작업 내용**
 
-- [ ] `docs/research/CLAUDE.md` 정정 — 「이 표는 기계가 검사하지 않습니다」 문구를
-      **무엇을 검사하고 무엇은 여전히 사람이 봐야 하는지**로 바꾼다
-- [ ] `docs/research/CLAUDE.md` 에 **묘비 어휘**(`없음`·`삭제`·`제거`)를 명시하고,
-      **왜 이 낱말이 동작에 관여하는지**를 한 줄로 적는다
-- [ ] `docs/COMMANDS.md` — 변경 없음(명시)
-- [ ] `poetry run black .` 실행(자동 포맷 적용)
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] `docs/research/CLAUDE.md` 정정 — 「이 표는 기계가 검사하지 않습니다」 문구를
+      **무엇을 검사하고 무엇은 여전히 사람이 봐야 하는지**로 바꿨다
+- [x] `docs/research/CLAUDE.md` 에 **묘비 어휘**(`없음`·`삭제`·`제거`)를 명시하고,
+      다른 낱말을 쓰면 왜 실패하는지를 함께 적었다
+- [x] `docs/COMMANDS.md` — 변경 없음
+- [x] `poetry run black .` 실행(자동 포맷 적용 — `tests/test_research_docs.py` 1건)
+- [x] 변경 기능 및 전체 플로우 최종 검증
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
 
 **Validation**:
 
-- [ ] `poetry run python validate_project.py` (passed=\_\_, failed=\_\_, skipped=\_\_)
+- [x] `poetry run python validate_project.py` (passed=**583**, failed=**0**, skipped=**0**)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 
@@ -251,3 +258,8 @@
 ### 진행 로그 (KST)
 
 - 2026-08-31 10:55: 계획서 작성. 현행 5개 문서 실측 완료 — 7개 검사 전부 그린으로 시작함을 확인
+- 2026-08-31 11:20: Phase 1·2 완료. `tests/test_research_docs.py` 47건 통과
+- 2026-08-31 11:25: **묘비 예외를 끄면 4개 경로가 걸린다**를 실행으로 확인.
+  그린으로 시작하는 검사가 실제로 그 행까지 닿는다는 증거를 남김
+- 2026-08-31 11:31: 마지막 Phase 완료. `docs/research/CLAUDE.md` 2곳 정정,
+  `validate_project.py` 통과(583/0/0). 상태 Done
