@@ -342,9 +342,8 @@ verify-lab은 떠도는 매매법이 실제로 통계적 우위를 갖는지 검
 ```
 verify-lab/
 ├── .claude/                 # 하네스 설정 (규칙 강제 계층)
-│   ├── hooks/               # 계획서 게이트·불변조건 검사 훅
-│   ├── rules/               # 경로별 자동 로드 규칙
-│   └── skills/              # 절차 스킬 (계획서 작성 등)
+│   └── rules/               # 경로별 자동 로드 규칙
+│                            # (계획서 훅·스킬은 전역 `~/.claude/` 에 있다)
 ├── src/verify_lab/
 │   ├── common_constants.py  # 공통 상수 (경로, 컬럼명 등)
 │   ├── data/                # 시장별 데이터 로더 (yfinance, pykrx)
