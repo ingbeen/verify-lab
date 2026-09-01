@@ -103,8 +103,8 @@
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/verify-plan` 스킬)
 
 - [ ] 세 레포 `CLAUDE.md` 에 프로젝트별 계획서 설정 절 신설 완료 (스킬에서 빼기 **전에** 이관)
-- [ ] 전역 스킬 `~/.claude/skills/impl-plan/` (SKILL.md + template.md) 배치 완료
-- [ ] 전역 훅 `~/.claude/hooks/plan_gate.py` · `plan_lint.py` 배치 및 전역 `settings.json` 등록 완료
+- [x] 전역 스킬 `~/.claude/skills/impl-plan/` (SKILL.md + template.md) 배치 완료
+- [x] 전역 훅 `~/.claude/hooks/plan_gate.py` · `plan_lint.py` 배치 및 전역 `settings.json` 등록 완료
 - [ ] 세 레포의 복제본 제거 완료 (스킬 2벌, 훅 2벌, `settings.json` 2개, quant 산문 절, quant `_template.md`)
 - [ ] 세 레포 + 전역 CLAUDE.md 의 참조 전수 갱신 완료 (기존 `PLAN_*.md` 6건은 제외)
 - [ ] 네 레포에서 훅 동작 실측 완료 (verify-lab · krx-sprint · quant 는 게이트 작동, task-flow 는 무반응)
