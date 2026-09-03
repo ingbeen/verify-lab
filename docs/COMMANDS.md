@@ -125,7 +125,7 @@ poetry run python scripts/data/check_kodex_distribution.py --ticker 069500
 - 판정 기준: **만기 창 안 분배락이 0건**이면 원본가로 재도 만기 측정에 편향이 없습니다.
   실측 결과와 해석은 [spec/option_expiry.md](spec/option_expiry.md) §7.5 에 있습니다
 
-#### 만기 매매 보유 구간의 배당락 실측 (검증 #7 후보 7칸)
+#### 만기 매매 보유 구간의 배당락 실측 (검증 #7 대상 8칸)
 
 위 스크립트가 **만기 창 전체**를 보는 것과 달리, 이쪽은 **「만기일 매수 → 다음주 금요일 매도」의
 보유 구간에만** 배당락이 들어가는지 봅니다. 같은 진입·청산 날짜로 원본가와 수정주가의 수익률을
@@ -139,7 +139,7 @@ poetry run python scripts/data/check_expiry_dividend.py
 - 「아래」 칸에서 차이가 **양수면 원본가 성적이 그만큼 과대평가**돼 있습니다 —
   원본가에서 보이는 그 하락은 배당락이 만든 것이라 인버스로도 공매도로도 못 먹습니다
 - 실측 결과는 [research/옵션_만기일.md](research/옵션_만기일.md) §3.2.1 에 있습니다.
-  **QQQ 9월만 8건 걸리고 나머지 미국 다섯 칸은 0건**입니다
+  **QQQ 만 걸립니다** — 9월 8건(과대평가) · 12월 10건(과소평가). 나머지 미국 칸은 0건
 
 #### KODEX 200 수집
 
@@ -346,20 +346,37 @@ poetry run python scripts/strategy/run_reverse_trading.py --target qqq
 값 선택은 격자를 본 사용자가 합니다 (루트 `CLAUDE.md` 측정의 원칙 1).
 
 ```bash
-# 전 칸 × 전 손절선 (기본값)
+# 확정 규칙 (기본값) — 손절 -5%
 poetry run python scripts/strategy/run_expiry_trading.py
 
 # 특정 종목만
 poetry run python scripts/strategy/run_expiry_trading.py --ticker qqq
+
+# 손절선 격자 — 손절선을 다시 고를 때만
+poetry run python scripts/strategy/run_expiry_trading.py --grid
 ```
 
-- **손절선은 인자가 아닙니다.** −1.0% ~ −10.0% 를 0.5%p 간격으로 **전부** 내고
-  **무손절 행을 칸마다 함께** 냅니다 — 손절이 무엇을 막았는지는 무손절과 견줘야 보입니다
-- 대상은 `docs/research/옵션_만기일.md` 0장의 **등급 3/3 7칸**이고 SoT 는
+- **손절선 값은 인자가 아닙니다.** 확정값 **−5%** 를 그대로 적용하며, 값을 골라 넣는
+  노브로 쓰면 표본에 맞춘 튜닝이 됩니다. 값의 SoT 는
+  `src/verify_lab/strategy/constants.py` 의 `EXPIRY_STOP_LEVEL` 이고
+  고른 근거는 `spec/option_expiry.md` 결정 ㊴ 입니다
+- **기본 산출물에는 `손절선(%)` 컬럼이 없습니다** — 전 행이 같은 값이라 자리만 차지합니다
+- **`--grid` 는 값을 고르는 옵션이 아니라 전부 내는 옵션입니다.** 무손절 + −1.0%~−10.0%
+  (0.5%p 간격)를 내며 **시세를 재수집해 「평평한 구간」을 다시 찾아야 할 때** 씁니다
+- 대상은 **7칸**이고 SoT 는
   `src/verify_lab/strategy/constants.py` 의 `EXPIRY_CELLS` 입니다
+- **등급이 낮은 칸도 빼지 않습니다.** QQQ 12월은 등급 0/3 이지만 게이트를 넘었으므로 함께 냅니다 —
+  등급으로 빼면 60칸에서 통계량 좋은 칸만 고르는 사후 선택이 됩니다 (`spec/option_expiry.md` 결정 ㊳)
 - **미국 9월 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향**이라 독립된 세 번의 기회가 아닙니다
-- 산출물은 `storage/results/<실행시각>_expiry_trading/` 에 `stop_loss_grid.csv`(격자표),
-  `trades.csv`(체결 원자료), `summary.json` 으로 남습니다
-- **무손절 행이 결과 문서 12A.4 의 방향 기대값과 맞는지** 먼저 확인하세요.
+- 산출물은 `storage/results/<실행시각>_expiry_trading/` 에 남습니다
+  - 기본: `summary_by_cell.csv`(**7칸 × 5구간 = 35행**) · `trades.csv`(체결 199건) · `summary.json`
+  - `--grid`: `stop_loss_grid.csv`(7칸 × 20손절선 × 5구간) · `trades.csv` · `summary.json`
+- **성적표는 구간별로 나옵니다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`.
+  **표본이 10건 미만인 구간도 행이 남고** `판정가능` 이 `아니오` 로 찍힙니다
+  (루트 [CLAUDE.md](../CLAUDE.md) 측정의 원칙 17). **최근 5년은 전 칸이 5건이라 판정에 쓰지 않습니다**
+- **「최근 N년」은 데이터 마지막 거래일 기준**입니다. 실행 시각과 무관하므로 같은 데이터면 같은 결과입니다
+- **`--grid` 의 무손절 행이 결과 문서 12A.4 의 방향 기대값과 맞는지** 확인하세요.
   안 맞으면 `measure` 와 `strategy` 두 계층 중 하나가 틀린 것입니다
+- ⚠️ **CSV 를 Excel 로 열어 저장하지 마세요.** 날짜에서 앞 0 이 지워지고(`2021-09-17` →
+  `2021.9.17`) 소수 끝자리가 잘려 재분석·대조가 깨집니다. 값 자체는 안 바뀝니다
 - 실행 시간은 순열 검정이 없어 **수 초**입니다
