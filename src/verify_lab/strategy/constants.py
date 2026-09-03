@@ -159,8 +159,22 @@ STRATEGY_NAME: Final = "reverse_trading"
 # 옵션 만기일 매매 — 손절 격자
 # ============================================================
 
-# **아직 확정된 규칙이 아니다.** 손절선을 고르기 위한 격자이며, 값 선택은 이 격자를 본
-# 사용자가 한다 (루트 `CLAUDE.md` 측정의 원칙 1).
+# 확정된 손절선. **진입가 기준이며 보유 기간 내내 바뀌지 않는다.**
+#
+# **성적이 가장 좋아서 고른 값이 아니다.** 격자 실측에서 무손절이 어느 손절선보다도 나았고
+# (7칸 합계 +175.07% 대 최고 +174.43%), 손절의 값은 수익이 아니라 **최악 통제**에 있다.
+# 이 값을 고른 근거는 **최악 통제가 포화되는 지점**이라는 것이다 — KODEX 200 9월의
+# 2011-09-08 진입 건이 **−5.35% 갭**이라 그보다 좁은 손절선은 전부 그 갭에 뚫리고,
+# 최악은 −5.35% 에서 더 줄지 않는데 합계만 계속 깎인다.
+# **역방향 매매의 「갭손절 0건의 첫 지점」 논리는 여기서 못 쓴다** — 보유가 5~6거래일이라
+# 갭손절 건수가 손절선에 대해 단조롭지 않다. 근거 격자는
+# `docs/research/옵션_만기일.md` 12B.2·12B.3·12B.4 에 있다
+EXPIRY_STOP_LEVEL: Final = 0.05
+
+# **확정 규칙이 아니라 대조축이다.** 손절선을 다시 고를 때 쓰는 격자이며, 기본 실행에는
+# 들어가지 않는다(`--grid` 로만 낸다). **시세를 재수집하면 이 절차를 다시 밟아야 한다** —
+# `.claude/rules/strategy.md` 가 「손절선 후보를 격자로 전부 돌려 평평한 구간을 찾는다」를
+# 절차로 요구하기 때문이다.
 #
 # 하한을 -1% 로 연 것은 이 매매의 표준편차가 2.26~3.31% 라 **-1% 대에서 이미 노이즈 손절이
 # 나올 것으로 보기 때문**이다. 역방향 매매는 보유가 1~2거래일이라 -2% 부터 열어도 됐지만
@@ -191,23 +205,32 @@ class ExpiryCell:
     bet_down: bool
 
 
-# `docs/research/옵션_만기일.md` 0장의 **1차 게이트를 넘고 등급 3/3 을 받은 7칸**이다.
-# 전부 금요일 청산이며, 순서는 그 문서의 표와 같다(방향 기대값 내림차순이 아니라 문서 순서).
+# `docs/research/옵션_만기일.md` 0장에서 **1차 게이트를 넘은 칸**이다. 전부 금요일 청산이며,
+# 앞 일곱은 등급 3/3 이고 **QQQ 12월은 등급 0/3 이지만 게이트를 넘었으므로 함께 둔다.**
+#
+# **등급으로 칸을 빼지 않는다.** 루트 `CLAUDE.md` 「후보 판정 기준」이
+# **"등급은 얼마나 믿을 만한지 알려주되 떨어뜨리지 않는다"** 로 정해져 있다. 등급으로 빼면
+# 60칸에서 통계량이 좋은 칸만 고르는 **사후 선택**이 된다 (결정 ㊳).
 #
 # **미국 9월 세 칸은 같은 날 같은 방향이라 독립된 세 번의 기회가 아니다.** QQQ·SPY·DIA 는
 # 같은 시장의 지수 ETF로 상관이 매우 높아 사실상 한 번의 베팅이며, 산출물을 읽을 때
-# 세 번의 확인으로 세면 안 된다 (결과 문서 §12A.6).
+# 세 번의 확인으로 세면 안 된다 (결과 문서 §12A.6). **다만 12월에는 QQQ↔DIA 상관이 0.418 로
+# 9월(0.769)보다 훨씬 낮다** — 12월 세 칸은 9월만큼 같이 움직이지 않는다.
 #
-# **칸을 여기서 좁히지 않는다.** 비용을 넣으면 DIA 6월이 얇아지지만, 손절을 넣으면 칸마다
-# 다르게 깎이므로 지금 자르면 순서가 거꾸로다. 채택 범위는 격자를 본 뒤 사용자가 정한다
+# **DIA 6월은 뺐다** (2026-09-03, 결정 ㊸). 성적이 낮아서가 아니라 **시기 축이 무너져서**다 —
+# 앞 절반 +1.117%(적중 92.9%) → 뒤 절반 **−0.167%**(60.0%) 이고 최근 6년 중 4년이 손실이다.
+# `.claude/rules/strategy.md` 의 「시기를 쪼개도 유지되는가」를 판정용 2분할에서 이미 통과하지 못한다
 EXPIRY_CELLS: Final = (
     ExpiryCell(dataset_key="dia", expiry_month=12, bet_down=False),
     ExpiryCell(dataset_key="kodex200", expiry_month=9, bet_down=False),
-    ExpiryCell(dataset_key="dia", expiry_month=6, bet_down=True),
     ExpiryCell(dataset_key="spy", expiry_month=9, bet_down=True),
     ExpiryCell(dataset_key="dia", expiry_month=9, bet_down=True),
     ExpiryCell(dataset_key="spy", expiry_month=12, bet_down=False),
     ExpiryCell(dataset_key="qqq", expiry_month=9, bet_down=True),
+    # 등급 0/3 (우연확률 0.5265 · 기준선 대비 +6.33%p). **통계적 근거가 있어서 넣는 것이
+    # 아니라, 뺄 근거가 사후 선택뿐이라 안 빼는 것이다.** 같은 27건으로 맞춰도 적중률이
+    # 62.96% 로 DIA(81.48%)·SPY(70.37%)보다 낮아 표본 기간 탓이 아니다
+    ExpiryCell(dataset_key="qqq", expiry_month=12, bet_down=False),
 )
 
 # 방향 표기. `measure/screening.py` 의 `DIRECTION_UP`·`DIRECTION_DOWN` 과 같은 말을 쓴다 —
@@ -227,3 +250,35 @@ DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
 
 # 결과 폴더 이름 뒤에 붙는 이름
 EXPIRY_STRATEGY_NAME: Final = "expiry_trading"
+
+
+# ============================================================
+# 구간 축 (루트 `CLAUDE.md` 측정의 원칙 17)
+# ============================================================
+
+# **균등 2분할만으로는 신호가 식는 것을 놓친다.** 실물 사례가 DIA 6월이다 — 2분할에서는
+# 앞 92.9% / 뒤 60.0% 로 살아 있어 보였는데 최근 5년만 보면 2/6 이고 회당이 −1.832% 였다.
+# 그래서 최근 구간을 함께 낸다.
+#
+# **3분할과 시장 국면은 넣지 않는다** (결정 ㊵). 33건 3분할은 11건이라 최근 10년과 사실상
+# 같은 축이고 5/7칸이 하한 미달이다. 국면은 칸당 하락장 표본이 3~6건이라 성립하지 않는다
+PERIOD_ALL: Final = "전체"
+PERIOD_FIRST_HALF: Final = "앞 절반"
+PERIOD_SECOND_HALF: Final = "뒤 절반"
+PERIOD_RECENT_10Y: Final = "최근 10년"
+PERIOD_RECENT_5Y: Final = "최근 5년"
+
+EXPIRY_PERIODS: Final = (PERIOD_ALL, PERIOD_FIRST_HALF, PERIOD_SECOND_HALF, PERIOD_RECENT_10Y, PERIOD_RECENT_5Y)
+
+# 「최근 N년」 구간의 N. 경계는 **데이터 마지막 거래일 기준**이다 (결정 ㊷) —
+# 실행 시각을 쓰면 코드를 안 고쳐도 날짜가 지나면 결과가 바뀌어 재현되지 않는다
+RECENT_YEARS: Final = {PERIOD_RECENT_10Y: 10, PERIOD_RECENT_5Y: 5}
+
+# 그 구간으로 판단해도 되는 표본 하한. 루트 `CLAUDE.md` 측정의 원칙 12 와 같은 값이며,
+# **미달이어도 행은 남긴다** — 행이 사라지면 사용자가 그 구간을 못 봤다는 사실 자체를 모른다 (결정 ㊶)
+MIN_PERIOD_SAMPLE: Final = 10
+
+DISPLAY_PERIOD: Final = "구간"
+DISPLAY_JUDGEABLE: Final = "판정가능"
+JUDGEABLE_YES: Final = "예"
+JUDGEABLE_NO: Final = "아니오"
