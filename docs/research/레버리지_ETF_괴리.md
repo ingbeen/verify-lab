@@ -27,10 +27,10 @@
 | --- | --- |
 | 확정 설계 | [spec/leverage_tracking.md](../spec/leverage_tracking.md) |
 | 도출된 매매 규칙 | **없음** — 이 검증은 상품의 성질을 재며 매매 규칙을 도출하지 않는다 |
-| 측정 정의 | [src/verify_lab/studies/leverage_tracking/](../../src/verify_lab/studies/leverage_tracking/) |
+| 측정 정의 | [src/verify_lab/studies/leverage_tracking/](../../src/verify_lab/studies/leverage_tracking/) · 배당 보정분은 공통 계층인 [src/verify_lab/measure/distribution.py](../../src/verify_lab/measure/distribution.py) |
 | 실행 스크립트 | [scripts/studies/run_leverage_tracking.py](../../scripts/studies/run_leverage_tracking.py) |
 | 데이터 수집 | [scripts/data/collect_yfinance.py](../../scripts/data/collect_yfinance.py) · [scripts/data/collect_pykrx.py](../../scripts/data/collect_pykrx.py) · [scripts/data/collect_etn.py](../../scripts/data/collect_etn.py) |
-| 테스트 | [tests/test_studies_leverage_divergence.py](../../tests/test_studies_leverage_divergence.py) · [tests/test_studies_leverage_breakdown.py](../../tests/test_studies_leverage_breakdown.py) · [tests/test_studies_leverage_pairing.py](../../tests/test_studies_leverage_pairing.py) · [tests/test_studies_leverage_distribution.py](../../tests/test_studies_leverage_distribution.py) · [tests/test_studies_leverage_runner.py](../../tests/test_studies_leverage_runner.py) · [tests/test_etn_collector.py](../../tests/test_etn_collector.py) |
+| 테스트 | [tests/test_studies_leverage_divergence.py](../../tests/test_studies_leverage_divergence.py) · [tests/test_studies_leverage_breakdown.py](../../tests/test_studies_leverage_breakdown.py) · [tests/test_studies_leverage_pairing.py](../../tests/test_studies_leverage_pairing.py) · [tests/test_measure_distribution.py](../../tests/test_measure_distribution.py) · [tests/test_studies_leverage_runner.py](../../tests/test_studies_leverage_runner.py) · [tests/test_etn_collector.py](../../tests/test_etn_collector.py) |
 | 실행 명령어 | [COMMANDS.md](../COMMANDS.md) |
 
 ---

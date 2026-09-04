@@ -171,6 +171,29 @@ poetry run python scripts/data/collect_pykrx.py --ticker 261250 --start 20161227
   제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다
 
+### 국내 선물 (코스피200·코스닥150 계약별 시세 — 검증 #9 용)
+
+**KRX 데이터포털 계정이 필요합니다.** pykrx 와 같은 `.env` 설정을 씁니다.
+
+```bash
+# 두 상품 전 기간 (기본값) — 코스피200 1996-05-03~, 코스닥150 2015-11-23~
+poetry run python scripts/data/collect_krx_futures.py
+
+# 한 상품만
+poetry run python scripts/data/collect_krx_futures.py --product KRDRVFUKQI
+```
+
+- **한 상품에 호출이 700회를 넘고 코스피200 은 25분쯤 걸립니다.** 계약 목록 스냅숏을 한 달
+  간격으로 훑은 뒤 계약마다 기간 시세를 받기 때문입니다. **두 상품을 동시에 돌리지 마세요** —
+  요청이 몰려 KRX 가 JSON 이 아닌 응답을 돌려주고 수집이 통째로 끊깁니다(실측). 하나씩 돌립니다
+- **`MDCSTAT12601`(개별종목 시세 추이)** 를 직접 부릅니다. 이름이 비슷한 `MDCSTAT12701` 은
+  「최근월물 시세 추이」라 **하루 한 행만** 주고 원월물이 통째로 빠집니다.
+  근거와 통계 코드 표는 [spec/futures_leverage.md](spec/futures_leverage.md) §5.2 에 있습니다
+- 저장은 **상품마다 파일 하나**(`<상품코드>_max.csv`)이고 `Contract` 컬럼으로 계약을 가릅니다.
+  **읽을 때 `load_futures_csv` 를 씁니다** — 공통 `load_market_csv` 는 날짜 기준 중복 제거가
+  같은 날짜의 계약을 첫 개만 남기고 지웁니다(경고만 뜨고 예외가 없습니다)
+- 야간 세션·스프레드 종목·당일·미개시 구간을 제외하며 **제외 건수가 실행 결과 표에 종류별로** 나옵니다
+
 ### ETN (국내 상장지수증권 — 검증 #8 용)
 
 **KRX 데이터포털 계정이 필요합니다.** pykrx 와 같은 `.env` 설정을 씁니다.
@@ -304,6 +327,30 @@ poetry run python scripts/studies/run_option_expiry.py --repeats 200
   신호일 원자료는 `signals.csv`(만기 창 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
 - 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
   [spec/option_expiry.md](spec/option_expiry.md) 입니다
+
+### 검증 #9 — 선물 대 레버리지 ETF
+
+```bash
+# 전 조합 실행 (기본값) — 6쌍 × 3방식 × 7격자 × 롤 규칙 2벌 × 이자 가정 2벌
+poetry run python scripts/studies/run_futures_leverage.py
+
+# 특정 지수만 (KOSPI200 · KOSDAQ150)
+poetry run python scripts/studies/run_futures_leverage.py --index KOSDAQ150
+```
+
+- **인자는 지수로 좁히는 것 하나뿐입니다.** 배수·격자·리밸런싱 주기·롤 규칙은 상수로 고정돼
+  있고 인자로 열지 않습니다 — 노브가 되면 결과를 보고 고르게 되며 그것은 과최적화입니다.
+  값의 SoT 는 `src/verify_lab/studies/futures_leverage/constants.py` 입니다
+- 선행 조건: `storage/market/` 에 **선물 2종**(`KRDRVFUK2I_max.csv`·`KRDRVFUKQI_max.csv`)과
+  **짝이 되는 ETF·ETN 8종**, `storage/series/CD91.csv` 가 있어야 합니다
+- 산출물은 `storage/results/<실행시각>_futures_leverage/` 에 남습니다
+  - `comparison.csv` — 지수 × 배수 × 방식 × 구간 집계. **가장 먼저 볼 표입니다**
+  - `decomposition.csv` — 차이 분해(롤·베이시스 몫 · 리밸런싱 오차 · 여유현금 이자 · 잔여)
+  - `roll_events.csv` — 롤 이벤트 원자료. **판정일과 집행일이 따로** 있습니다
+  - `breakeven.csv` · `wipeouts.csv` · `leverage_drift.csv`
+  - `windows_<지수>_<종목>.csv` — 시작일 전체 목록. 차트 대조용입니다
+- **CSV 헤더는 한글**이고 비율은 백분율 2자리로 저장됩니다
+- 확정 설계는 [spec/futures_leverage.md](spec/futures_leverage.md) 입니다
 
 ### 검증 #8 — 레버리지 ETF 괴리
 

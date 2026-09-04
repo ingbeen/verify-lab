@@ -52,6 +52,44 @@ REQUIRED_COLUMNS: Final = [COL_DATE, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL
 PRICE_COLUMNS: Final = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE]
 
 # ============================================================
+# 선물 시세 스키마 (공통 스키마의 확장)
+# ============================================================
+
+# 계약 식별자(ISIN)와 계약명. **선물은 하루에 여러 계약이 동시에 거래되므로 날짜만으로는
+# 행이 유일해지지 않는다.** 공통 시세 파일이 날짜를 유일 키로 전제하는 것과 갈리는 지점이며,
+# 그래서 선물은 전용 로더로 읽는다 (`data/loader.py` 의 `load_futures_csv`)
+COL_CONTRACT: Final = "Contract"
+COL_CONTRACT_NAME: Final = "ContractName"
+
+# 정산가. 거래가 없는 날에도 거래소가 매기므로 **롤 계수는 종가가 아니라 이 값으로 낸다.**
+# 원월물은 체결이 없는 날이 많아 종가가 결측이다
+COL_SETTLE: Final = "Settle"
+
+# 미결제약정. 시장이 어느 계약으로 옮겨갔는지를 보는 축이다
+COL_OPEN_INTEREST: Final = "OpenInterest"
+
+# 현물 지수값. 거래소가 시세와 함께 주므로 베이시스를 따로 받지 않아도 된다
+COL_SPOT: Final = "Spot"
+
+# 선물 시세 파일이 반드시 가져야 하는 컬럼과 그 순서
+FUTURES_REQUIRED_COLUMNS: Final = [
+    COL_DATE,
+    COL_CONTRACT,
+    COL_CONTRACT_NAME,
+    COL_OPEN,
+    COL_HIGH,
+    COL_LOW,
+    COL_CLOSE,
+    COL_VOLUME,
+    COL_SETTLE,
+    COL_OPEN_INTEREST,
+    COL_SPOT,
+]
+
+# 한 행을 유일하게 가리키는 키. 로더의 중복 판정이 이 조합을 쓴다
+FUTURES_ROW_KEY: Final = [COL_DATE, COL_CONTRACT]
+
+# ============================================================
 # 일별 단일 값 시계열 스키마
 # ============================================================
 
