@@ -6,16 +6,23 @@
 이상을 발견하면 **메우지 않고 예외를 던진다.** 로더가 조용히 결측을 보간하면
 그 위의 측정 결과 전체가 무효가 된다.
 
-**두 스키마를 다루며 판정이 서로 다르다.**
+**세 스키마를 다루며 판정이 서로 다르다.**
 
-| | OHLCV 시세 | 일별 단일 값 시계열 |
-| --- | --- | --- |
-| 대상 | 주가·ETF | 환율 고시가·금리 |
-| 0 이하 값 | 오류로 본다 | **정상이다** (마이너스 금리) |
-| 큰 일간 변동 | 오류로 본다 | **정상이다** (환위기의 환율) |
+| | OHLCV 시세 | 일별 단일 값 시계열 | 선물 시세 |
+| --- | --- | --- | --- |
+| 대상 | 주가·ETF | 환율 고시가·금리 | 파생상품 계약별 시세 |
+| 유일 키 | 날짜 | 날짜 | **날짜 + 계약** |
+| 0 이하 값 | 오류로 본다 | **정상이다** (마이너스 금리) | 정산가만 오류로 본다 |
+| 결측 종가 | 오류로 본다 | — | **정상이다** (그날 체결 없음) |
+| 큰 일간 변동 | 오류로 본다 | **정상이다** (환위기의 환율) | 계약별로 나눠 본다 |
 
 값의 부호와 변동폭이 무엇을 뜻하는지는 소스마다 달라서, 시세의 판정을 시계열에 그대로
 걸면 정상 데이터가 막힌다. 그래서 시계열 쪽은 **구조와 결측만** 본다.
+
+**선물에 `load_market_csv` 를 쓰면 안 된다.** 하루에 여러 계약이 동시에 거래되므로
+날짜 기준 중복 제거가 **첫 계약만 남기고 나머지를 지운다.** 경고만 남고 예외가 없어
+「예외 없이 읽었다」로 통과하며, 날짜순으로 늘어선 서로 다른 계약에 일간 변동 검사를 걸면
+판정 자체가 뜻을 잃는다.
 """
 
 from collections.abc import Sequence
@@ -25,8 +32,13 @@ import pandas as pd
 
 from verify_lab.common_constants import (
     COL_CLOSE,
+    COL_CONTRACT,
     COL_DATE,
+    COL_OPEN_INTEREST,
+    COL_SETTLE,
     COL_VALUE,
+    FUTURES_REQUIRED_COLUMNS,
+    FUTURES_ROW_KEY,
     PRICE_COLUMNS,
     REQUIRED_COLUMNS,
     SERIES_REQUIRED_COLUMNS,
@@ -226,5 +238,118 @@ def load_series_csv(path: Path) -> pd.DataFrame:
     validate_series_data(df)
 
     logger.debug(f"시계열 로딩 완료: {len(df):,}행, 기간 {df[COL_DATE].min().date()} ~ {df[COL_DATE].max().date()}")
+
+    return df
+
+
+def validate_futures_data(df: pd.DataFrame) -> None:
+    """선물 시세 DataFrame 의 이상 여부를 검사한다.
+
+    **판정이 OHLCV 시세와 세 군데에서 갈린다.**
+
+    1. **결측 종가를 허용한다.** 원월물은 체결이 없는 날이 많고, 그런 날 거래소는 종가를
+       주지 않는다(`-`). 이것은 결측이 아니라 「그날 거래 없음」이라는 사실이다
+    2. **정산가는 결측도 0 이하도 허용하지 않는다.** 롤 계수를 이 값으로 내므로
+       비면 계산이 성립하지 않는다. 거래가 없는 날에도 거래소가 매긴다
+    3. **일간 변동을 계약별로 본다.** 한 프레임에 여러 계약이 날짜순으로 섞여 있어
+       그대로 `pct_change` 를 걸면 서로 다른 계약의 가격을 잇게 된다
+
+    수집기와 로더가 이 함수를 함께 쓴다 — 판정이 두 곳으로 갈라지면
+    "수집은 통과했는데 로딩에서 막히는" 데이터가 생긴다.
+
+    Args:
+        df: 검사할 선물 시세 DataFrame (필수 컬럼이 이미 존재한다고 전제)
+
+    Raises:
+        ValueError: 비었거나, 정산가·미결제약정이 비었거나, 정산가가 0 이하거나,
+            체결이 있는 날의 가격이 0 이하거나, 계약 안에서 임계를 넘는 일간 변동이 있는 경우
+    """
+    if df.empty:
+        raise ValueError("선물 시세 데이터가 비어 있습니다")
+
+    # 1. 정산가 검사. 롤 계산의 유일한 입력이라 가장 엄격하게 본다
+    settle_missing = df[COL_SETTLE].isna()
+    if settle_missing.any():
+        rows = df.loc[settle_missing, FUTURES_ROW_KEY].head().to_dict("records")
+        raise ValueError(f"정산가 결측 발견 - 건수: {int(settle_missing.sum())}, 예시: {rows}")
+
+    settle_non_positive = df[COL_SETTLE] <= 0
+    if settle_non_positive.any():
+        rows = df.loc[settle_non_positive, FUTURES_ROW_KEY].head().to_dict("records")
+        raise ValueError(
+            f"0 이하 정산가 발견 - 건수: {int(settle_non_positive.sum())}, 예시: {rows} " "(야간 세션·당일·스프레드 종목이 섞이면 이 값이 0 으로 옵니다)"
+        )
+
+    # 2. 미결제약정 검사. 0 은 정상값이고 결측만 오류다 — 스프레드 종목이 섞이면 비어서 온다
+    interest_missing = df[COL_OPEN_INTEREST].isna()
+    if interest_missing.any():
+        rows = df.loc[interest_missing, FUTURES_ROW_KEY].head().to_dict("records")
+        raise ValueError(f"미결제약정 결측 발견 - 건수: {int(interest_missing.sum())}, 예시: {rows}")
+
+    # 3. 체결이 있었던 날의 가격 검사. 결측은 「그날 거래 없음」이라 통과시킨다
+    for column in PRICE_COLUMNS:
+        traded_non_positive = df[column].notna() & (df[column] <= 0)
+        if traded_non_positive.any():
+            rows = df.loc[traded_non_positive, FUTURES_ROW_KEY].head().to_dict("records")
+            raise ValueError(f"0 이하 가격 발견 - 컬럼: {column}, 건수: {int(traded_non_positive.sum())}, 예시: {rows}")
+
+    # 4. 일간 변동 검사. **계약 안에서만** 본다. 계약 경계를 넘어 이으면 롤 점프를 오류로 잡는다
+    change_rate = df.groupby(COL_CONTRACT, sort=False)[COL_SETTLE].pct_change()
+    extreme = change_rate.abs() > MAX_DAILY_CHANGE_RATE
+    if extreme.any():
+        first_index = df.index[extreme][0]
+        raise ValueError(
+            f"비정상 급등락 발견 (임계: {MAX_DAILY_CHANGE_RATE:.0%}) - "
+            f"날짜: {df.loc[first_index, COL_DATE]}, 계약: {df.loc[first_index, COL_CONTRACT]}, "
+            f"변동률: {change_rate[first_index]:+.2%}, 건수: {int(extreme.sum())}"
+        )
+
+
+def load_futures_csv(path: Path) -> pd.DataFrame:
+    """선물 시세 CSV 를 읽어 검증된 DataFrame 으로 돌려준다.
+
+    **중복 판정을 `날짜 + 계약` 으로 한다.** 하루에 여러 계약이 동시에 거래되므로
+    `load_market_csv` 처럼 날짜만으로 중복을 지우면 첫 계약만 남고 나머지가 조용히 사라진다.
+
+    Args:
+        path: 선물 시세 CSV 경로
+
+    Returns:
+        `날짜 → 계약` 오름차순으로 정렬되고 인덱스가 0부터 다시 매겨진 DataFrame.
+        날짜 컬럼의 dtype 은 `datetime64[ns]` 다
+
+    Raises:
+        FileNotFoundError: 파일이 없는 경우
+        ValueError: 필수 컬럼 누락, 빈 데이터, 이상치가 발견된 경우
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"선물 시세 파일을 찾을 수 없습니다: {path}")
+
+    df = pd.read_csv(path)
+
+    # 1. 스키마 검증. 컬럼이 다르면 이후 판정이 전부 어긋나므로 가장 먼저 막는다
+    missing_columns = set(FUTURES_REQUIRED_COLUMNS) - set(df.columns)
+    if missing_columns:
+        raise ValueError(f"필수 컬럼이 누락되었습니다: {sorted(missing_columns)} (파일: {path})")
+
+    # 2. 날짜 파싱
+    df[COL_DATE] = pd.to_datetime(df[COL_DATE])
+
+    # 3. 정렬. 계약을 2차 키로 두어 같은 날짜 안의 순서까지 재현된다
+    df = df.sort_values(FUTURES_ROW_KEY).reset_index(drop=True)
+
+    # 4. 중복 제거. **날짜만으로 보지 않는다.** 몇 건이 왜 빠졌는지 남긴다
+    duplicate_count = int(df.duplicated(subset=FUTURES_ROW_KEY).sum())
+    if duplicate_count > 0:
+        logger.warning(f"중복 (날짜, 계약) {duplicate_count}건을 제거했습니다 (파일: {path})")
+        df = df.drop_duplicates(subset=FUTURES_ROW_KEY, keep="first").reset_index(drop=True)
+
+    # 5. 이상치 검사. 통과한 데이터만 호출자에게 넘긴다
+    validate_futures_data(df)
+
+    logger.debug(
+        f"선물 시세 로딩 완료: {len(df):,}행, 계약 {df[COL_CONTRACT].nunique():,}개, "
+        f"기간 {df[COL_DATE].min().date()} ~ {df[COL_DATE].max().date()}"
+    )
 
     return df

@@ -1,7 +1,10 @@
-"""검증 #8 — 분배금 몫 계약
+"""분배금 몫 계약
 
 원본가로 재기로 한 결정(측정의 원칙 14)이 만드는 왜곡의 크기를 재는 계층이다.
 **인버스에서 보정 부호가 뒤집힌다**는 것이 이 모듈의 핵심이며, 그것을 테스트로 못박는다.
+
+원칙 14 가 배당락 규모 기재를 모든 검증에 요구하므로 `measure/` 에 있다.
+검증 #8(레버리지 ETF 괴리)과 #9(선물 대 레버리지 ETF)가 함께 쓴다.
 """
 
 from pathlib import Path
@@ -10,7 +13,7 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.studies.leverage_tracking.distribution import (
+from verify_lab.measure.distribution import (
     TRADING_DAYS_PER_YEAR,
     DistributionShare,
     dividend_adjustment,

@@ -14,14 +14,24 @@ import pytest
 
 from verify_lab.common_constants import (
     COL_CLOSE,
+    COL_CONTRACT,
+    COL_CONTRACT_NAME,
     COL_DATE,
     COL_HIGH,
     COL_LOW,
     COL_OPEN,
+    COL_OPEN_INTEREST,
+    COL_SETTLE,
+    COL_SPOT,
     COL_VALUE,
     COL_VOLUME,
 )
-from verify_lab.data.loader import MAX_DAILY_CHANGE_RATE, load_market_csv, load_series_csv
+from verify_lab.data.loader import (
+    MAX_DAILY_CHANGE_RATE,
+    load_futures_csv,
+    load_market_csv,
+    load_series_csv,
+)
 
 
 def _write_csv(path: Path, rows: list[dict[str, object]]) -> Path:
@@ -548,3 +558,358 @@ def test_series_source_file_is_not_modified(valid_series_csv: Path) -> None:
 
     # Then
     assert valid_series_csv.read_text(encoding="utf-8") == before
+
+
+# ============================================================
+# 선물 시세 로더
+#
+# **판정이 OHLCV 시세와 세 군데에서 갈린다.** 유일 키가 `날짜 + 계약` 이고,
+# 결측 종가가 정상이며, 일간 변동을 계약별로 본다. 셋 중 하나라도 공통 로더의 판정을
+# 그대로 쓰면 표본이 조용히 사라지거나 정상 데이터가 막힌다.
+# ============================================================
+
+
+def _futures_row(
+    date: str,
+    contract: str,
+    settle: float,
+    *,
+    close: float | None = None,
+    volume: int = 100,
+    open_interest: int = 1_000,
+) -> dict[str, object]:
+    """합성 선물 시세 한 행을 만든다.
+
+    거래가 없던 날은 `close=None` 으로 표현한다 — 실제 데이터에서 그날 가격은 결측이고
+    정산가만 남는다.
+
+    Args:
+        date: 거래일 (YYYY-MM-DD)
+        contract: 계약 ISIN
+        settle: 정산가
+        close: 종가. None 이면 그날 체결이 없었다는 뜻이다
+        volume: 거래량
+        open_interest: 미결제약정
+
+    Returns:
+        선물 시세 스키마의 한 행
+    """
+    price = close if close is not None else None
+    return {
+        COL_DATE: date,
+        COL_CONTRACT: contract,
+        COL_CONTRACT_NAME: f"테스트 {contract}",
+        COL_OPEN: price,
+        COL_HIGH: price,
+        COL_LOW: price,
+        COL_CLOSE: price,
+        COL_VOLUME: volume,
+        COL_SETTLE: settle,
+        COL_OPEN_INTEREST: open_interest,
+        COL_SPOT: settle - 1.0,
+    }
+
+
+@pytest.fixture
+def valid_futures_csv(tmp_path: Path) -> Path:
+    """같은 날짜에 두 계약이 있는 정상 선물 시세 파일을 만든다."""
+    return _write_csv(
+        tmp_path / "futures.csv",
+        [
+            _futures_row("2020-09-02", "AAA", 300.0, close=300.0),
+            _futures_row("2020-09-02", "BBB", 301.0, close=None, volume=0),
+            _futures_row("2020-09-03", "AAA", 302.0, close=302.0),
+            _futures_row("2020-09-03", "BBB", 303.0, close=None, volume=0),
+        ],
+    )
+
+
+def test_futures_keeps_every_contract_on_the_same_date(valid_futures_csv: Path) -> None:
+    """
+    목적: **같은 날짜의 여러 계약이 한 행도 사라지지 않음**을 고정한다.
+
+    공통 로더는 날짜만으로 중복을 지워 첫 계약만 남긴다. 선물에서 그렇게 되면
+    차월물이 통째로 사라져 롤 계수를 구할 수 없고, 예외가 아니라 경고라서 조용히 지나간다.
+
+    Given: 날짜 2개 × 계약 2개짜리 파일
+    When: 선물 로더로 읽는다
+    Then: 4행이 그대로 남는다
+    """
+    # Given / When
+    df = load_futures_csv(valid_futures_csv)
+
+    # Then
+    assert len(df) == 4
+    assert df.groupby(COL_DATE)[COL_CONTRACT].nunique().tolist() == [2, 2]
+
+
+def test_futures_sorted_by_date_then_contract(tmp_path: Path) -> None:
+    """
+    목적: 정렬 키가 `날짜 → 계약` 임을 고정한다.
+
+    같은 날짜 안의 순서까지 정해두지 않으면 저장할 때마다 행 순서가 흔들려
+    산출물을 이전 실행과 대조할 수 없다.
+
+    Given: 날짜와 계약이 뒤섞인 파일
+    When: 선물 로더로 읽는다
+    Then: 날짜 오름차순, 같은 날짜 안에서는 계약 오름차순이다
+    """
+    # Given
+    path = _write_csv(
+        tmp_path / "unsorted.csv",
+        [
+            _futures_row("2020-09-03", "BBB", 303.0, close=303.0),
+            _futures_row("2020-09-02", "BBB", 301.0, close=301.0),
+            _futures_row("2020-09-03", "AAA", 302.0, close=302.0),
+            _futures_row("2020-09-02", "AAA", 300.0, close=300.0),
+        ],
+    )
+
+    # When
+    df = load_futures_csv(path)
+
+    # Then
+    assert df[COL_CONTRACT].tolist() == ["AAA", "BBB", "AAA", "BBB"]
+    assert df[COL_SETTLE].tolist() == [300.0, 301.0, 302.0, 303.0]
+
+
+def test_futures_duplicate_row_key_is_removed(tmp_path: Path) -> None:
+    """
+    목적: 중복 판정이 `날짜 + 계약` 조합임을 고정한다.
+
+    Given: 같은 (날짜, 계약) 이 두 번 있는 파일
+    When: 선물 로더로 읽는다
+    Then: 한 행만 남는다
+    """
+    # Given
+    path = _write_csv(
+        tmp_path / "duplicated.csv",
+        [
+            _futures_row("2020-09-02", "AAA", 300.0, close=300.0),
+            _futures_row("2020-09-02", "AAA", 300.0, close=300.0),
+            _futures_row("2020-09-02", "BBB", 301.0, close=301.0),
+        ],
+    )
+
+    # When
+    df = load_futures_csv(path)
+
+    # Then
+    assert len(df) == 2
+    assert df[COL_CONTRACT].tolist() == ["AAA", "BBB"]
+
+
+def test_futures_missing_close_is_accepted(valid_futures_csv: Path) -> None:
+    """
+    목적: 결측 종가가 정상임을 고정한다.
+
+    원월물은 체결이 없는 날이 많다. 공통 로더의 「결측 가격은 오류」 판정을 그대로 걸면
+    정상 데이터가 통째로 막힌다.
+
+    Given: 종가가 비어 있는 행이 포함된 파일
+    When: 선물 로더로 읽는다
+    Then: 예외 없이 읽히고 그 행의 종가는 결측이다
+    """
+    # Given / When
+    df = load_futures_csv(valid_futures_csv)
+
+    # Then
+    assert df[COL_CLOSE].isna().sum() == 2
+
+
+def test_futures_missing_settlement_raises(tmp_path: Path) -> None:
+    """
+    목적: 정산가 결측을 조용히 넘기지 않음을 고정한다.
+
+    롤 계수를 정산가로 내므로 비면 계산이 성립하지 않는다.
+
+    Given: 정산가가 빈 행
+    When: 선물 로더로 읽는다
+    Then: ValueError 를 던진다
+    """
+    # Given
+    row = _futures_row("2020-09-02", "AAA", 300.0, close=300.0)
+    row[COL_SETTLE] = None
+    path = _write_csv(tmp_path / "no_settle.csv", [row])
+
+    # When / Then
+    with pytest.raises(ValueError, match="정산가 결측"):
+        load_futures_csv(path)
+
+
+def test_futures_zero_settlement_raises(tmp_path: Path) -> None:
+    """
+    목적: 정산가 0 을 오류로 봄을 고정한다.
+
+    야간 세션·당일·스프레드 종목이 섞이면 이 값이 0 으로 온다. 수집기가 걸러내야 하며
+    로더까지 왔다면 무언가 잘못된 것이다.
+
+    Given: 정산가가 0 인 행
+    When: 선물 로더로 읽는다
+    Then: ValueError 를 던진다
+    """
+    # Given
+    path = _write_csv(tmp_path / "zero_settle.csv", [_futures_row("2020-09-02", "AAA", 0.0, close=None, volume=0)])
+
+    # When / Then
+    with pytest.raises(ValueError, match="0 이하 정산가"):
+        load_futures_csv(path)
+
+
+def test_futures_missing_open_interest_raises(tmp_path: Path) -> None:
+    """
+    목적: 미결제약정 결측을 오류로 봄을 고정한다 (0 은 정상값이다).
+
+    스프레드 종목이 섞이면 이 값이 비어서 온다.
+
+    Given: 미결제약정이 빈 행
+    When: 선물 로더로 읽는다
+    Then: ValueError 를 던진다
+    """
+    # Given
+    row = _futures_row("2020-09-02", "AAA", 300.0, close=300.0)
+    row[COL_OPEN_INTEREST] = None
+    path = _write_csv(tmp_path / "no_interest.csv", [row])
+
+    # When / Then
+    with pytest.raises(ValueError, match="미결제약정 결측"):
+        load_futures_csv(path)
+
+
+def test_futures_zero_open_interest_is_accepted(tmp_path: Path) -> None:
+    """
+    목적: 미결제약정 0 이 정상임을 고정한다.
+
+    상장 직후 원월물은 미결제약정이 0 이며 실제 데이터에 그대로 존재한다.
+
+    Given: 미결제약정이 0 인 행
+    When: 선물 로더로 읽는다
+    Then: 예외 없이 읽힌다
+    """
+    # Given
+    path = _write_csv(
+        tmp_path / "zero_interest.csv",
+        [_futures_row("2020-09-02", "AAA", 300.0, close=None, volume=0, open_interest=0)],
+    )
+
+    # When
+    df = load_futures_csv(path)
+
+    # Then
+    assert df[COL_OPEN_INTEREST].tolist() == [0]
+
+
+def test_futures_daily_change_is_measured_within_contract(tmp_path: Path) -> None:
+    """
+    목적: 일간 변동을 **계약별로** 봄을 고정한다.
+
+    한 프레임에 여러 계약이 날짜순으로 섞여 있어 그대로 `pct_change` 를 걸면
+    서로 다른 계약의 가격을 잇게 된다. 계약 사이 가격 차이가 커도 오류가 아니다.
+
+    Given: 두 계약의 가격이 두 배 넘게 벌어져 있지만 계약 안에서는 완만한 파일
+    When: 선물 로더로 읽는다
+    Then: 예외 없이 읽힌다
+    """
+    # Given
+    path = _write_csv(
+        tmp_path / "two_levels.csv",
+        [
+            _futures_row("2020-09-02", "AAA", 100.0, close=100.0),
+            _futures_row("2020-09-02", "BBB", 300.0, close=300.0),
+            _futures_row("2020-09-03", "AAA", 101.0, close=101.0),
+            _futures_row("2020-09-03", "BBB", 303.0, close=303.0),
+        ],
+    )
+
+    # When
+    df = load_futures_csv(path)
+
+    # Then
+    assert len(df) == 4
+
+
+def test_futures_extreme_change_within_contract_raises(tmp_path: Path) -> None:
+    """
+    목적: 한 계약 안에서 임계를 넘는 변동은 오류로 봄을 고정한다.
+
+    Given: 같은 계약의 정산가가 하루에 임계를 넘어 뛰는 파일
+    When: 선물 로더로 읽는다
+    Then: ValueError 를 던진다
+    """
+    # Given
+    jumped = 100.0 * (1 + MAX_DAILY_CHANGE_RATE + 0.01)
+    path = _write_csv(
+        tmp_path / "jump.csv",
+        [
+            _futures_row("2020-09-02", "AAA", 100.0, close=100.0),
+            _futures_row("2020-09-03", "AAA", jumped, close=jumped),
+        ],
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match="비정상 급등락"):
+        load_futures_csv(path)
+
+
+def test_futures_missing_required_column_raises(tmp_path: Path) -> None:
+    """
+    목적: 스키마가 다르면 계산 전에 막힘을 고정한다.
+
+    Given: 계약 컬럼이 없는 파일
+    When: 선물 로더로 읽는다
+    Then: ValueError 를 던진다
+    """
+    # Given
+    row = _futures_row("2020-09-02", "AAA", 300.0, close=300.0)
+    del row[COL_CONTRACT]
+    path = _write_csv(tmp_path / "no_contract.csv", [row])
+
+    # When / Then
+    with pytest.raises(ValueError, match="필수 컬럼이 누락되었습니다"):
+        load_futures_csv(path)
+
+
+def test_futures_missing_file_raises(tmp_path: Path) -> None:
+    """
+    목적: 없는 파일에 대해 FileNotFoundError 를 던짐을 고정한다.
+
+    Given: 존재하지 않는 경로
+    When: 선물 로더로 읽는다
+    Then: FileNotFoundError 를 던진다
+    """
+    # Given / When / Then
+    with pytest.raises(FileNotFoundError, match="선물 시세 파일을 찾을 수 없습니다"):
+        load_futures_csv(tmp_path / "없는파일.csv")
+
+
+def test_futures_date_column_is_datetime64(valid_futures_csv: Path) -> None:
+    """
+    목적: 날짜 컬럼 dtype 을 고정한다.
+
+    Given: 정상 선물 시세 파일
+    When: 선물 로더로 읽는다
+    Then: 날짜 dtype 이 datetime64[ns] 다
+    """
+    # Given / When
+    df = load_futures_csv(valid_futures_csv)
+
+    # Then
+    assert pd.api.types.is_datetime64_any_dtype(df[COL_DATE])
+
+
+def test_futures_source_file_is_not_modified(valid_futures_csv: Path) -> None:
+    """
+    목적: 로딩이 원본 파일을 건드리지 않음을 고정한다.
+
+    Given: 정상 선물 시세 파일의 원본 내용
+    When: 로드한다
+    Then: 파일 내용이 그대로다
+    """
+    # Given
+    before = valid_futures_csv.read_text(encoding="utf-8")
+
+    # When
+    load_futures_csv(valid_futures_csv)
+
+    # Then
+    assert valid_futures_csv.read_text(encoding="utf-8") == before

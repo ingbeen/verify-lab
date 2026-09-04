@@ -1,0 +1,587 @@
+"""검증 #9 실행 — 세 방식을 나란히 재고 차이를 분해한다
+
+한 실행에서 **2지수 × 짝 6개 × 배수 × 3방식 × 7격자 × 2롤규칙 × 2이자가정** 을 전부 낸다.
+배수·격자·리밸런싱 주기·롤 규칙은 CLI 인자로 열지 않는다 — 노브가 되면 결과를 보고 고르게 되며
+그것은 측정이 아니라 과최적화다 (측정의 원칙 1).
+
+## 산출물
+
+| 파일 | 내용 |
+| --- | --- |
+| `comparison.csv` | 지수 × 배수 × 방식 × 구간 집계. **가장 먼저 볼 표** |
+| `decomposition.csv` | 차이 분해 — 롤·베이시스 비용 · 리밸런싱 오차 · 이자 · 잔여 |
+| `roll_events.csv` | 롤 이벤트 원자료 (판정일·집행일·계약·조정계수·미결제약정) |
+| `breakeven.csv` | 배수·롤규칙별로 «몇 거래일부터 선물이 앞서는가» |
+| `wipeouts.csv` | 자기자본이 0 이하가 된 시점 |
+| `leverage_drift.csv` | 구간 최대 유효 레버리지 |
+| `windows_<지수>_<배수>.csv` | 시작일 전체 목록 원자료. 사용자가 차트와 대조하는 자리다 |
+
+## 방식마다 적용되는 축이 다르다
+
+ETF 는 롤 규칙·이자 가정과 무관하다. 그냥 곱하면 같은 값이 네 번 복제돼 나오고
+사용자가 그것을 서로 다른 값으로 읽는다. **해당 없는 축은 칸을 비운다**
+(0 으로 채우지 않는다 — 측정의 원칙 17).
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from verify_lab.common_constants import (
+    COL_CLOSE,
+    COL_DATE,
+    COL_SPOT,
+    MARKET_DIR,
+    SERIES_DIR,
+)
+from verify_lab.common_constants import COL_VALUE as COL_SERIES_VALUE
+from verify_lab.data.loader import load_futures_csv, load_market_csv, load_series_csv
+from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HORIZON, REASON_NONE
+from verify_lab.measure.distribution import dividend_adjustment, measure_distribution_share
+from verify_lab.studies.futures_leverage.comparison import (
+    build_interest_factor,
+    decompose,
+    horizons_or_default,
+    leveraged_window_returns,
+    plain_window_returns,
+)
+from verify_lab.studies.futures_leverage.constants import (
+    BASELINE_METHOD,
+    DISPLAY_PERIOD_HIGH_RATE,
+    DISPLAY_PERIOD_LOW_RATE,
+    HIGH_RATE_START_YEAR,
+    INTEREST_SERIES_NAME,
+    METHOD_ETF,
+    METHOD_FUTURES_DAILY,
+    METHOD_FUTURES_MONTHLY,
+    PAIRS,
+    REBALANCE_DAILY,
+    REBALANCE_MONTHLY,
+    ROLL_RULES,
+    FuturesPair,
+)
+from verify_lab.studies.futures_leverage.continuous import (
+    COL_ADJUSTED_SETTLE,
+    build_continuous_series,
+)
+from verify_lab.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+# 내부 계산용 컬럼
+COL_INDEX_NAME = "IndexName"
+COL_PRODUCT_ID = "ProductId"
+COL_BASE_TICKER = "BaseTicker"
+COL_TARGET_TICKER = "TargetTicker"
+COL_MULTIPLE = "Multiple"
+COL_METHOD = "Method"
+COL_ROLL_RULE = "RollRule"
+COL_INTEREST = "Interest"
+COL_PERIOD = "Period"
+COL_SAMPLE_COUNT = "SampleCount"
+COL_NON_OVERLAPPING = "NonOverlapping"
+COL_MEAN_RETURN = "MeanReturn"
+COL_MEDIAN_RETURN = "MedianReturn"
+COL_JUDGEABLE = "Judgeable"
+COL_START_DATE = "StartDate"
+COL_END_DATE = "EndDate"
+
+# 이자 가정의 표시값. 참·거짓 대신 사람이 읽는 말을 쓴다
+DISPLAY_INTEREST_ON = "이자 있음"
+DISPLAY_INTEREST_OFF = "이자 없음"
+
+# 축을 쪼갤 수 있는 최소 유효 표본 (측정의 원칙 12)
+MIN_SAMPLE_FOR_AXIS = 10
+
+# 원본가 파일명 규칙. 수집기와 같은 규칙을 쓴다
+MARKET_FILE_TEMPLATE = "{ticker}_max.csv"
+FUTURES_FILE_TEMPLATE = "{product_id}_max.csv"
+SERIES_FILE_TEMPLATE = "{name}.csv"
+
+
+@dataclass(frozen=True)
+class PairOutputs:
+    """한 짝의 산출물 조각."""
+
+    comparison: pd.DataFrame
+    decomposition: pd.DataFrame
+    windows: pd.DataFrame
+    leverage_drift: pd.DataFrame
+    wipeouts: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class StudyOutputs:
+    """검증 전체의 산출물.
+
+    Attributes:
+        comparison: 지수 × 배수 × 방식 × 구간 집계
+        decomposition: 차이 분해
+        roll_events: 롤 이벤트 원자료
+        breakeven: 선물이 앞서기 시작하는 보유 기간
+        wipeouts: 자기자본 소진 시점
+        leverage_drift: 구간 최대 유효 레버리지
+        windows_by_pair: 짝별 시작일 원자료
+        pair_count: 실제로 잰 짝 수
+        skipped_pairs: 데이터가 없어 건너뛴 짝과 사유
+    """
+
+    comparison: pd.DataFrame
+    decomposition: pd.DataFrame
+    roll_events: pd.DataFrame
+    breakeven: pd.DataFrame
+    wipeouts: pd.DataFrame
+    leverage_drift: pd.DataFrame
+    windows_by_pair: dict[str, pd.DataFrame]
+    pair_count: int
+    skipped_pairs: list[tuple[str, str]]
+
+
+def _non_overlapping_count(usable: np.ndarray, horizon: int) -> int:
+    """겹치지 않게 고를 수 있는 최대 구간 수를 정확히 센다.
+
+    롤링 전수는 이웃끼리 심하게 겹쳐, 표본 수만 적으면 실제보다 단단해 보인다.
+    **나눗셈으로 근사하지 않는다** — 축으로 걸러 시작일이 흩어진 칸에서는 맞지 않는다
+    (검증 #8 의 설계 결정 ⑦ 과 같은 이유).
+
+    Args:
+        usable: 시작일마다 그 구간을 쓸 수 있는지
+        horizon: 보유 기간 (거래일)
+
+    Returns:
+        겹치지 않는 최대 구간 수
+    """
+    count = 0
+    next_free = 0
+    for position in np.flatnonzero(usable):
+        if position >= next_free:
+            count += 1
+            next_free = position + horizon + 1
+
+    return count
+
+
+def _period_labels(dates: pd.Series) -> pd.Series:
+    """시작일을 저금리·고금리로 가른다. 검증 #8 과 같은 경계다."""
+    return pd.Series(
+        np.where(dates.dt.year >= HIGH_RATE_START_YEAR, DISPLAY_PERIOD_HIGH_RATE, DISPLAY_PERIOD_LOW_RATE),
+        index=dates.index,
+    )
+
+
+def _summarize(values: np.ndarray, horizon: int) -> dict[str, object]:
+    """구간 수익률 배열을 집계 한 줄로 만든다.
+
+    **평균과 중앙값을 반드시 병기한다** (측정의 원칙 4). 두 값이 벌어지면 소수 사건이
+    결과를 만들고 있다는 신호다.
+
+    Args:
+        values: 구간 수익률 배열 (못 잰 칸은 NaN)
+        horizon: 보유 기간 (거래일)
+
+    Returns:
+        집계 dict
+    """
+    usable = ~np.isnan(values)
+    sample_count = int(usable.sum())
+
+    return {
+        COL_SAMPLE_COUNT: sample_count,
+        COL_NON_OVERLAPPING: _non_overlapping_count(usable, horizon),
+        COL_MEAN_RETURN: float(np.mean(values[usable])) if sample_count else np.nan,
+        COL_MEDIAN_RETURN: float(np.median(values[usable])) if sample_count else np.nan,
+        COL_JUDGEABLE: sample_count >= MIN_SAMPLE_FOR_AXIS,
+    }
+
+
+def _load_interest(series_dir: Path) -> pd.Series:
+    """여유현금 이자율 시계열을 읽는다.
+
+    Args:
+        series_dir: 단일 값 시계열 폴더
+
+    Returns:
+        날짜를 인덱스로 하는 연율 금리(%) Series
+    """
+    path = series_dir / SERIES_FILE_TEMPLATE.format(name=INTEREST_SERIES_NAME)
+    frame = load_series_csv(path)
+
+    return frame.set_index(COL_DATE)[COL_SERIES_VALUE]
+
+
+def _align(frames: dict[str, pd.DataFrame], value_columns: dict[str, str]) -> pd.DataFrame:
+    """여러 계열을 공통 거래일로 맞춘다.
+
+    **보간하지 않는다.** 한쪽에만 있는 날은 빼며, 그러면 그날의 비교가 성립하지 않는다.
+
+    Args:
+        frames: 이름 → DataFrame (`Date` 와 값 컬럼을 갖는다)
+        value_columns: 이름 → 값 컬럼 이름
+
+    Returns:
+        공통 거래일만 담은 DataFrame. 컬럼 이름은 `frames` 의 키다
+
+    Raises:
+        ValueError: 겹치는 거래일이 없는 경우
+    """
+    merged: pd.DataFrame | None = None
+    for name, frame in frames.items():
+        part = frame[[COL_DATE, value_columns[name]]].rename(columns={value_columns[name]: name})
+        merged = part if merged is None else merged.merge(part, on=COL_DATE, how="inner")
+
+    if merged is None or merged.empty:
+        raise ValueError(f"겹치는 거래일이 없습니다 - 계열: {sorted(frames)}")
+
+    return merged.sort_values(COL_DATE).reset_index(drop=True)
+
+
+def _run_pair(
+    pair: FuturesPair,
+    futures: pd.DataFrame,
+    interest: pd.Series,
+    horizons: list[int],
+    market_dir: Path,
+) -> PairOutputs:
+    """한 짝을 재고 산출물 조각을 만든다.
+
+    Args:
+        pair: 선물과 배수 상품의 짝
+        futures: 그 상품의 선물 시세
+        interest: 연율 금리(%) Series
+        horizons: 보유 기간 목록
+        market_dir: 원시 시세 폴더
+
+    Returns:
+        이 짝의 산출물 조각
+    """
+    base = load_market_csv(market_dir / MARKET_FILE_TEMPLATE.format(ticker=pair.base_ticker))
+    target = load_market_csv(market_dir / MARKET_FILE_TEMPLATE.format(ticker=pair.target_ticker))
+
+    base_share = measure_distribution_share(pair.base_ticker, market_dir=market_dir)
+    target_share = measure_distribution_share(pair.target_ticker, market_dir=market_dir)
+
+    comparison_rows: list[dict[str, object]] = []
+    decomposition_rows: list[dict[str, object]] = []
+    window_frames: list[pd.DataFrame] = []
+    drift_rows: list[dict[str, object]] = []
+    wipeout_rows: list[dict[str, object]] = []
+
+    for roll_rule in ROLL_RULES:
+        series, _ = build_continuous_series(futures, roll_rule)
+
+        aligned = _align(
+            {"futures": series, "spot": series, "base": base, "target": target},
+            {"futures": COL_ADJUSTED_SETTLE, "spot": COL_SPOT, "base": COL_CLOSE, "target": COL_CLOSE},
+        )
+
+        dates = aligned[COL_DATE]
+        futures_prices = aligned["futures"].to_numpy(dtype=float)
+        spot_prices = aligned["spot"].to_numpy(dtype=float)
+        base_prices = aligned["base"].to_numpy(dtype=float)
+        target_prices = aligned["target"].to_numpy(dtype=float)
+        interest_factor = build_interest_factor(dates, interest)
+        periods = _period_labels(dates)
+
+        for horizon in horizons:
+            etf_return = plain_window_returns(target_prices, horizon)
+            base_return = plain_window_returns(base_prices, horizon)
+            spot_return = plain_window_returns(spot_prices, horizon)
+            continuous_return = plain_window_returns(futures_prices, horizon)
+
+            leveraged = {
+                (rebalance, with_interest): leveraged_window_returns(
+                    futures_prices,
+                    pair.multiple,
+                    horizon,
+                    rebalance,
+                    interest_factor=interest_factor if with_interest else None,
+                )
+                for rebalance in (REBALANCE_DAILY, REBALANCE_MONTHLY)
+                for with_interest in (True, False)
+            }
+            futures_returns = {key: values for key, (values, _) in leveraged.items()}
+
+            # 자기자본이 소진된 구간은 수익률이 정의되지 않는다. **건수를 남긴다** —
+            # 예외로 멈추면 그런 구간이 몇 개였는지가 산출물에서 사라진다
+            for (rebalance, with_interest), (_, wiped) in leveraged.items():
+                if with_interest:
+                    continue
+                wipeout_rows.append(
+                    {
+                        COL_INDEX_NAME: pair.index_name,
+                        COL_TARGET_TICKER: pair.target_ticker,
+                        COL_MULTIPLE: pair.multiple,
+                        COL_METHOD: METHOD_FUTURES_DAILY if rebalance == REBALANCE_DAILY else METHOD_FUTURES_MONTHLY,
+                        COL_ROLL_RULE: roll_rule,
+                        COL_HORIZON: horizon,
+                        "WipeoutCount": int(wiped.sum()),
+                        "WindowCount": int((~np.isnan(base_return)).sum()),
+                        "FirstWipeoutDate": dates.iloc[int(np.flatnonzero(wiped)[0])] if wiped.any() else None,
+                    }
+                )
+
+            method_returns = {
+                METHOD_ETF: etf_return,
+                METHOD_FUTURES_DAILY: futures_returns[(REBALANCE_DAILY, False)],
+                METHOD_FUTURES_MONTHLY: futures_returns[(REBALANCE_MONTHLY, False)],
+            }
+
+            # 1. 방식별 집계. **ETF 행은 롤 규칙·이자 축이 없다** — 첫 규칙에서만 낸다
+            for method, values in method_returns.items():
+                if method == METHOD_ETF and roll_rule != ROLL_RULES[0]:
+                    continue
+
+                comparison_rows.append(
+                    {
+                        COL_INDEX_NAME: pair.index_name,
+                        COL_TARGET_TICKER: pair.target_ticker,
+                        COL_MULTIPLE: pair.multiple,
+                        COL_METHOD: method,
+                        COL_ROLL_RULE: None if method == METHOD_ETF else roll_rule,
+                        COL_INTEREST: None if method == METHOD_ETF else DISPLAY_INTEREST_OFF,
+                        COL_HORIZON: horizon,
+                        COL_START_DATE: dates.iloc[0],
+                        COL_END_DATE: dates.iloc[-1],
+                        **_summarize(values, horizon),
+                    }
+                )
+
+            # 2. 이자 있음 벌은 선물에만 붙는다
+            for rebalance, method in (
+                (REBALANCE_DAILY, METHOD_FUTURES_DAILY),
+                (REBALANCE_MONTHLY, METHOD_FUTURES_MONTHLY),
+            ):
+                comparison_rows.append(
+                    {
+                        COL_INDEX_NAME: pair.index_name,
+                        COL_TARGET_TICKER: pair.target_ticker,
+                        COL_MULTIPLE: pair.multiple,
+                        COL_METHOD: method,
+                        COL_ROLL_RULE: roll_rule,
+                        COL_INTEREST: DISPLAY_INTEREST_ON,
+                        COL_HORIZON: horizon,
+                        COL_START_DATE: dates.iloc[0],
+                        COL_END_DATE: dates.iloc[-1],
+                        **_summarize(futures_returns[(rebalance, True)], horizon),
+                    }
+                )
+
+            # 3. 분해. 기준선은 「선물 매일·이자 없음」 하나로 고정한다
+            parts = decompose(
+                etf_return,
+                futures_returns[(REBALANCE_DAILY, False)],
+                futures_returns[(REBALANCE_MONTHLY, False)],
+                futures_returns[(REBALANCE_DAILY, True)],
+                continuous_return,
+                spot_return,
+                pair.multiple,
+            )
+            usable = ~np.isnan(etf_return)
+            decomposition_rows.append(
+                {
+                    COL_INDEX_NAME: pair.index_name,
+                    COL_TARGET_TICKER: pair.target_ticker,
+                    COL_MULTIPLE: pair.multiple,
+                    COL_ROLL_RULE: roll_rule,
+                    COL_HORIZON: horizon,
+                    COL_SAMPLE_COUNT: int(usable.sum()),
+                    COL_NON_OVERLAPPING: _non_overlapping_count(usable, horizon),
+                    **{column: float(parts.loc[usable, column].mean()) for column in parts.columns},
+                    "DividendAdjustment": dividend_adjustment(base_share, target_share, pair.multiple, horizon),
+                }
+            )
+
+            # 4. 시작일 원자료. 첫 롤 규칙만 남긴다 — 두 벌을 다 남기면 파일이 두 배가 된다
+            if roll_rule == ROLL_RULES[0]:
+                window = pd.DataFrame(
+                    {
+                        COL_DATE: dates,
+                        COL_HORIZON: horizon,
+                        COL_PERIOD: periods,
+                        METHOD_ETF: etf_return,
+                        METHOD_FUTURES_DAILY: futures_returns[(REBALANCE_DAILY, False)],
+                        METHOD_FUTURES_MONTHLY: futures_returns[(REBALANCE_MONTHLY, False)],
+                    }
+                )
+                window[COL_EXCLUDED_REASON] = np.where(usable, REASON_NONE, "구간 밖")
+                window_frames.append(window)
+
+            # 5. 최대 유효 레버리지. 월 1회에서 배수가 얼마나 표류하는지 보여준다
+            drift = _max_effective_leverage(futures_prices, pair.multiple, horizon)
+            drift_rows.append(
+                {
+                    COL_INDEX_NAME: pair.index_name,
+                    COL_TARGET_TICKER: pair.target_ticker,
+                    COL_MULTIPLE: pair.multiple,
+                    COL_ROLL_RULE: roll_rule,
+                    COL_HORIZON: horizon,
+                    "MaxEffectiveLeverageDaily": abs(pair.multiple),
+                    "MaxEffectiveLeverageMonthly": drift,
+                }
+            )
+
+    return PairOutputs(
+        comparison=pd.DataFrame(comparison_rows),
+        decomposition=pd.DataFrame(decomposition_rows),
+        windows=pd.concat(window_frames, ignore_index=True) if window_frames else pd.DataFrame(),
+        leverage_drift=pd.DataFrame(drift_rows),
+        wipeouts=pd.DataFrame(wipeout_rows),
+    )
+
+
+def _max_effective_leverage(prices: np.ndarray, multiple: float, horizon: int) -> float:
+    """월 1회 리밸런싱에서 구간 안 최대 유효 레버리지를 낸다.
+
+    리밸런싱 사이에 계약 수가 고정되므로 `노출 ÷ 자기자본` 이 표류한다.
+    **증거금률 가정 없이** 위험이 얼마나 커졌는지를 보여주는 값이다.
+
+    Args:
+        prices: 가격 배열
+        multiple: 목표 배수
+        horizon: 보유 기간 (거래일)
+
+    Returns:
+        모든 시작일에 걸친 최대 유효 레버리지. 잴 수 없으면 NaN
+    """
+    from verify_lab.studies.futures_leverage.constants import REBALANCE_INTERVAL_DAYS
+
+    row_count = len(prices)
+    positions = np.arange(row_count)
+    usable = positions + horizon <= row_count - 1
+    if not usable.any():
+        return float("nan")
+
+    worst = 0.0
+    for offset in range(1, horizon + 1):
+        anchor_offset = (offset // REBALANCE_INTERVAL_DAYS) * REBALANCE_INTERVAL_DAYS
+        anchors = np.where(usable, positions + anchor_offset, 0)
+        current = np.where(usable, positions + offset, 0)
+
+        segment_return = prices[current] / prices[anchors] - 1.0
+        equity_factor = 1.0 + multiple * segment_return
+        exposure_factor = 1.0 + segment_return
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            leverage = np.abs(multiple * exposure_factor / equity_factor)
+
+        candidate = float(np.nanmax(np.where(usable & (equity_factor > 0), leverage, np.nan)))
+        worst = max(worst, candidate)
+
+    return worst
+
+
+def run_study(
+    index_filter: str | None = None,
+    horizons: list[int] | None = None,
+    market_dir: Path = MARKET_DIR,
+    series_dir: Path = SERIES_DIR,
+) -> StudyOutputs:
+    """검증 #9 를 실행한다.
+
+    Args:
+        index_filter: 지수 이름으로 좁힌다 (예: `KOSPI200`). None 이면 전부
+        horizons: 보유 기간 목록. None 이면 이 검증의 격자
+        market_dir: 원시 시세 폴더
+        series_dir: 단일 값 시계열 폴더
+
+    Returns:
+        검증 산출물
+
+    Raises:
+        ValueError: 잰 짝이 하나도 없는 경우
+    """
+    grid = horizons_or_default(horizons)
+    interest = _load_interest(series_dir)
+
+    futures_cache: dict[str, pd.DataFrame] = {}
+    comparison_parts: list[pd.DataFrame] = []
+    decomposition_parts: list[pd.DataFrame] = []
+    drift_parts: list[pd.DataFrame] = []
+    wipeout_parts: list[pd.DataFrame] = []
+    roll_parts: list[pd.DataFrame] = []
+    windows_by_pair: dict[str, pd.DataFrame] = {}
+    skipped: list[tuple[str, str]] = []
+
+    for pair in PAIRS:
+        if index_filter is not None and pair.index_name != index_filter:
+            continue
+
+        futures_path = market_dir / FUTURES_FILE_TEMPLATE.format(product_id=pair.product_id)
+        if not futures_path.is_file():
+            skipped.append((pair.target_ticker, f"선물 시세 파일이 없습니다: {futures_path.name}"))
+            logger.warning(f"선물 시세가 없어 짝을 건너뜁니다 - {pair.target_ticker}: {futures_path.name}")
+            continue
+
+        if pair.product_id not in futures_cache:
+            futures_cache[pair.product_id] = load_futures_csv(futures_path)
+            for roll_rule in ROLL_RULES:
+                _, events = build_continuous_series(futures_cache[pair.product_id], roll_rule)
+                events.insert(0, COL_INDEX_NAME, pair.index_name)
+                roll_parts.append(events)
+
+        outputs = _run_pair(pair, futures_cache[pair.product_id], interest, grid, market_dir)
+        comparison_parts.append(outputs.comparison)
+        decomposition_parts.append(outputs.decomposition)
+        drift_parts.append(outputs.leverage_drift)
+        wipeout_parts.append(outputs.wipeouts)
+        windows_by_pair[f"{pair.index_name}_{pair.target_ticker}"] = outputs.windows
+
+    if not comparison_parts:
+        raise ValueError(f"잰 짝이 하나도 없습니다 - 지수 필터: {index_filter}, 건너뛴 짝: {len(skipped)}개")
+
+    comparison = pd.concat(comparison_parts, ignore_index=True)
+    decomposition = pd.concat(decomposition_parts, ignore_index=True)
+
+    logger.debug(f"검증 실행 완료: 짝 {len(comparison_parts)}개, 집계 {len(comparison):,}행, 건너뜀 {len(skipped)}개")
+
+    return StudyOutputs(
+        comparison=comparison,
+        decomposition=decomposition,
+        roll_events=pd.concat(roll_parts, ignore_index=True) if roll_parts else pd.DataFrame(),
+        breakeven=_build_breakeven(comparison),
+        wipeouts=pd.concat(wipeout_parts, ignore_index=True),
+        leverage_drift=pd.concat(drift_parts, ignore_index=True),
+        windows_by_pair=windows_by_pair,
+        pair_count=len(comparison_parts),
+        skipped_pairs=skipped,
+    )
+
+
+def _build_breakeven(comparison: pd.DataFrame) -> pd.DataFrame:
+    """배수·롤규칙별로 선물이 ETF 를 앞서기 시작하는 보유 기간을 찾는다.
+
+    **격자 상한(3년) 안에서 뒤집히지 않으면 그 사실을 적는다.** 없는 경계를 만들지 않는다.
+
+    Args:
+        comparison: 방식별 집계
+
+    Returns:
+        `IndexName` · `TargetTicker` · `Multiple` · `RollRule` · `BreakevenHorizon` 표
+    """
+    baseline = comparison[
+        (comparison[COL_METHOD] == BASELINE_METHOD) & (comparison[COL_INTEREST] == DISPLAY_INTEREST_OFF)
+    ]
+    etf = comparison[comparison[COL_METHOD] == METHOD_ETF]
+
+    rows: list[dict[str, object]] = []
+    for keys, group in baseline.groupby([COL_INDEX_NAME, COL_TARGET_TICKER, COL_MULTIPLE, COL_ROLL_RULE]):
+        index_name, ticker, multiple, roll_rule = keys
+        etf_group = etf[(etf[COL_INDEX_NAME] == index_name) & (etf[COL_TARGET_TICKER] == ticker)]
+        merged = group.merge(etf_group, on=COL_HORIZON, suffixes=("_futures", "_etf")).sort_values(COL_HORIZON)
+
+        ahead = merged[merged[f"{COL_MEAN_RETURN}_futures"] > merged[f"{COL_MEAN_RETURN}_etf"]]
+        rows.append(
+            {
+                COL_INDEX_NAME: index_name,
+                COL_TARGET_TICKER: ticker,
+                COL_MULTIPLE: multiple,
+                COL_ROLL_RULE: roll_rule,
+                "BreakevenHorizon": int(ahead[COL_HORIZON].iloc[0]) if not ahead.empty else None,
+                "AheadHorizonCount": len(ahead),
+                "TestedHorizonCount": len(merged),
+            }
+        )
+
+    return pd.DataFrame(rows)

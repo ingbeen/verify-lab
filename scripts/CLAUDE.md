@@ -42,6 +42,8 @@
 | `pykrx_splice_probe` | `data/check_pykrx_splice.py` | 실측한 종목·시작일·분할 종료일, 원자료 저장 폴더, 세그먼트별 행 수, 겹침 불일치 건수, 덮지 못한 거래일 수 |
 | `kodex_distribution_probe` | `data/check_kodex_distribution.py` | 실측한 종목, 원본가·수정주가 행 수, 수정주가가 덮지 못한 거래일 수, 만기일 수, 분배락 건수와 **만기 창 안 건수**, 창 크기 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
+| `krx_futures_collect` | `data/collect_krx_futures.py` | 수집한 상품·조회 시작일, 저장 경로·행 수·계약 수·기간, **제외 건수 세 종류**(야간·미개시·최근), 스냅숏에서 찾은 계약 수, 시세가 없던 계약 수, 현물가 결측 행 수 |
+| `futures_leverage_study` | `studies/run_futures_leverage.py` | 결과 폴더, 지수 필터, 쌍 수, 표별 산출 행 수, 시작일 원자료 파일 목록, **선물 시세가 없어 건너뛴 쌍과 사유** |
 | `etn_collect` | `data/collect_etn.py` | 수집한 ETN 종목·ISIN·조회 시작일, 시세 또는 지표가치의 저장 경로·행 수·기간·최근 제외 건수 |
 | `leverage_tracking_study` | `studies/run_leverage_tracking.py` | 결과 폴더, 실행한 지수 필터, 쌍 수와 쌍 목록, 보유 기간 격자, 표별 산출 행 수 |
 | `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
