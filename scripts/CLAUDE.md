@@ -42,6 +42,8 @@
 | `pykrx_splice_probe` | `data/check_pykrx_splice.py` | 실측한 종목·시작일·분할 종료일, 원자료 저장 폴더, 세그먼트별 행 수, 겹침 불일치 건수, 덮지 못한 거래일 수 |
 | `kodex_distribution_probe` | `data/check_kodex_distribution.py` | 실측한 종목, 원본가·수정주가 행 수, 수정주가가 덮지 못한 거래일 수, 만기일 수, 분배락 건수와 **만기 창 안 건수**, 창 크기 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
+| `etn_collect` | `data/collect_etn.py` | 수집한 ETN 종목·ISIN·조회 시작일, 시세 또는 지표가치의 저장 경로·행 수·기간·최근 제외 건수 |
+| `leverage_tracking_study` | `studies/run_leverage_tracking.py` | 결과 폴더, 실행한 지수 필터, 쌍 수와 쌍 목록, 보유 기간 격자, 표별 산출 행 수 |
 | `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |

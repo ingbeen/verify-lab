@@ -171,6 +171,31 @@ poetry run python scripts/data/collect_pykrx.py --ticker 261250 --start 20161227
   제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다
 
+### ETN (국내 상장지수증권 — 검증 #8 용)
+
+**KRX 데이터포털 계정이 필요합니다.** pykrx 와 같은 `.env` 설정을 씁니다.
+
+```bash
+# 삼성 인버스 2X 코스닥150 선물 ETN (기본값) — 시세
+poetry run python scripts/data/collect_etn.py
+
+# 다른 종목·다른 상장일로 수집
+poetry run python scripts/data/collect_etn.py --ticker 520057 --start 20221017
+
+# 증권당 지표가치 (ETF 의 NAV 에 해당) — `storage/series/<종목>_IV.csv` 로 저장
+poetry run python scripts/data/collect_etn.py --ticker 530107 --start 20221017 --indicative-value
+```
+
+- **pykrx 는 ETN 에 시세 함수를 주지 않습니다.** `get_etn_ticker_list`·`get_etn_ticker_name` 둘뿐이고
+  ETF·주식용 조회에 ETN 코드를 넣으면 **예외 없이 빈 결과**가 돌아옵니다. 이 수집기는 pykrx 의 KRX
+  클라이언트만 재사용해 **`MDCSTAT06601`(ETN 개별종목 시세 추이)** 를 직접 부릅니다.
+  근거와 통계 코드 표는 [spec/leverage_tracking.md](spec/leverage_tracking.md) §6.1 에 있습니다
+- **ETN 은 가격 기준이 하나뿐입니다** — 분배금을 지급하지 않으므로 `--adjusted` 에 해당하는 인자가 없습니다
+- **조회는 티커가 아니라 ISIN 으로 나갑니다.** 변환표는 KRX 기본종목 조회가 주며 수집기가 알아서 처리합니다
+- **수집 시작일은 기억이 아니라 `LIST_DD` 로 확인하세요.** 실제로 251340 을 상장일보다 늦게 요청해
+  11거래일을 빠뜨린 적이 있습니다
+- ⚠️ pykrx 는 로그인 시 **로그인 ID 를 표준 출력에 찍습니다.** 로그를 공유할 때 그 줄을 빼세요
+
 ### ECOS (한국은행 — 환율·원화금리)
 
 **ECOS 인증키가 필요합니다.** 저장소 루트의 `.env` 에 `ECOS_API_KEY` 가 있어야 하며,
@@ -279,6 +304,31 @@ poetry run python scripts/studies/run_option_expiry.py --repeats 200
   신호일 원자료는 `signals.csv`(만기 창 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
 - 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
   [spec/option_expiry.md](spec/option_expiry.md) 입니다
+
+### 검증 #8 — 레버리지 ETF 괴리
+
+```bash
+# 전 조합 실행 (기본값) — 22쌍 × 보유 기간 7격자 × 축 3종
+poetry run python scripts/studies/run_leverage_tracking.py
+
+# 특정 지수만 (KOSDAQ150 · KOSPI200 · S&P500 · 나스닥100 · 다우)
+poetry run python scripts/studies/run_leverage_tracking.py --index 나스닥100
+```
+
+- **보유 기간·임계값은 인자가 아닙니다.** 확정된 격자를 전부 산출해 나란히 보고하는 것이 설계이며,
+  값을 골라 넣는 노브로 쓰면 과최적화입니다. 값의 SoT 는
+  `src/verify_lab/studies/leverage_tracking/constants.py` 입니다
+- 선행 조건: `storage/market/` 에 **원본가 27종**과 **수정주가 25종**(ETN 2종 제외)이 있어야 합니다
+- 산출물은 `storage/results/<실행시각>_leverage_tracking/` 에 남습니다
+  - `divergence.csv` — 쌍 × 구간 집계. **가장 먼저 볼 표입니다**
+  - `breakdown.csv` — 쌍 × 구간 × 축(변동성·방향·시기)
+  - `distribution.csv` — 분배금 몫과 **배당 보정분**. 원본가로 재서 생긴 왜곡의 크기입니다
+  - `full_period.csv` — 상장 후 전체 구간 1건씩. **표본 1건이라 통계가 아니라 사례입니다**
+  - `windows_<티커>.csv` — 시작일 원자료 22개. 차트 대조용이며 합계 약 66MB 입니다
+- **순열 검정이 없어 난수를 쓰지 않습니다.** 같은 데이터면 항상 같은 결과가 나옵니다. 실행 시간은 수 초입니다
+- **3년 칸은 비중첩 표본이 1~6개**라 통계가 아니라 사례에 가깝습니다.
+  결과와 판정은 [research/레버리지_ETF_괴리.md](research/레버리지_ETF_괴리.md), 확정 설계는
+  [spec/leverage_tracking.md](spec/leverage_tracking.md) 입니다
 
 ### 검증 #5 — 원달러 ETF 등가성
 
