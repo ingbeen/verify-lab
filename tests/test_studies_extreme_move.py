@@ -384,3 +384,72 @@ class TestInputValidation:
 
         # Then
         pd.testing.assert_frame_equal(df, before)
+
+
+class TestPrecomputedRanks:
+    """**미리 낸 순위를 넘겨도 신호가 같다**를 고정한다.
+
+    `expanding_rank` 는 시세 길이의 제곱에 비례하는 반복이라 실행 계층이 조합마다 다시
+    만들고 있었다. 그것을 없애면서 **신호 집합이 바뀌지 않았음**을 여기서 증명한다 —
+    재실행 대조는 그 사이 시세가 늘면 성립하지 않으므로 코드로 못박는다.
+    """
+
+    def test_미리_낸_순위와_내부_계산이_같은_신호를_낸다(self) -> None:
+        """
+        목적: 두 경로가 같은 값을 냄을 고정한다 (판정식 단일화)
+
+        Given: 등락이 섞인 합성 시세
+        When: 순위를 넘긴 경우와 넘기지 않은 경우로 각각 신호를 고른다
+        Then: 두 bool Series 가 완전히 같다
+        """
+        # Given
+        closes = [100.0, 108.0, 99.0, 101.0, 90.0, 97.0, 96.0, 110.0, 111.0, 100.0, 105.0, 104.0]
+        df = _market(closes)
+        ranks = expanding_rank(df)
+
+        # When / Then
+        for direction in Direction:
+            for cut in (1, 3, 5):
+                internal = find_extreme_move_events(df, direction=direction, rank_cut=cut)
+                passed = find_extreme_move_events(df, direction=direction, rank_cut=cut, ranks=ranks)
+                pd.testing.assert_series_equal(internal, passed)
+
+    def test_시작일이_있어도_두_경로가_같다(self) -> None:
+        """
+        목적: 집계 시작일이 걸린 경로에서도 같음을 고정한다 (경계 조건)
+
+        Given: 합성 시세와 중간 시작일
+        When: 두 경로로 신호를 고른다
+        Then: 결과가 같다
+        """
+        # Given
+        closes = [100.0, 108.0, 99.0, 101.0, 90.0, 97.0, 96.0, 110.0, 111.0, 100.0]
+        df = _market(closes)
+        start = pd.Timestamp(df[COL_DATE].iloc[5])
+
+        # When
+        internal = find_extreme_move_events(df, direction=Direction.DOWN, rank_cut=3, start_date=start)
+        passed = find_extreme_move_events(
+            df, direction=Direction.DOWN, rank_cut=3, start_date=start, ranks=expanding_rank(df)
+        )
+
+        # Then
+        pd.testing.assert_series_equal(internal, passed)
+
+    def test_길이가_다른_순위는_거부한다(self) -> None:
+        """
+        목적: 어긋난 순위를 조용히 쓰지 않음을 고정한다 (경계 조건)
+
+        어긋난 순위를 그대로 쓰면 **엉뚱한 날이 신호가 되고 예외가 나지 않는다.**
+
+        Given: 시세보다 짧은 순위표
+        When: 신호를 고른다
+        Then: ValueError 가 난다
+        """
+        # Given
+        df = _market([100.0, 101.0, 99.0, 105.0])
+        short_ranks = expanding_rank(_market([100.0, 101.0]))
+
+        # When / Then
+        with pytest.raises(ValueError, match="길이가 다릅니다"):
+            find_extreme_move_events(df, direction=Direction.UP, rank_cut=1, ranks=short_ranks)

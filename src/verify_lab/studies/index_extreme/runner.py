@@ -183,6 +183,7 @@ class _Context:
     dataset: Dataset
     frame: pd.DataFrame
     change_rates: pd.Series
+    ranks: pd.DataFrame
     surge_ranks: pd.Series
     plunge_ranks: pd.Series
     zscores: pd.Series
@@ -214,13 +215,15 @@ class _TestSpec:
         test_label: 표시용 테스트 이름
         parameter_label: 표시용 파라미터 (`K=10`)
         direction_labels: 방향의 표시 이름
-        find: 시세와 방향·시작일을 받아 bool Series 를 내는 함수
+        find: 시세·미리 낸 순위·방향·시작일을 받아 bool Series 를 내는 함수.
+            **순위를 넘기는 것은 재계산을 막기 위해서다** — `expanding_rank` 는 시세 길이의
+            제곱에 비례하는데 파라미터 조합마다 같은 값을 다시 만들고 있었다
     """
 
     test_label: str
     parameter_label: str
     direction_labels: Mapping[Direction, str]
-    find: Callable[[pd.DataFrame, Direction, pd.Timestamp], pd.Series]
+    find: Callable[[pd.DataFrame, pd.DataFrame, Direction, pd.Timestamp], pd.Series]
 
 
 def run_study(
@@ -394,11 +397,17 @@ def _build_specs(rank_cuts: Sequence[int]) -> list[_TestSpec]:
     ]
 
 
-def _find_extreme(df: pd.DataFrame, direction: Direction, start: pd.Timestamp, *, rank_cut: int) -> pd.Series:
-    """테스트 A 신호를 고른다 (집계 시작일은 이벤트 정의가 소유한다).
+def _find_extreme(
+    df: pd.DataFrame, ranks: pd.DataFrame, direction: Direction, start: pd.Timestamp, *, rank_cut: int
+) -> pd.Series:
+    """역대급 등락 신호를 고른다 (집계 시작일은 이벤트 정의가 소유한다).
+
+    **미리 낸 순위를 넘긴다.** 순위는 파라미터와 무관하게 데이터셋당 한 벌이므로
+    조합마다 다시 만들 이유가 없다 — 같은 값을 두 경로에서 계산하면 갈라질 여지도 생긴다.
 
     Args:
         df: 시세
+        ranks: 그 시세로 미리 낸 확장창 순위
         direction: 폭등·폭락
         start: 집계 시작일
         rank_cut: 순위 컷
@@ -406,7 +415,7 @@ def _find_extreme(df: pd.DataFrame, direction: Direction, start: pd.Timestamp, *
     Returns:
         신호인 날이 True 인 bool Series
     """
-    return find_extreme_move_events(df, direction=direction, rank_cut=rank_cut, start_date=start)
+    return find_extreme_move_events(df, direction=direction, rank_cut=rank_cut, start_date=start, ranks=ranks)
 
 
 def _build_context(dataset: Dataset) -> _Context:
@@ -433,6 +442,7 @@ def _build_context(dataset: Dataset) -> _Context:
         dataset=dataset,
         frame=frame,
         change_rates=daily_change_rate(frame),
+        ranks=ranks,
         surge_ranks=ranks[COL_SURGE_RANK],
         plunge_ranks=ranks[COL_PLUNGE_RANK],
         zscores=reference_zscore(frame),
@@ -646,7 +656,7 @@ def _measure_spec(
     Returns:
         신호일·집계·초과분·검정 표의 조각 목록
     """
-    selected = {direction: spec.find(context.frame, direction, start) for direction in Direction}
+    selected = {direction: spec.find(context.frame, context.ranks, direction, start) for direction in Direction}
     if end is not None:
         within = context.frame[COL_DATE] <= end
         selected = {direction: signals & within for direction, signals in selected.items()}
@@ -827,7 +837,7 @@ def _measure_reverse_all(
 def _reverse_normalized(returns: pd.DataFrame, direction: Direction) -> pd.DataFrame:
     """수익률을 "역방향으로 진입했을 때"의 부호로 맞춘다.
 
-    상승 방향 신호(폭등·연속 상승)는 인버스로 들어가므로 **가격이 내려야 이익**이다.
+    상승 방향 신호(폭등)는 인버스로 들어가므로 **가격이 내려야 이익**이다.
     부호를 맞추지 않고 그냥 합치면 그 이익이 마이너스로 들어가 하락 방향의 이익과 상쇄되고,
     평균이 해석 불가능한 값이 된다.
 
@@ -939,8 +949,8 @@ def _signal_details(
     `studies` 는 내부 토큰과 비율로만 내므로 **한글 레이블과 백분율 변환은 여기서 정한다.**
     종가 자릿수는 데이터셋이 정한다 — 원화 가격에 없는 소수 자리를 붙이지 않기 위해서다.
 
-    당시 순위는 두 테스트 모두에 붙인다. 테스트 B 에서는 판정 근거가 아니라 "그날의 등락이
-    당시 몇 위였나"라는 해석 보조다. 연속 길이는 파라미터 컬럼이 이미 담고 있어 두지 않는다.
+    당시 순위는 신호 판정의 근거이면서 사용자가 차트와 대조하는 값이다 — 판정 당시 1위였던 날이
+    나중에 3위가 될 수 있고, 그 사실 자체가 이 컬럼으로 남는다.
 
     Args:
         context: 데이터셋 공통 값

@@ -7,7 +7,13 @@
 from dataclasses import dataclass
 from typing import Final
 
+# **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 계층에 요구하는 개념이라
+# 계층마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
+from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES
+from verify_lab.report.constants import DISPLAY_JUDGEABLE
 from verify_lab.studies.index_extreme.constants import DATASETS, Dataset
+
+__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES"]
 
 # ============================================================
 # 손절
@@ -122,7 +128,6 @@ EXIT_LIMIT: Final = "기한청산"
 DISPLAY_TICKER: Final = "종목"
 DISPLAY_PARAMETER: Final = "파라미터"
 DISPLAY_START_YEAR: Final = "시작연도"
-DISPLAY_HOLD_LIMIT: Final = "보유 한도"
 DISPLAY_DATE: Final = "날짜"
 DISPLAY_DIRECTION: Final = "방향"
 DISPLAY_ENTRY_PRICE: Final = "진입가"
@@ -144,9 +149,6 @@ DISPLAY_MEAN_HOLD: Final = "평균 보유일"
 
 # 파라미터 표기. `studies` 와 같은 접두사를 쓴다 — 두 산출물을 나란히 놓고 볼 때 갈라지면 안 된다
 PARAMETER_PREFIX_RANK_CUT: Final = "K"
-
-# 보유 한도 표기
-HOLD_LIMIT_PREFIX: Final = "D+"
 
 # 보유일 평균의 반올림 자릿수. 거래일 수라 소수 둘째 자리면 충분하다
 HOLD_DAYS_DECIMALS: Final = 2
@@ -279,6 +281,3 @@ RECENT_YEARS: Final = {PERIOD_RECENT_10Y: 10, PERIOD_RECENT_5Y: 5}
 MIN_PERIOD_SAMPLE: Final = 10
 
 DISPLAY_PERIOD: Final = "구간"
-DISPLAY_JUDGEABLE: Final = "판정가능"
-JUDGEABLE_YES: Final = "예"
-JUDGEABLE_NO: Final = "아니오"

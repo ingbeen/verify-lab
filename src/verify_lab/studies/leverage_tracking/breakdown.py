@@ -18,7 +18,8 @@
 **완만한 상승 구간에서만 깎인다.** 부호 축으로는 그 바닥이 보이지 않는다.
 
 **비중첩 표본 수를 모든 칸에 함께 낸다.** 롤링 전수는 이웃끼리 심하게 겹치므로 표본 수만
-적으면 실제보다 훨씬 단단해 보인다. 겹치지 않게 뽑을 수 있는 최대 개수를 그리디로 정확히 센다.
+적으면 실제보다 훨씬 단단해 보인다. **정의는 `measure.statistics.max_non_overlapping` 하나이며**
+검증 #9 도 같은 함수를 쓴다 — 같은 이름의 컬럼이 검증마다 다른 뜻을 가지면 나란히 읽을 수 없다.
 
 칸당 유효 표본이 하한에 못 미치면 **행을 지우지 않고** `판정가능` 을 「아니오」로 적는다 —
 행이 사라지면 그 칸을 못 봤다는 사실 자체를 사용자가 모른다 (측정의 원칙 17).
@@ -31,6 +32,7 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_DATE
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_EXCLUDED_REASON, COL_HORIZON, REASON_OUT_OF_RANGE
+from verify_lab.measure.statistics import max_non_overlapping
 from verify_lab.studies.leverage_tracking.constants import (
     BASE_RETURN_BUCKETS,
     COL_ACTUAL,
@@ -62,6 +64,10 @@ from verify_lab.studies.leverage_tracking.constants import (
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 비중첩 표본 계산은 **공통 계층이 소유한다.** 여기서는 이름만 다시 내보내
+# 기존 호출처(`summarize`)와 테스트가 그대로 동작하게 한다
+__all__ = ["attach_axes", "max_non_overlapping", "summarize", "summarize_by_axis", "summarize_by_horizon"]
 
 # 평균과 중앙값을 나란히 내는 항목. 둘이 벌어지면 소수 사건이 평균을 만들었다는 신호다
 # (루트 `CLAUDE.md` 측정의 원칙 4)
@@ -208,36 +214,6 @@ def _base_return_buckets(divergence: pd.DataFrame) -> pd.Series:
             logger.debug(f"1배 수익률 오분위를 나누지 못했습니다 (구간 {horizon}거래일) — 값이 한쪽에 몰려 있습니다")
 
     return buckets
-
-
-def max_non_overlapping(start_positions: Sequence[int], horizon: int) -> int:
-    """겹치지 않게 고를 수 있는 구간의 최대 개수를 센다.
-
-    시작일이 이르면 끝나는 것도 이르므로, **가장 이른 것부터 집는 그리디가 최적**이다
-    (구간 스케줄링). 근사가 아니라 정확한 최대값이다.
-
-    Args:
-        start_positions: 시작일의 거래일 위치 목록
-        horizon: 보유 기간 (거래일)
-
-    Returns:
-        서로 겹치지 않는 구간의 최대 개수
-
-    Raises:
-        ValueError: 보유 기간이 1 미만인 경우
-    """
-    if horizon < 1:
-        raise ValueError(f"보유 기간은 1 이상이어야 합니다: {horizon}")
-
-    count = 0
-    next_available = -1
-
-    for position in sorted(start_positions):
-        if position >= next_available:
-            count += 1
-            next_available = position + horizon
-
-    return count
 
 
 def summarize(frame: pd.DataFrame, group_columns: Sequence[str]) -> pd.DataFrame:

@@ -12,7 +12,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_DRIFT,
     COL_TRADING_DAYS,
     COL_YEAR,
-    TRADING_DAYS_PER_YEAR,
+    SPEC_TRADING_DAYS_PER_YEAR,
 )
 from verify_lab.studies.usdkrw_equivalence.regression import annual_drift, fit_regression
 
@@ -34,7 +34,7 @@ def test_perfect_line_recovers_slope_and_intercept() -> None:
 
     # Then
     assert result.beta == pytest.approx(2.0, abs=1e-9)
-    assert result.alpha_annual == pytest.approx(0.001 * TRADING_DAYS_PER_YEAR, abs=1e-9)
+    assert result.alpha_annual == pytest.approx(0.001 * SPEC_TRADING_DAYS_PER_YEAR, abs=1e-9)
     assert result.r_squared == pytest.approx(1.0, abs=1e-9)
     assert result.correlation == pytest.approx(1.0, abs=1e-9)
 
@@ -52,7 +52,7 @@ def test_alpha_is_annualized_by_trading_days() -> None:
 
     result = fit_regression(x, y)
 
-    assert result.alpha_annual == pytest.approx(0.001 * TRADING_DAYS_PER_YEAR, abs=1e-9)
+    assert result.alpha_annual == pytest.approx(0.001 * SPEC_TRADING_DAYS_PER_YEAR, abs=1e-9)
 
 
 def test_tracking_error_is_residual_std_times_sqrt_250() -> None:
@@ -71,8 +71,8 @@ def test_tracking_error_is_residual_std_times_sqrt_250() -> None:
     result = fit_regression(x, y)
 
     # Then
-    residual = y - (result.alpha_annual / TRADING_DAYS_PER_YEAR + result.beta * x)
-    expected = float(residual.std(ddof=1)) * np.sqrt(TRADING_DAYS_PER_YEAR)
+    residual = y - (result.alpha_annual / SPEC_TRADING_DAYS_PER_YEAR + result.beta * x)
+    expected = float(residual.std(ddof=1)) * np.sqrt(SPEC_TRADING_DAYS_PER_YEAR)
 
     assert result.tracking_error == pytest.approx(expected, abs=1e-12)
 

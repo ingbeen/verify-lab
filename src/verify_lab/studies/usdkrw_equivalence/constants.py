@@ -10,7 +10,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Final
 
-from verify_lab.common_constants import MARKET_DIR, SERIES_DIR
+from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
+    MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
+    NAV_FILE_TEMPLATE,
+    SERIES_DIR,
+)
 
 # ============================================================
 # 입력 파일
@@ -102,9 +108,9 @@ ETF_BASE: Final = EtfTarget(
     key="261240",
     ticker="261240",
     label="KODEX 미국달러선물",
-    price_path=MARKET_DIR / "261240_adjusted_max.csv",
-    raw_price_path=MARKET_DIR / "261240_max.csv",
-    nav_path=SERIES_DIR / "261240_NAV.csv",
+    price_path=MARKET_DIR / ADJUSTED_FILE_TEMPLATE.format(ticker="261240"),
+    raw_price_path=MARKET_DIR / MARKET_FILE_TEMPLATE.format(ticker="261240"),
+    nav_path=SERIES_DIR / NAV_FILE_TEMPLATE.format(ticker="261240"),
     exposure=1,
     published_ter=0.0025,
 )
@@ -113,9 +119,9 @@ ETF_LEVERAGE: Final = EtfTarget(
     key="261250",
     ticker="261250",
     label="KODEX 미국달러선물레버리지",
-    price_path=MARKET_DIR / "261250_adjusted_max.csv",
-    raw_price_path=MARKET_DIR / "261250_max.csv",
-    nav_path=SERIES_DIR / "261250_NAV.csv",
+    price_path=MARKET_DIR / ADJUSTED_FILE_TEMPLATE.format(ticker="261250"),
+    raw_price_path=MARKET_DIR / MARKET_FILE_TEMPLATE.format(ticker="261250"),
+    nav_path=SERIES_DIR / NAV_FILE_TEMPLATE.format(ticker="261250"),
     exposure=2,
     published_ter=0.0045,
 )
@@ -182,11 +188,11 @@ LEVERAGE_R_SQUARED_MIN: Final = 0.99
 # 연율화
 # ============================================================
 
-# 알파와 추적오차의 연환산 계수 (거래일). 사양서 §16.2·§16.3 이 250 을 쓴다
-TRADING_DAYS_PER_YEAR: Final = 250
-
-# 이자 일할 계산의 분모 (달력일). `docs/spec/usdkrw_grid.md` §4.3 결정 C14
-DAYS_PER_YEAR: Final = 365
+# 알파와 추적오차의 연환산 계수 (거래일). **사양서 §16.2·§16.3 이 정한 값이며 관행값이 아니다** —
+# `measure.distribution.TRADING_DAYS_PER_YEAR`(252, 관행값)와 **일부러 다르다.**
+# 두 값을 통일하면 사양을 벗어나고, 이 계수는 추적오차·알파의 **합격 판정에 직접 들어간다**.
+# 이름을 갈라 둔 것은 다음 사람이 「같은 뜻인데 값이 다르다」고 보고 합치지 않게 하기 위해서다
+SPEC_TRADING_DAYS_PER_YEAR: Final = 250
 
 # ============================================================
 # 정렬 결과의 컬럼 (내부 계산용 영문 토큰)

@@ -38,6 +38,7 @@ from verify_lab.measure.screening import (
     COL_SCREEN,
     COL_SUPPORT_COUNT,
     COL_SUPPORT_TOTAL,
+    COL_TOTAL_RETURN,
     COL_UNMET_SUPPORT,
 )
 from verify_lab.measure.statistics import (
@@ -117,6 +118,7 @@ from verify_lab.report.constants import (
     DISPLAY_STD,
     DISPLAY_SUPPORT,
     DISPLAY_TEST_NOTE,
+    DISPLAY_TOTAL_RETURN,
     DISPLAY_UNMET_SUPPORT,
     DISPLAY_UP_RATE,
     DISPLAY_UP_RATE_DIFF,
@@ -539,6 +541,10 @@ def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_l
     비율은 백분율로, 우연확률은 확률 자릿수로 반올림한다. 시기를 쪼갤 수 없었던 칸은
     「가장 약한 시기」가 비어 있는데, **0 으로 채우지 않는다** — 0% 로 읽히기 때문이다.
 
+    **회당 기대값과 합산 수익률을 표본 수와 함께 나란히 낸다** (측정의 원칙 16).
+    셋 중 하나라도 빠지면 그 칸의 크기를 판단할 수 없다 — 회당만 있으면 작아 보이고,
+    합산만 있으면 기간이 긴 칸이 자동으로 이긴다.
+
     **등급은 「충족/물음」 한 칸으로 합치되 분모를 떼지 않는다.** 시기를 못 잰 칸은 `2/2` 가
     되는데 이는 `3/3` 과 같은 뜻이 아니며, 분모를 지우면 표본이 작은 칸이 만점처럼 보인다.
 
@@ -568,6 +574,10 @@ def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_l
             DISPLAY_DIRECTION: candidates[COL_DIRECTION].to_numpy(),
             DISPLAY_HIT_RATE: _to_percent(candidates[COL_HIT_RATE]).to_numpy(),
             DISPLAY_EXPECTED_VALUE: _to_percent(candidates[COL_EXPECTED_VALUE]).to_numpy(),
+            # **회당 기대값 바로 뒤에 둔다** (측정의 원칙 16). 신호가 드물거나 보유가 며칠짜리인
+            # 매매법은 회당 평균이 구조적으로 작게 나와 크기 감각을 주지 못하고, 왕복 수수료와
+            # 견줄 값인지도 그 자리에서 보이지 않는다. 떨어뜨려 두면 둘이 같이 읽히지 않는다
+            DISPLAY_TOTAL_RETURN: _to_percent(candidates[COL_TOTAL_RETURN]).to_numpy(),
             DISPLAY_BASELINE_HIT_RATE: _to_percent(candidates[COL_BASELINE_HIT_RATE]).to_numpy(),
             DISPLAY_BASELINE_GAP: _to_percent(candidates[COL_BASELINE_GAP]).to_numpy(),
             DISPLAY_P_VALUE: candidates[COL_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),

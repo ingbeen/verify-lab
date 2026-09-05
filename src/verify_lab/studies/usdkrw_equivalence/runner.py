@@ -352,6 +352,7 @@ def _drift_frame(source: SpotSource, model: TheoreticalModel, variant: _Series) 
     """연도별 괴리 표를 만든다.
 
     Args:
+        source: 현물 환율 계열
         model: 이론값 모형
         variant: 이상치 축의 한 벌
 
@@ -526,6 +527,7 @@ def _daily_frame(source: SpotSource, model: TheoreticalModel, variant: _Series) 
     사용자가 차트와 대조해 손으로 검산하는 대상이므로 중간값(현물 변화·이자)을 함께 담는다.
 
     Args:
+        source: 현물 환율 계열
         model: 이론값 모형
         variant: 이상치 축의 한 벌
 

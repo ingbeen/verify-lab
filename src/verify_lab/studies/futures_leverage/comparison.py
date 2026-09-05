@@ -72,12 +72,10 @@ from verify_lab.studies.futures_leverage.constants import (
     REBALANCE_RULES,
     WIPEOUT_RETURN,
 )
+from verify_lab.studies.futures_leverage.position import daily_interest_rates
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-# 구간 수익률 표의 컬럼
-COL_RETURN = "Return"
 
 
 def _validated_horizons(horizons: Sequence[int]) -> list[int]:
@@ -255,14 +253,8 @@ def build_interest_factor(dates: pd.Series, interest: pd.Series | None) -> np.nd
     if interest is None:
         return None
 
-    from verify_lab.studies.futures_leverage.position import CALENDAR_DAYS_PER_YEAR, PERCENT_TO_RATE
-
-    aligned = interest.reindex(dates).ffill().fillna(0.0).to_numpy(dtype=float) / PERCENT_TO_RATE
-    stamps = pd.DatetimeIndex(dates)
-    elapsed = np.diff(stamps.to_numpy(dtype="datetime64[D]").astype(int), prepend=0.0)
-    elapsed[0] = 0.0
-
-    return np.cumprod(1.0 + aligned * elapsed / CALENDAR_DAYS_PER_YEAR)
+    # **일간 이자율 산식은 `position` 이 소유한다.** 여기서 다시 쓰면 두 경로가 조용히 갈라진다
+    return np.cumprod(1.0 + daily_interest_rates(dates, interest))
 
 
 def build_window_table(

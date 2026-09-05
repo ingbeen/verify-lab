@@ -26,7 +26,15 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
-from verify_lab.common_constants import COL_DATE, MARKET_DIR, PRICE_COLUMNS, PRICE_DECIMALS, REQUIRED_COLUMNS
+from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
+    COL_DATE,
+    MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
+    PRICE_COLUMNS,
+    PRICE_DECIMALS,
+    REQUIRED_COLUMNS,
+)
 from verify_lab.data.loader import validate_market_data
 from verify_lab.utils.logger import get_logger
 
@@ -35,12 +43,6 @@ logger = get_logger(__name__)
 # 저장에서 제외할 최근 구간 (달력일). 미국장은 한국 시각 기준으로 하루가 밀리고,
 # 마감 직후 값은 확정값이 아니다. 미확정 종가를 그대로 남기면 그날이 극단 이벤트로 잡힐 수 있다
 RECENT_EXCLUSION_DAYS = 2
-
-# 저장 파일명. 전 기간을 한 파일로 유지해 로더가 읽을 대상이 갈리지 않게 한다.
-# **가격 기준이 다르면 파일도 다르다** — 원본가와 수정주가는 내용이 다른 데이터이므로 한 파일에 섞지 않는다
-# (`src/verify_lab/CLAUDE.md` 「계층 간 계약」의 원시 시세 저장 규칙). `pykrx_collector` 도 같은 규칙을 쓴다
-FILE_NAME_TEMPLATE = "{ticker}_max.csv"
-ADJUSTED_FILE_NAME_TEMPLATE = "{ticker}_adjusted_max.csv"
 
 
 @dataclass(frozen=True)
@@ -128,7 +130,7 @@ def collect_yfinance_history(
 
     # 7. 저장. 검증을 통과한 뒤에만 실행한다
     output_dir.mkdir(parents=True, exist_ok=True)
-    template = ADJUSTED_FILE_NAME_TEMPLATE if adjusted else FILE_NAME_TEMPLATE
+    template = ADJUSTED_FILE_TEMPLATE if adjusted else MARKET_FILE_TEMPLATE
     path = output_dir / template.format(ticker=symbol)
     df.to_csv(path, index=False)
 

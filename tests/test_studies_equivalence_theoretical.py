@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from verify_lab.common_constants import COL_DATE
+from verify_lab.common_constants import CALENDAR_DAYS_PER_YEAR, COL_DATE
 from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_ACTUAL_RETURN,
     COL_DAY_COUNT,
@@ -26,7 +26,6 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_SPOT_RETURN,
     COL_THEORETICAL_RETURN,
     COL_USD_RATE,
-    DAYS_PER_YEAR,
     TheoreticalModel,
 )
 from verify_lab.studies.usdkrw_equivalence.theoretical import build_returns
@@ -104,7 +103,7 @@ def test_rate_contribution_uses_calendar_days_over_365() -> None:
     """
     result = build_returns(SIMPLE, TheoreticalModel.USD_RATE)
 
-    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(0.0365 * 3 / DAYS_PER_YEAR, abs=1e-12)
+    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(0.0365 * 3 / CALENDAR_DAYS_PER_YEAR, abs=1e-12)
 
 
 def test_carry_model_uses_rate_difference() -> None:
@@ -117,7 +116,9 @@ def test_carry_model_uses_rate_difference() -> None:
     """
     result = build_returns(SIMPLE, TheoreticalModel.CARRY)
 
-    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx((0.0365 - 0.0146) * 3 / DAYS_PER_YEAR, abs=1e-12)
+    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(
+        (0.0365 - 0.0146) * 3 / CALENDAR_DAYS_PER_YEAR, abs=1e-12
+    )
 
 
 def test_two_models_differ_by_krw_rate() -> None:
@@ -134,7 +135,7 @@ def test_two_models_differ_by_krw_rate() -> None:
     usd = build_returns(SIMPLE, TheoreticalModel.USD_RATE)
 
     difference = usd[COL_RATE_CONTRIBUTION] - carry[COL_RATE_CONTRIBUTION]
-    expected = SIMPLE[COL_KRW_RATE].shift(1).iloc[1:] / 100 * SIMPLE[COL_DAY_COUNT].iloc[1:] / DAYS_PER_YEAR
+    expected = SIMPLE[COL_KRW_RATE].shift(1).iloc[1:] / 100 * SIMPLE[COL_DAY_COUNT].iloc[1:] / CALENDAR_DAYS_PER_YEAR
 
     assert difference.tolist() == pytest.approx(expected.tolist(), abs=1e-12)
 
@@ -162,7 +163,7 @@ def test_rate_is_taken_from_previous_row() -> None:
     result = build_returns(frame, TheoreticalModel.USD_RATE)
 
     # Then
-    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(0.0365 * 3 / DAYS_PER_YEAR, abs=1e-12)
+    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(0.0365 * 3 / CALENDAR_DAYS_PER_YEAR, abs=1e-12)
 
 
 def test_theoretical_return_combines_multiplicatively() -> None:

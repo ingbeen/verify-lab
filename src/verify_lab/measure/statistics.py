@@ -18,6 +18,8 @@
 절반 넘게 내린 칸은 소수의 큰 사건이 평균을 만든 것이라, 비율 축이 없으면 그 칸을 놓친다.
 """
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 
@@ -147,6 +149,47 @@ DEFAULT_RANDOM_SEED = 0
 # 귀무분포에서 함께 보고하는 분위 (0~1 비율)
 NULL_LOWER_QUANTILE = 0.05
 NULL_UPPER_QUANTILE = 0.95
+
+
+def max_non_overlapping(start_positions: Sequence[int], horizon: int) -> int:
+    """겹치지 않게 고를 수 있는 구간의 최대 개수를 센다.
+
+    롤링 전수는 이웃끼리 심하게 겹쳐, 표본 수만 적으면 실제보다 훨씬 단단해 보인다.
+    이 값이 그 겹침을 드러내는 유일한 축이다.
+
+    시작일이 이르면 끝나는 것도 이르므로 **가장 이른 것부터 집는 그리디가 최적**이다
+    (구간 스케줄링). 근사가 아니라 정확한 최대값이며, **나눗셈으로 근사하지 않는다** —
+    축으로 걸러 시작일이 흩어진 칸에서는 맞지 않는다.
+
+    **끝점을 공유하는 두 구간은 「겹치지 않음」이다.** 구간 `[p, p+h]` 와 `[p+h, p+2h]` 는
+    관측일 하나를 공유하지만 **수익률 구간이 겹치지 않아** 통계적으로 독립이다. 하루를 더
+    띄우면 실제보다 표본을 적게 세게 된다.
+
+    **이 함수가 공통 계층에 있는 이유**: 검증 #8 과 #9 가 각자 구현을 두고 있었고 규칙이
+    한 칸 달랐다. 같은 이름의 컬럼이 다른 뜻을 갖게 되면 두 결과 문서를 나란히 읽을 수 없다.
+
+    Args:
+        start_positions: 시작일의 거래일 위치 목록. 정렬돼 있지 않아도 된다
+        horizon: 보유 기간 (거래일, 1 이상)
+
+    Returns:
+        서로 겹치지 않는 구간의 최대 개수
+
+    Raises:
+        ValueError: 보유 기간이 1 미만인 경우
+    """
+    if horizon < 1:
+        raise ValueError(f"보유 기간은 1 이상이어야 합니다: {horizon}")
+
+    count = 0
+    next_available = -1
+
+    for position in sorted(start_positions):
+        if position >= next_available:
+            count += 1
+            next_available = position + horizon
+
+    return count
 
 
 def summarize(frame: pd.DataFrame) -> pd.DataFrame:

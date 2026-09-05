@@ -17,6 +17,11 @@ from typing import Final
 
 from verify_lab.data.krx_futures_collector import PRODUCT_KOSDAQ150, PRODUCT_KOSPI200
 
+# 표시 레이블은 공통 계층이 소유한다 — 검증마다 다른 말을 쓰면 두 결과를 나란히 읽을 수 없다
+from verify_lab.report.constants import DISPLAY_JUDGEABLE
+
+__all__ = ["DISPLAY_JUDGEABLE"]
+
 # ============================================================
 # 측정 대상
 # ============================================================
@@ -55,6 +60,10 @@ PRODUCT_ETN: Final = "ETN"
 # **인버스 넷은 ETF 자신이 선물지수를 추종한다.** 그래서 「선물 대 ETF」 비교가 인버스에서는
 # 「직접 굴리는 선물 대 포장된 선물」이 되고, 롤 비용이 양쪽에 있어 잔여로 분리되지 않는다.
 # 레버리지 둘(122630·233740)만 현물지수를 추종해 깨끗하게 갈린다.
+#
+# **±3배는 대상에 없다.** 국내 법정 상한이 ±2배라 대조할 ETF 가 존재하지 않는다.
+# 선물로는 만들 수 있지만 **이 검증은 「선물과 ETF 중 어느 쪽이 싼가」를 묻는 대조**라,
+# 짝이 없는 배수는 답할 질문이 없다.
 PAIRS: Final = (
     FuturesPair("KOSPI200", PRODUCT_KOSPI200, "069500", "122630", 2.0, PRODUCT_ETF, "코스피 200"),
     FuturesPair("KOSPI200", PRODUCT_KOSPI200, "069500", "114800", -1.0, PRODUCT_ETF, "코스피 200 선물지수"),
@@ -63,11 +72,6 @@ PAIRS: Final = (
     FuturesPair("KOSDAQ150", PRODUCT_KOSDAQ150, "229200", "251340", -1.0, PRODUCT_ETF, "F-코스닥150 지수"),
     FuturesPair("KOSDAQ150", PRODUCT_KOSDAQ150, "229200", "530107", -2.0, PRODUCT_ETN, "코스닥 150 선물 TWAP 인버스 -2X 지수"),
 )
-
-# 짝이 없는 참고 배수. **국내에 +3배 상품이 없어** ETF 대조표에 넣을 수 없지만,
-# 선물로는 만들 수 있으므로 「선물이라 가능한 것」을 보여주는 축으로만 낸다.
-# 대조가 아니므로 판정에 쓰지 않는다
-REFERENCE_MULTIPLES: Final = (3.0, -3.0)
 
 # ============================================================
 # 계약 명세
@@ -112,9 +116,6 @@ ROLL_DAYS_BEFORE_EXPIRY: Final = 5
 # 두 규칙을 나란히 낸다. 하나를 고르지 않는다 (측정의 원칙 1)
 ROLL_RULES: Final = (ROLL_RULE_OPEN_INTEREST, ROLL_RULE_DAYS_BEFORE_EXPIRY)
 
-# 미결제약정 역전을 판정한 뒤 집행까지 미루는 거래일 수
-ROLL_EXECUTION_LAG_DAYS: Final = 1
-
 # ============================================================
 # 리밸런싱과 자기자본
 # ============================================================
@@ -156,8 +157,6 @@ METHOD_FUTURES_DAILY: Final = "선물 매일"
 METHOD_FUTURES_MONTHLY: Final = "선물 월 1회"
 METHOD_FUTURES_HOLD: Final = "선물 그대로"
 
-METHODS: Final = (METHOD_ETF, METHOD_FUTURES_DAILY, METHOD_FUTURES_MONTHLY, METHOD_FUTURES_HOLD)
-
 # 리밸런싱 규칙과 그 규칙으로 굴린 방식의 짝. 두 곳에서 따로 분기하면 조용히 갈라진다
 METHOD_BY_REBALANCE: Final = {
     REBALANCE_DAILY: METHOD_FUTURES_DAILY,
@@ -170,7 +169,7 @@ METHOD_BY_REBALANCE: Final = {
 BASELINE_METHOD: Final = METHOD_FUTURES_DAILY
 
 # 여유현금 이자 가정. **증권사가 예탁금 이용료를 주는지가 갈리므로 두 벌을 나란히 낸다.**
-# 한쪽만 내면 그 가정이 결과를 만든다
+# 한쪽만 내면 그 가정이 결과를 만든다. 실행 계층이 이 순서대로 순회한다
 INTEREST_ASSUMPTIONS: Final = (True, False)
 
 # 이자율로 쓰는 시계열. `storage/series/CD91.csv` 로 이미 확보돼 있다
@@ -219,17 +218,13 @@ DISPLAY_PERIOD_HIGH_RATE: Final = "고금리(2022~)"
 # ============================================================
 
 DISPLAY_INDEX_NAME: Final = "지수"
-DISPLAY_PRODUCT_ID: Final = "선물 상품"
 DISPLAY_BASE_TICKER: Final = "1배 종목"
 DISPLAY_TARGET_TICKER: Final = "짝 종목"
 DISPLAY_MULTIPLE: Final = "배수"
 DISPLAY_METHOD: Final = "방식"
 DISPLAY_ROLL_RULE: Final = "롤 규칙"
 DISPLAY_INTEREST: Final = "이자 가정"
-DISPLAY_REBALANCE: Final = "리밸런싱"
 
-DISPLAY_CONTRACT: Final = "계약"
-DISPLAY_CONTRACT_NAME: Final = "계약명"
 DISPLAY_NEAR_CONTRACT: Final = "근월물"
 DISPLAY_NEXT_CONTRACT: Final = "차월물"
 DISPLAY_DECISION_DATE: Final = "판정일"
@@ -248,15 +243,10 @@ DISPLAY_INTEREST_GAIN: Final = "여유현금 이자(%p)"
 DISPLAY_RESIDUAL: Final = "잔여(%p)"
 # 「그대로 두기」가 매일 리밸런싱과 벌어진 몫. 리밸런싱 오차와 같은 기준선을 쓴다
 DISPLAY_HOLD_ERROR: Final = "그대로 두기 오차(%p)"
-DISPLAY_THEORY_SPREAD: Final = "실제-이론 스프레드(%p)"
 DISPLAY_DIVIDEND_ADJUSTMENT: Final = "배당 보정분(%p)"
 
-DISPLAY_EQUITY: Final = "자기자본(원)"
 DISPLAY_EXPOSURE: Final = "노출(원)"
-DISPLAY_CONTRACT_COUNT: Final = "계약 수"
-DISPLAY_MAX_EFFECTIVE_LEVERAGE: Final = "최대 유효 레버리지"
 DISPLAY_WIPEOUT_DATE: Final = "자기자본 소진일"
-DISPLAY_DAYS_TO_WIPEOUT: Final = "소진까지 거래일"
 
 DISPLAY_BREAKEVEN_HORIZON: Final = "선물이 앞서는 최소 보유 기간"
 
@@ -273,7 +263,6 @@ DISPLAY_END_DATE: Final = "종료일"
 
 # 롤링 전수는 이웃끼리 겹치므로 표본 수만 적으면 실제보다 단단해 보인다
 DISPLAY_NON_OVERLAPPING: Final = "비중첩 표본"
-DISPLAY_JUDGEABLE: Final = "판정가능"
 
 # ============================================================
 # 산출물 파일명
@@ -286,7 +275,6 @@ BREAKEVEN_FILENAME: Final = "breakeven.csv"
 WIPEOUTS_FILENAME: Final = "wipeouts.csv"
 LEVERAGE_DRIFT_FILENAME: Final = "leverage_drift.csv"
 INTEGER_CONTRACTS_FILENAME: Final = "integer_contracts.csv"
-EQUITY_FILENAME_TEMPLATE: Final = "equity_{index_name}_{multiple}_{method}.csv"
 
 # 결과 폴더 이름에 쓰는 검증 이름
 STUDY_NAME: Final = "futures_leverage"

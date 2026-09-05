@@ -12,7 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Final
 
-from verify_lab.common_constants import MARKET_DIR, PRICE_DECIMALS, PRICE_DECIMALS_KRW
+from verify_lab.common_constants import MARKET_DIR, MARKET_FILE_TEMPLATE, PRICE_DECIMALS, PRICE_DECIMALS_KRW
 
 
 class Direction(Enum):
@@ -127,14 +127,14 @@ DATASETS: Final = (
         key="qqq",
         ticker="QQQ",
         price_basis=DISPLAY_PRICE_BASIS_RAW,
-        path=MARKET_DIR / "QQQ_max.csv",
+        path=MARKET_DIR / MARKET_FILE_TEMPLATE.format(ticker="QQQ"),
         price_decimals=PRICE_DECIMALS,
     ),
     Dataset(
         key="kodex200",
         ticker="KODEX 200",
         price_basis=DISPLAY_PRICE_BASIS_RAW,
-        path=MARKET_DIR / "069500_max.csv",
+        path=MARKET_DIR / MARKET_FILE_TEMPLATE.format(ticker="069500"),
         price_decimals=PRICE_DECIMALS_KRW,
     ),
 )

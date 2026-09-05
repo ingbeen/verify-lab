@@ -31,6 +31,10 @@
 **시기를 쪼갤 수 없으면 등급의 분모가 줄 뿐이다** (측정의 원칙 12). 표본이 모자라 물을 수
 없었던 항목을 미충족으로 세면, 표본이 작다는 이유로 두 번 깎인다.
 
+**그래서 시기표의 `판정가능` 이 「예」인 행만 읽는다.** 측정의 원칙 17 은 표본이 모자란 구간도
+행을 남기라고 요구하는데, 그 행을 그대로 등급에 넣으면 «못 물은 것»이 «못 넘은 것»으로 바뀐다.
+산출물을 온전히 남기는 것과 판정을 흔들지 않는 것이 이 필터로 함께 성립한다.
+
 **전체 축과 시기 축이 같은 컬럼을 읽는다.** 방향이 「아래」면 두 축 모두 내린 비율을 그대로
 쓴다 — 한쪽만 `1 − 오른 비율` 로 만들면 **보합이 「내림」으로 새어** 시기 항목이 관대해진다.
 두 방향 비율은 여집합이 아니며, 그 정의는 `statistics.summarize` 가 소유한다.
@@ -40,6 +44,7 @@ from typing import Final
 
 import pandas as pd
 
+from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_YES
 from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
     COL_LOSS_RATE,
@@ -160,7 +165,8 @@ def screen_candidates(
 
     Args:
         summary: 축별 집계표. `REQUIRED_SUMMARY_COLUMNS` 와 두 방향의 우연확률이 있어야 한다
-        periods: 축 × 시기 집계표. 비어 있으면 그 칸의 등급 분모가 준다
+        periods: 축 × 시기 집계표. 비어 있거나 **`판정가능` 이 「예」인 행이 없으면**
+            그 칸의 등급 분모가 준다
         axis_column: 축 컬럼 이름. 만기월·요일 등 무엇이든 받는다
 
     Returns:
@@ -219,6 +225,12 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
     total_return = expected_value * int(row[COL_SAMPLE_COUNT])
 
     cell_periods = periods[periods[axis_column] == row[axis_column]] if not periods.empty else periods
+
+    # **판정할 수 없는 구간은 등급에 넣지 않는다.** 측정의 원칙 17 에 따라 표본이 모자란 구간도
+    # 산출물에는 행이 남는데, 그 행을 그대로 읽으면 «못 물은 것»이 «못 넘은 것»으로 바뀌어
+    # 표본이 작다는 이유로 두 번 깎인다. 컬럼이 없는 표(아직 이 축을 내지 않는 검증)는 그대로 둔다
+    if not cell_periods.empty and COL_JUDGEABLE in cell_periods.columns:
+        cell_periods = cell_periods[cell_periods[COL_JUDGEABLE] == JUDGEABLE_YES]
 
     # 시기 항목도 전체 축과 **같은 컬럼**을 읽는다. `1 − 오른 비율` 로 내린 비율을 만들면
     # **보합이 통째로 「내림」으로 새어** 값이 부풀고 등급이 관대해진다 — 두 비율은 여집합이 아니다

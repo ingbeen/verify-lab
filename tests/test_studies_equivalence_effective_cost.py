@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import (
+    CALENDAR_DAYS_PER_YEAR,
     COL_CLOSE,
     COL_DATE,
     COL_HIGH,
@@ -33,7 +34,6 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_SPOT_RETURN,
     COL_THEORETICAL_RETURN,
     COL_USD_RATE,
-    DAYS_PER_YEAR,
     EtfTarget,
 )
 from verify_lab.studies.usdkrw_equivalence.effective_cost import build_adjusted_nav, build_cost_returns
@@ -76,7 +76,7 @@ def test_exposure_one_uses_usd_rate_only() -> None:
     """
     result = build_cost_returns(SIMPLE, exposure=1)
 
-    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(0.0365 * 3 / DAYS_PER_YEAR, abs=1e-12)
+    assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(0.0365 * 3 / CALENDAR_DAYS_PER_YEAR, abs=1e-12)
 
 
 def test_exposure_two_subtracts_one_krw_rate() -> None:
@@ -92,7 +92,7 @@ def test_exposure_two_subtracts_one_krw_rate() -> None:
     """
     result = build_cost_returns(SIMPLE, exposure=2)
 
-    expected = (2 * 0.0365 - 1 * 0.0146) * 3 / DAYS_PER_YEAR
+    expected = (2 * 0.0365 - 1 * 0.0146) * 3 / CALENDAR_DAYS_PER_YEAR
 
     assert result[COL_RATE_CONTRIBUTION].iloc[0] == pytest.approx(expected, abs=1e-12)
 
@@ -218,8 +218,8 @@ def test_known_fee_is_recovered_for_leveraged_fund() -> None:
     for index in range(1, len(days)):
         gap = (days[index] - days[index - 1]).days
         spot_change = spot[index] / spot[index - 1] - 1
-        carry = (2 * usd / 100 - 1 * krw / 100) * gap / DAYS_PER_YEAR
-        nav.append(nav[-1] * (1 + 2 * spot_change + carry - fee * gap / DAYS_PER_YEAR))
+        carry = (2 * usd / 100 - 1 * krw / 100) * gap / CALENDAR_DAYS_PER_YEAR
+        nav.append(nav[-1] * (1 + 2 * spot_change + carry - fee * gap / CALENDAR_DAYS_PER_YEAR))
 
     aligned = _aligned(
         [day.isoformat() for day in days],
@@ -266,7 +266,7 @@ def test_wrong_exposure_inflates_cost_by_krw_rate() -> None:
     for index in range(1, len(days)):
         gap = (days[index] - days[index - 1]).days
         spot_change = spot[index] / spot[index - 1] - 1
-        carry = (2 * usd / 100 - 1 * krw / 100) * gap / DAYS_PER_YEAR
+        carry = (2 * usd / 100 - 1 * krw / 100) * gap / CALENDAR_DAYS_PER_YEAR
         nav.append(nav[-1] * (1 + 2 * spot_change + carry))
 
     aligned = _aligned(
@@ -289,4 +289,4 @@ def test_wrong_exposure_inflates_cost_by_krw_rate() -> None:
 
 def gap_series(aligned: pd.DataFrame) -> pd.Series:
     """첫 행을 뺀 달력일 비율(일수 ÷ 365)을 돌려준다."""
-    return (aligned[COL_DAY_COUNT] / DAYS_PER_YEAR).iloc[1:].reset_index(drop=True)
+    return (aligned[COL_DAY_COUNT] / CALENDAR_DAYS_PER_YEAR).iloc[1:].reset_index(drop=True)

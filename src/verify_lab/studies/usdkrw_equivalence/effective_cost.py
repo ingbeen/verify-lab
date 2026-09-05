@@ -22,7 +22,7 @@ L=1 이면 `theoretical` 의 `현물 + 달러금리` 와 같아진다.
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_VALUE, RATE_TO_PERCENT
+from verify_lab.common_constants import CALENDAR_DAYS_PER_YEAR, COL_CLOSE, COL_DATE, COL_VALUE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv, load_series_csv
 from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_ACTUAL_RETURN,
@@ -34,7 +34,6 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_SPOT_RETURN,
     COL_THEORETICAL_RETURN,
     COL_USD_RATE,
-    DAYS_PER_YEAR,
     EtfTarget,
 )
 
@@ -117,7 +116,7 @@ def build_cost_returns(aligned: pd.DataFrame, exposure: int) -> pd.DataFrame:
     annual_rate = (
         exposure * frame[COL_USD_RATE].shift(1) - (exposure - 1) * frame[COL_KRW_RATE].shift(1)
     ) / RATE_TO_PERCENT
-    frame[COL_RATE_CONTRIBUTION] = annual_rate * frame[COL_DAY_COUNT] / DAYS_PER_YEAR
+    frame[COL_RATE_CONTRIBUTION] = annual_rate * frame[COL_DAY_COUNT] / CALENDAR_DAYS_PER_YEAR
 
     # 일간 리밸런싱 상품의 하루 수익은 기초자산 하루 수익의 정확히 L 배다
     frame[COL_THEORETICAL_RETURN] = exposure * frame[COL_SPOT_RETURN] + frame[COL_RATE_CONTRIBUTION]

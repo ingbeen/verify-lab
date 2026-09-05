@@ -68,6 +68,10 @@ DISPLAY_DOWN_RATE_P_VALUE = "내린 비율 우연확률"
 
 DISPLAY_TEST_NOTE = "비고"
 
+# 표본이 하한에 못 미쳐도 **행은 남기고** 이 컬럼으로 「판정에 쓰지 말라」를 적는다
+# (측정의 원칙 17). 세 검증이 같은 문자열을 따로 두고 있었으므로 여기서 하나로 낸다
+DISPLAY_JUDGEABLE = "판정가능"
+
 # 후보 판정 (measure/screening.py 의 결과)
 DISPLAY_DIRECTION = "방향"
 DISPLAY_HIT_RATE = "적중률(%)"

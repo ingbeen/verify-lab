@@ -317,3 +317,41 @@ def test_registered_series_keys_are_unique() -> None:
     """
     assert len({s.key for s in ECOS_SERIES}) == len(ECOS_SERIES)
     assert len({s.file_name for s in ECOS_SERIES}) == len(ECOS_SERIES)
+
+
+def test_missing_total_count_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    목적: **잘림 검사가 스스로 꺼지지 않음**을 고정한다 (경계 조건).
+
+    전에는 전체 건수 키가 없으면 기본값을 `len(rows)` 로 두었다. 그러면 바로 다음 줄의
+    `len(rows) != total_count` 대조가 **언제나 통과**해, 응답이 잘렸는지 확인하는 장치가
+    스스로 꺼진다. 잘린 시계열은 "그 날짜부터 데이터가 없다"로 읽힌다.
+
+    Given: 행은 있는데 전체 건수 키가 없는 응답
+    When: 행을 받는다
+    Then: ValueError 가 발생한다
+    """
+    # Given
+    _install_response(monkeypatch, {SERVICE_SEARCH: {"row": [_row("20260102", "1")]}})
+
+    # When / Then
+    with pytest.raises(ValueError, match="전체 건수"):
+        fetch_rows(SERVICE_SEARCH, ["1", "10"], API_KEY)
+
+
+def test_missing_row_key_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    목적: 행 키가 없는 응답을 **빈 결과 0건**으로 처리하지 않음을 고정한다 (경계 조건).
+
+    응답 스키마가 바뀌면 조용히 0건이 되는데, 그것은 "데이터가 없다"와 구별되지 않는다.
+
+    Given: 전체 건수는 있는데 행 키가 없는 응답
+    When: 행을 받는다
+    Then: ValueError 가 발생한다
+    """
+    # Given
+    _install_response(monkeypatch, {SERVICE_SEARCH: {"list_total_count": 3}})
+
+    # When / Then
+    with pytest.raises(ValueError, match="행"):
+        fetch_rows(SERVICE_SEARCH, ["1", "10"], API_KEY)

@@ -39,7 +39,6 @@ KOSPI_200_INDEX_TICKER = "1028"
 CALL_INTERVAL_SECONDS = 1.0
 
 # pykrx 가 돌려주는 한글 컬럼. 정규화하지 않고 그대로 본다 — 무엇이 오는지가 실측 대상이다
-KRX_COL_DATE = "날짜"
 KRX_COL_OPEN = "시가"
 KRX_COL_HIGH = "고가"
 KRX_COL_LOW = "저가"
