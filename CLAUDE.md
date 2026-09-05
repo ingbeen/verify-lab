@@ -174,12 +174,31 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 **게이트를 넘어도 다중 비교와 표본 독립성은 따로 봅니다**(원칙 3·5·7).
 **후보는 자격이지 발견이 아닙니다.**
 
+#### 비용을 넣을 때 쓸 사용자의 실제 집행 조건 (2026-08-30 확인)
+
+측정의 원칙 10 에 따라 **맨몸 성적을 먼저** 냅니다. 비용 단계로 갈 때 아래 값을 씁니다.
+
+| 항목 | 값 |
+|  |  |
+| 매매 수수료 | **우대 0.1%** (일반 0.25%) — 편도 |
+| 슬리피지 | **편도 0.1%** 로 잡습니다 |
+| 왕복 합계 | 우대 **0.4%** · 일반 **0.7%** |
+| 레버리지 | 사용자는 이런 단기 매매에 **2~3배**를 씁니다 |
+
+- **ETF 총보수는 이 값에 넣지 않습니다.** 이미 종가에 녹아 있습니다
+  (QQQ 0.20% · SPY 0.09% · DIA 0.16%).
+- **「아래」 방향 신호를 인버스로 집행하면 비용 구조가 다릅니다** — 그 ETF 의 총보수(0.9%대)와
+  일일 리밸런싱 손실이 별도로 붙으므로, 레버리지·인버스는 **배수를 곱하는 것으로 끝나지 않습니다.**
+- 검증 #7 의 후보 기대값이 회당 +0.44 ~ +1.25% 이므로 **왕복 비용이 결론을 뒤집을 수 있는 크기**입니다.
+  **합산으로 보면 23~33년에 걸쳐 +12.7 ~ +29.8%** 이며, 회당과 합산의 순위가 다릅니다
+  (측정의 원칙 16). 표본 수가 곧 연수이므로 둘을 같이 봐야 합니다.
+
 ### 결과 보고의 원칙
 
 - 전문 통계 용어보다 일상어를 씁니다. 꼭 필요한 용어는 한 줄 정의를 붙입니다.
 - 추상적 지표보다 **구체적인 날짜·가격·계산 과정을 표로** 보여줍니다.
 - 결론을 먼저 말하고 근거를 뒤에 붙입니다.
-- 모든 검증 결과는 `docs/research/<검증명>.md`에 남깁니다. 형식은 `docs/research/CLAUDE.md` 참고.
+- 모든 검증 결과는 `docs/research/<검증명>.md`에 남깁니다. 형식은 `.claude/rules/research.md` 참고.
 
 ---
 
@@ -199,7 +218,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) | 패키지 코드 작업 — 계층 분리, 상수 관리, 절대 원칙 | 자동 |
 | [scripts/CLAUDE.md](scripts/CLAUDE.md) | CLI 스크립트 작업 | 자동 |
 | [tests/CLAUDE.md](tests/CLAUDE.md) | 테스트 작성·수정 | 자동 |
-| [docs/research/CLAUDE.md](docs/research/CLAUDE.md) | 검증 결과 문서 작성 | 자동 |
+| [.claude/rules/research.md](.claude/rules/research.md) | 검증 결과 문서 작성 | 자동 |
 | [.claude/rules/python.md](.claude/rules/python.md) | 파이썬 파일 작업 — 코딩 표준·반올림·로깅 | 자동 |
 | [.claude/rules/docs.md](.claude/rules/docs.md) | `docs/` 파일 작업 | 자동 |
 | [.claude/rules/reference.md](.claude/rules/reference.md) | `reference/` 파일을 열었을 때 — 읽기 전용 4금지 | 자동 |
@@ -210,7 +229,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 > **자동 로드는 파일을 "읽기만" 해도 걸립니다 — 단, `Read` 도구로 열었을 때입니다.**
 > 해당 경로의 파일을 Read 하는 순간 그 경로의 규칙 문서 본문이 함께 주입되는 것을
 > `.py`와 `docs/` 양쪽에서 실측했습니다
-> (2026-08-09·2026-08-29, [docs/ROADMAP.md](docs/ROADMAP.md) Phase 0에 기록).
+> (2026-08-09·2026-08-29, [.claude/rules/session-bootstrap.md](.claude/rules/session-bootstrap.md) 4절에 기록).
 >
 > **구멍은 둘이고, 둘 다 "직접 연다"로 메웁니다.**
 >
@@ -259,7 +278,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 - **살아있는 문서에서 계획서를 링크하지 않습니다.** 링크하면 다음 삭제 주기에 깨집니다
 - **Done 처리 시 남길 가치가 있는 것을 살아있는 문서로 승격합니다.** 결론뿐 아니라 **근거**를 옮깁니다.
-  승격 대상과 목적지는 [docs/ROADMAP.md](docs/ROADMAP.md) "계획서의 수명"이 SoT입니다
+  승격 대상과 목적지는 [.claude/rules/docs.md](.claude/rules/docs.md) 「계획서」 절이 SoT입니다
 
 ### 계획서 규약 — 이 프로젝트의 설정 (CRITICAL)
 
@@ -275,13 +294,13 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 #### 2. 근거 승격 목적지
 
-「계획서의 수명」의 집행 규격입니다. 승격 대상 판정의 SoT는 [docs/ROADMAP.md](docs/ROADMAP.md)입니다.
+「계획서의 수명」의 집행 규격입니다. 승격 대상 판정의 SoT는 [.claude/rules/docs.md](.claude/rules/docs.md) 「계획서」 절입니다.
 
 | 옮길 것 | 목적지 |
 | --- | --- |
 | 데이터 소스 실측 결과, 설계 결정과 탈락안 | `docs/spec/` |
 | 측정 결과와 판정 | `docs/research/` |
-| Phase 상태, 검증 목록, 계층 간 계약 | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| 계층 간 계약 | [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) 「계층 간 계약」 |
 | 실행 명령어 | [docs/COMMANDS.md](docs/COMMANDS.md) |
 
 #### 3. 커밋 메시지의 기능명
@@ -301,25 +320,23 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 ---
 
-## 세션 인계 규칙
+## 세션 시작 규칙
 
-세션을 다음으로 넘길 때는 **`/handoff` 스킬**을 씁니다. 스킬이 "위치와 추적 여부는 그 프로젝트 규칙을 따른다"로
-되어 있으므로, 이 저장소의 규칙을 여기서 정합니다.
+**진입 순서는 [.claude/rules/session-bootstrap.md](.claude/rules/session-bootstrap.md) 가 정합니다.**
+`paths` frontmatter 가 없어 **매 세션 조건 없이 로드**되며,
+SessionStart 훅(`.claude/settings.json`)이 세션 머리에서 같은 곳을 한 번 더 가리킵니다.
 
 | 항목 | 이 저장소의 규칙 |
 | --- | --- |
-| 위치·파일명 | 저장소 루트의 **`다음세션_프롬프트.md` 하나**로 고정합니다 |
-| git | **추적 대상입니다.** 여러 PC 에서 이어 작업하므로 — **untracked 파일은 다른 PC 로 넘어가지 않습니다** |
-| 갱신 방식 | **매번 같은 파일을 갱신합니다.** 세션마다 새 파일을 만들면 두 벌이 되고 다음 세션이 어느 쪽을 믿을지 모릅니다 |
+| 첫 작업 전 | [docs/INDEX.md](docs/INDEX.md) 를 **`Read` 도구로** 엽니다 — 셸로 읽으면 그 경로의 규칙이 주입되지 않습니다 |
+| 이어 읽을 것 | 작업 성격에 따라 갈립니다. 부트스트랩 규칙 2절이 SoT입니다 |
+| git | `.claude/rules/` 와 `.claude/settings.json` **둘 다 추적 대상입니다.** 여러 PC 에서 이어 작업하므로 — **untracked 파일은 다른 PC 로 넘어가지 않습니다** |
 
-- **계획서(`docs/plans/`)와는 다른 물건입니다.** 계획서는 작업 중에만 존재하는 임시 산출물이고
-  인계 프롬프트는 **상시 유지되는 하나**입니다. 계획서를 전부 비워도 인계 프롬프트는 남습니다
-- **인계 프롬프트에 지식을 쌓지 않습니다.** 세션이 바뀌어도 계속 참인 것(함정·확정된 결정·환경 제약)은
-  살아있는 문서로 승격하고, 인계 프롬프트는 **경로로 참조**합니다. 복사하면 두 벌이 되고 한쪽이 낡습니다.
-  승격 목적지는 [docs/ROADMAP.md](docs/ROADMAP.md) "계획서의 수명" 표를 그대로 씁니다
-- [docs/INDEX.md](docs/INDEX.md) 가 이 파일을 **새 세션의 진입점**으로 가리킵니다.
-  파일명을 바꾸면 INDEX 도 함께 고칩니다 — `tests/test_index.py` 가 링크 해석을 검사하므로
-  안 고치면 `validate_project.py` 가 실패합니다
+- **인계 문서를 따로 두지 않습니다.** 세션마다 갱신하는 「다음 세션 프롬프트」는 살아있는 문서와
+  두 벌이 되고 한쪽이 낡습니다. 세션이 바뀌어도 계속 참인 것(함정·확정된 결정·환경 제약)은
+  **처음부터 살아있는 문서에 씁니다.** 승격 목적지는 [.claude/rules/docs.md](.claude/rules/docs.md) 「계획서」 절입니다
+- **진행 상태와 앞으로의 계획을 문서로 남기지 않습니다.** 무엇이 끝났는지는 git 이력과 결과 문서가
+  말하고, 무엇을 다음에 할지는 그때 사용자가 정합니다. `tests/test_index.py` 가 이 규칙을 집행합니다
 
 ---
 
@@ -339,7 +356,6 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 verify-lab은 떠도는 매매법이 실제로 통계적 우위를 갖는지 검증하는 프로젝트입니다.
 
-- **검증 대상과 진행 상태의 SoT**: [docs/ROADMAP.md](docs/ROADMAP.md)
 - **개별 검증의 확정 설계**: `docs/spec/` (검증마다 한 개)
 - **검증 결과**: `docs/research/<검증명>.md`
 
@@ -374,11 +390,10 @@ verify-lab/
 │   └── strategy/            # 매매 규칙 실행 스크립트
 ├── tests/                   # 테스트 코드 (상세: tests/CLAUDE.md)
 ├── docs/
-│   ├── ROADMAP.md           # 검증 대상 목록과 진행 상태 (SoT)
 │   ├── COMMANDS.md          # 실행 명령어 단일 관리
 │   ├── context/             # 사용자의 현재 운용 상태와 프로젝트 배경 (필독)
 │   ├── spec/                # 개별 검증의 확정 설계
-│   ├── research/            # 검증 결과 문서 (상세: docs/research/CLAUDE.md)
+│   ├── research/            # 검증 결과 문서 (상세: .claude/rules/research.md)
 │   ├── strategy/            # 매매 규칙과 그 성적 (예외 계층)
 │   └── plans/               # 작업 계획서 (임시 산출물, 주기적으로 비움)
 ├── reference/               # 참고용 원본 코드·문서 (읽기 전용, 상세: reference/README.md)

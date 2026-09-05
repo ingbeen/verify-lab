@@ -38,7 +38,7 @@ RECENT_EXCLUSION_DAYS = 2
 
 # 저장 파일명. 전 기간을 한 파일로 유지해 로더가 읽을 대상이 갈리지 않게 한다.
 # **가격 기준이 다르면 파일도 다르다** — 원본가와 수정주가는 내용이 다른 데이터이므로 한 파일에 섞지 않는다
-# (`docs/ROADMAP.md` "확정된 원시 시세 저장 규칙"). `pykrx_collector` 도 같은 규칙을 쓴다
+# (`src/verify_lab/CLAUDE.md` 「계층 간 계약」의 원시 시세 저장 규칙). `pykrx_collector` 도 같은 규칙을 쓴다
 FILE_NAME_TEMPLATE = "{ticker}_max.csv"
 ADJUSTED_FILE_NAME_TEMPLATE = "{ticker}_adjusted_max.csv"
 

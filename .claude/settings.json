@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[verify-lab] 이 저장소의 진입 순서는 .claude/rules/session-bootstrap.md 가 정한다. 첫 작업 전에 docs/INDEX.md 를 Read 도구로 연다 (셸로 읽으면 경로 규칙이 주입되지 않는다).'"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -3,7 +3,7 @@
 결과 문서는 이 저장소의 최종 산출물이자 그 검증의 진입점이다. 계획서가 삭제되고 산출물 폴더가
 비워져도 이 문서 하나로 "무엇을 어떻게 재서 어떤 결론이 나왔는지"가 재구성돼야 한다.
 
-작성 규칙은 `docs/research/CLAUDE.md` 가 SoT이고, 그중 **기계가 채점할 수 있는 항목만** 여기서 고정한다.
+작성 규칙은 `.claude/rules/research.md` 가 SoT이고, 그중 **기계가 채점할 수 있는 항목만** 여기서 고정한다.
 문체·해석·판단은 사람이 읽어야 알 수 있으므로 대상이 아니다.
 
 `tests/test_index.py` 와 같은 역할이다 — 문서가 계속 늘어나므로 부패가 반드시 발생하고,
@@ -16,7 +16,7 @@
 이것을 실재 검사 대상으로 삼으면 규칙을 가장 잘 지킨 문서가 실패한다.
 
 따라서 묘비 낱말이 있는 행의 인라인 경로는 검사하지 않는다. 어떤 낱말이 묘비인지는
-`docs/research/CLAUDE.md` 가 정하며, 이 모듈의 `TOMBSTONE_WORDS` 가 그것을 집행한다.
+`.claude/rules/research.md` 가 정하며, 이 모듈의 `TOMBSTONE_WORDS` 가 그것을 집행한다.
 """
 
 import re
@@ -26,9 +26,6 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESEARCH_DIR = PROJECT_ROOT / "docs" / "research"
-
-# 결과 문서가 아닌 파일. 작성 규칙 문서 자체는 검사 대상이 아니다.
-NOT_A_RESULT = ("CLAUDE.md",)
 
 # 마크다운 링크에서 경로를 뽑는다: [텍스트](경로)
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -61,7 +58,7 @@ PLAN_REFERENCE = re.compile(r"docs/plans|plans/PLAN_")
 GLOB_CHARS = "*?["
 
 # 검사 대상 결과 문서
-RESULT_DOCS = sorted(path for path in RESEARCH_DIR.glob("*.md") if path.name not in NOT_A_RESULT)
+RESULT_DOCS = sorted(RESEARCH_DIR.glob("*.md"))
 
 
 def _front_matter(text: str) -> str:
@@ -237,7 +234,7 @@ def test_filename_has_no_forbidden_prefix(doc: Path) -> None:
     """
     assert not doc.name.startswith(FORBIDDEN_PREFIX), (
         f"결과 문서에 `{FORBIDDEN_PREFIX}` 접두사를 붙이지 않습니다: {doc.name}\n"
-        "  폴더가 이미 「검증 결과 문서」를 뜻합니다 (docs/research/CLAUDE.md 「파일 네이밍」)"
+        "  폴더가 이미 「검증 결과 문서」를 뜻합니다 (.claude/rules/research.md 「파일 네이밍」)"
     )
 
 
