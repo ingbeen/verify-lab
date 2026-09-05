@@ -9,8 +9,13 @@
 | 축 | 나누는 기준 | 왜 |
 | --- | --- | --- |
 | 변동성 | 구간 **안**의 1배 일간 변동성 사분위 | 경로 효과는 변동성의 함수다 |
-| 방향 | 구간 1배 수익률의 부호 | 배수 상품은 오를 때와 내릴 때가 대칭이 아니다 |
+| 방향 | 구간 1배 수익률의 **부호** | 배수 상품은 오를 때와 내릴 때가 대칭이 아니다 |
+| **1배 수익률 분위** | 구간 1배 수익률의 **오분위** | **부호만으로는 크기가 안 보인다** — `+1%` 와 `+50%` 가 같은 칸에 들어간다 |
 | 시기 | 금리 국면 (2022년 경계) | 차입·스왑 비용이 금리에 연동된다 |
+
+**방향과 1배 수익률 분위는 다른 것을 본다.** 경로 효과는 크기의 함수라 U자를 그린다 —
+큰 하락에서는 매일 리밸런싱이 포지션을 줄여 덜 잃고, 큰 상승에서는 복리로 앞서며,
+**완만한 상승 구간에서만 깎인다.** 부호 축으로는 그 바닥이 보이지 않는다.
 
 **비중첩 표본 수를 모든 칸에 함께 낸다.** 롤링 전수는 이웃끼리 심하게 겹치므로 표본 수만
 적으면 실제보다 훨씬 단단해 보인다. 겹치지 않게 뽑을 수 있는 최대 개수를 그리디로 정확히 센다.
@@ -27,9 +32,11 @@ import pandas as pd
 from verify_lab.common_constants import COL_DATE
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_EXCLUDED_REASON, COL_HORIZON, REASON_OUT_OF_RANGE
 from verify_lab.studies.leverage_tracking.constants import (
+    BASE_RETURN_BUCKETS,
     COL_ACTUAL,
     COL_BASE_CLOSE,
     COL_BASE_RETURN,
+    COL_BASE_RETURN_BUCKET,
     COL_DIRECTION,
     COL_JUDGEABLE,
     COL_NON_OVERLAPPING_COUNT,
@@ -76,8 +83,8 @@ def attach_axes(divergence: pd.DataFrame, alignment: pd.DataFrame) -> pd.DataFra
         alignment: 그 계산에 쓴 `pairing.align_pair` 의 공통 거래일 프레임
 
     Returns:
-        입력에 `StartPosition`·`VolatilityBucket`·`Direction`·`Period` 를 더한 DataFrame.
-        입력은 변경하지 않는다
+        입력에 `StartPosition`·`VolatilityBucket`·`Direction`·`BaseReturnBucket`·`Period` 를
+        더한 DataFrame. 입력은 변경하지 않는다
 
     Raises:
         ValueError: 필요한 컬럼이 없거나, 두 입력의 날짜가 어긋나는 경우
@@ -114,6 +121,11 @@ def attach_axes(divergence: pd.DataFrame, alignment: pd.DataFrame) -> pd.DataFra
 
     # 4. 변동성. 구간별로 계산하고 사분위도 구간별로 매긴다
     result[COL_VOLATILITY_BUCKET] = _volatility_buckets(result, alignment)
+
+    # 5. 1배 수익률 분위. 방향 축이 부호만 보는 것을 크기로 보완한다.
+    #    **경계도 구간별로 매긴다** — 보유 기간이 다르면 같은 수익률이 다른 뜻이라,
+    #    한 자로 재면 긴 구간이 상위 분위를 독점한다 (변동성 축과 같은 이유)
+    result[COL_BASE_RETURN_BUCKET] = _base_return_buckets(result)
 
     return result
 
@@ -158,6 +170,42 @@ def _volatility_buckets(divergence: pd.DataFrame, alignment: pd.DataFrame) -> pd
             )
         except ValueError:
             logger.debug(f"변동성 사분위를 나누지 못했습니다 (구간 {horizon}거래일) — 값이 한쪽에 몰려 있습니다")
+
+    return buckets
+
+
+def _base_return_buckets(divergence: pd.DataFrame) -> pd.Series:
+    """구간 1배 수익률을 구간별 오분위로 나눈다.
+
+    **방향 축과 다른 것을 본다.** 방향은 부호만 보므로 `+1%` 와 `+50%` 가 같은 칸에 들어가는데,
+    경로 효과는 크기의 함수라 그 둘이 정반대다.
+
+    **경계를 구간별로 매긴다** — 1주와 3년의 수익률을 한 자로 재면 긴 구간이 상위 분위를
+    독점한다. **절대 경계를 쓰지 않는 이유**는 `docs/spec/leverage_tracking.md` 에 있다.
+
+    Args:
+        divergence: 축을 붙이는 중인 괴리 결과
+
+    Returns:
+        `divergence` 와 같은 인덱스의 분위 라벨 Series. 잴 수 없는 칸은 None
+    """
+    buckets = pd.Series(index=divergence.index, dtype=object)
+
+    for _, group in divergence.groupby(COL_HORIZON, sort=True):
+        usable = group[COL_BASE_RETURN].notna()
+        if usable.sum() < len(BASE_RETURN_BUCKETS):
+            continue
+
+        # 같은 값이 많아 분위 경계가 겹치면 나누지 못한다. **예외로 멈추지 않는다** —
+        # 짝 하나 때문에 전체 실행이 죽고, 그 칸을 못 봤다는 사실만 남기면 된다
+        # (변동성 축과 같은 규약)
+        try:
+            buckets.loc[group.index[usable]] = pd.qcut(
+                group.loc[usable, COL_BASE_RETURN], q=len(BASE_RETURN_BUCKETS), labels=list(BASE_RETURN_BUCKETS)
+            )
+        except ValueError:
+            horizon = group[COL_HORIZON].iloc[0]
+            logger.debug(f"1배 수익률 오분위를 나누지 못했습니다 (구간 {horizon}거래일) — 값이 한쪽에 몰려 있습니다")
 
     return buckets
 

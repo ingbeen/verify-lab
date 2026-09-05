@@ -39,6 +39,7 @@ from verify_lab.studies.leverage_tracking.breakdown import attach_axes, summariz
 from verify_lab.studies.leverage_tracking.constants import (
     COL_ACTUAL,
     COL_BASE_RETURN,
+    COL_BASE_RETURN_BUCKET,
     COL_DIRECTION,
     COL_JUDGEABLE,
     COL_NAIVE_EXPECTED,
@@ -58,6 +59,7 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_BASE_INDEX,
     DISPLAY_BASE_ONLY,
     DISPLAY_BASE_RETURN,
+    DISPLAY_BASE_RETURN_AXIS,
     DISPLAY_BASE_TICKER,
     DISPLAY_COMMON_DAYS,
     DISPLAY_DIRECTION_AXIS,
@@ -95,10 +97,12 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 축 컬럼과 그 표시 이름. 세 축을 한 표에 세로로 쌓는다
+# 축 컬럼과 그 표시 이름. 네 축을 한 표에 세로로 쌓는다.
+# **방향과 1배 수익률 분위는 둘 다 둔다** — 앞은 부호, 뒤는 크기를 보며 답이 다르다
 AXIS_COLUMNS = (
     (COL_VOLATILITY_BUCKET, DISPLAY_VOLATILITY_AXIS),
     (COL_DIRECTION, DISPLAY_DIRECTION_AXIS),
+    (COL_BASE_RETURN_BUCKET, DISPLAY_BASE_RETURN_AXIS),
     (COL_PERIOD, DISPLAY_PERIOD_AXIS),
 )
 
@@ -341,6 +345,7 @@ def _window_block(prepared: pd.DataFrame, pair: LeveragePair) -> pd.DataFrame:
     block[DISPLAY_REALIZED_MULTIPLE] = valid[COL_REALIZED_MULTIPLE].round(REALIZED_MULTIPLE_DECIMALS)
     block[DISPLAY_VOLATILITY_AXIS] = valid[COL_VOLATILITY_BUCKET]
     block[DISPLAY_DIRECTION_AXIS] = valid[COL_DIRECTION]
+    block[DISPLAY_BASE_RETURN_AXIS] = valid[COL_BASE_RETURN_BUCKET]
     block[DISPLAY_PERIOD_AXIS] = valid[COL_PERIOD]
 
     return block.reset_index(drop=True)

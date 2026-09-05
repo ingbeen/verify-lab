@@ -148,6 +148,7 @@ COL_START_POSITION: Final = "StartPosition"
 
 COL_VOLATILITY_BUCKET: Final = "VolatilityBucket"
 COL_DIRECTION: Final = "Direction"
+COL_BASE_RETURN_BUCKET: Final = "BaseReturnBucket"
 COL_PERIOD: Final = "Period"
 
 # 방향 라벨. **보합을 어느 쪽에도 넣지 않는다** — 여집합으로 만들면 비율이 부푼다
@@ -159,6 +160,17 @@ DIRECTION_FLAT: Final = "보합"
 # 변동성 사분위 라벨. 구간 «안»의 1배 일간 변동성으로 나눈다 —
 # 경로 효과는 변동성의 함수이므로 이 축이 없으면 평균이 서로 다른 국면을 뭉갠다
 VOLATILITY_BUCKETS: Final = ("변동성 하위 25%", "변동성 25~50%", "변동성 50~75%", "변동성 상위 25%")
+
+# 1배 수익률 오분위 라벨. **방향 축이 부호만 보는 것을 크기로 보완한다** —
+# 방향 축에서는 `+1%` 와 `+50%` 가 똑같이 「오름」이라, 경로 효과가 크기의 함수라는 사실이 보이지 않는다.
+#
+# **오분위를 쓴다(사분위가 아니다).** 실측에서 경로 효과의 **최저점이 20~40% 칸**에 있고
+# 양끝은 양수 쪽이라 U자를 그리는데, 4칸으로 나누면 그 바닥이 「하위 50%」에 뭉개진다.
+#
+# **절대 경계(±5% 등)를 쓰지 않는다.** 보유 기간마다 같은 수익률의 뜻이 달라지고 임의
+# 파라미터가 된다(측정의 원칙 1). 미국은 장기 상승이라 3년 구간에서 ±5% 안에 드는 표본이
+# 3~5% 뿐이라 칸이 성립하지도 않는다. 근거는 `docs/spec/leverage_tracking.md`
+BASE_RETURN_BUCKETS: Final = ("1배 하위 20%", "1배 20~40%", "1배 40~60%", "1배 60~80%", "1배 상위 20%")
 
 # 시기 구분. 차입·스왑 비용이 금리에 연동되므로 금리 국면으로 자른다.
 # 미국 기준금리 인상이 시작된 2022년을 경계로 삼는다
@@ -212,6 +224,7 @@ DISPLAY_AXIS: Final = "축"
 DISPLAY_AXIS_VALUE: Final = "구분"
 DISPLAY_VOLATILITY_AXIS: Final = "변동성"
 DISPLAY_DIRECTION_AXIS: Final = "방향"
+DISPLAY_BASE_RETURN_AXIS: Final = "1배 수익률 분위"
 DISPLAY_PERIOD_AXIS: Final = "시기"
 
 DISPLAY_ANNUAL_DISTRIBUTION: Final = "연율 분배 기여(%)"
