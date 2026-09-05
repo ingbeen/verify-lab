@@ -184,8 +184,6 @@ class _Context:
     frame: pd.DataFrame
     change_rates: pd.Series
     ranks: pd.DataFrame
-    surge_ranks: pd.Series
-    plunge_ranks: pd.Series
     zscores: pd.Series
     all_day_returns: pd.DataFrame
     below_sma: pd.Series
@@ -217,7 +215,7 @@ class _TestSpec:
         direction_labels: 방향의 표시 이름
         find: 시세·미리 낸 순위·방향·시작일을 받아 bool Series 를 내는 함수.
             **순위를 넘기는 것은 재계산을 막기 위해서다** — `expanding_rank` 는 시세 길이의
-            제곱에 비례하는데 파라미터 조합마다 같은 값을 다시 만들고 있었다
+            제곱에 비례하고 파라미터와 무관하게 같은 값이므로, 데이터셋당 한 번만 만들어 돌려 쓴다
     """
 
     test_label: str
@@ -443,8 +441,6 @@ def _build_context(dataset: Dataset) -> _Context:
         frame=frame,
         change_rates=daily_change_rate(frame),
         ranks=ranks,
-        surge_ranks=ranks[COL_SURGE_RANK],
-        plunge_ranks=ranks[COL_PLUNGE_RANK],
         zscores=reference_zscore(frame),
         all_day_returns=compute_forward_returns(frame, pd.Series(True, index=frame.index)),
         below_sma=sma.mask,
@@ -961,7 +957,7 @@ def _signal_details(
     Returns:
         날짜와 부가 컬럼을 담은 프레임
     """
-    ranks = context.surge_ranks if direction is Direction.UP else context.plunge_ranks
+    ranks = context.ranks[COL_SURGE_RANK if direction is Direction.UP else COL_PLUNGE_RANK]
 
     return pd.DataFrame(
         {

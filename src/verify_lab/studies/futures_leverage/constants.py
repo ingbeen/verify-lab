@@ -15,10 +15,12 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Final
 
+from verify_lab.common_constants import COL_DATE
 from verify_lab.data.krx_futures_collector import PRODUCT_KOSDAQ150, PRODUCT_KOSPI200
+from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HORIZON, COL_JUDGEABLE
 
 # 표시 레이블은 공통 계층이 소유한다 — 검증마다 다른 말을 쓰면 두 결과를 나란히 읽을 수 없다
-from verify_lab.report.constants import DISPLAY_JUDGEABLE
+from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT
 
 __all__ = ["DISPLAY_JUDGEABLE"]
 
@@ -148,7 +150,7 @@ REBALANCE_RULES: Final = (REBALANCE_DAILY, REBALANCE_MONTHLY, REBALANCE_NONE)
 #
 # **대가**: 사람이 실제로 하는 「매월 1일」과는 다르다. 이 검증이 재는 것은
 # 「월 1회 리밸런싱이 얼마를 치르는가」이지 「월중 언제 시작해야 하는가」가 아니므로
-# 그 축을 없앴다. 결과 문서에 이 사실을 적는다
+# 달력 축을 두지 않는다. 결과 문서에 이 사실을 적는다
 REBALANCE_INTERVAL_DAYS: Final = 21
 
 # 비교 방식 셋. 이 이름이 산출물의 「방식」 컬럼 값이 된다
@@ -278,3 +280,191 @@ INTEGER_CONTRACTS_FILENAME: Final = "integer_contracts.csv"
 
 # 결과 폴더 이름에 쓰는 검증 이름
 STUDY_NAME: Final = "futures_leverage"
+
+
+# ============================================================
+# 산출물 컬럼 (내부 계산용 영문 토큰)
+# ============================================================
+
+# 식별 축
+COL_INDEX_NAME: Final = "IndexName"
+COL_TARGET_TICKER: Final = "TargetTicker"
+COL_MULTIPLE: Final = "Multiple"
+COL_METHOD: Final = "Method"
+COL_ROLL_RULE: Final = "RollRule"
+COL_INTEREST: Final = "Interest"
+COL_PERIOD: Final = "Period"
+
+# 구간 집계
+COL_SAMPLE_COUNT: Final = "SampleCount"
+COL_NON_OVERLAPPING: Final = "NonOverlapping"
+COL_MEAN_RETURN: Final = "MeanReturn"
+COL_MEDIAN_RETURN: Final = "MedianReturn"
+COL_START_DATE: Final = "StartDate"
+COL_END_DATE: Final = "EndDate"
+
+# 차이 분해. 앞 네 항은 독립 산식이고 잔여만 남는다 (`comparison.decompose`)
+COL_ROLL_COST: Final = "RollCost"
+COL_REBALANCE_ERROR: Final = "RebalanceError"
+COL_HOLD_ERROR: Final = "HoldError"
+COL_INTEREST_GAIN: Final = "InterestGain"
+COL_RESIDUAL: Final = "Residual"
+COL_FUTURES_MINUS_ETF: Final = "FuturesMinusEtf"
+COL_HOLD_MINUS_ETF: Final = "HoldMinusEtf"
+COL_DIVIDEND_ADJUSTMENT: Final = "DividendAdjustment"
+
+# 롤 이벤트 원자료 (`continuous.roll_events_frame`).
+# **판정일과 집행일을 따로 남긴다** — 둘이 같으면 미래를 참조한 것이다
+COL_DECISION_DATE: Final = "DecisionDate"
+COL_EXECUTION_DATE: Final = "ExecutionDate"
+COL_FROM_CONTRACT: Final = "FromContract"
+COL_FROM_NAME: Final = "FromName"
+COL_TO_CONTRACT: Final = "ToContract"
+COL_TO_NAME: Final = "ToName"
+COL_ADJUSTMENT_FACTOR: Final = "AdjustmentFactor"
+COL_FROM_OPEN_INTEREST: Final = "FromOpenInterest"
+COL_TO_OPEN_INTEREST: Final = "ToOpenInterest"
+COL_FALLBACK: Final = "Fallback"
+
+# 자기자본 소진
+COL_WIPEOUT_COUNT: Final = "WipeoutCount"
+COL_WINDOW_COUNT: Final = "WindowCount"
+COL_FIRST_WIPEOUT_DATE: Final = "FirstWipeoutDate"
+
+# 최대 유효 레버리지. 매일 리밸런싱은 목표 배수 그대로이고 월 1회는 월중에 표류한다
+COL_MAX_LEVERAGE_DAILY: Final = "MaxEffectiveLeverageDaily"
+COL_MAX_LEVERAGE_MONTHLY: Final = "MaxEffectiveLeverageMonthly"
+
+# 선물이 앞서기 시작하는 보유 기간
+COL_BREAKEVEN_HORIZON: Final = "BreakevenHorizon"
+COL_AHEAD_HORIZON_COUNT: Final = "AheadHorizonCount"
+COL_TESTED_HORIZON_COUNT: Final = "TestedHorizonCount"
+
+# 정수 계약 대조
+COL_AS_OF_DATE: Final = "AsOfDate"
+COL_PRICE: Final = "Price"
+COL_CONTRACT_MULTIPLIER: Final = "ContractMultiplier"
+COL_NOTIONAL: Final = "Notional"
+COL_EQUITY_SIZE: Final = "EquitySize"
+COL_INTEGER_CONTRACTS: Final = "IntegerContracts"
+COL_ACTUAL_MULTIPLE: Final = "ActualMultiple"
+COL_EXECUTABLE: Final = "Executable"
+
+
+# ============================================================
+# 산출물 레이블
+# ============================================================
+
+DISPLAY_MEAN_RETURN: Final = "평균 수익률(%)"
+DISPLAY_MEDIAN_RETURN: Final = "중앙 수익률(%)"
+DISPLAY_FUTURES_MINUS_ETF: Final = "선물 − ETF(%p)"
+DISPLAY_HOLD_MINUS_ETF: Final = "선물 그대로 − ETF(%p)"
+DISPLAY_FROM_NAME: Final = "근월물 이름"
+DISPLAY_TO_NAME: Final = "차월물 이름"
+
+# **규칙이 정한 날에 롤하지 못한 경우다.** 미결제약정이 끝내 역전되지 않아 만기로 밀린 것과,
+# 두 계약이 겹치는 날이 모자라 앞당겨진 것 둘 다 여기 걸린다 —
+# 「만기가 강제한」이라고 적으면 뒤쪽이 거짓이 된다
+DISPLAY_FALLBACK: Final = "규칙대로 못 한 롤"
+
+DISPLAY_AHEAD_HORIZON_COUNT: Final = "선물이 앞선 보유 기간 수"
+
+# **「잰 시작일 수」와 다른 것을 센다.** 이쪽은 보유 기간 격자의 칸 수이고 그쪽은 시작일 수다 —
+# 같은 이름을 쓰면 두 표를 나란히 읽을 때 어느 축인지 알 수 없다
+DISPLAY_TESTED_HORIZON_COUNT: Final = "잰 보유 기간 수"
+DISPLAY_MAX_LEVERAGE_DAILY: Final = "매일 리밸런싱 최대 유효 레버리지"
+DISPLAY_MAX_LEVERAGE_MONTHLY: Final = "월 1회 최대 유효 레버리지"
+DISPLAY_WIPEOUT_COUNT: Final = "자기자본 소진 구간 수"
+DISPLAY_WINDOW_COUNT: Final = "잰 시작일 수"
+DISPLAY_PERIOD: Final = "시기"
+DISPLAY_EXCLUDED_REASON: Final = "제외 사유"
+DISPLAY_AS_OF_DATE: Final = "기준일"
+DISPLAY_PRICE: Final = "정산가"
+DISPLAY_CONTRACT_MULTIPLIER: Final = "거래승수"
+
+# 산출물 CSV 의 컬럼 한글 이름 (`src/verify_lab/CLAUDE.md` 「내부/출력 분리」).
+# **전 산출물을 한 사전으로 덮는다** — 표마다 사전을 두면 같은 컬럼에 다른 이름이 붙는다.
+# 표마다 컬럼 구성이 다르므로 호출 측이 그 표에 실제로 있는 것만 골라 넘긴다
+OUTPUT_LABELS: Final = {
+    # 식별 축
+    COL_INDEX_NAME: DISPLAY_INDEX_NAME,
+    COL_TARGET_TICKER: DISPLAY_TARGET_TICKER,
+    COL_MULTIPLE: DISPLAY_MULTIPLE,
+    COL_METHOD: DISPLAY_METHOD,
+    COL_ROLL_RULE: DISPLAY_ROLL_RULE,
+    COL_INTEREST: DISPLAY_INTEREST,
+    COL_PERIOD: DISPLAY_PERIOD,
+    COL_HORIZON: DISPLAY_HORIZON,
+    COL_DATE: DISPLAY_START_DATE,
+    # 구간 집계
+    COL_START_DATE: DISPLAY_START_DATE,
+    COL_END_DATE: DISPLAY_END_DATE,
+    COL_SAMPLE_COUNT: DISPLAY_SAMPLE_COUNT,
+    COL_NON_OVERLAPPING: DISPLAY_NON_OVERLAPPING,
+    COL_MEAN_RETURN: DISPLAY_MEAN_RETURN,
+    COL_MEDIAN_RETURN: DISPLAY_MEDIAN_RETURN,
+    COL_JUDGEABLE: DISPLAY_JUDGEABLE,
+    # 차이 분해
+    COL_ROLL_COST: DISPLAY_ROLL_COST,
+    COL_REBALANCE_ERROR: DISPLAY_REBALANCE_ERROR,
+    COL_HOLD_ERROR: DISPLAY_HOLD_ERROR,
+    COL_INTEREST_GAIN: DISPLAY_INTEREST_GAIN,
+    COL_RESIDUAL: DISPLAY_RESIDUAL,
+    COL_FUTURES_MINUS_ETF: DISPLAY_FUTURES_MINUS_ETF,
+    COL_HOLD_MINUS_ETF: DISPLAY_HOLD_MINUS_ETF,
+    COL_DIVIDEND_ADJUSTMENT: DISPLAY_DIVIDEND_ADJUSTMENT,
+    # 롤 이벤트
+    COL_DECISION_DATE: DISPLAY_DECISION_DATE,
+    COL_EXECUTION_DATE: DISPLAY_EXECUTION_DATE,
+    COL_FROM_CONTRACT: DISPLAY_NEAR_CONTRACT,
+    COL_FROM_NAME: DISPLAY_FROM_NAME,
+    COL_TO_CONTRACT: DISPLAY_NEXT_CONTRACT,
+    COL_TO_NAME: DISPLAY_TO_NAME,
+    COL_ADJUSTMENT_FACTOR: DISPLAY_ADJUSTMENT_FACTOR,
+    COL_FROM_OPEN_INTEREST: DISPLAY_NEAR_OPEN_INTEREST,
+    COL_TO_OPEN_INTEREST: DISPLAY_NEXT_OPEN_INTEREST,
+    COL_FALLBACK: DISPLAY_FALLBACK,
+    # 선물이 앞서는 지점
+    COL_BREAKEVEN_HORIZON: DISPLAY_BREAKEVEN_HORIZON,
+    COL_AHEAD_HORIZON_COUNT: DISPLAY_AHEAD_HORIZON_COUNT,
+    COL_TESTED_HORIZON_COUNT: DISPLAY_TESTED_HORIZON_COUNT,
+    # 최대 유효 레버리지와 소진
+    COL_MAX_LEVERAGE_DAILY: DISPLAY_MAX_LEVERAGE_DAILY,
+    COL_MAX_LEVERAGE_MONTHLY: DISPLAY_MAX_LEVERAGE_MONTHLY,
+    COL_WIPEOUT_COUNT: DISPLAY_WIPEOUT_COUNT,
+    COL_WINDOW_COUNT: DISPLAY_WINDOW_COUNT,
+    COL_FIRST_WIPEOUT_DATE: DISPLAY_WIPEOUT_DATE,
+    # 시작일 원자료 — 방식 이름이 그대로 컬럼이 된다
+    METHOD_ETF: f"{METHOD_ETF}(%)",
+    METHOD_FUTURES_DAILY: f"{METHOD_FUTURES_DAILY}(%)",
+    METHOD_FUTURES_MONTHLY: f"{METHOD_FUTURES_MONTHLY}(%)",
+    METHOD_FUTURES_HOLD: f"{METHOD_FUTURES_HOLD}(%)",
+    COL_EXCLUDED_REASON: DISPLAY_EXCLUDED_REASON,
+    # 정수 계약 대조. **여기서는 배수가 「목표」다** — 규모 때문에 실제 배수가 달라지는 것이 요점이다
+    COL_AS_OF_DATE: DISPLAY_AS_OF_DATE,
+    COL_PRICE: DISPLAY_PRICE,
+    COL_CONTRACT_MULTIPLIER: DISPLAY_CONTRACT_MULTIPLIER,
+    COL_NOTIONAL: DISPLAY_CONTRACT_NOTIONAL,
+    COL_EQUITY_SIZE: DISPLAY_EQUITY_SIZE,
+    COL_INTEGER_CONTRACTS: DISPLAY_INTEGER_CONTRACTS,
+    COL_ACTUAL_MULTIPLE: DISPLAY_ACTUAL_MULTIPLE,
+    COL_EXECUTABLE: DISPLAY_EXECUTABLE,
+}
+
+# 비율(0~1)로 계산해 백분율로 내보낼 컬럼. 헤더에 `(%)`·`(%p)` 가 붙는 것과 짝을 이룬다
+PERCENT_OUTPUT_COLUMNS: Final = (
+    COL_MEAN_RETURN,
+    COL_MEDIAN_RETURN,
+    COL_ROLL_COST,
+    COL_REBALANCE_ERROR,
+    COL_HOLD_ERROR,
+    COL_INTEREST_GAIN,
+    COL_RESIDUAL,
+    COL_FUTURES_MINUS_ETF,
+    COL_HOLD_MINUS_ETF,
+    COL_DIVIDEND_ADJUSTMENT,
+    METHOD_ETF,
+    METHOD_FUTURES_DAILY,
+    METHOD_FUTURES_MONTHLY,
+    METHOD_FUTURES_HOLD,
+)

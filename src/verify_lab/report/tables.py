@@ -302,15 +302,15 @@ def build_test_table(test_by_population: Mapping[str, pd.DataFrame]) -> pd.DataF
                     DISPLAY_OBSERVED_MEDIAN: _to_percent(ordered[COL_OBSERVED_MEDIAN]).to_numpy(),
                     DISPLAY_NULL_P05: _to_percent(ordered[COL_NULL_MEAN_P05]).to_numpy(),
                     DISPLAY_NULL_P95: _to_percent(ordered[COL_NULL_MEAN_P95]).to_numpy(),
-                    DISPLAY_MEAN_PERCENTILE: ordered[COL_MEAN_PERCENTILE].round(PERCENT_DECIMALS).to_numpy(),
+                    DISPLAY_MEAN_PERCENTILE: _to_percent(ordered[COL_MEAN_PERCENTILE]).to_numpy(),
                     DISPLAY_MEAN_P_VALUE: ordered[COL_MEAN_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
-                    DISPLAY_MEDIAN_PERCENTILE: ordered[COL_MEDIAN_PERCENTILE].round(PERCENT_DECIMALS).to_numpy(),
+                    DISPLAY_MEDIAN_PERCENTILE: _to_percent(ordered[COL_MEDIAN_PERCENTILE]).to_numpy(),
                     DISPLAY_MEDIAN_P_VALUE: ordered[COL_MEDIAN_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
                     DISPLAY_OBSERVED_UP_RATE: _to_percent(ordered[COL_OBSERVED_UP_RATE]).to_numpy(),
-                    DISPLAY_UP_RATE_PERCENTILE: ordered[COL_UP_RATE_PERCENTILE].round(PERCENT_DECIMALS).to_numpy(),
+                    DISPLAY_UP_RATE_PERCENTILE: _to_percent(ordered[COL_UP_RATE_PERCENTILE]).to_numpy(),
                     DISPLAY_UP_RATE_P_VALUE: ordered[COL_UP_RATE_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
                     DISPLAY_OBSERVED_DOWN_RATE: _to_percent(ordered[COL_OBSERVED_DOWN_RATE]).to_numpy(),
-                    DISPLAY_DOWN_RATE_PERCENTILE: ordered[COL_DOWN_RATE_PERCENTILE].round(PERCENT_DECIMALS).to_numpy(),
+                    DISPLAY_DOWN_RATE_PERCENTILE: _to_percent(ordered[COL_DOWN_RATE_PERCENTILE]).to_numpy(),
                     DISPLAY_DOWN_RATE_P_VALUE: ordered[COL_DOWN_RATE_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
                     DISPLAY_TEST_NOTE: ordered[COL_TEST_NOTE].to_numpy(),
                 }
@@ -361,6 +361,10 @@ def print_dataframe(table: pd.DataFrame, logger: logging.Logger, title: str | No
 def _basis_label(basis: object) -> str:
     """수익률 기준점을 표시 이름으로 바꾼다.
 
+    **모르는 값을 그대로 돌려주는 것은 오류 메시지 때문이다.** 호출처 하나가
+    "기준 하나만 받습니다" 예외의 본문을 만드는 자리인데, 거기서 값을 감추면
+    무엇이 섞여 들어왔는지 알 수 없다. 표 헤더 경로에는 `measure` 가 채운 값만 온다.
+
     Args:
         basis: 기준점 값
 
@@ -375,6 +379,11 @@ def _horizon_label(horizon: SupportsInt) -> str:
 
     구간은 정수로 들어온다. pandas 컬럼을 순회하면 numpy 정수가 오므로 `int` 가 아니라
     `SupportsInt` 로 받는다 — 둘 다 정수로 바꿀 수 있다는 사실만 요구하면 충분하다.
+
+    **사전에 없는 구간을 예외로 막지 않는 것은 의도된 설계다.** 이 계층은 공통이라
+    어떤 검증이 어떤 격자를 쓸지 미리 알 수 없고, 검증마다 구간이 다르다.
+    `report/constants.HORIZON_LABELS` 가 "여기 없는 구간은 그 형태로 나가므로 등록하지 않는다"고
+    정했다 — **자기 격자를 아는 검증 계층에서는 반대로 막는다** (`leverage_tracking/runner`).
 
     Args:
         horizon: 구간 (거래일)

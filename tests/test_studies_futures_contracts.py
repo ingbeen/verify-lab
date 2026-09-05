@@ -16,6 +16,7 @@ from datetime import date
 import pytest
 
 from verify_lab.data.krx_futures_collector import PRODUCT_KOSDAQ150, PRODUCT_KOSPI200
+from verify_lab.studies.futures_leverage import contracts
 from verify_lab.studies.futures_leverage.contracts import (
     contract_multiplier_on,
     integer_contract_position,
@@ -232,3 +233,46 @@ class TestContractMultiplierHistory:
         # Given / When / Then
         with pytest.raises(ValueError, match="거래승수 이력이 없는 상품"):
             contract_multiplier_on("KRDRVFUXXX", date(2026, 9, 3))
+
+
+class TestMultiplierHistoryInvariant:
+    """이력이 시간순이라는 전제를 검사한다"""
+
+    def test_이력이_시간순이_아니면_거부한다(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 조회가 전제하는 정렬이 실제로 지켜지는지 확인한다.
+
+        `contract_multiplier_on` 은 이력을 앞에서부터 훑으며 **뒤에 오는 것이 더 최신**이라고
+        전제하고 마지막으로 걸린 값을 고른다. 정렬이 어긋나면 옛 승수를 고르는데,
+        그 함수의 docstring 자신이 **"경계를 하루 잘못 잡으면 그날의 명목금액이 두 배로 틀린다"**
+        고 경고한다. 이력은 이 저장소가 소유한 상수이므로 어긋남은 **내부 불변조건 위반**이다.
+
+        Given: 날짜가 거꾸로 든 승수 이력
+        When: 그 상품의 승수를 조회한다
+        Then: `RuntimeError` 가 오른다
+        """
+        # Given
+        monkeypatch.setattr(
+            contracts,
+            "CONTRACT_MULTIPLIER_HISTORY",
+            {PRODUCT_KOSPI200: ((date(2017, 3, 27), 250_000), (date(1996, 5, 3), 500_000))},
+        )
+
+        # When · Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
+            contract_multiplier_on(PRODUCT_KOSPI200, date(2026, 9, 3))
+
+    def test_실제_이력은_시간순이다(self) -> None:
+        """
+        목적: 지금 들어 있는 이력이 전제를 만족하는지 고정한다.
+
+        위 테스트만으로는 "검사는 하지만 실제 데이터가 틀렸다"를 잡지 못하므로 짝으로 둔다.
+
+        Given: 저장소가 소유한 승수 이력
+        When: 상품마다 날짜 순서를 본다
+        Then: 전부 오름차순이다
+        """
+        # Given · When · Then
+        for product, history in contracts.CONTRACT_MULTIPLIER_HISTORY.items():
+            days = [effective_from for effective_from, _ in history]
+            assert days == sorted(days), f"{product} 의 승수 이력이 시간순이 아닙니다: {days}"

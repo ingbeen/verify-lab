@@ -18,7 +18,13 @@ import pandas as pd
 from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_WIN_RATE
-from verify_lab.report.constants import PERCENT_DECIMALS
+from verify_lab.report.constants import (
+    DISPLAY_EXCLUDED,
+    DISPLAY_MEAN,
+    DISPLAY_MEDIAN,
+    DISPLAY_UP_RATE,
+    PERCENT_DECIMALS,
+)
 from verify_lab.report.tables import build_candidates_table, print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
@@ -26,6 +32,7 @@ from verify_lab.studies.option_expiry.constants import (
     COL_EXPIRY_MONTH_NUMBER,
     COL_TICKER,
     DATASETS,
+    DISPLAY_ENTRY_COUNT,
     DISPLAY_EXIT_WEEKDAY,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
@@ -142,11 +149,11 @@ def _display_headline(outputs: StudyOutputs) -> None:
         columns={
             COL_TICKER: DISPLAY_TICKER,
             COL_EXIT_WEEKDAY: DISPLAY_EXIT_WEEKDAY,
-            COL_SIGNAL_COUNT: "진입",
-            COL_EXCLUDED_COUNT: "제외",
-            COL_MEAN: "평균(%)",
-            COL_MEDIAN: "중앙값(%)",
-            COL_WIN_RATE: "오른 비율(%)",
+            COL_SIGNAL_COUNT: DISPLAY_ENTRY_COUNT,
+            COL_EXCLUDED_COUNT: DISPLAY_EXCLUDED,
+            COL_MEAN: DISPLAY_MEAN,
+            COL_MEDIAN: DISPLAY_MEDIAN,
+            COL_WIN_RATE: DISPLAY_UP_RATE,
         }
     )
     print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 전체 월")
@@ -159,11 +166,18 @@ def _save(directory: Path, filename: str, table: pd.DataFrame) -> None:
     사전에 없는 컬럼이 있으면 `to_display_columns` 가 예외를 던진다 — 컬럼을 새로 만들고
     한글 이름을 빠뜨리면 그 자리에서 실패한다 (`scripts/CLAUDE.md` 산출물 저장).
 
+    **빈 표는 저장하지 않되 건너뛴 사실을 남긴다.** 조용히 빠지면 산출물이 하나 없는 것을
+    사용자가 모른다. 아래 계층은 빈 표를 예외로 거부하므로 그대로 넘기면 실행이 죽는다.
+
     Args:
         directory: 저장할 폴더
         filename: 파일 이름
         table: 영문 헤더의 산출물
     """
+    if table.empty:
+        logger.warning(f"표가 비어 있어 저장하지 않았습니다: {filename}")
+        return
+
     columns = set(table.columns)
     display = to_display_columns(
         table,

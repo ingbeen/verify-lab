@@ -9,11 +9,11 @@ from typing import Final
 
 # **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 계층에 요구하는 개념이라
 # 계층마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
-from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES
+from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
 from verify_lab.report.constants import DISPLAY_JUDGEABLE
 from verify_lab.studies.index_extreme.constants import DATASETS, Dataset
 
-__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES"]
+__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES", "MIN_SAMPLE_PER_CELL"]
 
 # ============================================================
 # 손절
@@ -276,8 +276,7 @@ EXPIRY_PERIODS: Final = (PERIOD_ALL, PERIOD_FIRST_HALF, PERIOD_SECOND_HALF, PERI
 # 실행 시각을 쓰면 코드를 안 고쳐도 날짜가 지나면 결과가 바뀌어 재현되지 않는다
 RECENT_YEARS: Final = {PERIOD_RECENT_10Y: 10, PERIOD_RECENT_5Y: 5}
 
-# 그 구간으로 판단해도 되는 표본 하한. 루트 `CLAUDE.md` 측정의 원칙 12 와 같은 값이며,
+# 그 구간으로 판단해도 되는 표본 하한은 **공통 계층이 소유한다** (`MIN_SAMPLE_PER_CELL`).
 # **미달이어도 행은 남긴다** — 행이 사라지면 사용자가 그 구간을 못 봤다는 사실 자체를 모른다 (결정 ㊶)
-MIN_PERIOD_SAMPLE: Final = 10
 
 DISPLAY_PERIOD: Final = "구간"

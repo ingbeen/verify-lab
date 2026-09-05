@@ -26,6 +26,9 @@ DEFAULT_MA_WINDOW = 200
 # 이동평균 판정에 필요한 시세 컬럼
 REQUIRED_MARKET_COLUMNS = [COL_DATE, COL_CLOSE]
 
+# 이동평균을 낼 수 있는 최소 창. 값이 하나면 그 값 자신이라 「평균 아래」가 정의되지 않는다
+MIN_MA_WINDOW = 2
+
 
 @dataclass(frozen=True)
 class BelowMovingAverage:
@@ -52,17 +55,17 @@ def below_moving_average(df: pd.DataFrame, window: int = DEFAULT_MA_WINDOW) -> B
 
     Args:
         df: 날짜 오름차순 시세 (`data/loader.py` 가 검증해 돌려준 형태)
-        window: 이동평균 창 (거래일, 2 이상)
+        window: 이동평균 창 (거래일, `MIN_MA_WINDOW` 이상)
 
     Returns:
         판정 마스크와 판정 불가 일수. 입력은 변경하지 않는다
 
     Raises:
         ValueError: 시세가 비었거나 필수 컬럼이 없는 경우, 날짜가 오름차순이 아닌 경우,
-            창이 2 미만인 경우
+            창이 하한 미만인 경우
     """
-    if window < 2:
-        raise ValueError(f"이동평균 창은 2 이상이어야 합니다: {window}")
+    if window < MIN_MA_WINDOW:
+        raise ValueError(f"이동평균 창은 {MIN_MA_WINDOW} 이상이어야 합니다: {window}")
 
     validate_market_frame(df, REQUIRED_MARKET_COLUMNS)
 

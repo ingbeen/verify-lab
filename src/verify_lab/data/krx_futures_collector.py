@@ -60,7 +60,13 @@ from verify_lab.common_constants import (
     FUTURES_FILE_TEMPLATE,
     FUTURES_REQUIRED_COLUMNS,
     FUTURES_ROW_KEY,
+    KST,
     MARKET_DIR,
+)
+from verify_lab.data.constants import (
+    DOMESTIC_RECENT_EXCLUSION_DAYS,
+    KRX_REQUEST_DATE_FORMAT,
+    KRX_RESPONSE_DATE_FORMAT,
 )
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.data.loader import validate_futures_data
@@ -121,14 +127,9 @@ SNAPSHOT_OPEN_INTEREST_COLUMN: Final = "ACC_OPNINT_QTY"
 KRX_MISSING_MARK: Final = "-"
 
 # 조회 인자의 날짜 형식
-KRX_DATE_FORMAT: Final = "%Y%m%d"
 
 # 응답 날짜 형식. 세션 표기를 뗀 뒤의 모양이다
-FUTURES_RESPONSE_DATE_FORMAT: Final = "%Y/%m/%d"
 
-# 저장에서 제외할 최근 구간 (달력일). **당일은 정산가가 0 으로 온다** —
-# 거래량이 있어도 그렇다. `pykrx_collector`·`etn_collector` 와 같은 기준이다
-RECENT_EXCLUSION_DAYS: Final = 1
 
 # 계약 목록 스냅숏의 간격 (달력일). 분기물이라 계약 수명이 보통 1년을 넘지만,
 # **상장 첫 분기의 계약은 수명이 두 달**이라(1996-05 상장분) 분기 간격으로는 놓친다.
@@ -197,6 +198,9 @@ def _import_krx_client() -> tuple[Any, Any]:
     **`import pykrx` 자체가 로그인을 시도한다.** 모듈 최상단에서 import 하면 자격증명이
     올라가기 전에 로그인이 시도되므로, 순서를 지키는 유일한 방법은 import 를 이 함수 안에
     두는 것이다. `etn_collector`·`pykrx_collector` 와 같은 이유다.
+
+    **반환 타입이 `Any` 인 것은 좁힐 수 없어서다** — pykrx 에 타입 스텁이 없어
+    이 클래스들의 정체를 타입 검사기가 알 방법이 없다.
 
     Returns:
         (전종목시세 클래스, KrxWebIo 기반 클래스) 짝
@@ -271,7 +275,7 @@ def _validate_date_format(label: str, value: str) -> None:
         ValueError: 형식이 잘못된 경우
     """
     try:
-        datetime.strptime(value, KRX_DATE_FORMAT)
+        datetime.strptime(value, KRX_REQUEST_DATE_FORMAT)
     except ValueError as error:
         raise ValueError(f"{label} 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {value}") from error
 
@@ -345,8 +349,8 @@ def collect_contract_catalog(product_id: str, start_date: str, end_date: str) ->
 
     snapshot_class, _ = _import_krx_client()
 
-    first = datetime.strptime(start_date, KRX_DATE_FORMAT).date()
-    last = datetime.strptime(end_date, KRX_DATE_FORMAT).date()
+    first = datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT).date()
+    last = datetime.strptime(end_date, KRX_REQUEST_DATE_FORMAT).date()
     if first > last:
         raise ValueError(f"훑기 시작일이 종료일보다 늦습니다: {start_date} > {end_date}")
 
@@ -361,7 +365,7 @@ def collect_contract_catalog(product_id: str, start_date: str, end_date: str) ->
             if probe > last:
                 break
 
-            trade_date = probe.strftime(KRX_DATE_FORMAT)
+            trade_date = probe.strftime(KRX_REQUEST_DATE_FORMAT)
             snapshot = _retry_krx_call(
                 # 기본값으로 묶어 루프 변수를 그때 값으로 고정한다
                 lambda day=trade_date: snapshot_class().fetch(trdDd=day, prodId=product_id),
@@ -433,6 +437,10 @@ def _fetch_contract_history(product_id: str, isin: str, start_date: str, end_dat
 
     _, web_io_class = _import_krx_client()
 
+    # **`type: ignore` 를 없앨 수 없다.** 기반 클래스를 런타임에 얻으므로 타입 검사기가
+    # 그 정체를 모르고(`valid-type`), 모르는 것을 상속하는 것도 막는다(`misc`).
+    # pykrx 는 타입 스텁을 제공하지 않아 좁힐 방법이 없다 — 없애려면 스텁을 직접 쓰거나
+    # 상속을 버려야 하는데, 상속은 pykrx 내부 프로토콜을 따르는 유일한 방법이다
     class 파생개별종목시세(web_io_class):  # type: ignore[misc, valid-type]
         @property
         def bld(self) -> str:
@@ -483,7 +491,7 @@ def _normalize_contract(raw: pd.DataFrame, isin: str, name: str) -> tuple[pd.Dat
     for column in FUTURES_COLUMN_MAP.values():
         df[column] = _to_numeric(df[column])
 
-    df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=FUTURES_RESPONSE_DATE_FORMAT).dt.date
+    df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=KRX_RESPONSE_DATE_FORMAT).dt.date
     df[COL_CONTRACT] = isin
     df[COL_CONTRACT_NAME] = name
 
@@ -526,7 +534,7 @@ def _exclude_recent(df: pd.DataFrame, today: date) -> tuple[pd.DataFrame, int]:
     Returns:
         (제외 후 DataFrame, 제외된 행 수)
     """
-    cutoff_date = today - timedelta(days=RECENT_EXCLUSION_DAYS)
+    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
     total_count = len(df)
     trimmed = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
 
@@ -561,12 +569,12 @@ def collect_futures_history(
     if product_id not in PRODUCT_FIRST_TRADING_DAY:
         raise ValueError(f"지원하지 않는 상품 코드입니다: {product_id} (가능: {sorted(PRODUCT_FIRST_TRADING_DAY)})")
 
-    reference_day = today or date.today()
+    reference_day = today or datetime.now(KST).date()
     first_trading_day = PRODUCT_FIRST_TRADING_DAY[product_id]
     scan_start = start_date or first_trading_day
     _validate_date_format("조회 시작일", scan_start)
 
-    scan_end = reference_day.strftime(KRX_DATE_FORMAT)
+    scan_end = reference_day.strftime(KRX_REQUEST_DATE_FORMAT)
     catalog = collect_contract_catalog(product_id, scan_start, scan_end)
 
     frames: list[pd.DataFrame] = []
@@ -578,10 +586,10 @@ def collect_futures_history(
         name = str(record[COL_CONTRACT_NAME])
         first_seen: date = record["FirstSeen"]
         last_seen: date = record["LastSeen"]
-        fetch_start = (first_seen - timedelta(days=CONTRACT_FETCH_MARGIN_DAYS)).strftime(KRX_DATE_FORMAT)
+        fetch_start = (first_seen - timedelta(days=CONTRACT_FETCH_MARGIN_DAYS)).strftime(KRX_REQUEST_DATE_FORMAT)
         fetch_end = min(last_seen + timedelta(days=CONTRACT_FETCH_MARGIN_DAYS), reference_day)
 
-        raw = _fetch_contract_history(product_id, isin, fetch_start, fetch_end.strftime(KRX_DATE_FORMAT))
+        raw = _fetch_contract_history(product_id, isin, fetch_start, fetch_end.strftime(KRX_REQUEST_DATE_FORMAT))
         if raw.empty:
             empty_contracts += 1
             logger.warning(f"시세가 없는 계약을 건너뜁니다 - 계약: {isin} ({name})")

@@ -13,6 +13,7 @@ CSV 에서 찾지 못하고, 그러면 "사용자가 직접 검증할 수 있어
 
 import logging
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -44,6 +45,7 @@ from verify_lab.measure.screening import (
     SCREEN_CANDIDATE,
 )
 from verify_lab.measure.statistics import (
+    COL_MEAN_PERCENTILE,
     COL_SAMPLE_COUNT,
     excess,
     permutation_test,
@@ -57,6 +59,7 @@ from verify_lab.report.constants import (
     DISPLAY_EXPECTED_VALUE,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
+    DISPLAY_MEAN_PERCENTILE,
     DISPLAY_PERIOD_MIN_HIT_RATE,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SUPPORT,
@@ -75,6 +78,9 @@ from verify_lab.report.tables import (
     to_display_columns,
 )
 from verify_lab.utils.formatting import get_display_width
+
+# 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
+EXACT_TOLERANCE = 1e-12
 
 BASELINE_NAME = "단순 보유"
 
@@ -881,3 +887,37 @@ class TestCandidatesTotalReturn:
 
         # Then
         assert columns[columns.index(DISPLAY_EXPECTED_VALUE) + 1] == DISPLAY_TOTAL_RETURN
+
+
+class TestPercentileDisplayConsistency:
+    """백분위는 어느 출력 경로로 나가든 같은 값이다"""
+
+    def test_두_경로의_표시값이_같다(self) -> None:
+        """
+        목적: 같은 값이 표마다 다른 자릿수로 나가던 것을 막는다.
+
+        `report.build_test_table` 은 백분위를 백분율(2자리)로 보고,
+        `option_expiry` 는 확률(4자리)로 보고 있었다. 같은 컬럼이 두 산출물에서
+        다른 정밀도로 나가면 사용자가 두 표를 대조할 때 값이 어긋난 것처럼 보인다.
+
+        Given: 검정 결과 하나
+        When: `build_test_table` 과 `to_display_columns` 로 각각 표시용 값을 만든다
+        Then: 백분위 값이 같다
+        """
+        # Given
+        signal = _cell([0.03] * 15)
+        population = _cell(list(np.linspace(-0.10, 0.10, 400)))
+        tested = permutation_test(signal, population, repeats=100, seed=0)
+
+        # When
+        via_report = build_test_table({"무작위 진입": tested})
+        via_labels = to_display_columns(
+            tested[[COL_MEAN_PERCENTILE]],
+            {COL_MEAN_PERCENTILE: DISPLAY_MEAN_PERCENTILE},
+            percent_columns=[COL_MEAN_PERCENTILE],
+        )
+
+        # Then
+        assert via_report[DISPLAY_MEAN_PERCENTILE].iloc[0] == pytest.approx(
+            via_labels[DISPLAY_MEAN_PERCENTILE].iloc[0], abs=EXACT_TOLERANCE
+        )

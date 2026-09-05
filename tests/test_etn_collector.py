@@ -60,7 +60,7 @@ def stub_krx(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(etn_collector, "_resolve_isin", lambda ticker: TEST_ISIN)
     monkeypatch.setattr(etn_collector, "_fetch_daily_price", lambda isin, start, end: response)
     # 최근 구간 제외가 테스트 실행일에 따라 달라지지 않도록 제외 폭을 0 으로 둔다
-    monkeypatch.setattr(etn_collector, "RECENT_EXCLUSION_DAYS", -3_650)
+    monkeypatch.setattr(etn_collector, "DOMESTIC_RECENT_EXCLUSION_DAYS", -3_650)
 
 
 class TestCollectEtnHistory:

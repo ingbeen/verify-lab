@@ -13,8 +13,8 @@
 
 import argparse
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 
+from verify_lab.common_constants import KST
 from verify_lab.data.ecos_collector import ECOS_SERIES, EcosCollectionResult, collect_ecos_series, find_series
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
@@ -33,7 +33,6 @@ ARG_DATE_FORMAT = "%Y%m%d"
 # **가용한 전 기간**을 받는다. ECOS 는 없는 구간을 조용히 건너뛴다
 DEFAULT_START = date(1960, 1, 1)
 
-KST = ZoneInfo("Asia/Seoul")
 
 # 요약 표의 컬럼 정의 (컬럼명, 폭, 정렬)
 SUMMARY_COLUMNS = [

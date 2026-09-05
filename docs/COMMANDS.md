@@ -139,7 +139,7 @@ poetry run python scripts/data/check_expiry_dividend.py
 - 「아래」 칸에서 차이가 **양수면 원본가 성적이 그만큼 과대평가**돼 있습니다 —
   원본가에서 보이는 그 하락은 배당락이 만든 것이라 인버스로도 공매도로도 못 먹습니다
 - 실측 결과는 [research/옵션_만기일.md](research/옵션_만기일.md) §3.2.1 에 있습니다.
-  **QQQ 만 걸립니다** — 9월 8건(과대평가) · 12월 10건(과소평가). 나머지 미국 칸은 0건
+  **걸리는 칸과 그 건수는 시세 기간에 묶여 있으므로** 그 문서에서 봅니다
 
 #### KODEX 200 수집
 
@@ -369,15 +369,16 @@ poetry run python scripts/studies/run_leverage_tracking.py --index 나스닥100
 - **보유 기간·임계값은 인자가 아닙니다.** 확정된 격자를 전부 산출해 나란히 보고하는 것이 설계이며,
   값을 골라 넣는 노브로 쓰면 과최적화입니다. 값의 SoT 는
   `src/verify_lab/studies/leverage_tracking/constants.py` 입니다
-- 선행 조건: `storage/market/` 에 **원본가 27종**과 **수정주가 25종**(ETN 2종 제외)이 있어야 합니다
+- 선행 조건: `storage/market/` 에 `PAIRS` 가 정한 **전 종목의 원본가**와,
+  **ETN 을 뺀 종목의 수정주가**가 있어야 합니다 (ETN 은 분배금을 지급하지 않아 수정주가가 없습니다)
 - 산출물은 `storage/results/<실행시각>_leverage_tracking/` 에 남습니다
   - `divergence.csv` — 쌍 × 구간 집계. **가장 먼저 볼 표입니다**
   - `breakdown.csv` — 쌍 × 구간 × 축(변동성·방향·시기)
   - `distribution.csv` — 분배금 몫과 **배당 보정분**. 원본가로 재서 생긴 왜곡의 크기입니다
   - `full_period.csv` — 상장 후 전체 구간 1건씩. **표본 1건이라 통계가 아니라 사례입니다**
-  - `windows_<티커>.csv` — 시작일 원자료 22개. 차트 대조용이며 합계 약 66MB 입니다
+  - `windows_<티커>.csv` — 쌍마다 하나씩 나오는 시작일 원자료. 차트 대조용이며 **합계가 수십 MB** 입니다
 - **순열 검정이 없어 난수를 쓰지 않습니다.** 같은 데이터면 항상 같은 결과가 나옵니다. 실행 시간은 수 초입니다
-- **3년 칸은 비중첩 표본이 1~6개**라 통계가 아니라 사례에 가깝습니다.
+- **3년 칸은 비중첩 표본이 한 자릿수**라 통계가 아니라 사례에 가깝습니다.
   결과와 판정은 [research/레버리지_ETF_괴리.md](research/레버리지_ETF_괴리.md), 확정 설계는
   [spec/leverage_tracking.md](spec/leverage_tracking.md) 입니다
 
@@ -470,11 +471,12 @@ poetry run python scripts/strategy/run_expiry_trading.py --grid
   등급으로 빼면 60칸에서 통계량 좋은 칸만 고르는 사후 선택이 됩니다 (`spec/option_expiry.md` 결정 ㊳)
 - **미국 9월 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향**이라 독립된 세 번의 기회가 아닙니다
 - 산출물은 `storage/results/<실행시각>_expiry_trading/` 에 남습니다
-  - 기본: `summary_by_cell.csv`(**7칸 × 5구간 = 35행**) · `trades.csv`(체결 199건) · `summary.json`
-  - `--grid`: `stop_loss_grid.csv`(7칸 × 20손절선 × 5구간) · `trades.csv` · `summary.json`
+  - 기본: `summary_by_cell.csv`(대상 칸 × 구간) · `trades.csv`(체결 원자료) · `summary.json`
+  - `--grid`: `stop_loss_grid.csv`(대상 칸 × 손절선 격자 × 구간) · `trades.csv` · `summary.json`
 - **성적표는 구간별로 나옵니다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`.
   **표본이 10건 미만인 구간도 행이 남고** `판정가능` 이 `아니오` 로 찍힙니다
-  (루트 [CLAUDE.md](../CLAUDE.md) 측정의 원칙 17). **최근 5년은 전 칸이 5건이라 판정에 쓰지 않습니다**
+  (루트 [CLAUDE.md](../CLAUDE.md) 측정의 원칙 17). **최근 구간은 표본이 얇아 판정용이 아닙니다** —
+  판정은 앞뒤 절반으로 하고 최근 구간은 「식고 있는가」를 보는 데만 씁니다
 - **「최근 N년」은 데이터 마지막 거래일 기준**입니다. 실행 시각과 무관하므로 같은 데이터면 같은 결과입니다
 - **`--grid` 의 무손절 행이 결과 문서 12A.4 의 방향 기대값과 맞는지** 확인하세요.
   안 맞으면 `measure` 와 `strategy` 두 계층 중 하나가 틀린 것입니다

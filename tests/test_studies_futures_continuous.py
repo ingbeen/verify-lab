@@ -37,6 +37,7 @@ from verify_lab.studies.futures_leverage.continuous import (
     build_continuous_series,
     build_contract_calendar,
     plan_rolls,
+    roll_events_frame,
 )
 
 # 두 계약의 가격 차이 (베이시스). 조정이 없으면 이 값이 이음매에서 수익률로 새어 들어간다
@@ -493,3 +494,55 @@ class TestLookAhead:
                 event.execution_date == whole_events[index].execution_date
             ), "뒤를 잘라낸 입력에서 롤 날짜가 달라졌습니다 — 미래 데이터를 참조하고 있습니다"
             assert event.decision_date == whole_events[index].decision_date
+
+
+class TestEmptyRollEventSchema:
+    """롤이 0건이어도 표의 컬럼은 남는다"""
+
+    def test_이벤트가_없어도_컬럼을_유지한다(self) -> None:
+        """
+        목적: 빈 표가 스키마를 잃지 않게 한다.
+
+        `pd.DataFrame([])` 는 **컬럼이 하나도 없는 표**라 저장 계층이 「한글 이름이 없는 컬럼」
+        검사도 못 하고 그대로 죽는다. 이 저장소의 다른 빈 표는 전부 dtype 을 유지한다
+        (`offsets._empty_frame` · `weekly_exit._empty_schedule`).
+
+        Given: 롤 이벤트가 하나도 없는 목록
+        When: 원자료 표로 바꾼다
+        Then: 이벤트가 있을 때와 **같은 컬럼**을 갖는다
+        """
+        # Given
+        populated = roll_events_frame(plan_rolls(_make_frame(), ROLL_RULE_OPEN_INTEREST), ROLL_RULE_OPEN_INTEREST)
+
+        # When
+        empty = roll_events_frame([], ROLL_RULE_OPEN_INTEREST)
+
+        # Then
+        assert list(empty.columns) == list(populated.columns)
+        assert empty.empty
+
+
+class TestShortSegmentRollIsMarked:
+    """규칙이 정한 시점에 롤하지 못한 경우를 표시한다"""
+
+    def test_구간이_짧아_앞당긴_롤을_표시한다(self) -> None:
+        """
+        목적: 앞당겨진 롤이 정상 롤과 구별되게 한다.
+
+        「만기 전 고정」 규칙은 만기에서 `ROLL_DAYS_BEFORE_EXPIRY` 거래일 앞을 집는데,
+        두 계약이 겹치는 날이 그보다 적으면 **가능한 가장 이른 날로 눌린다.**
+        그때도 `fallback=False` 로 나가면 산출물에서 「규칙대로 롤한 것」과 구별되지 않는다.
+
+        Given: 두 계약이 규칙이 요구하는 것보다 적게 겹치는 시세
+        When: 만기 전 고정 규칙으로 롤 일정을 만든다
+        Then: 그 롤이 앞당겨진 것으로 표시된다
+        """
+        # Given
+        frame = _make_frame(days=30, near_expiry_index=3, crossover_index=1)
+
+        # When
+        events = plan_rolls(frame, ROLL_RULE_DAYS_BEFORE_EXPIRY)
+
+        # Then
+        assert events, "롤이 하나도 계획되지 않아 검사할 것이 없습니다"
+        assert events[0].fallback is True

@@ -49,7 +49,7 @@ from verify_lab.measure.statistics import (
     COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
-    MIN_SAMPLE_FOR_TEST,
+    MIN_SAMPLE_PER_CELL,
     excess,
     permutation_test,
     summarize,
@@ -471,8 +471,8 @@ def _aggregate_month_halves(
     표본이 4~17건으로 들쭉날쭉하고, 10건 미만 칸에는 검정이 붙지 않는다
     (측정의 원칙 12). 여기서는 신호를 시간순으로 세어 균등하게 갈라 양쪽 표본을 맞춘다.
 
-    **표본이 모자란 달도 행을 남긴다** (측정의 원칙 17). 전에는 통째로 버렸는데, 그러면
-    「쪼갤 수 없었다」와 「애초에 신호가 없었다」가 산출물에서 구별되지 않는다. 행을 남기고
+    **표본이 모자란 달도 행을 남긴다** (측정의 원칙 17). 버리면 「쪼갤 수 없었다」와
+    「애초에 신호가 없었다」가 산출물에서 구별되지 않는다. 행을 남기고
     지표를 비운 뒤 `판정가능` 을 「아니오」로 적는다 — `leverage_tracking` 과 `strategy` 가
     이미 쓰는 관용이다. **0 으로 채우지 않는다**(「손실도 이익도 없었다」로 읽힌다).
 
@@ -555,7 +555,7 @@ def _half_block(
 
     merged[COL_EXPIRY_MONTH_NUMBER] = month
     merged[COL_TIME_HALF] = label
-    merged[COL_JUDGEABLE] = JUDGEABLE_YES if len(half_signal) >= MIN_SAMPLE_FOR_TEST else JUDGEABLE_NO
+    merged[COL_JUDGEABLE] = JUDGEABLE_YES if len(half_signal) >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO
 
     return merged.drop(columns=[COL_BASIS, COL_HORIZON])
 
@@ -737,32 +737,23 @@ def run_study(
         KEY_DATASETS: dataset_summaries,
     }
 
-    outputs = StudyOutputs(
-        expiries=_concat(accumulator.expiries),
-        signals=_concat(accumulator.signals),
-        trade_signals=_concat(accumulator.trade_signals),
-        trade_summary=_concat(accumulator.trade_summary),
-        trade_excess=_concat(accumulator.trade_excess),
-        trade_test=_concat(accumulator.trade_test),
-        trade_by_month=_concat(accumulator.trade_by_month),
-        trade_by_month_halves=_concat(accumulator.trade_by_month_halves),
-        candidates=_concat(accumulator.candidates),
-        summary=summary,
-    )
-
-    summary[KEY_ROW_COUNTS] = {
-        "expiries": len(outputs.expiries),
-        "signals": len(outputs.signals),
-        "trade_signals": len(outputs.trade_signals),
-        "trade_summary": len(outputs.trade_summary),
-        "trade_excess": len(outputs.trade_excess),
-        "trade_test": len(outputs.trade_test),
-        "trade_by_month": len(outputs.trade_by_month),
-        "trade_by_month_halves": len(outputs.trade_by_month_halves),
-        "candidates": len(outputs.candidates),
+    tables = {
+        "expiries": _concat(accumulator.expiries),
+        "signals": _concat(accumulator.signals),
+        "trade_signals": _concat(accumulator.trade_signals),
+        "trade_summary": _concat(accumulator.trade_summary),
+        "trade_excess": _concat(accumulator.trade_excess),
+        "trade_test": _concat(accumulator.trade_test),
+        "trade_by_month": _concat(accumulator.trade_by_month),
+        "trade_by_month_halves": _concat(accumulator.trade_by_month_halves),
+        "candidates": _concat(accumulator.candidates),
     }
 
-    return outputs
+    # **요약을 먼저 완성한 뒤 산출물을 만든다.** 만들고 나서 그 안의 dict 를 고치면
+    # 동작은 하지만 `frozen` 이 막으려던 것을 우회하게 된다
+    summary[KEY_ROW_COUNTS] = {name: len(table) for name, table in tables.items()}
+
+    return StudyOutputs(**tables, summary=summary)
 
 
 def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
@@ -798,9 +789,6 @@ def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
     return summary[summary[COL_HORIZON] == HORIZON_NEXT_WEEK_EXIT].reset_index(drop=True)
 
 
-__all__ = ["StudyOutputs", "candidates_headline", "run_study", "trade_headline"]
-
-
 def candidates_headline(outputs: StudyOutputs) -> pd.DataFrame:
     """**후보 칸만** 적중률 내림차순으로 뽑는다.
 
@@ -824,3 +812,6 @@ def candidates_headline(outputs: StudyOutputs) -> pd.DataFrame:
     selected = candidates[candidates[COL_SCREEN] == SCREEN_CANDIDATE]
 
     return selected.sort_values(COL_HIT_RATE, ascending=False, kind="stable").reset_index(drop=True)
+
+
+__all__ = ["StudyOutputs", "candidates_headline", "run_study", "trade_headline"]

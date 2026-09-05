@@ -23,7 +23,6 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
-from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_COUNT,
@@ -31,6 +30,7 @@ from verify_lab.measure.constants import (
     COL_FORWARD_RETURN,
     COL_HORIZON,
     COL_SIGNAL_COUNT,
+    MIN_SAMPLE_PER_CELL,
 )
 from verify_lab.measure.forward_return import count_excluded
 from verify_lab.utils.logger import get_logger
@@ -135,12 +135,16 @@ TEST_COLUMNS = [
 # 검정 불가 사유. 검정한 칸은 빈 문자열이다
 NOTE_NONE = ""
 NOTE_TOO_FEW_SAMPLES = "표본 부족으로 검정 불가"
-NOTE_POPULATION_TOO_SMALL = "모집단이 표본보다 작아 검정 불가"
 
-# 유효 표본이 한 자릿수인 칸에는 검정을 붙이지 않는다
+# 모집단이 표본보다 **작거나 같으면** 검정이 성립하지 않는다. 같을 때도 막는 것은
+# 비복원 추출이 매번 모집단 전체를 뽑아 **귀무분포가 상수가 되기** 때문이다 —
+# 그러면 우연확률이 언제나 1.0 인데, 사유가 없으면 「검정했더니 유의하지 않다」로 읽힌다
+NOTE_POPULATION_NOT_LARGER = "모집단이 표본보다 크지 않아 검정 불가"
+
+# 유효 표본이 하한에 못 미치는 칸에는 검정을 붙이지 않는다
 # (docs/spec/index_extreme_events.md §6). 백분위도 함께 비운다 —
-# 백분위는 사실상 검정 통계량이라 남겨두면 유의성으로 읽힌다
-MIN_SAMPLE_FOR_TEST = 10
+# 백분위는 사실상 검정 통계량이라 남겨두면 유의성으로 읽힌다.
+# **하한은 `measure/constants.py` 가 소유한다** — 축을 쪼갤 때 쓰는 것과 같은 값이다
 
 # 귀무분포 반복 수와 난수 시드. 시드 없는 난수는 금지이며, 결과 문서에 시드를 적어야 재현된다
 DEFAULT_REPEAT_COUNT = 1_000
@@ -165,8 +169,8 @@ def max_non_overlapping(start_positions: Sequence[int], horizon: int) -> int:
     관측일 하나를 공유하지만 **수익률 구간이 겹치지 않아** 통계적으로 독립이다. 하루를 더
     띄우면 실제보다 표본을 적게 세게 된다.
 
-    **이 함수가 공통 계층에 있는 이유**: 검증 #8 과 #9 가 각자 구현을 두고 있었고 규칙이
-    한 칸 달랐다. 같은 이름의 컬럼이 다른 뜻을 갖게 되면 두 결과 문서를 나란히 읽을 수 없다.
+    **이 함수가 공통 계층에 있는 이유**: 검증마다 따로 구현하면 끝점 처리 같은 한 칸 차이가
+    생기고, 같은 이름의 컬럼이 다른 뜻을 갖게 되면 두 결과 문서를 나란히 읽을 수 없다.
 
     Args:
         start_positions: 시작일의 거래일 위치 목록. 정렬돼 있지 않아도 된다
@@ -454,12 +458,12 @@ def _test_cell(
         COL_TEST_NOTE: NOTE_NONE,
     }
 
-    if sample_count < MIN_SAMPLE_FOR_TEST:
+    if sample_count < MIN_SAMPLE_PER_CELL:
         row[COL_TEST_NOTE] = NOTE_TOO_FEW_SAMPLES
         return row
 
-    if pool.size < sample_count:
-        row[COL_TEST_NOTE] = NOTE_POPULATION_TOO_SMALL
+    if pool.size <= sample_count:
+        row[COL_TEST_NOTE] = NOTE_POPULATION_NOT_LARGER
         return row
 
     null_means, null_medians, null_up_rates, null_down_rates = _null_distribution(pool, sample_count, repeats, rng)
@@ -516,16 +520,20 @@ def _null_distribution(
 
 
 def _percentile(null_values: np.ndarray, observed: float) -> float:
-    """관측값이 귀무분포의 몇 백분위에 있는지 낸다.
+    """관측값이 귀무분포의 어느 위치에 있는지 낸다.
+
+    **비율(0~1)로 낸다.** 계층 간 계약이 "`measure` 는 비율 그대로, 저장 직전 백분율"로
+    정했고 이 값만 예외로 두면 출력 계층마다 다르게 취급한다 — 한쪽은 백분율로 보고 2자리,
+    다른 쪽은 확률로 보고 4자리로 반올림하게 된다.
 
     Args:
         null_values: 귀무분포
         observed: 관측된 통계량
 
     Returns:
-        백분위 (0~100)
+        귀무분포에서 관측값보다 작은 값의 비율 (0~1)
     """
-    return float((null_values < observed).mean()) * RATE_TO_PERCENT
+    return float((null_values < observed).mean())
 
 
 def _two_sided_p_value(null_values: np.ndarray, observed: float) -> float:

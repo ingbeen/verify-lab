@@ -25,6 +25,7 @@ from verify_lab.measure.constants import (
     COL_FORWARD_RETURN,
     COL_HORIZON,
     COL_SIGNAL_COUNT,
+    MIN_SAMPLE_PER_CELL,
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
@@ -57,9 +58,8 @@ from verify_lab.measure.statistics import (
     COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
     EXCESS_COLUMNS,
-    MIN_SAMPLE_FOR_TEST,
     NOTE_NONE,
-    NOTE_POPULATION_TOO_SMALL,
+    NOTE_POPULATION_NOT_LARGER,
     NOTE_TOO_FEW_SAMPLES,
     SUMMARY_COLUMNS,
     TEST_COLUMNS,
@@ -404,7 +404,7 @@ class TestPermutationTest:
         result = permutation_test(signal, population, repeats=200, seed=0)
 
         # Then
-        assert _only(result, COL_MEAN_PERCENTILE) >= 99.0
+        assert _only(result, COL_MEAN_PERCENTILE) >= 0.99
         assert _only(result, COL_MEAN_P_VALUE) < 0.05
         assert result[COL_TEST_NOTE].iloc[0] == NOTE_NONE
 
@@ -465,7 +465,7 @@ class TestPermutationTest:
         result = permutation_test(signal, population, repeats=100, seed=0)
 
         # Then
-        assert MIN_SAMPLE_FOR_TEST == 10
+        assert MIN_SAMPLE_PER_CELL == 10
         assert result[COL_TEST_NOTE].iloc[0] == NOTE_NONE
 
     def test_population_smaller_than_sample_is_not_tested(self) -> None:
@@ -484,7 +484,7 @@ class TestPermutationTest:
         result = permutation_test(signal, population, repeats=100, seed=0)
 
         # Then
-        assert result[COL_TEST_NOTE].iloc[0] == NOTE_POPULATION_TOO_SMALL
+        assert result[COL_TEST_NOTE].iloc[0] == NOTE_POPULATION_NOT_LARGER
         assert pd.isna(_only(result, COL_MEAN_P_VALUE))
 
     def test_columns_are_declared_in_order(self) -> None:
@@ -584,7 +584,7 @@ class TestDirectionRateTest:
         result = permutation_test(signal, population, repeats=500, seed=0)
 
         # Then
-        assert _only(result, COL_UP_RATE_PERCENTILE) <= 5.0
+        assert _only(result, COL_UP_RATE_PERCENTILE) <= 0.05
         assert _only(result, COL_UP_RATE_P_VALUE) < 0.05
         assert _only(result, COL_DOWN_RATE_P_VALUE) < 0.05
 
@@ -666,7 +666,7 @@ class TestDirectionRateTest:
         result = permutation_test(signal, population, repeats=100, seed=0)
 
         # Then
-        assert result[COL_TEST_NOTE].iloc[0] == NOTE_POPULATION_TOO_SMALL
+        assert result[COL_TEST_NOTE].iloc[0] == NOTE_POPULATION_NOT_LARGER
         assert pd.isna(_only(result, COL_UP_RATE_P_VALUE))
         assert pd.isna(_only(result, COL_DOWN_RATE_P_VALUE))
 
@@ -722,9 +722,9 @@ class TestPermutationTestRegression:
 
         # Then
         assert _only(result, COL_OBSERVED_MEAN) == pytest.approx(0.05, abs=EXACT_TOLERANCE)
-        assert _only(result, COL_MEAN_PERCENTILE) == pytest.approx(100.0, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_MEAN_PERCENTILE) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
         assert _only(result, COL_MEAN_P_VALUE) == pytest.approx(1 / 101, abs=EXACT_TOLERANCE)
-        assert _only(result, COL_MEDIAN_PERCENTILE) == pytest.approx(99.0, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_MEDIAN_PERCENTILE) == pytest.approx(0.99, abs=EXACT_TOLERANCE)
         assert _only(result, COL_MEDIAN_P_VALUE) == pytest.approx(7 / 101, abs=EXACT_TOLERANCE)
 
 
@@ -816,3 +816,60 @@ class TestMaxNonOverlapping:
         # When / Then
         with pytest.raises(ValueError, match="보유 기간"):
             max_non_overlapping([0, 1, 2], horizon=0)
+
+
+class TestPercentileUnitContract:
+    """백분위는 계층 간 계약대로 **비율(0~1)** 로 나온다"""
+
+    def test_백분위가_비율_범위다(self) -> None:
+        """
+        목적: `measure` 가 백분율로 내던 것을 막는다.
+
+        계층 간 계약이 "`measure` 는 비율(0~1) 그대로, 저장 직전 백분율 2자리"로 정했고
+        `.claude/rules/python.md` 도 "모든 비율 값은 0~1 사이 소수"를 요구한다.
+        **이 값만 계약 밖으로 나가 있어서** 두 출력 경로가 서로 다르게 취급했다 —
+        한쪽은 백분율(2자리), 다른 쪽은 확률(4자리)로 읽었다.
+
+        Given: 검정이 붙을 만큼의 표본과 모집단
+        When: 순열 검정을 돌린다
+        Then: 백분위 네 축이 전부 0~1 범위다
+        """
+        # Given
+        signal = _cell([0.03] * 15)
+        population = _cell(list(np.linspace(-0.10, 0.10, 400)))
+
+        # When
+        result = permutation_test(signal, population, repeats=100, seed=0)
+
+        # Then
+        for column in (COL_MEAN_PERCENTILE, COL_MEDIAN_PERCENTILE, COL_UP_RATE_PERCENTILE, COL_DOWN_RATE_PERCENTILE):
+            value = _only(result, column)
+            assert 0.0 <= value <= 1.0, f"{column} 이 비율 범위를 벗어났습니다: {value}"
+
+
+class TestPopulationSameSizeAsSample:
+    """모집단이 표본과 같으면 검정이 성립하지 않는다"""
+
+    def test_모집단이_표본과_같으면_사유를_남긴다(self) -> None:
+        """
+        목적: 뜻이 없는 p 값이 「검정했더니 유의하지 않다」로 읽히는 것을 막는다.
+
+        비복원 추출로 모집단 전체를 뽑으면 **반복마다 같은 표본**이 나와 귀무분포가 상수가 된다.
+        그러면 p 값이 언제나 1.0 인데, 사유가 없으면 「검정은 됐고 결과가 유의하지 않다」로 읽힌다.
+        모집단이 **작을 때**는 이미 사유를 남기므로 경계 하나 차이다.
+
+        Given: 모집단과 신호군의 유효 표본 수가 같은 칸
+        When: 순열 검정을 돌린다
+        Then: 검정하지 않고 사유가 남는다
+        """
+        # Given
+        values = [0.01, -0.02, 0.03, -0.01, 0.02, 0.04, -0.03, 0.01, 0.02, -0.01, 0.05, 0.01]
+        signal = _cell(values)
+        population = _cell(values)
+
+        # When
+        result = permutation_test(signal, population, repeats=100, seed=0)
+
+        # Then
+        assert result[COL_TEST_NOTE].iloc[0] != NOTE_NONE
+        assert pd.isna(_only(result, COL_MEAN_P_VALUE))

@@ -168,8 +168,9 @@ def _volatility_buckets(divergence: pd.DataFrame, alignment: pd.DataFrame) -> pd
         if usable.sum() < len(VOLATILITY_BUCKETS):
             continue
 
-        # 같은 값이 많아 사분위 경계가 겹치면 구간 수를 줄여서라도 나눈다.
-        # 나누지 못하면 그 구간은 비운 채로 둔다 — 억지로 라벨을 붙이면 없는 구분이 생긴다
+        # 같은 값이 많아 사분위 경계가 겹치면 나누지 못한다. **예외로 멈추지 않고 비워 둔다** —
+        # 억지로 라벨을 붙이면 없는 구분이 생기고, 짝 하나 때문에 전체 실행이 죽는다.
+        # **결과가 조용히 사라지지는 않는다** — 비운 칸은 `runner` 가 「판정 불가」로 표에 찍는다
         try:
             buckets.loc[volatility[usable].index] = pd.qcut(
                 volatility[usable], q=len(VOLATILITY_BUCKETS), labels=list(VOLATILITY_BUCKETS)
@@ -204,7 +205,7 @@ def _base_return_buckets(divergence: pd.DataFrame) -> pd.Series:
 
         # 같은 값이 많아 분위 경계가 겹치면 나누지 못한다. **예외로 멈추지 않는다** —
         # 짝 하나 때문에 전체 실행이 죽고, 그 칸을 못 봤다는 사실만 남기면 된다
-        # (변동성 축과 같은 규약)
+        # (변동성 축과 같은 규약). **그 사실은 `runner` 가 「판정 불가」로 표에 찍는다**
         try:
             buckets.loc[group.index[usable]] = pd.qcut(
                 group.loc[usable, COL_BASE_RETURN], q=len(BASE_RETURN_BUCKETS), labels=list(BASE_RETURN_BUCKETS)

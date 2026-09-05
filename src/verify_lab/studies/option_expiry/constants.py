@@ -322,6 +322,10 @@ DISPLAY_CLOSE: Final = "종가"
 
 DISPLAY_EXIT_WEEKDAY: Final = "청산 요일"
 
+# 만기일 매수 → 다음주 청산 매매의 진입 수. **`report` 의 「신호」와 뜻이 같지만 말이 다르다** —
+# 이 매매는 만기일이 곧 진입일이라 화면에서 「진입」으로 읽는 것이 자연스럽다
+DISPLAY_ENTRY_COUNT: Final = "진입"
+
 # 요일 번호를 표에 적을 때 쓰는 이름
 WEEKDAY_LABELS: Final = ("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
 
@@ -486,17 +490,19 @@ PERCENT_OUTPUT_COLUMNS: Final = (
     COL_BASELINE_HIT_RATE,
     COL_BASELINE_GAP,
     COL_PERIOD_MIN_HIT_RATE,
+    # 백분위는 **백분율이지 확률이 아니다.** 「귀무분포에서 관측값보다 작은 값의 비율」이라
+    # 0~100 으로 읽는 값이며, `report.build_test_table` 도 같은 자릿수로 낸다
+    COL_MEAN_PERCENTILE,
+    COL_MEDIAN_PERCENTILE,
+    COL_UP_RATE_PERCENTILE,
+    COL_DOWN_RATE_PERCENTILE,
 )
 
 # 확률로 계산해 자릿수만 맞출 컬럼. **100 을 곱하지 않는다** — 우연확률은 비율이 아니다
 PROBABILITY_OUTPUT_COLUMNS: Final = (
-    COL_MEAN_PERCENTILE,
     COL_MEAN_P_VALUE,
-    COL_MEDIAN_PERCENTILE,
     COL_MEDIAN_P_VALUE,
-    COL_UP_RATE_PERCENTILE,
     COL_UP_RATE_P_VALUE,
-    COL_DOWN_RATE_PERCENTILE,
     COL_DOWN_RATE_P_VALUE,
     COL_P_VALUE,
 )

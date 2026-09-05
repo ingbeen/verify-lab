@@ -268,7 +268,7 @@ def run_position(
             )
             break
 
-        # 3. 리밸런싱하는 날이면 노출을 목표 배수로 되돌리고, 그때까지 쌓인 이자를
+        # 2. 리밸런싱하는 날이면 노출을 목표 배수로 되돌리고, 그때까지 쌓인 이자를
         #    자기자본에 합쳐 다음 구간의 출발점으로 삼는다
         rebalanced = flags[position]
         if rebalanced:

@@ -49,7 +49,7 @@ from verify_lab.strategy.reverse_trading import TradeResult, simulate_signal
 from verify_lab.studies.index_extreme.annotations import assign_event_ids
 from verify_lab.studies.index_extreme.constants import EVENT_GAP_DAYS, EXTREME_DIRECTION_LABELS, Direction
 from verify_lab.studies.index_extreme.daily_change import daily_change_rate
-from verify_lab.studies.index_extreme.extreme_move import find_extreme_move_events
+from verify_lab.studies.index_extreme.extreme_move import expanding_rank, find_extreme_move_events
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -78,6 +78,7 @@ KEY_START_YEAR = "start_year"
 KEY_PATH = "path"
 KEY_SIGNAL_COUNT = "signal_count"
 KEY_EVENT_COUNT = "event_count"
+KEY_EXCLUDED_COUNT = "excluded_count"
 
 KEY_STOP_LEVEL = "stop_loss_level"
 KEY_HOLD_LIMIT = "hold_limit"
@@ -175,10 +176,14 @@ def run_strategy(
 
     for target in targets:
         signals = _find_signals(target)
-        target_records.append(_target_record(target, signals))
-
         block = _measure(target, signals, hold_limit=hold_limit, stop_level=stop_level)
+
+        # **요약을 먼저 쌓는다.** 아래에서 체결이 없는 대상을 건너뛰므로, 그 뒤에 쌓으면
+        # 전부 제외된 대상의 제외 건수가 어디에도 남지 않는다 (표본 보존)
+        target_records.append(_target_record(target, signals, block.excluded_count))
+
         if block.trades.empty:
+            logger.warning(f"체결이 하나도 없어 집계에서 뺐습니다 - {target.dataset.ticker} (제외 {block.excluded_count}건)")
             continue
 
         trade_blocks.append(block.trades)
@@ -226,8 +231,14 @@ def _find_signals(target: Target) -> _Signals:
     """
     frame = load_market_csv(target.dataset.path)
     start = pd.Timestamp(year=target.start_year, month=1, day=1)
+
+    # 확장창 순위는 **방향과 무관하게 같은 값**이므로 한 번만 만들어 두 방향에 넘긴다.
+    # 넘기지 않으면 이벤트 정의가 방향마다 다시 만든다 — 같은 값을 두 경로로 내면 갈라질 여지가 생긴다
+    ranks = expanding_rank(frame)
     selected = {
-        direction: find_extreme_move_events(frame, direction=direction, rank_cut=target.rank_cut, start_date=start)
+        direction: find_extreme_move_events(
+            frame, direction=direction, rank_cut=target.rank_cut, start_date=start, ranks=ranks
+        )
         for direction in Direction
     }
     union = selected[Direction.UP] | selected[Direction.DOWN]
@@ -367,12 +378,17 @@ def _summarize(target: Target, block: _Block) -> dict[str, Any]:
     }
 
 
-def _target_record(target: Target, signals: _Signals) -> dict[str, Any]:
+def _target_record(target: Target, signals: _Signals, excluded_count: int) -> dict[str, Any]:
     """대상 정보를 요약용 dict 로 만든다.
+
+    **제외 건수를 여기 담는다.** 집계표는 체결이 하나라도 있는 대상만 행을 갖는데,
+    보유 한도가 데이터 끝을 넘어가 **전부 제외되면 그 대상의 행 자체가 없어** 몇 건이 왜
+    빠졌는지가 어디에도 남지 않는다. 요약은 대상마다 항상 한 줄이라 그 구멍이 없다.
 
     Args:
         target: 매매 대상
         signals: 신호 목록
+        excluded_count: 보유 한도가 데이터 끝을 넘어가 체결을 만들지 못한 신호 수
 
     Returns:
         요약 dict
@@ -384,4 +400,5 @@ def _target_record(target: Target, signals: _Signals) -> dict[str, Any]:
         KEY_PATH: str(target.dataset.path),
         KEY_SIGNAL_COUNT: len(signals.positions),
         KEY_EVENT_COUNT: int(pd.Series(signals.event_ids).nunique()),
+        KEY_EXCLUDED_COUNT: excluded_count,
     }

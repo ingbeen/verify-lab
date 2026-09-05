@@ -216,6 +216,7 @@ def weekly_exit_returns(df: pd.DataFrame, schedule: WeeklyExitSchedule) -> pd.Da
     Raises:
         ValueError: 시세가 비었거나 필수 컬럼이 없는 경우, 날짜가 오름차순이 아닌 경우,
             일정표의 날짜가 시세에 없는 경우
+        RuntimeError: 제외되지 않은 진입의 수익률이 비어 있는 경우 (내부 불변조건 위반)
     """
     validate_market_frame(df, REQUIRED_MARKET_COLUMNS)
 

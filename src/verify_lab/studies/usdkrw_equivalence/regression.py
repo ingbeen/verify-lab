@@ -140,11 +140,16 @@ def annual_drift(
     if actual.isna().any() or theoretical.isna().any():
         raise ValueError(f"결측이 있습니다 - 실제 {int(actual.isna().sum())}건, 이론 {int(theoretical.isna().sum())}건")
 
+    # **여기 담기는 것은 아직 일간 수익률이다.** 누적은 아래 `groupby` 가 만든다 —
+    # 중간 프레임에 결과 컬럼 이름을 쓰면 그 단계의 값이 이름과 다른 것을 뜻하게 된다
+    _COL_DAILY_ACTUAL = "DailyActual"
+    _COL_DAILY_THEORETICAL = "DailyTheoretical"
+
     frame = pd.DataFrame(
         {
             COL_YEAR: pd.DatetimeIndex(pd.to_datetime(dates)).year.to_numpy(),
-            COL_ACTUAL_CUMULATIVE: actual.to_numpy(dtype=float),
-            COL_THEORETICAL_CUMULATIVE: theoretical.to_numpy(dtype=float),
+            _COL_DAILY_ACTUAL: actual.to_numpy(dtype=float),
+            _COL_DAILY_THEORETICAL: theoretical.to_numpy(dtype=float),
         }
     )
 
@@ -152,8 +157,8 @@ def annual_drift(
     summary = pd.DataFrame(
         {
             COL_TRADING_DAYS: grouped.size(),
-            COL_ACTUAL_CUMULATIVE: grouped[COL_ACTUAL_CUMULATIVE].apply(_compound),
-            COL_THEORETICAL_CUMULATIVE: grouped[COL_THEORETICAL_CUMULATIVE].apply(_compound),
+            COL_ACTUAL_CUMULATIVE: grouped[_COL_DAILY_ACTUAL].apply(_compound),
+            COL_THEORETICAL_CUMULATIVE: grouped[_COL_DAILY_THEORETICAL].apply(_compound),
         }
     ).reset_index()
 

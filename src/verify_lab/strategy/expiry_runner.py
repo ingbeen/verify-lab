@@ -61,7 +61,7 @@ from verify_lab.strategy.constants import (
     HOLD_DAYS_DECIMALS,
     JUDGEABLE_NO,
     JUDGEABLE_YES,
-    MIN_PERIOD_SAMPLE,
+    MIN_SAMPLE_PER_CELL,
     NO_STOP_LABEL,
     PERIOD_ALL,
     PERIOD_FIRST_HALF,
@@ -459,11 +459,16 @@ def _period_row(
         # 표본이 하나뿐인 칸에서 표본표준편차는 정의되지 않는다. 0 으로 채우면 "흔들림이 없다"로
         # 읽히므로 비워 둔다
         DISPLAY_STDEV: round(float(percent.std(ddof=1)), PERCENT_DECIMALS) if count > 1 else np.nan,
-        DISPLAY_GAP_STOP_COUNT: 0 if labels is None else int((labels == EXIT_GAP_STOP).sum()),
-        DISPLAY_INTRADAY_STOP_COUNT: 0 if labels is None else int((labels == EXIT_INTRADAY_STOP).sum()),
+        # **표본이 없으면 0 이 아니라 빈칸이다.** 0 은 「손절이 걸리지 않았다」로 읽히는데
+        # 실제로는 「잰 적이 없다」이며, 같은 행의 다른 지표가 전부 비어 있는 것과 어긋난다.
+        # 표본이 있는데 0 건인 것은 사실이므로 그때는 0 을 적는다 (측정의 원칙 17)
+        DISPLAY_GAP_STOP_COUNT: np.nan if (empty or labels is None) else int((labels == EXIT_GAP_STOP).sum()),
+        DISPLAY_INTRADAY_STOP_COUNT: (
+            np.nan if (empty or labels is None) else int((labels == EXIT_INTRADAY_STOP).sum())
+        ),
         DISPLAY_MEAN_HOLD: np.nan if (empty or days is None) else round(float(days.mean()), HOLD_DAYS_DECIMALS),
         # **미달이어도 행은 남는다.** 이 컬럼이 「판정에 쓰지 말라」를 표에 남기는 자리다
-        DISPLAY_JUDGEABLE: JUDGEABLE_YES if count >= MIN_PERIOD_SAMPLE else JUDGEABLE_NO,
+        DISPLAY_JUDGEABLE: JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO,
     }
 
 

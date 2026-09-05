@@ -43,6 +43,7 @@ from verify_lab.strategy.constants import (
 )
 from verify_lab.strategy.runner import (
     IDENTITY_COLUMNS,
+    KEY_EXCLUDED_COUNT,
     KEY_HOLD_LIMIT,
     KEY_RULE,
     KEY_STOP_LEVEL,
@@ -533,3 +534,31 @@ class TestInputValidation:
         # Given / When / Then
         with pytest.raises(ValueError, match="대상"):
             run_strategy([])
+
+
+class TestAllSignalsExcluded:
+    """한 대상의 신호가 **전부** 제외돼도 그 사실이 남는다"""
+
+    def test_체결이_하나도_없어도_제외_건수가_남는다(self, tmp_path: Path) -> None:
+        """
+        목적: 조용히 사라지는 마지막 경로를 막는다.
+
+        일부만 제외되면 집계 행에 건수가 실리지만, **전부 제외되면 그 대상의 행 자체가
+        만들어지지 않아** 「몇 건이 왜 빠졌는지」가 어디에도 남지 않는다.
+        `_summarize` 는 「신호 + 제외 = 전체 신호 수」가 성립한다고 적었는데 이 경로에서만 깨진다.
+
+        Given: 첫 신호일에서 끝나 **모든 신호의 보유 구간이 잘린** 시세
+        When: 실행하면
+        Then: 체결은 없지만 제외 건수가 실행 정보에 남는다
+        """
+        # Given
+        first_offset = SIGNAL_PLACEMENTS[0][0]
+        rows = _accumulation_index(1_400) + first_offset + 2
+
+        # When
+        outputs = run_strategy([_target(tmp_path, rows=rows)])
+
+        # Then
+        assert outputs.trades.empty, "이 시세에서는 체결이 만들어지지 않아야 검사가 성립합니다"
+        recorded = str(outputs.meta)
+        assert KEY_EXCLUDED_COUNT in recorded, f"제외 건수가 실행 정보에 없습니다: {outputs.meta}"

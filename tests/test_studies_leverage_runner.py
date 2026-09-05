@@ -10,8 +10,12 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
+from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON, COL_JUDGEABLE
 from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_SAMPLE_COUNT
 from verify_lab.studies.leverage_tracking.constants import (
+    COL_NON_OVERLAPPING_COUNT,
+    COL_REALIZED_MULTIPLE,
+    COL_SAMPLE_COUNT,
     DISPLAY_BASE_TICKER,
     DISPLAY_DIVIDEND_ADJUSTMENT,
     DISPLAY_INDEX_NAME,
@@ -20,11 +24,12 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_NON_OVERLAPPING,
     DISPLAY_PRODUCT_TYPE,
     DISPLAY_TARGET_TICKER,
+    HORIZON_LABELS,
     JUDGEABLE_YES,
     PRODUCT_ETF,
     LeveragePair,
 )
-from verify_lab.studies.leverage_tracking.runner import headline, run_study
+from verify_lab.studies.leverage_tracking.runner import _summary_block, headline, run_study
 
 # 합성 데이터로 만들 짝. 실제 종목과 무관한 이름을 쓴다
 TEST_PAIRS = (LeveragePair("테스트지수", "BASE1X", "TARGET2X", 2.0, PRODUCT_ETF, "테스트 지수"),)
@@ -237,3 +242,68 @@ class TestHeadline:
 
         # Then
         assert {DISPLAY_SAMPLE_COUNT, DISPLAY_NON_OVERLAPPING, DISPLAY_HORIZON} <= set(summary.columns)
+
+
+class TestHorizonLabelGuard:
+    """구간 이름을 못 붙이면 조용히 넘기지 않는다"""
+
+    @staticmethod
+    def _minimal_summary(horizon: int) -> pd.DataFrame:
+        """`_summary_block` 이 읽는 최소 컬럼만 갖춘 집계표를 만든다.
+
+        Args:
+            horizon: 구간 (거래일)
+
+        Returns:
+            집계표 한 줄
+        """
+        return pd.DataFrame(
+            {
+                COL_HORIZON: [horizon],
+                COL_SAMPLE_COUNT: [12],
+                COL_NON_OVERLAPPING_COUNT: [3],
+                COL_EXCLUDED_COUNT: [0],
+                COL_JUDGEABLE: [JUDGEABLE_YES],
+                f"{COL_REALIZED_MULTIPLE}Median": [2.0],
+                f"{COL_REALIZED_MULTIPLE}Count": [12],
+            }
+        )
+
+    def test_아는_구간은_이름이_붙는다(self) -> None:
+        """
+        목적: 정상 경로가 그대로 동작함을 고정한다.
+
+        Given: `HORIZON_LABELS` 에 있는 구간
+        When: 저장용 표를 만든다
+        Then: 한글 구간 이름이 붙는다
+        """
+        # Given
+        known = next(iter(HORIZON_LABELS))
+        summary = self._minimal_summary(known)
+
+        # When
+        block = _summary_block(summary, TEST_PAIRS[0])
+
+        # Then
+        assert block[DISPLAY_HORIZON].iloc[0] == HORIZON_LABELS[known]
+
+    def test_모르는_구간은_예외다(self) -> None:
+        """
+        목적: `map` 이 조용히 NaN 을 내던 것을 막는다.
+
+        `Series.map` 은 사전에 없는 키를 **예외 없이 NaN 으로** 만든다. 그러면 산출물의
+        「구간」 열만 빈 채로 나가고 나머지 수치는 정상이라 눈으로 발견되지 않는다.
+        같은 파일의 `_distribution_rows` 는 이미 `HORIZON_LABELS[horizon]` 로 KeyError 를
+        내므로, 한 모듈 안에서 방어 수준이 갈리지 않게 그쪽에 맞춘다.
+
+        Given: `HORIZON_LABELS` 에 없는 구간
+        When: 저장용 표를 만든다
+        Then: 예외가 오른다
+        """
+        # Given
+        unknown = max(HORIZON_LABELS) + 1
+        summary = self._minimal_summary(unknown)
+
+        # When · Then
+        with pytest.raises(KeyError):
+            _summary_block(summary, TEST_PAIRS[0])
