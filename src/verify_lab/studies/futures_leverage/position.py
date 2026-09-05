@@ -8,6 +8,10 @@
 
 그래서 **리밸런싱 규칙이 곧 배수의 정의**이고, 이 모듈이 그 규칙을 집행한다.
 
+규칙은 셋이다 — **매일**·**월 1회**·**그대로 두기**. 마지막 것은 진입일에 한 번만 잡고
+손대지 않는 방식이며, 사람이 실제로 하는 것이 그것이다. 배수가 유지되지 않으므로
+**최대 유효 레버리지가 목표를 크게 넘어설 수 있다.**
+
 ## 이 계층은 `strategy/` 가 아니다
 
 **손절·익절·진입 조건을 넣지 않는다.** 리밸런싱은 매매 신호가 아니라 «목표 배수를 유지하는
@@ -50,6 +54,7 @@ from verify_lab.studies.futures_leverage.constants import (
     REBALANCE_DAILY,
     REBALANCE_INTERVAL_DAYS,
     REBALANCE_MONTHLY,
+    REBALANCE_NONE,
     REBALANCE_RULES,
 )
 from verify_lab.utils.logger import get_logger
@@ -122,6 +127,11 @@ def _rebalance_flags(dates: pd.Series, rule: str) -> list[bool]:
     """
     if rule == REBALANCE_DAILY:
         return [True] * len(dates)
+
+    # 그대로 두기는 진입일에 한 번만 잡는다. **진입일 리밸런싱은 남긴다** —
+    # 목표 배수로 시작해야 항상 정확히 배수로 시작하는 ETF 와 출발선이 같아진다
+    if rule == REBALANCE_NONE:
+        return [position == 0 for position in range(len(dates))]
 
     if rule != REBALANCE_MONTHLY:
         raise ValueError(f"모르는 리밸런싱 규칙입니다: {rule} (가능: {list(REBALANCE_RULES)})")

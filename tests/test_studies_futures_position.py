@@ -22,6 +22,7 @@ from verify_lab.studies.futures_leverage.constants import (
     REBALANCE_DAILY,
     REBALANCE_INTERVAL_DAYS,
     REBALANCE_MONTHLY,
+    REBALANCE_NONE,
 )
 from verify_lab.studies.futures_leverage.position import (
     COL_EFFECTIVE_LEVERAGE,
@@ -267,6 +268,50 @@ class TestRebalancing:
         # Given / When / Then
         with pytest.raises(ValueError, match="모르는 리밸런싱 규칙입니다"):
             run_position(_prices([100.0, 101.0]), 2.0, "분기 1회", price_column=PRICE_COLUMN)
+
+
+class TestHoldWithoutRebalancing:
+    """그대로 두기의 계약 — 진입일에 한 번만 잡고 손대지 않는다."""
+
+    def test_rebalances_only_on_the_entry_day(self) -> None:
+        """
+        목적: 그대로 두기가 **진입일에 한 번만** 포지션을 잡음을 고정한다.
+
+        포지션을 잡는 것 자체는 필요하다 — 목표 배수로 시작해야 ETF 와 출발선이 같다.
+        그 뒤로 한 번이라도 더 맞추면 그것은 «그대로 두기» 가 아니다.
+
+        Given: 오르내리는 가격 40 거래일
+        When: 그대로 두기로 굴린다
+        Then: 리밸런싱 횟수가 1 이다
+        """
+        # Given
+        prices = _prices([100.0 + (day % 7) for day in range(40)])
+
+        # When
+        result = run_position(prices, 2.0, REBALANCE_NONE, price_column=PRICE_COLUMN, initial_equity=START_EQUITY)
+
+        # Then
+        assert result.rebalance_count == 1
+
+    def test_effective_leverage_drifts_away_from_the_target(self) -> None:
+        """
+        목적: 계약 수를 고정하면 **배수가 저절로 표류**함을 고정한다.
+
+        오르면 평가익이 자기자본에 쌓여 배수가 내려가고, 내리면 자기자본이 줄어 배수가
+        올라간다. 이 표류가 그대로 두기의 성격이며, 최대 유효 레버리지가 목표를 넘어선다.
+
+        Given: 지수가 20% 내리는 가격
+        When: 배수 2 로 그대로 둔다
+        Then: 구간 최대 유효 레버리지가 목표 2 배를 넘는다
+        """
+        # Given
+        prices = _prices([100.0, 90.0, 80.0])
+
+        # When
+        result = run_position(prices, 2.0, REBALANCE_NONE, price_column=PRICE_COLUMN, initial_equity=START_EQUITY)
+
+        # Then
+        assert result.max_effective_leverage > 2.0
 
 
 class TestWipeout:

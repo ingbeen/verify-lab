@@ -32,6 +32,7 @@ import pandas as pd
 from verify_lab.common_constants import (
     COL_CLOSE,
     COL_DATE,
+    COL_SETTLE,
     COL_SPOT,
     MARKET_DIR,
     SERIES_DIR,
@@ -52,13 +53,18 @@ from verify_lab.studies.futures_leverage.constants import (
     DISPLAY_PERIOD_HIGH_RATE,
     DISPLAY_PERIOD_LOW_RATE,
     HIGH_RATE_START_YEAR,
+    INTEGER_CONTRACT_EQUITIES,
     INTEREST_SERIES_NAME,
+    METHOD_BY_REBALANCE,
     METHOD_ETF,
     METHOD_FUTURES_DAILY,
+    METHOD_FUTURES_HOLD,
     METHOD_FUTURES_MONTHLY,
     PAIRS,
+    REASON_NOT_EXECUTABLE,
     REBALANCE_DAILY,
     REBALANCE_MONTHLY,
+    REBALANCE_NONE,
     ROLL_RULES,
     FuturesPair,
 )
@@ -66,6 +72,7 @@ from verify_lab.studies.futures_leverage.continuous import (
     COL_ADJUSTED_SETTLE,
     build_continuous_series,
 )
+from verify_lab.studies.futures_leverage.contracts import contract_multiplier_on, integer_contract_position
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -87,6 +94,14 @@ COL_MEDIAN_RETURN = "MedianReturn"
 COL_JUDGEABLE = "Judgeable"
 COL_START_DATE = "StartDate"
 COL_END_DATE = "EndDate"
+COL_AS_OF_DATE = "AsOfDate"
+COL_PRICE = "Price"
+COL_CONTRACT_MULTIPLIER = "ContractMultiplier"
+COL_NOTIONAL = "Notional"
+COL_EQUITY_SIZE = "EquitySize"
+COL_INTEGER_CONTRACTS = "IntegerContracts"
+COL_ACTUAL_MULTIPLE = "ActualMultiple"
+COL_EXECUTABLE = "Executable"
 
 # 이자 가정의 표시값. 참·거짓 대신 사람이 읽는 말을 쓴다
 DISPLAY_INTEREST_ON = "이자 있음"
@@ -123,6 +138,7 @@ class StudyOutputs:
         breakeven: 선물이 앞서기 시작하는 보유 기간
         wipeouts: 자기자본 소진 시점
         leverage_drift: 구간 최대 유효 레버리지
+        integer_contracts: 자기자본 규모별 정수 계약 대조
         windows_by_pair: 짝별 시작일 원자료
         pair_count: 실제로 잰 짝 수
         skipped_pairs: 데이터가 없어 건너뛴 짝과 사유
@@ -134,6 +150,7 @@ class StudyOutputs:
     breakeven: pd.DataFrame
     wipeouts: pd.DataFrame
     leverage_drift: pd.DataFrame
+    integer_contracts: pd.DataFrame
     windows_by_pair: dict[str, pd.DataFrame]
     pair_count: int
     skipped_pairs: list[tuple[str, str]]
@@ -298,7 +315,7 @@ def _run_pair(
                     rebalance,
                     interest_factor=interest_factor if with_interest else None,
                 )
-                for rebalance in (REBALANCE_DAILY, REBALANCE_MONTHLY)
+                for rebalance in (REBALANCE_DAILY, REBALANCE_MONTHLY, REBALANCE_NONE)
                 for with_interest in (True, False)
             }
             futures_returns = {key: values for key, (values, _) in leveraged.items()}
@@ -313,7 +330,7 @@ def _run_pair(
                         COL_INDEX_NAME: pair.index_name,
                         COL_TARGET_TICKER: pair.target_ticker,
                         COL_MULTIPLE: pair.multiple,
-                        COL_METHOD: METHOD_FUTURES_DAILY if rebalance == REBALANCE_DAILY else METHOD_FUTURES_MONTHLY,
+                        COL_METHOD: METHOD_BY_REBALANCE[rebalance],
                         COL_ROLL_RULE: roll_rule,
                         COL_HORIZON: horizon,
                         "WipeoutCount": int(wiped.sum()),
@@ -326,6 +343,7 @@ def _run_pair(
                 METHOD_ETF: etf_return,
                 METHOD_FUTURES_DAILY: futures_returns[(REBALANCE_DAILY, False)],
                 METHOD_FUTURES_MONTHLY: futures_returns[(REBALANCE_MONTHLY, False)],
+                METHOD_FUTURES_HOLD: futures_returns[(REBALANCE_NONE, False)],
             }
 
             # 1. 방식별 집계. **ETF 행은 롤 규칙·이자 축이 없다** — 첫 규칙에서만 낸다
@@ -349,10 +367,7 @@ def _run_pair(
                 )
 
             # 2. 이자 있음 벌은 선물에만 붙는다
-            for rebalance, method in (
-                (REBALANCE_DAILY, METHOD_FUTURES_DAILY),
-                (REBALANCE_MONTHLY, METHOD_FUTURES_MONTHLY),
-            ):
+            for rebalance, method in METHOD_BY_REBALANCE.items():
                 comparison_rows.append(
                     {
                         COL_INDEX_NAME: pair.index_name,
@@ -373,6 +388,7 @@ def _run_pair(
                 etf_return,
                 futures_returns[(REBALANCE_DAILY, False)],
                 futures_returns[(REBALANCE_MONTHLY, False)],
+                futures_returns[(REBALANCE_NONE, False)],
                 futures_returns[(REBALANCE_DAILY, True)],
                 continuous_return,
                 spot_return,
@@ -403,6 +419,7 @@ def _run_pair(
                         METHOD_ETF: etf_return,
                         METHOD_FUTURES_DAILY: futures_returns[(REBALANCE_DAILY, False)],
                         METHOD_FUTURES_MONTHLY: futures_returns[(REBALANCE_MONTHLY, False)],
+                        METHOD_FUTURES_HOLD: futures_returns[(REBALANCE_NONE, False)],
                     }
                 )
                 window[COL_EXCLUDED_REASON] = np.where(usable, REASON_NONE, "구간 밖")
@@ -429,6 +446,51 @@ def _run_pair(
         leverage_drift=pd.DataFrame(drift_rows),
         wipeouts=pd.DataFrame(wipeout_rows),
     )
+
+
+def _integer_contract_table(pair: FuturesPair, series: pd.DataFrame) -> pd.DataFrame:
+    """자기자본 규모별로 정수 계약이 만드는 실제 배수를 낸다.
+
+    **본선(소수 계약)과 달리 여기서는 규모가 결과를 만든다** — 계약 하나를 살 수 있는지가
+    자기자본에 달렸기 때문이다. 「얼마부터 선물이 실용적인가」에 답하는 자리다.
+
+    기준일은 **데이터의 마지막 거래일**이고 가격은 그날의 **원본 정산가**다.
+    비율 조정 계열을 쓰면 가격 수준이 실제 체결가가 아니라 명목금액이 어긋난다
+    (`docs/spec/futures_leverage.md` §4 ③).
+
+    Args:
+        pair: 선물과 배수 상품의 짝
+        series: 연속 계열 (원본 정산가 컬럼을 갖는다)
+
+    Returns:
+        자기자본 규모마다 한 행인 대조표
+    """
+    last = series.iloc[-1]
+    as_of = pd.Timestamp(last[COL_DATE]).date()
+    price = float(last[COL_SETTLE])
+    multiplier = contract_multiplier_on(pair.product_id, as_of)
+
+    rows: list[dict[str, object]] = []
+    for equity in INTEGER_CONTRACT_EQUITIES:
+        position = integer_contract_position(float(equity), pair.multiple, price, multiplier)
+        rows.append(
+            {
+                COL_INDEX_NAME: pair.index_name,
+                COL_TARGET_TICKER: pair.target_ticker,
+                COL_MULTIPLE: pair.multiple,
+                COL_AS_OF_DATE: last[COL_DATE],
+                COL_PRICE: price,
+                COL_CONTRACT_MULTIPLIER: multiplier,
+                COL_NOTIONAL: position.notional,
+                COL_EQUITY_SIZE: float(equity),
+                COL_INTEGER_CONTRACTS: position.contracts,
+                COL_ACTUAL_MULTIPLE: position.actual_multiple,
+                COL_EXECUTABLE: position.executable,
+                COL_EXCLUDED_REASON: REASON_NONE if position.executable else REASON_NOT_EXECUTABLE,
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 def _max_effective_leverage(prices: np.ndarray, multiple: float, horizon: int) -> float:
@@ -496,6 +558,7 @@ def run_study(
     interest = _load_interest(series_dir)
 
     futures_cache: dict[str, pd.DataFrame] = {}
+    contract_parts: list[pd.DataFrame] = []
     comparison_parts: list[pd.DataFrame] = []
     decomposition_parts: list[pd.DataFrame] = []
     drift_parts: list[pd.DataFrame] = []
@@ -521,6 +584,10 @@ def run_study(
                 events.insert(0, COL_INDEX_NAME, pair.index_name)
                 roll_parts.append(events)
 
+        # 정수 계약 대조는 롤 규칙과 무관하다 — 마지막 거래일의 실제 정산가만 쓴다
+        series, _ = build_continuous_series(futures_cache[pair.product_id], ROLL_RULES[0])
+        contract_parts.append(_integer_contract_table(pair, series))
+
         outputs = _run_pair(pair, futures_cache[pair.product_id], interest, grid, market_dir)
         comparison_parts.append(outputs.comparison)
         decomposition_parts.append(outputs.decomposition)
@@ -543,6 +610,7 @@ def run_study(
         breakeven=_build_breakeven(comparison),
         wipeouts=pd.concat(wipeout_parts, ignore_index=True),
         leverage_drift=pd.concat(drift_parts, ignore_index=True),
+        integer_contracts=pd.concat(contract_parts, ignore_index=True),
         windows_by_pair=windows_by_pair,
         pair_count=len(comparison_parts),
         skipped_pairs=skipped,
@@ -558,30 +626,33 @@ def _build_breakeven(comparison: pd.DataFrame) -> pd.DataFrame:
         comparison: 방식별 집계
 
     Returns:
-        `IndexName` · `TargetTicker` · `Multiple` · `RollRule` · `BreakevenHorizon` 표
+        `IndexName` · `TargetTicker` · `Multiple` · `Method` · `RollRule` · `BreakevenHorizon` 표
     """
-    baseline = comparison[
-        (comparison[COL_METHOD] == BASELINE_METHOD) & (comparison[COL_INTEREST] == DISPLAY_INTEREST_OFF)
-    ]
     etf = comparison[comparison[COL_METHOD] == METHOD_ETF]
-
     rows: list[dict[str, object]] = []
-    for keys, group in baseline.groupby([COL_INDEX_NAME, COL_TARGET_TICKER, COL_MULTIPLE, COL_ROLL_RULE]):
-        index_name, ticker, multiple, roll_rule = keys
-        etf_group = etf[(etf[COL_INDEX_NAME] == index_name) & (etf[COL_TARGET_TICKER] == ticker)]
-        merged = group.merge(etf_group, on=COL_HORIZON, suffixes=("_futures", "_etf")).sort_values(COL_HORIZON)
 
-        ahead = merged[merged[f"{COL_MEAN_RETURN}_futures"] > merged[f"{COL_MEAN_RETURN}_etf"]]
-        rows.append(
-            {
-                COL_INDEX_NAME: index_name,
-                COL_TARGET_TICKER: ticker,
-                COL_MULTIPLE: multiple,
-                COL_ROLL_RULE: roll_rule,
-                "BreakevenHorizon": int(ahead[COL_HORIZON].iloc[0]) if not ahead.empty else None,
-                "AheadHorizonCount": len(ahead),
-                "TestedHorizonCount": len(merged),
-            }
-        )
+    # **두 방식을 각각 ETF 와 견준다.** 매일 리밸런싱은 「선물로 ETF 를 복제할 수 있는가」에,
+    # 그대로 두기는 「그냥 사서 들고 있으면 같은가」에 답한다
+    for method in (BASELINE_METHOD, METHOD_FUTURES_HOLD):
+        selected = comparison[(comparison[COL_METHOD] == method) & (comparison[COL_INTEREST] == DISPLAY_INTEREST_OFF)]
+
+        for keys, group in selected.groupby([COL_INDEX_NAME, COL_TARGET_TICKER, COL_MULTIPLE, COL_ROLL_RULE]):
+            index_name, ticker, multiple, roll_rule = keys
+            etf_group = etf[(etf[COL_INDEX_NAME] == index_name) & (etf[COL_TARGET_TICKER] == ticker)]
+            merged = group.merge(etf_group, on=COL_HORIZON, suffixes=("_futures", "_etf")).sort_values(COL_HORIZON)
+
+            ahead = merged[merged[f"{COL_MEAN_RETURN}_futures"] > merged[f"{COL_MEAN_RETURN}_etf"]]
+            rows.append(
+                {
+                    COL_INDEX_NAME: index_name,
+                    COL_TARGET_TICKER: ticker,
+                    COL_MULTIPLE: multiple,
+                    COL_METHOD: method,
+                    COL_ROLL_RULE: roll_rule,
+                    "BreakevenHorizon": int(ahead[COL_HORIZON].iloc[0]) if not ahead.empty else None,
+                    "AheadHorizonCount": len(ahead),
+                    "TestedHorizonCount": len(merged),
+                }
+            )
 
     return pd.DataFrame(rows)

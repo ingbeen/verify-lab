@@ -23,13 +23,19 @@ from verify_lab.studies.futures_leverage.constants import (
     BREAKEVEN_FILENAME,
     COMPARISON_FILENAME,
     DECOMPOSITION_FILENAME,
+    DISPLAY_ACTUAL_MULTIPLE,
     DISPLAY_ADJUSTMENT_FACTOR,
     DISPLAY_BREAKEVEN_HORIZON,
+    DISPLAY_CONTRACT_NOTIONAL,
     DISPLAY_DECISION_DATE,
     DISPLAY_DIVIDEND_ADJUSTMENT,
     DISPLAY_END_DATE,
+    DISPLAY_EQUITY_SIZE,
+    DISPLAY_EXECUTABLE,
     DISPLAY_EXECUTION_DATE,
+    DISPLAY_HOLD_ERROR,
     DISPLAY_INDEX_NAME,
+    DISPLAY_INTEGER_CONTRACTS,
     DISPLAY_INTEREST,
     DISPLAY_INTEREST_GAIN,
     DISPLAY_JUDGEABLE,
@@ -45,11 +51,14 @@ from verify_lab.studies.futures_leverage.constants import (
     DISPLAY_ROLL_COST,
     DISPLAY_ROLL_RULE,
     DISPLAY_START_DATE,
+    DISPLAY_TARGET_MULTIPLE,
     DISPLAY_TARGET_TICKER,
     DISPLAY_WIPEOUT_DATE,
+    INTEGER_CONTRACTS_FILENAME,
     LEVERAGE_DRIFT_FILENAME,
     METHOD_ETF,
     METHOD_FUTURES_DAILY,
+    METHOD_FUTURES_HOLD,
     METHOD_FUTURES_MONTHLY,
     PAIRS,
     ROLL_EVENTS_FILENAME,
@@ -109,17 +118,21 @@ DECOMPOSITION_LABELS = {
     "NonOverlapping": DISPLAY_NON_OVERLAPPING,
     "RollCost": DISPLAY_ROLL_COST,
     "RebalanceError": DISPLAY_REBALANCE_ERROR,
+    "HoldError": DISPLAY_HOLD_ERROR,
     "InterestGain": DISPLAY_INTEREST_GAIN,
     "Residual": DISPLAY_RESIDUAL,
     "FuturesMinusEtf": "선물 − ETF(%p)",
+    "HoldMinusEtf": "선물 그대로 − ETF(%p)",
     "DividendAdjustment": DISPLAY_DIVIDEND_ADJUSTMENT,
 }
 DECOMPOSITION_PERCENTS = (
     "RollCost",
     "RebalanceError",
+    "HoldError",
     "InterestGain",
     "Residual",
     "FuturesMinusEtf",
+    "HoldMinusEtf",
     "DividendAdjustment",
 )
 
@@ -142,6 +155,7 @@ BREAKEVEN_LABELS = {
     "IndexName": DISPLAY_INDEX_NAME,
     "TargetTicker": DISPLAY_TARGET_TICKER,
     "Multiple": DISPLAY_MULTIPLE,
+    "Method": DISPLAY_METHOD,
     "RollRule": DISPLAY_ROLL_RULE,
     "BreakevenHorizon": DISPLAY_BREAKEVEN_HORIZON,
     "AheadHorizonCount": "선물이 앞선 구간 수",
@@ -169,9 +183,27 @@ WINDOW_LABELS = {
     METHOD_ETF: f"{METHOD_ETF}(%)",
     METHOD_FUTURES_DAILY: f"{METHOD_FUTURES_DAILY}(%)",
     METHOD_FUTURES_MONTHLY: f"{METHOD_FUTURES_MONTHLY}(%)",
+    METHOD_FUTURES_HOLD: f"{METHOD_FUTURES_HOLD}(%)",
     "ExcludedReason": "제외 사유",
 }
-WINDOW_PERCENTS = (METHOD_ETF, METHOD_FUTURES_DAILY, METHOD_FUTURES_MONTHLY)
+WINDOW_PERCENTS = (METHOD_ETF, METHOD_FUTURES_DAILY, METHOD_FUTURES_MONTHLY, METHOD_FUTURES_HOLD)
+
+# 정수 계약 대조표. **본선과 달리 자기자본 규모가 결과를 만든다** —
+# 계약 하나를 살 수 있는지가 규모에 달렸기 때문이다
+INTEGER_CONTRACT_LABELS = {
+    "IndexName": DISPLAY_INDEX_NAME,
+    "TargetTicker": DISPLAY_TARGET_TICKER,
+    "Multiple": DISPLAY_TARGET_MULTIPLE,
+    "AsOfDate": "기준일",
+    "Price": "정산가",
+    "ContractMultiplier": "거래승수",
+    "Notional": DISPLAY_CONTRACT_NOTIONAL,
+    "EquitySize": DISPLAY_EQUITY_SIZE,
+    "IntegerContracts": DISPLAY_INTEGER_CONTRACTS,
+    "ActualMultiple": DISPLAY_ACTUAL_MULTIPLE,
+    "Executable": DISPLAY_EXECUTABLE,
+    "ExcludedReason": "제외 사유",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -229,6 +261,7 @@ def _save_outputs(outputs: StudyOutputs) -> str:
     save_table(directory, BREAKEVEN_FILENAME, _display(outputs.breakeven, BREAKEVEN_LABELS))
     save_table(directory, LEVERAGE_DRIFT_FILENAME, _display(outputs.leverage_drift, LEVERAGE_DRIFT_LABELS))
     save_table(directory, WIPEOUTS_FILENAME, _display(outputs.wipeouts, WIPEOUT_LABELS))
+    save_table(directory, INTEGER_CONTRACTS_FILENAME, _display(outputs.integer_contracts, INTEGER_CONTRACT_LABELS))
 
     for pair_name, windows in outputs.windows_by_pair.items():
         save_table(
@@ -260,6 +293,7 @@ def main() -> int:
         "roll_event_rows": len(outputs.roll_events),
         "breakeven_rows": len(outputs.breakeven),
         "wipeout_window_total": int(outputs.wipeouts["WipeoutCount"].sum()),
+        "integer_contract_rows": len(outputs.integer_contracts),
         "window_files": sorted(outputs.windows_by_pair),
     }
     # **결과 폴더 안에도 요약을 남긴다.** 실행 이력(`meta.json`)은 최근 N개만 순환 저장하므로
@@ -276,6 +310,13 @@ def main() -> int:
 
     if not outputs.breakeven.empty:
         print_dataframe(_display(outputs.breakeven, BREAKEVEN_LABELS), logger, title="선물이 앞서기 시작하는 보유 기간")
+
+    if not outputs.integer_contracts.empty:
+        print_dataframe(
+            _display(outputs.integer_contracts, INTEGER_CONTRACT_LABELS),
+            logger,
+            title="정수 계약 대조 — 자기자본 규모별 실제 배수",
+        )
 
     for ticker, reason in outputs.skipped_pairs:
         logger.warning(f"건너뛴 짝 - {ticker}: {reason}")

@@ -26,7 +26,7 @@
 | 6 | **달러 조달 방식** — 미국주식 매수 자금용 달러를 어떻게 사서 보유할 것인가 | USDKRW | 완료 | — | [research/달러_조달_방식.md](research/달러_조달_방식.md) |
 | 7 | **옵션 만기일** — 월물 만기 앞뒤 상대 거래일의 수익률과 **만기일 매수 → 다음주 금요일 매도** | QQQ, SPY, **DIA**, KODEX 200 | 완료 (2026-09-03 **매매 규칙 도출**) | [spec/option_expiry.md](spec/option_expiry.md) | [research/옵션_만기일.md](research/옵션_만기일.md) · [strategy/옵션_만기일_매매_규칙.md](strategy/옵션_만기일_매매_규칙.md) |
 | 8 | **레버리지 ETF 괴리** — 배수 상품이 1배 대비 보유 기간별로 얼마나 벌어지는가 | 국내·미국 5개 지수의 1~3배·인버스 **22쌍** | 완료 (2026-09-04) | [spec/leverage_tracking.md](spec/leverage_tracking.md) | [research/레버리지_ETF_괴리.md](research/레버리지_ETF_괴리.md) |
-| 9 | **선물 대 레버리지 ETF** — 같은 배수를 선물로 굴리는 것과 ETF 를 사는 것 중 어느 쪽이 싼가 | 코스피200·코스닥150 선물과 짝이 되는 배수 상품 **6쌍** | **진행중** (2026-09-04 데이터·구현 완료, 결과 문서 미작성) | [spec/futures_leverage.md](spec/futures_leverage.md) | — |
+| 9 | **선물 대 레버리지 ETF** — 같은 배수를 선물로 굴리는 것과 ETF 를 사는 것 중 어느 쪽이 싼가 | 코스피200·코스닥150 선물과 짝이 되는 배수 상품 **6쌍** | **진행중** (2026-09-05 「선물 그대로 두기」 축과 정수 계약 대조까지 구현 완료, 결과 문서 미작성) | [spec/futures_leverage.md](spec/futures_leverage.md) | — |
 
 상태 값: `미착수` / `대기`(스펙 확정, 구현 전) / `진행중` / `완료` / `보류`
 

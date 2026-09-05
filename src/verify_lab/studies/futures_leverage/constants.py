@@ -125,7 +125,17 @@ REBALANCE_DAILY: Final = "매일"
 # 월 1회 리밸런싱. **진입일에 목표 배수로 잡고 그 뒤 `REBALANCE_INTERVAL_DAYS` 거래일마다** 맞춘다
 REBALANCE_MONTHLY: Final = "월 1회"
 
-REBALANCE_RULES: Final = (REBALANCE_DAILY, REBALANCE_MONTHLY)
+# 그대로 두기. **진입일에 목표 배수로 잡고 그 뒤로는 손대지 않는다.**
+#
+# 사용자가 실제로 하는 것이 이것이다 — «1억을 넣고 계약 수를 그대로 두는 것».
+# 매일·월 1회와 달리 **배수가 유지되지 않는다**: 오르면 평가익이 자기자본에 쌓여 배수가
+# 내려가고(상승을 덜 먹는다), 내리면 자기자본이 줄어 배수가 올라간다(하락을 더 먹는다).
+#
+# **진입일 리밸런싱은 남긴다.** 목표 배수로 시작해야 항상 정확히 배수로 시작하는 ETF 와
+# 출발선이 같아진다. 그것까지 없애면 비교 전제(같은 자기자본·같은 목표 배수)가 무너진다
+REBALANCE_NONE: Final = "그대로"
+
+REBALANCE_RULES: Final = (REBALANCE_DAILY, REBALANCE_MONTHLY, REBALANCE_NONE)
 
 # 월 1회 리밸런싱의 간격 (거래일). 보유 기간 격자의 「1개월」과 같은 값을 쓴다.
 #
@@ -144,8 +154,16 @@ REBALANCE_INTERVAL_DAYS: Final = 21
 METHOD_ETF: Final = "레버리지 ETF"
 METHOD_FUTURES_DAILY: Final = "선물 매일"
 METHOD_FUTURES_MONTHLY: Final = "선물 월 1회"
+METHOD_FUTURES_HOLD: Final = "선물 그대로"
 
-METHODS: Final = (METHOD_ETF, METHOD_FUTURES_DAILY, METHOD_FUTURES_MONTHLY)
+METHODS: Final = (METHOD_ETF, METHOD_FUTURES_DAILY, METHOD_FUTURES_MONTHLY, METHOD_FUTURES_HOLD)
+
+# 리밸런싱 규칙과 그 규칙으로 굴린 방식의 짝. 두 곳에서 따로 분기하면 조용히 갈라진다
+METHOD_BY_REBALANCE: Final = {
+    REBALANCE_DAILY: METHOD_FUTURES_DAILY,
+    REBALANCE_MONTHLY: METHOD_FUTURES_MONTHLY,
+    REBALANCE_NONE: METHOD_FUTURES_HOLD,
+}
 
 # **비교의 기준선은 「선물 매일·이자 없음」 하나로 고정한다.** 셋을 한 항등식에 넣으면
 # 좌변의 「선물」이 무엇인지 정해지지 않아 분해가 성립하지 않는다
@@ -167,6 +185,24 @@ INITIAL_EQUITY: Final = 100_000_000
 # 계약 하나를 살 수 있는지가 규모에 달렸기 때문이다.
 # "얼마부터 선물이 실용적인가"를 부수적으로 보여준다
 INTEGER_CONTRACT_EQUITIES: Final = (10_000_000, 50_000_000, 100_000_000, 500_000_000)
+
+# 자기자본이 0 이하가 된 구간의 수익률. **비우지 않고 이 값으로 남긴다.**
+#
+# 강제청산되면 자기자본이 전액 사라지므로 그 구간의 성적은 −100% 다. 비워두면 살아남은
+# 구간만 평균에 들어가 **생존편향**이 생긴다 — 그대로 두기 축에서 소진이 대량 발생하며
+# (−2배 1년 326건), 제외하면 망한 구간이 결과에서 통째로 사라진다.
+#
+# **구간이 데이터를 넘어가 못 잰 시작일과 구분한다.** 그쪽은 «성적이 없는» 것이라 NaN 이고,
+# 이쪽은 «−100% 라는 성적» 이다. 둘을 섞으면 손실을 지어내거나 감추게 된다
+WIPEOUT_RETURN: Final = -1.0
+
+# ============================================================
+# 정수 계약 제약
+# ============================================================
+
+# 계약 하나도 못 사는 규모에서 남기는 사유. **0 으로 채우지 않는다** —
+# 0 은 「손실도 이익도 없었다」로 읽히지만 실제로는 «그 규모에서는 할 수 없다» 는 뜻이다
+REASON_NOT_EXECUTABLE: Final = "집행 불가"
 
 # ============================================================
 # 시기 축
@@ -210,6 +246,8 @@ DISPLAY_ROLL_COST: Final = "롤·베이시스 몫(%p)"
 DISPLAY_REBALANCE_ERROR: Final = "리밸런싱 오차(%p)"
 DISPLAY_INTEREST_GAIN: Final = "여유현금 이자(%p)"
 DISPLAY_RESIDUAL: Final = "잔여(%p)"
+# 「그대로 두기」가 매일 리밸런싱과 벌어진 몫. 리밸런싱 오차와 같은 기준선을 쓴다
+DISPLAY_HOLD_ERROR: Final = "그대로 두기 오차(%p)"
 DISPLAY_THEORY_SPREAD: Final = "실제-이론 스프레드(%p)"
 DISPLAY_DIVIDEND_ADJUSTMENT: Final = "배당 보정분(%p)"
 
@@ -221,6 +259,13 @@ DISPLAY_WIPEOUT_DATE: Final = "자기자본 소진일"
 DISPLAY_DAYS_TO_WIPEOUT: Final = "소진까지 거래일"
 
 DISPLAY_BREAKEVEN_HORIZON: Final = "선물이 앞서는 최소 보유 기간"
+
+DISPLAY_EQUITY_SIZE: Final = "자기자본 규모(원)"
+DISPLAY_TARGET_MULTIPLE: Final = "목표 배수"
+DISPLAY_ACTUAL_MULTIPLE: Final = "실제 배수"
+DISPLAY_INTEGER_CONTRACTS: Final = "정수 계약 수"
+DISPLAY_CONTRACT_NOTIONAL: Final = "1계약 명목(원)"
+DISPLAY_EXECUTABLE: Final = "집행가능"
 
 # 구간의 시작·끝. **날짜가 아니라 「어느 구간을 쟀는가」를 가리킨다**
 DISPLAY_START_DATE: Final = "시작일"
@@ -240,6 +285,7 @@ ROLL_EVENTS_FILENAME: Final = "roll_events.csv"
 BREAKEVEN_FILENAME: Final = "breakeven.csv"
 WIPEOUTS_FILENAME: Final = "wipeouts.csv"
 LEVERAGE_DRIFT_FILENAME: Final = "leverage_drift.csv"
+INTEGER_CONTRACTS_FILENAME: Final = "integer_contracts.csv"
 EQUITY_FILENAME_TEMPLATE: Final = "equity_{index_name}_{multiple}_{method}.csv"
 
 # 결과 폴더 이름에 쓰는 검증 이름
