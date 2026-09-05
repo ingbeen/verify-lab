@@ -97,3 +97,50 @@ def test_price_columns_exclude_date_and_volume() -> None:
     """
     assert common_constants.COL_DATE not in common_constants.PRICE_COLUMNS
     assert common_constants.COL_VOLUME not in common_constants.PRICE_COLUMNS
+
+
+def test_market_file_templates_produce_stored_names() -> None:
+    """
+    목적: 파일명 규칙이 **이미 저장된 원시 시세의 실제 이름**과 같음을 고정한다.
+
+    이 규칙은 수집기 4곳·측정 1곳·검증 2곳·스크립트 1곳에 흩어져 있었다. 한 곳으로 모으면서
+    문자열이 한 글자라도 달라지면 **기존 파일을 못 읽는데 예외는 파일 없음으로만 뜬다.**
+    그래서 값 자체를 여기에 박아 둔다.
+
+    Given: 파일명 템플릿 상수
+    When: 종목 코드로 채우면
+    Then: 저장소에 실제로 있는 이름이 나온다
+    """
+    assert common_constants.MARKET_FILE_TEMPLATE.format(ticker="QQQ") == "QQQ_max.csv"
+    assert common_constants.MARKET_FILE_TEMPLATE.format(ticker="069500") == "069500_max.csv"
+    assert common_constants.ADJUSTED_FILE_TEMPLATE.format(ticker="QQQ") == "QQQ_adjusted_max.csv"
+
+
+def test_futures_file_template_uses_product_id() -> None:
+    """
+    목적: 선물은 **종목이 아니라 상품 코드**로 파일이 갈린다는 사실을 이름에 남긴다.
+
+    같은 `{ticker}` 템플릿을 쓰면 선물 파일을 종목 파일로 착각해 로더를 잘못 고르게 된다 —
+    선물은 날짜만으로 행이 유일해지지 않아 전용 로더가 필요하다.
+
+    Given: 선물 파일명 템플릿
+    When: 상품 코드로 채우면
+    Then: 저장소에 실제로 있는 이름이 나온다
+    """
+    assert common_constants.FUTURES_FILE_TEMPLATE.format(product_id="KRDRVFUK2I") == "KRDRVFUK2I_max.csv"
+
+
+def test_series_file_templates_are_distinct() -> None:
+    """
+    목적: 시세와 단일 값 시계열의 파일명이 서로 섞이지 않음을 고정한다 (경계 조건).
+
+    Given: 세 종류의 파일명 템플릿
+    When: 같은 종목 코드로 채우면
+    Then: 셋이 모두 다른 이름이다
+    """
+    names = {
+        common_constants.MARKET_FILE_TEMPLATE.format(ticker="261240"),
+        common_constants.ADJUSTED_FILE_TEMPLATE.format(ticker="261240"),
+        common_constants.NAV_FILE_TEMPLATE.format(ticker="261240"),
+    }
+    assert len(names) == 3

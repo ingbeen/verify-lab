@@ -1,6 +1,7 @@
 """검증 #9 실행 — 세 방식을 나란히 재고 차이를 분해한다
 
-한 실행에서 **2지수 × 짝 6개 × 배수 × 3방식 × 7격자 × 2롤규칙 × 2이자가정** 을 전부 낸다.
+한 실행에서 **2지수 × 짝 6개 × 배수 × 4방식 × 7격자 × 2롤규칙 × 2이자가정** 을 전부 낸다.
+방식 넷은 레버리지 ETF · 선물 매일 · 선물 월 1회 · **선물 그대로 두기**다.
 배수·격자·리밸런싱 주기·롤 규칙은 CLI 인자로 열지 않는다 — 노브가 되면 결과를 보고 고르게 되며
 그것은 측정이 아니라 과최적화다 (측정의 원칙 1).
 
@@ -14,7 +15,8 @@
 | `breakeven.csv` | 배수·롤규칙별로 «몇 거래일부터 선물이 앞서는가» |
 | `wipeouts.csv` | 자기자본이 0 이하가 된 시점 |
 | `leverage_drift.csv` | 구간 최대 유효 레버리지 |
-| `windows_<지수>_<배수>.csv` | 시작일 전체 목록 원자료. 사용자가 차트와 대조하는 자리다 |
+| `integer_contracts.csv` | 자기자본 규모별 정수 계약 대조 — **여기서만 규모가 결과를 만든다** |
+| `windows_<지수>_<짝 종목>.csv` | 시작일 전체 목록 원자료. 사용자가 차트와 대조하는 자리다 |
 
 ## 방식마다 적용되는 축이 다르다
 
@@ -34,15 +36,19 @@ from verify_lab.common_constants import (
     COL_DATE,
     COL_SETTLE,
     COL_SPOT,
+    FUTURES_FILE_TEMPLATE,
     MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
     SERIES_DIR,
 )
 from verify_lab.common_constants import COL_VALUE as COL_SERIES_VALUE
 from verify_lab.data.loader import load_futures_csv, load_market_csv, load_series_csv
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HORIZON, REASON_NONE
 from verify_lab.measure.distribution import dividend_adjustment, measure_distribution_share
+from verify_lab.measure.statistics import max_non_overlapping
 from verify_lab.studies.futures_leverage.comparison import (
     build_interest_factor,
+    build_window_table,
     decompose,
     horizons_or_default,
     leveraged_window_returns,
@@ -54,6 +60,7 @@ from verify_lab.studies.futures_leverage.constants import (
     DISPLAY_PERIOD_LOW_RATE,
     HIGH_RATE_START_YEAR,
     INTEGER_CONTRACT_EQUITIES,
+    INTEREST_ASSUMPTIONS,
     INTEREST_SERIES_NAME,
     METHOD_BY_REBALANCE,
     METHOD_ETF,
@@ -63,6 +70,7 @@ from verify_lab.studies.futures_leverage.constants import (
     PAIRS,
     REASON_NOT_EXECUTABLE,
     REBALANCE_DAILY,
+    REBALANCE_INTERVAL_DAYS,
     REBALANCE_MONTHLY,
     REBALANCE_NONE,
     ROLL_RULES,
@@ -79,8 +87,6 @@ logger = get_logger(__name__)
 
 # 내부 계산용 컬럼
 COL_INDEX_NAME = "IndexName"
-COL_PRODUCT_ID = "ProductId"
-COL_BASE_TICKER = "BaseTicker"
 COL_TARGET_TICKER = "TargetTicker"
 COL_MULTIPLE = "Multiple"
 COL_METHOD = "Method"
@@ -110,9 +116,8 @@ DISPLAY_INTEREST_OFF = "이자 없음"
 # 축을 쪼갤 수 있는 최소 유효 표본 (측정의 원칙 12)
 MIN_SAMPLE_FOR_AXIS = 10
 
-# 원본가 파일명 규칙. 수집기와 같은 규칙을 쓴다
-MARKET_FILE_TEMPLATE = "{ticker}_max.csv"
-FUTURES_FILE_TEMPLATE = "{product_id}_max.csv"
+# 단일 값 시계열 파일명. **이 파일에서만 쓰므로 여기 둔다** — 시세·선물 파일명과 달리
+# 이름이 곧 계열 이름이라 공유할 규칙이 없다 (`src/verify_lab/CLAUDE.md` 「상수 관리」)
 SERIES_FILE_TEMPLATE = "{name}.csv"
 
 
@@ -157,11 +162,10 @@ class StudyOutputs:
 
 
 def _non_overlapping_count(usable: np.ndarray, horizon: int) -> int:
-    """겹치지 않게 고를 수 있는 최대 구간 수를 정확히 센다.
+    """겹치지 않게 고를 수 있는 최대 구간 수를 센다.
 
-    롤링 전수는 이웃끼리 심하게 겹쳐, 표본 수만 적으면 실제보다 단단해 보인다.
-    **나눗셈으로 근사하지 않는다** — 축으로 걸러 시작일이 흩어진 칸에서는 맞지 않는다
-    (검증 #8 의 설계 결정 ⑦ 과 같은 이유).
+    **정의는 `measure.statistics.max_non_overlapping` 하나이며 검증 #8 도 같은 함수를 쓴다.**
+    여기서는 「시작일마다 쓸 수 있는지」라는 이 검증의 표현을 위치 목록으로 바꿔 넘기기만 한다.
 
     Args:
         usable: 시작일마다 그 구간을 쓸 수 있는지
@@ -170,14 +174,7 @@ def _non_overlapping_count(usable: np.ndarray, horizon: int) -> int:
     Returns:
         겹치지 않는 최대 구간 수
     """
-    count = 0
-    next_free = 0
-    for position in np.flatnonzero(usable):
-        if position >= next_free:
-            count += 1
-            next_free = position + horizon + 1
-
-    return count
+    return max_non_overlapping(np.flatnonzero(usable).tolist(), horizon)
 
 
 def _period_labels(dates: pd.Series) -> pd.Series:
@@ -316,7 +313,7 @@ def _run_pair(
                     interest_factor=interest_factor if with_interest else None,
                 )
                 for rebalance in (REBALANCE_DAILY, REBALANCE_MONTHLY, REBALANCE_NONE)
-                for with_interest in (True, False)
+                for with_interest in INTEREST_ASSUMPTIONS
             }
             futures_returns = {key: values for key, (values, _) in leveraged.items()}
 
@@ -409,20 +406,23 @@ def _run_pair(
                 }
             )
 
-            # 4. 시작일 원자료. 첫 롤 규칙만 남긴다 — 두 벌을 다 남기면 파일이 두 배가 된다
+            # 4. 시작일 원자료. 첫 롤 규칙만 남긴다 — 두 벌을 다 남기면 파일이 두 배가 된다.
+            #    **표 만들기는 `comparison` 이 소유한다** — 여기서 다시 조립하면 제외 사유가
+            #    갈라진다(실제로 이 자리에 다른 문자열이 박혀 있었다). 시기 축만 덧붙인다
             if roll_rule == ROLL_RULES[0]:
-                window = pd.DataFrame(
+                window = build_window_table(
+                    dates,
                     {
-                        COL_DATE: dates,
-                        COL_HORIZON: horizon,
-                        COL_PERIOD: periods,
                         METHOD_ETF: etf_return,
                         METHOD_FUTURES_DAILY: futures_returns[(REBALANCE_DAILY, False)],
                         METHOD_FUTURES_MONTHLY: futures_returns[(REBALANCE_MONTHLY, False)],
                         METHOD_FUTURES_HOLD: futures_returns[(REBALANCE_NONE, False)],
-                    }
+                    },
+                    horizon,
                 )
-                window[COL_EXCLUDED_REASON] = np.where(usable, REASON_NONE, "구간 밖")
+                # 시기 축은 구간 바로 뒤에 둔다 — 「무엇으로 나눴는가」가 수치보다 왼쪽에 있어야 읽힌다.
+                # `Index.get_loc` 은 슬라이스도 돌려줄 수 있어 위치 계산에 쓰지 않는다
+                window.insert(list(window.columns).index(COL_HORIZON) + 1, COL_PERIOD, periods.to_numpy())
                 window_frames.append(window)
 
             # 5. 최대 유효 레버리지. 월 1회에서 배수가 얼마나 표류하는지 보여준다
@@ -505,17 +505,20 @@ def _max_effective_leverage(prices: np.ndarray, multiple: float, horizon: int) -
         horizon: 보유 기간 (거래일)
 
     Returns:
-        모든 시작일에 걸친 최대 유효 레버리지. 잴 수 없으면 NaN
+        모든 시작일에 걸친 최대 유효 레버리지.
+        **잴 수 있는 칸이 하나도 없으면 `0.0` 이 아니라 NaN** 이다 — 0 은 「위험이 전혀 없었다」로
+        읽히지만 실제로는 「잰 적이 없다」이다 (측정의 원칙 17 과 같은 이유)
     """
-    from verify_lab.studies.futures_leverage.constants import REBALANCE_INTERVAL_DAYS
-
     row_count = len(prices)
     positions = np.arange(row_count)
     usable = positions + horizon <= row_count - 1
     if not usable.any():
         return float("nan")
 
-    worst = 0.0
+    # **0.0 에서 시작하지 않는다.** `max(0.0, nan)` 은 파이썬에서 `0.0` 을 돌려주므로
+    # (`nan > 0.0` 이 False), 전 구간이 소진돼 잴 값이 하나도 없는 칸이 「레버리지 0」으로
+    # 나간다. 잰 값만 모았다가 마지막에 최대를 취해 그 사고를 구조로 막는다
+    observed: list[float] = []
     for offset in range(1, horizon + 1):
         anchor_offset = (offset // REBALANCE_INTERVAL_DAYS) * REBALANCE_INTERVAL_DAYS
         anchors = np.where(usable, positions + anchor_offset, 0)
@@ -528,10 +531,12 @@ def _max_effective_leverage(prices: np.ndarray, multiple: float, horizon: int) -
         with np.errstate(divide="ignore", invalid="ignore"):
             leverage = np.abs(multiple * exposure_factor / equity_factor)
 
-        candidate = float(np.nanmax(np.where(usable & (equity_factor > 0), leverage, np.nan)))
-        worst = max(worst, candidate)
+        # 자기자본이 0 이하가 된 시작일은 그 시점에 끝난 것이라 유효 레버리지가 정의되지 않는다
+        measurable = leverage[usable & (equity_factor > 0) & np.isfinite(leverage)]
+        if measurable.size:
+            observed.append(float(measurable.max()))
 
-    return worst
+    return max(observed) if observed else float("nan")
 
 
 def run_study(

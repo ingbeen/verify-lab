@@ -21,6 +21,9 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
     COL_HORIZON,
+    COL_JUDGEABLE,
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
@@ -47,7 +50,6 @@ from verify_lab.studies.option_expiry.constants import (
     FRIDAY,
     HORIZON_NEXT_WEEK_EXIT,
     KR_MONTHLY_EXPIRY,
-    MIN_SAMPLE_FOR_HALVES,
     US_MONTHLY_EXPIRY,
     Dataset,
 )
@@ -281,19 +283,21 @@ class TestWeeklyTradeAssembly:
         assert float(row[COL_MEAN]) < 0
         assert bool(row[COL_MEAN_RATE_CONFLICT]) is False
 
-    def test_시기_2등분은_표본이_모자란_달을_내지_않는다(self) -> None:
+    def test_시기_2등분은_표본이_모자란_달도_행을_남긴다(self) -> None:
         """
-        목적: **쪼갤 수 없으면 쪼개지 않는다** (측정의 원칙 12).
+        목적: **행이 사라지면 그 구간을 못 봤다는 사실 자체를 사용자가 모른다** (측정의 원칙 17).
 
-        후보 판정 기준 4 는 시기를 갈라 방향이 유지되는지 보는데, 절반씩 나눴을 때
-        검정 하한(10건)에 못 미치면 숫자를 만들어내는 것이 된다.
+        전에는 하한에 못 미치는 달을 통째로 버렸다. 그러면 「쪼갤 수 없었다」와
+        「애초에 신호가 없었다」가 산출물에서 구별되지 않는다. 원칙 17 은 행을 남기고
+        `판정가능` 을 「아니오」로 적으라고 정한다 — `leverage_tracking` 과 `strategy` 가
+        이미 쓰는 관용이다.
 
         Given: 9월 신호가 하한 미만인 입력
         When: 시기 2등분으로 집계하면
-        Then: 그 달의 행이 나오지 않는다
+        Then: 앞뒤 행이 남고 `판정가능` 이 전부 「아니오」다
         """
-        # Given
-        dates = [f"2026-09-{day:02d}" for day in range(1, MIN_SAMPLE_FOR_HALVES)]
+        # Given — 8건이라 절반이 4건씩이고 양쪽 다 검정 하한(10건) 아래다
+        dates = [f"2026-09-{day:02d}" for day in range(1, 9)]
         signal = _long_form(dates, [-0.01] * len(dates))
         baseline = _long_form([f"2026-09-{day:02d}" for day in range(20, 29)], [0.01] * 9)
 
@@ -301,7 +305,32 @@ class TestWeeklyTradeAssembly:
         result = _aggregate_month_halves(signal, baseline, repeats=10, seed=0)
 
         # Then
-        assert result.empty, "표본이 하한에 못 미치는 달이 쪼개졌습니다"
+        assert not result.empty, "표본이 모자란 달의 행이 사라졌습니다 (측정의 원칙 17)"
+        assert result[COL_TIME_HALF].tolist() == [DISPLAY_TIME_HALF_EARLY, DISPLAY_TIME_HALF_LATE]
+        assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_NO, JUDGEABLE_NO]
+
+    def test_표본이_충분한_달은_판정가능이_예다(self) -> None:
+        """
+        목적: `판정가능` 이 상수로 굳지 않고 실제 표본을 반영함을 고정한다
+
+        Given: 앞뒤가 각각 검정 하한을 넘는 9월 신호 24건
+        When: 시기 2등분으로 집계하면
+        Then: 두 행 모두 `판정가능` 이 「예」다
+        """
+        # Given
+        early = [f"2020-09-{day:02d}" for day in range(1, 13)]
+        late = [f"2026-09-{day:02d}" for day in range(1, 13)]
+        signal = _long_form(early + late, [-0.02] * 12 + [0.02] * 12)
+        baseline = _long_form(
+            [f"2020-09-{day:02d}" for day in range(13, 25)] + [f"2026-09-{day:02d}" for day in range(13, 25)],
+            [0.01] * 24,
+        )
+
+        # When
+        result = _aggregate_month_halves(signal, baseline, repeats=20, seed=0)
+
+        # Then
+        assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_YES, JUDGEABLE_YES]
 
     def test_시기_2등분은_앞뒤를_시간순으로_균등하게_가른다(self) -> None:
         """
@@ -397,3 +426,28 @@ def test_월중_서수와_offset_이_함께_붙는다() -> None:
     assert COL_OFFSET in annotated.columns
     assert COL_MONTH_DAY_INDEX in annotated.columns
     assert annotated[COL_MONTH_DAY_INDEX].min() == 1
+
+
+def test_시기_절반이_비어도_행이_남는다() -> None:
+    """
+    목적: **한쪽 절반에 신호가 하나도 없는 경계**에서도 행이 사라지지 않음을 고정한다.
+
+    같은 날짜에 신호가 몰리면 시간순 경계가 한쪽 끝에 놓여 절반 하나가 빈다.
+    그때도 스키마가 갈라지지 않고 표본 수 0 과 `판정가능` 「아니오」가 남아야 한다
+    (측정의 원칙 3·17).
+
+    Given: 9월 신호 2건이 같은 날짜인 입력
+    When: 시기 2등분으로 집계하면
+    Then: 앞뒤 두 행이 남고 앞 절반의 표본이 0 이다
+    """
+    # Given — 두 건이 같은 날이라 경계가 첫 날이 되고 「앞 절반」이 빈다
+    signal = _long_form(["2026-09-18", "2026-09-18"], [-0.01, 0.02])
+    baseline = _long_form(["2026-09-04", "2026-09-11"], [0.01, -0.01])
+
+    # When
+    result = _aggregate_month_halves(signal, baseline, repeats=10, seed=0)
+
+    # Then
+    assert result[COL_TIME_HALF].tolist() == [DISPLAY_TIME_HALF_EARLY, DISPLAY_TIME_HALF_LATE]
+    assert int(result.loc[0, COL_SAMPLE_COUNT]) == 0
+    assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_NO, JUDGEABLE_NO]

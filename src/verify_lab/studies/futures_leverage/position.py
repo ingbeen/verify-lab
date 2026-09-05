@@ -8,6 +8,11 @@
 
 그래서 **리밸런싱 규칙이 곧 배수의 정의**이고, 이 모듈이 그 규칙을 집행한다.
 
+**본선은 이 엔진을 부르지 않는다.** 시작일 전수 × 구간 격자를 하나씩 굴리면 2억 회가 넘는
+반복이 되어 `comparison` 이 같은 규약을 벡터화해 쓴다. 이 모듈은 **그 벡터화가 맞는지 재는
+기준**이며, 두 경로가 같은 값을 낸다는 것을 테스트가 고정한다 (절대 원칙 5 판정식 단일화).
+`daily_interest_rates` 만은 양쪽이 함께 쓰는 실제 산식이다.
+
 규칙은 셋이다 — **매일**·**월 1회**·**그대로 두기**. 마지막 것은 진입일에 한 번만 잡고
 손대지 않는 방식이며, 사람이 실제로 하는 것이 그것이다. 배수가 유지되지 않으므로
 **최대 유효 레버리지가 목표를 크게 넘어설 수 있다.**
@@ -48,7 +53,7 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from verify_lab.common_constants import COL_DATE
+from verify_lab.common_constants import CALENDAR_DAYS_PER_YEAR, COL_DATE, RATE_TO_PERCENT
 from verify_lab.studies.futures_leverage.constants import (
     INITIAL_EQUITY,
     REBALANCE_DAILY,
@@ -69,13 +74,6 @@ COL_CONTRACT_COUNT = "ContractCount"
 COL_EFFECTIVE_LEVERAGE = "EffectiveLeverage"
 COL_INTEREST = "Interest"
 COL_REBALANCED = "Rebalanced"
-
-# 연 이자율을 하루치로 나눌 때 쓰는 일수. **달력일 기준이다** —
-# `CD91` 은 연율 표기이고 이자는 거래일이 아니라 달력일로 붙는다
-CALENDAR_DAYS_PER_YEAR = 365
-
-# 백분율로 주어지는 금리를 비율로 바꾸는 계수. `storage/series/CD91.csv` 는 `14.7` 처럼 % 로 온다
-PERCENT_TO_RATE = 100.0
 
 
 @dataclass(frozen=True)
@@ -139,7 +137,7 @@ def _rebalance_flags(dates: pd.Series, rule: str) -> list[bool]:
     return [position % REBALANCE_INTERVAL_DAYS == 0 for position in range(len(dates))]
 
 
-def _daily_interest_rates(dates: pd.Series, interest: pd.Series | None) -> list[float]:
+def daily_interest_rates(dates: pd.Series, interest: pd.Series | None) -> np.ndarray:
     """거래일마다 붙는 이자율을 낸다.
 
     **직전 거래일부터 그날까지의 달력일 수만큼** 붙인다. 주말·연휴가 끼면 그만큼 더 붙는데
@@ -147,6 +145,11 @@ def _daily_interest_rates(dates: pd.Series, interest: pd.Series | None) -> list[
 
     금리는 **판정일 직전에 알 수 있는 값**을 쓴다. 그날 고시된 금리를 그날 이자에 쓰면
     미래를 참조하는 것은 아니지만, 없는 날은 직전 값을 끌어 쓴다.
+
+    **이 산식은 여기 한 곳에만 있다.** 엔진(`run_position`)과 벡터화 경로
+    (`comparison.build_interest_factor`)가 같은 함수를 쓴다 — 같은 값을 두 곳에서 계산하면
+    두 곳이 조용히 갈라지고, 그때 어느 쪽이 맞는지 판별할 방법이 없다
+    (`src/verify_lab/CLAUDE.md` 절대 원칙 5 판정식 단일화).
 
     Args:
         dates: 거래일 Series (오름차순)
@@ -156,14 +159,14 @@ def _daily_interest_rates(dates: pd.Series, interest: pd.Series | None) -> list[
         거래일마다의 이자율 (비율). 첫날은 0 이다
     """
     if interest is None:
-        return [0.0] * len(dates)
+        return np.zeros(len(dates))
 
-    aligned = interest.reindex(dates).ffill().fillna(0.0).to_numpy(dtype=float) / PERCENT_TO_RATE
+    aligned = interest.reindex(dates).ffill().fillna(0.0).to_numpy(dtype=float) / RATE_TO_PERCENT
     stamps = pd.DatetimeIndex(dates)
     elapsed = np.diff(stamps.to_numpy(dtype="datetime64[D]").astype(int), prepend=0.0)
     elapsed[0] = 0.0
 
-    return (aligned * elapsed / CALENDAR_DAYS_PER_YEAR).tolist()
+    return aligned * elapsed / CALENDAR_DAYS_PER_YEAR
 
 
 def run_position(
@@ -210,7 +213,7 @@ def run_position(
 
     frame = prices[[COL_DATE, price_column]].reset_index(drop=True)
     flags = _rebalance_flags(frame[COL_DATE], rebalance_rule)
-    rates = _daily_interest_rates(frame[COL_DATE], interest)
+    rates = daily_interest_rates(frame[COL_DATE], interest)
 
     # 위치 인덱스 접근을 배열로 미리 뽑는다. `DataFrame.at` 은 반환 타입이 Scalar 라
     # 곱셈·비교마다 형변환이 필요하고, 루프 안에서 매번 하면 읽기 어려워진다
@@ -245,7 +248,7 @@ def run_position(
             #    `comparison` 의 구간 수익률이 같은 규약을 쓰며 테스트로 일치를 고정한다
             previous_price = float(price_values[position - 1])
             pnl_equity += contracts * contract_multiplier * (price - previous_price)
-            interest_factor *= 1.0 + rates[position]
+            interest_factor *= 1.0 + float(rates[position])
             equity = pnl_equity * interest_factor
 
         if equity <= 0:
@@ -259,7 +262,7 @@ def run_position(
                     COL_EXPOSURE: 0.0,
                     COL_CONTRACT_COUNT: 0.0,
                     COL_EFFECTIVE_LEVERAGE: float("nan"),
-                    COL_INTEREST: rates[position],
+                    COL_INTEREST: float(rates[position]),
                     COL_REBALANCED: False,
                 }
             )
@@ -283,7 +286,7 @@ def run_position(
                 COL_EXPOSURE: exposure,
                 COL_CONTRACT_COUNT: contracts,
                 COL_EFFECTIVE_LEVERAGE: exposure / equity,
-                COL_INTEREST: rates[position],
+                COL_INTEREST: float(rates[position]),
                 COL_REBALANCED: rebalanced,
             }
         )

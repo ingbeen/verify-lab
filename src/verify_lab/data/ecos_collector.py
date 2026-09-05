@@ -211,6 +211,9 @@ def fetch_rows(service: str, path_parts: list[str], api_key: str) -> list[dict[s
     응답이 알린 전체 건수와 실제로 받은 행 수를 대조한다. 어긋나면 상한에 걸려 잘린 것이므로
     조용히 넘기지 않는다 — 잘린 시계열은 "그 날짜부터 데이터가 없다"로 읽힌다.
 
+    **전체 건수나 행 목록이 없으면 거기서 멈춘다.** 기본값으로 채우면 그 대조가 언제나
+    통과해 검사 자체가 꺼진다.
+
     Args:
         service: 서비스 이름
         path_parts: 서비스 뒤에 붙는 경로 구간들
@@ -220,7 +223,7 @@ def fetch_rows(service: str, path_parts: list[str], api_key: str) -> list[dict[s
         행 목록
 
     Raises:
-        ValueError: 응답에 서비스 키가 없거나, 받은 행 수가 전체 건수와 다른 경우
+        ValueError: 응답에 서비스 키·행 목록·전체 건수가 없거나, 받은 행 수가 전체 건수와 다른 경우
     """
     payload = request_ecos([service, *path_parts], api_key)
 
@@ -228,8 +231,18 @@ def fetch_rows(service: str, path_parts: list[str], api_key: str) -> list[dict[s
         raise ValueError(f"ECOS 응답에 {service} 가 없습니다 (최상위 키: {sorted(payload)})")
 
     body = payload[service]
-    rows: list[dict[str, Any]] = body.get(KEY_ROW, [])
-    total_count = int(body.get(KEY_TOTAL_COUNT, len(rows)))
+
+    # **기본값을 두지 않는다.** 전에는 전체 건수가 없으면 `len(rows)` 로 채웠는데, 그러면
+    # 바로 아래의 잘림 대조가 **언제나 통과**해 안전장치가 스스로 꺼진다. 행 키도 마찬가지로
+    # 빈 목록으로 두면 응답 스키마가 바뀐 것이 「데이터 0건」과 구분되지 않는다
+    if KEY_ROW not in body:
+        raise ValueError(f"ECOS 응답에 행 목록({KEY_ROW})이 없습니다 (서비스: {service}, 키: {sorted(body)})")
+
+    if KEY_TOTAL_COUNT not in body:
+        raise ValueError(f"ECOS 응답에 전체 건수({KEY_TOTAL_COUNT})가 없어 잘림 여부를 확인할 수 없습니다 (서비스: {service})")
+
+    rows: list[dict[str, Any]] = body[KEY_ROW]
+    total_count = int(body[KEY_TOTAL_COUNT])
 
     if len(rows) != total_count:
         raise ValueError(f"응답이 잘렸습니다 - 전체 {total_count:,}건 중 {len(rows):,}건만 받았습니다 (서비스: {service})")

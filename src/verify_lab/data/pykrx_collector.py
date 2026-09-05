@@ -9,7 +9,9 @@
 **가격 기준이 다르면 내용이 다른 데이터이므로 파일을 나눈다.**
 
 pykrx 는 KRX 웹을 감싼 라이브러리라 반환 컬럼과 dtype 이 함수마다 다르다. 그래서
-**한글 컬럼을 이 계층에서 공통 스키마로 정규화하고, 정수 dtype 을 부호 있는 정수로 고정한다.**
+**한글 컬럼을 이 계층에서 공통 스키마로 정규화한다.** 정규화 단계에서는 실수로 바꿔 두고,
+저장 직전에 부호 있는 `int64` 로 고정한다 — `get_etf_ohlcv_by_date` 가 주는 `uint32` 를 그대로
+두면 차분에서 언더플로우가 나서 하락일이 40억 근처의 거대한 양수가 된다.
 정규화를 로딩 시점으로 미루면 로더가 파일의 출처를 알아야 하고 소스가 늘 때마다 분기가 늘어난다.
 
 이상치 판정은 `loader.validate_market_data()` 를 그대로 재사용한다. 수집기가 자기 판정을
@@ -24,6 +26,7 @@ from typing import Any
 import pandas as pd
 
 from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
     COL_CLOSE,
     COL_DATE,
     COL_HIGH,
@@ -32,6 +35,8 @@ from verify_lab.common_constants import (
     COL_VALUE,
     COL_VOLUME,
     MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
+    NAV_FILE_TEMPLATE,
     PRICE_COLUMNS,
     REQUIRED_COLUMNS,
     SERIES_DIR,
@@ -67,13 +72,6 @@ RECENT_EXCLUSION_DAYS = 1
 # 부호 없는 정수는 차분에서 언더플로우가 나서 하락일이 40억 근처의 거대한 양수가 된다
 INTEGER_COLUMNS = [*PRICE_COLUMNS, COL_VOLUME]
 
-# 가격 기준별 저장 파일명. 기간은 파일명에 넣지 않고(항상 받을 수 있는 전 기간을 받는다),
-# 가격 기준만 구분한다
-FILE_NAME_TEMPLATE = "{ticker}_max.csv"
-ADJUSTED_FILE_NAME_TEMPLATE = "{ticker}_adjusted_max.csv"
-
-# NAV 는 시세가 아니라 **일별 단일 값**이라 다른 폴더·다른 스키마로 저장한다
-NAV_FILE_NAME_TEMPLATE = "{ticker}_NAV.csv"
 
 # pykrx 가 돌려주는 NAV 컬럼 이름
 KRX_NAV_COLUMN = "NAV"
@@ -247,7 +245,7 @@ def collect_pykrx_history(
 
     # 6. 저장. 검증을 통과한 뒤에만 실행한다
     output_dir.mkdir(parents=True, exist_ok=True)
-    template = ADJUSTED_FILE_NAME_TEMPLATE if adjusted else FILE_NAME_TEMPLATE
+    template = ADJUSTED_FILE_TEMPLATE if adjusted else MARKET_FILE_TEMPLATE
     path = output_dir / template.format(ticker=symbol)
     df.to_csv(path, index=False)
 
@@ -354,7 +352,7 @@ def collect_pykrx_nav(
     validate_series_data(df)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / NAV_FILE_NAME_TEMPLATE.format(ticker=symbol)
+    path = output_dir / NAV_FILE_TEMPLATE.format(ticker=symbol)
     df.to_csv(path, index=False)
 
     first_date = df[COL_DATE].iloc[0]

@@ -10,13 +10,14 @@
 from dataclasses import dataclass
 from typing import Final
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, PRICE_DECIMALS, PRICE_DECIMALS_KRW
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_FILE_TEMPLATE, PRICE_DECIMALS, PRICE_DECIMALS_KRW
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
     COL_HORIZON,
+    COL_JUDGEABLE,
     COL_SIGNAL_COUNT,
 )
 from verify_lab.measure.screening import (
@@ -80,6 +81,7 @@ from verify_lab.report.constants import (
     DISPLAY_EXPECTED_VALUE,
     DISPLAY_HIT_RATE,
     DISPLAY_HORIZON,
+    DISPLAY_JUDGEABLE,
     DISPLAY_MAX,
     DISPLAY_MEAN,
     DISPLAY_MEAN_DIFF,
@@ -224,9 +226,6 @@ COL_TIME_HALF: Final = "time_half"
 DISPLAY_TIME_HALF_EARLY: Final = "앞 절반"
 DISPLAY_TIME_HALF_LATE: Final = "뒤 절반"
 
-# 시기를 쪼갤 수 있는 최소 표본. 절반으로 갈랐을 때 양쪽이 검정 하한(10건)을 넘어야 한다
-MIN_SAMPLE_FOR_HALVES: Final = 20
-
 # 묶음 집계에서 쓰는 구간 표지. 보유 거래일 수를 구간 축에 넣으면 **한 매매가 여러 칸으로 쪼개져**
 # 묶음 값이 나오지 않는다. 실제 보유일수로는 도달할 수 없는 음수를 써서 진짜 구간과 섞이지 않게 한다
 # (`docs/spec/option_expiry.md` 결정 ㉑)
@@ -270,7 +269,7 @@ DATASETS: Final = (
         key="qqq",
         ticker="QQQ",
         rule=US_MONTHLY_EXPIRY,
-        file_name="QQQ_max.csv",
+        file_name=MARKET_FILE_TEMPLATE.format(ticker="QQQ"),
         price_decimals=PRICE_DECIMALS,
         exit_weekdays=(FRIDAY,),
     ),
@@ -278,7 +277,7 @@ DATASETS: Final = (
         key="spy",
         ticker="SPY",
         rule=US_MONTHLY_EXPIRY,
-        file_name="SPY_max.csv",
+        file_name=MARKET_FILE_TEMPLATE.format(ticker="SPY"),
         price_decimals=PRICE_DECIMALS,
         exit_weekdays=(FRIDAY,),
     ),
@@ -288,7 +287,7 @@ DATASETS: Final = (
         key="dia",
         ticker="DIA",
         rule=US_MONTHLY_EXPIRY,
-        file_name="DIA_max.csv",
+        file_name=MARKET_FILE_TEMPLATE.format(ticker="DIA"),
         price_decimals=PRICE_DECIMALS,
         exit_weekdays=(FRIDAY,),
     ),
@@ -299,7 +298,7 @@ DATASETS: Final = (
         key="kodex200",
         ticker="KODEX 200",
         rule=KR_MONTHLY_EXPIRY,
-        file_name="069500_max.csv",
+        file_name=MARKET_FILE_TEMPLATE.format(ticker="069500"),
         price_decimals=PRICE_DECIMALS_KRW,
         exit_weekdays=(FRIDAY, THURSDAY),
     ),
@@ -366,6 +365,7 @@ OUTPUT_LABELS: Final = {
     COL_EXPIRY_MONTH_NUMBER: DISPLAY_EXPIRY_MONTH,
     COL_EXPIRY_MONTH: DISPLAY_EXPIRY_YEAR_MONTH,
     COL_TIME_HALF: DISPLAY_TIME_HALF,
+    COL_JUDGEABLE: DISPLAY_JUDGEABLE,
     COL_BASELINE_KIND: DISPLAY_BASELINE_KIND,
     # 만기일 달력
     COL_RULE_DATE: DISPLAY_RULE_DATE,

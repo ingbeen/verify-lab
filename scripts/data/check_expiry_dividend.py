@@ -25,7 +25,14 @@ from typing import Any
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR, RATE_TO_PERCENT
+from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
+    COL_CLOSE,
+    COL_DATE,
+    MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
+    RATE_TO_PERCENT,
+)
 from verify_lab.data.loader import load_market_csv
 from verify_lab.strategy.constants import (
     EXPIRY_CELLS,
@@ -45,9 +52,10 @@ logger = get_logger(__name__)
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_EXPIRY_DIVIDEND = "expiry_dividend_probe"
 
-# 원본가 파일 이름에서 수정주가 파일 이름을 만드는 접미사
-RAW_SUFFIX = "_max.csv"
-ADJUSTED_SUFFIX = "_adjusted_max.csv"
+# 원본가 파일 이름에서 수정주가 파일 이름을 만드는 접미사.
+# **공통 템플릿에서 파생시킨다** — 문자열을 다시 적으면 규칙이 바뀔 때 여기만 낡는다
+RAW_SUFFIX = MARKET_FILE_TEMPLATE.format(ticker="")
+ADJUSTED_SUFFIX = ADJUSTED_FILE_TEMPLATE.format(ticker="")
 
 # 배당락이 "걸렸다"고 볼 차이의 하한 (%p). 두 계열의 부동소수점 차이는 1e-4 %p 수준이라
 # 이보다 두 자리 위에 둔다. 국내 정수 가격의 반올림 잡음도 이 아래에 들어온다

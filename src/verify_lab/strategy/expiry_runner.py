@@ -86,12 +86,6 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 성적표와 원자료 모두 앞에 붙는 식별 컬럼. 한 파일에 여러 칸을 쌓으므로 어느 행이 어떤
-# 설정의 결과인지가 행 자체에 있어야 한다.
-# **손절선은 여러 값을 낼 때만 붙는다** — 확정값 하나만 낼 때는 전 행이 같아 자리만 차지한다
-IDENTITY_COLUMNS = (DISPLAY_TICKER, DISPLAY_EXPIRY_MONTH, DISPLAY_DIRECTION)
-IDENTITY_COLUMNS_WITH_STOP = (*IDENTITY_COLUMNS, DISPLAY_STOP_LEVEL)
-
 
 @dataclass(frozen=True)
 class ExpiryOutputs:

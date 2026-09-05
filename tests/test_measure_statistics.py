@@ -64,6 +64,7 @@ from verify_lab.measure.statistics import (
     SUMMARY_COLUMNS,
     TEST_COLUMNS,
     excess,
+    max_non_overlapping,
     permutation_test,
     summarize,
 )
@@ -725,3 +726,93 @@ class TestPermutationTestRegression:
         assert _only(result, COL_MEAN_P_VALUE) == pytest.approx(1 / 101, abs=EXACT_TOLERANCE)
         assert _only(result, COL_MEDIAN_PERCENTILE) == pytest.approx(99.0, abs=EXACT_TOLERANCE)
         assert _only(result, COL_MEDIAN_P_VALUE) == pytest.approx(7 / 101, abs=EXACT_TOLERANCE)
+
+
+class TestMaxNonOverlapping:
+    """비중첩 표본 수 — **두 검증이 같은 정의를 쓴다**를 여기서 고정한다.
+
+    롤링 전수는 이웃끼리 심하게 겹쳐, 표본 수만 적으면 실제보다 단단해 보인다.
+    이 값이 검증마다 다른 규칙으로 계산되면 두 결과 문서의 같은 이름 컬럼을
+    나란히 놓고 비교할 수 없다.
+
+    **끝점을 공유하는 두 구간은 「겹치지 않음」이다.** 구간 `[p, p+h]` 와 `[p+h, p+2h]` 는
+    관측일 하나를 공유하지만 **수익률 구간이 겹치지 않아** 통계적으로 독립이다.
+    """
+
+    def test_연속된_시작일에서_구간_길이만큼_건너뛴다(self) -> None:
+        """
+        목적: 그리디 선택이 정확한 최대값을 내는지 고정한다
+
+        Given: 시작일 0~9 가 전부 있고 구간이 3
+        When: 비중첩 개수를 센다
+        Then: 0·3·6·9 로 4개다
+        """
+        # When / Then
+        assert max_non_overlapping(list(range(10)), horizon=3) == 4
+
+    def test_띄엄띄엄한_시작일도_정확히_센다(self) -> None:
+        """
+        목적: 축으로 걸러 시작일이 흩어진 칸에서도 최대값이 맞는지 고정한다
+
+        Given: 시작일 0·1·5·6·10 이고 구간이 4
+        When: 비중첩 개수를 센다
+        Then: 0·5·10 으로 3개다
+        """
+        # When / Then
+        assert max_non_overlapping([0, 1, 5, 6, 10], horizon=4) == 3
+
+    def test_끝점을_공유하는_구간은_겹치지_않은_것으로_센다(self) -> None:
+        """
+        목적: **정의의 핵심**을 고정한다 — 이 한 칸이 두 검증을 갈라놓았다
+
+        Given: 시작일 0 과 3 이고 구간이 3 (구간은 [0,3] 과 [3,6])
+        When: 비중첩 개수를 센다
+        Then: 2개다. 관측일 3 을 공유하지만 수익률 구간은 겹치지 않는다
+        """
+        # When / Then
+        assert max_non_overlapping([0, 3], horizon=3) == 2
+
+    def test_구간이_1이면_시작일_수와_같다(self) -> None:
+        """
+        목적: 경계값을 고정한다
+
+        Given: 시작일 5개
+        When: 구간 1 로 센다
+        Then: 5개 전부가 비중첩이다
+        """
+        # When / Then
+        assert max_non_overlapping([0, 1, 2, 3, 4], horizon=1) == 5
+
+    def test_시작일이_없으면_0이다(self) -> None:
+        """
+        목적: 빈 칸에서 예외가 아니라 0 을 내는지 고정한다
+
+        Given: 빈 시작일 목록
+        When: 비중첩 개수를 센다
+        Then: 0 이다
+        """
+        # When / Then
+        assert max_non_overlapping([], horizon=5) == 0
+
+    def test_정렬되지_않은_시작일도_같은_값을_낸다(self) -> None:
+        """
+        목적: 입력 순서에 결과가 흔들리지 않음을 고정한다
+
+        Given: 같은 시작일 집합을 뒤섞은 것
+        When: 비중첩 개수를 센다
+        Then: 정렬된 입력과 같다
+        """
+        # When / Then
+        assert max_non_overlapping([10, 1, 6, 0, 5], horizon=4) == max_non_overlapping([0, 1, 5, 6, 10], horizon=4)
+
+    def test_보유_기간이_1_미만이면_거부한다(self) -> None:
+        """
+        목적: 입력 파라미터 검증을 고정한다
+
+        Given: 보유 기간 0
+        When: 비중첩 개수를 센다
+        Then: ValueError 가 난다
+        """
+        # When / Then
+        with pytest.raises(ValueError, match="보유 기간"):
+            max_non_overlapping([0, 1, 2], horizon=0)

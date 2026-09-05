@@ -38,6 +38,7 @@ from verify_lab.measure.screening import (
     COL_SCREEN,
     COL_SUPPORT_COUNT,
     COL_SUPPORT_TOTAL,
+    COL_TOTAL_RETURN,
     COL_UNMET_SUPPORT,
     DIRECTION_DOWN,
     SCREEN_CANDIDATE,
@@ -60,6 +61,7 @@ from verify_lab.report.constants import (
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SUPPORT,
     DISPLAY_TEST_NOTE,
+    DISPLAY_TOTAL_RETURN,
     DISPLAY_UP_RATE,
     HORIZON_LABELS,
 )
@@ -633,6 +635,7 @@ class TestCandidatesTable:
                 COL_DIRECTION: [DIRECTION_DOWN],
                 COL_HIT_RATE: [0.6667],
                 COL_EXPECTED_VALUE: [0.010578],
+                COL_TOTAL_RETURN: [0.010578 * 27],
                 COL_BASELINE_HIT_RATE: [0.4522],
                 COL_BASELINE_GAP: [0.2145],
                 COL_P_VALUE: [0.013],
@@ -831,3 +834,50 @@ class TestDisplayColumns:
         """
         with pytest.raises(ValueError, match="Missing"):
             to_display_columns(pd.DataFrame({"Mean": [0.01]}), {"Mean": "평균(%)"}, percent_columns=["Missing"])
+
+
+class TestCandidatesTotalReturn:
+    """**회당 기대값 옆에는 합산 수익률과 표본 수가 함께 있어야 한다** (측정의 원칙 16).
+
+    신호가 드물거나 보유가 며칠짜리인 매매법은 회당 평균이 구조적으로 작게 나온다.
+    「+1.06%」만 적으면 크기 감각이 없고, 왕복 수수료와 견줄 값인지도 그 자리에서 보이지 않는다.
+    산출물 CSV 에는 이미 실리고 있으므로 **화면 표에서만 빠지는 상태**를 막는다.
+    """
+
+    AXIS_COLUMN = TestCandidatesTable.AXIS_COLUMN
+
+    def test_합산_수익률이_표본_수와_함께_실린다(self) -> None:
+        """
+        목적: 화면 표가 회당·합산·표본 셋을 한 줄에 담는지 고정한다
+
+        Given: 표본 27건 · 회당 기대값 1.0578% 인 칸
+        When: 표시용으로 바꾸면
+        Then: 합산 수익률이 회당 × 표본 값으로 실리고 표본 수도 함께 있다
+        """
+        # Given
+        candidates = TestCandidatesTable._candidates(support_count=3, support_total=3, period_min=0.6428)
+
+        # When
+        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+
+        # Then
+        assert DISPLAY_TOTAL_RETURN in table.columns, "합산 수익률이 화면 표에서 빠졌습니다 (측정의 원칙 16)"
+        assert float(table[DISPLAY_TOTAL_RETURN].iloc[0]) == pytest.approx(28.56, abs=0.005)
+        assert int(table[DISPLAY_SAMPLE_COUNT].iloc[0]) == 27
+
+    def test_합산은_회당_기대값_바로_뒤에_온다(self) -> None:
+        """
+        목적: 두 값을 **나란히** 두는 것이 원칙의 요구다 — 떨어져 있으면 같이 읽히지 않는다
+
+        Given: 후보 한 칸
+        When: 표시용으로 바꾸면
+        Then: 「방향 기대값(%)」 바로 다음 컬럼이 「합산 수익률(%)」이다
+        """
+        # Given
+        candidates = TestCandidatesTable._candidates(support_count=3, support_total=3, period_min=0.6428)
+
+        # When
+        columns = list(build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월").columns)
+
+        # Then
+        assert columns[columns.index(DISPLAY_EXPECTED_VALUE) + 1] == DISPLAY_TOTAL_RETURN

@@ -57,6 +57,7 @@ from verify_lab.common_constants import (
     COL_SETTLE,
     COL_SPOT,
     COL_VOLUME,
+    FUTURES_FILE_TEMPLATE,
     FUTURES_REQUIRED_COLUMNS,
     FUTURES_ROW_KEY,
     MARKET_DIR,
@@ -70,9 +71,9 @@ logger = get_logger(__name__)
 # 재시도 헬퍼가 호출 결과의 타입을 그대로 돌려주게 한다
 _T = TypeVar("_T")
 
-# KRX 통계 코드
+# KRX 통계 코드. **전종목시세는 pykrx 의 클래스를 그대로 쓰므로 여기 두지 않는다** —
+# 감싸지 않은 계약별 시세만 직접 지정한다
 BLD_FUTURES_CONTRACT_PRICE: Final = "dbms/MDC/STAT/standard/MDCSTAT12601"
-BLD_FUTURES_ALL_PRICE: Final = "dbms/MDC/STAT/standard/MDCSTAT12501"
 
 # 상품 코드. 값은 KRX 가 정한 것이라 바꿀 수 없다
 PRODUCT_KOSPI200: Final = "KRDRVFUK2I"
@@ -152,8 +153,6 @@ CONTRACT_FETCH_MARGIN_DAYS: Final = 400
 RETRY_ATTEMPTS: Final = 4
 RETRY_BACKOFF_SECONDS: Final = 3.0
 
-# 저장 파일명. 기간은 파일명에 넣지 않고 항상 받을 수 있는 전 기간을 받는다
-FILE_NAME_TEMPLATE: Final = "{product_id}_max.csv"
 
 # 저장 직전 자릿수. 지수 선물의 호가 단위는 0.05 라 소수 둘째 자리까지만 존재한다
 PRICE_DECIMALS_FUTURES: Final = 2
@@ -612,7 +611,7 @@ def collect_futures_history(
     validate_futures_data(trimmed)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / FILE_NAME_TEMPLATE.format(product_id=product_id)
+    path = output_dir / FUTURES_FILE_TEMPLATE.format(product_id=product_id)
     saved = trimmed.round(
         {column: PRICE_DECIMALS_FUTURES for column in (COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL_SETTLE, COL_SPOT)}
     )

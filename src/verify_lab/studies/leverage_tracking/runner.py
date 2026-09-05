@@ -3,7 +3,7 @@
 **나란히 놓고 보는 전제는 「파라미터가 같았다」** 이므로 쌍마다 따로 돌리지 않는다.
 따로 돌리면 그 사실을 사람이 확인해야 하는데, 확인을 빠뜨려도 표는 정상으로 보인다.
 
-산출물은 넷이다.
+산출물은 다섯이다.
 
 | 파일 | 내용 |
 | --- | --- |
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_DATE, MARKET_DIR, RATE_TO_PERCENT
+from verify_lab.common_constants import COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_EXCLUDED_REASON, COL_HORIZON, REASON_OUT_OF_RANGE
 from verify_lab.measure.distribution import (
@@ -105,15 +105,6 @@ AXIS_COLUMNS = (
     (COL_BASE_RETURN_BUCKET, DISPLAY_BASE_RETURN_AXIS),
     (COL_PERIOD, DISPLAY_PERIOD_AXIS),
 )
-
-# 쌍을 식별하는 컬럼. 모든 표의 왼쪽에 같은 순서로 붙는다
-IDENTITY_COLUMNS = [
-    DISPLAY_INDEX_NAME,
-    DISPLAY_BASE_TICKER,
-    DISPLAY_TARGET_TICKER,
-    DISPLAY_MULTIPLE,
-    DISPLAY_PRODUCT_TYPE,
-]
 
 # 백분율로 바꿔 저장하는 집계 항목 (내부 컬럼 접미사 → 표시 이름)
 SUMMARY_PERCENT_COLUMNS = [
@@ -385,8 +376,8 @@ def run_study(
         return share_cache[ticker]
 
     for pair in pairs:
-        base = load_market_csv(market_dir / f"{pair.base_ticker}_max.csv")
-        target = load_market_csv(market_dir / f"{pair.target_ticker}_max.csv")
+        base = load_market_csv(market_dir / MARKET_FILE_TEMPLATE.format(ticker=pair.base_ticker))
+        target = load_market_csv(market_dir / MARKET_FILE_TEMPLATE.format(ticker=pair.target_ticker))
 
         alignment = align_pair(base, target)
         divergence = compute_divergence(alignment.frame, multiple=pair.multiple, horizons=horizons)

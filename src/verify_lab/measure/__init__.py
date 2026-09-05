@@ -7,7 +7,7 @@ forward return·베이스라인·통계·후보 판정을 담당한다. 어떤 �
 from .baseline import BelowMovingAverage, below_moving_average
 from .forward_return import ReturnBasis, compute_forward_returns, count_excluded
 from .screening import screen_candidates
-from .statistics import excess, permutation_test, summarize
+from .statistics import excess, max_non_overlapping, permutation_test, summarize
 
 __all__ = [
     "BelowMovingAverage",
@@ -16,6 +16,7 @@ __all__ = [
     "compute_forward_returns",
     "count_excluded",
     "excess",
+    "max_non_overlapping",
     "permutation_test",
     "screen_candidates",
     "summarize",

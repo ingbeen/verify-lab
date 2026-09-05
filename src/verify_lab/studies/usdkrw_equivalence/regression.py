@@ -22,7 +22,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     COL_THEORETICAL_CUMULATIVE,
     COL_TRADING_DAYS,
     COL_YEAR,
-    TRADING_DAYS_PER_YEAR,
+    SPEC_TRADING_DAYS_PER_YEAR,
 )
 
 
@@ -95,7 +95,7 @@ def fit_regression(x: pd.Series, y: pd.Series) -> RegressionResult:
     alpha_daily = float(np.mean(y_values) - beta * np.mean(x_values))
 
     residual = y_values - (alpha_daily + beta * x_values)
-    tracking_error = float(np.std(residual, ddof=1) * np.sqrt(TRADING_DAYS_PER_YEAR))
+    tracking_error = float(np.std(residual, ddof=1) * np.sqrt(SPEC_TRADING_DAYS_PER_YEAR))
 
     correlation = float(np.corrcoef(x_values, y_values)[0, 1])
 
@@ -103,7 +103,7 @@ def fit_regression(x: pd.Series, y: pd.Series) -> RegressionResult:
         sample_count=len(x_values),
         correlation=correlation,
         beta=beta,
-        alpha_annual=alpha_daily * TRADING_DAYS_PER_YEAR,
+        alpha_annual=alpha_daily * SPEC_TRADING_DAYS_PER_YEAR,
         # 절편이 있는 단순 회귀에서는 결정계수가 상관계수의 제곱과 같다
         r_squared=correlation**2,
         tracking_error=tracking_error,

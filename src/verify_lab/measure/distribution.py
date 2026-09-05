@@ -37,7 +37,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR
+from verify_lab.common_constants import ADJUSTED_FILE_TEMPLATE, COL_CLOSE, COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE
 from verify_lab.data.loader import load_market_csv
 from verify_lab.utils.logger import get_logger
 
@@ -45,10 +45,6 @@ logger = get_logger(__name__)
 
 # 연율 환산에 쓰는 거래일 수. 미국·국내 모두 연 245~252일이며 관행값을 쓴다
 TRADING_DAYS_PER_YEAR = 252
-
-# 원본가·수정주가 파일명 규칙. 수집기와 같은 규칙을 쓴다
-RAW_FILE_TEMPLATE = "{ticker}_max.csv"
-ADJUSTED_FILE_TEMPLATE = "{ticker}_adjusted_max.csv"
 
 
 @dataclass(frozen=True)
@@ -93,7 +89,7 @@ def measure_distribution_share(ticker: str, market_dir: Path = MARKET_DIR) -> Di
     Raises:
         ValueError: 원본가 파일이 없거나, 두 계열이 겹치는 거래일이 없는 경우
     """
-    raw_path = market_dir / RAW_FILE_TEMPLATE.format(ticker=ticker)
+    raw_path = market_dir / MARKET_FILE_TEMPLATE.format(ticker=ticker)
     adjusted_path = market_dir / ADJUSTED_FILE_TEMPLATE.format(ticker=ticker)
 
     if not raw_path.is_file():

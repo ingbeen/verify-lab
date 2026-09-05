@@ -16,6 +16,7 @@
 import pandas as pd
 import pytest
 
+from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES
 from verify_lab.measure.screening import (
     COL_BASELINE_GAP,
     COL_DIRECTION,
@@ -93,6 +94,7 @@ def _periods(
     loss_rates: list[float] | None = None,
     axis_value: int = 9,
     sample: int = 15,
+    judgeable: list[str] | None = None,
 ) -> pd.DataFrame:
     """시기별 집계표를 만든다.
 
@@ -103,6 +105,7 @@ def _periods(
             만들려면 반드시 명시한다
         axis_value: 축 값
         sample: 구간별 표본 수
+        judgeable: 구간별 판정가능 여부. `None` 이면 전부 「예」다
     """
     return pd.DataFrame(
         {
@@ -110,6 +113,7 @@ def _periods(
             COL_SAMPLE_COUNT: [sample] * len(rates),
             COL_WIN_RATE: rates,
             COL_LOSS_RATE: [1.0 - rate for rate in rates] if loss_rates is None else loss_rates,
+            COL_JUDGEABLE: [JUDGEABLE_YES] * len(rates) if judgeable is None else judgeable,
         }
     )
 
@@ -884,3 +888,68 @@ class TestTotalReturn:
         Then: 합산 수익률이 들어 있다
         """
         assert COL_TOTAL_RETURN in SCREENING_COLUMNS
+
+
+class TestJudgeablePeriodFilter:
+    """**판정할 수 없는 시기 행은 등급에 넣지 않는다.**
+
+    측정의 원칙 17 에 따라 표본이 모자란 구간도 산출물에는 행이 남는다. 그 행을 그대로
+    등급에 넣으면 «못 물은 것»이 «못 넘은 것»으로 바뀌어, 표본이 작다는 이유로 두 번 깎인다.
+    산출물 복원이 판정을 흔들지 않는다는 것이 이 계층의 계약이다.
+    """
+
+    def test_판정_불가_구간은_등급_분모에서_빠진다(self) -> None:
+        """
+        목적: 판정 불가 행이 늘어도 등급이 그대로임을 고정한다
+
+        Given: 시기 두 구간이 전부 「아니오」인 표
+        When: 판정하면
+        Then: 시기 항목을 묻지 않은 것과 같아 분모가 2 이고 구간 수가 0 이다
+        """
+        # Given
+        periods = _periods([0.29, 0.25], judgeable=[JUDGEABLE_NO, JUDGEABLE_NO])
+
+        # When
+        row = screen_candidates(_down_summary(), periods, axis_column=AXIS).iloc[0]
+
+        # Then
+        assert int(row[COL_SUPPORT_TOTAL]) == 2, "판정 불가 구간이 등급 분모에 들어갔습니다"
+        assert int(row[COL_PERIOD_COUNT]) == 0
+        assert SUPPORT_PERIOD not in str(row[COL_UNMET_SUPPORT])
+
+    def test_판정_불가_행이_섞여도_가능한_구간만_본다(self) -> None:
+        """
+        목적: 섞인 표에서 판정 가능한 구간만 골라 쓰는지 고정한다
+
+        Given: 적중률이 무너진 구간이 「아니오」, 살아 있는 구간이 「예」인 표
+        When: 판정하면
+        Then: 가장 약한 시기가 「예」인 구간의 값이고 시기 항목을 충족한다
+        """
+        # Given
+        periods = _periods([0.90, 0.25], judgeable=[JUDGEABLE_NO, JUDGEABLE_YES])
+
+        # When
+        row = screen_candidates(_down_summary(), periods, axis_column=AXIS).iloc[0]
+
+        # Then
+        assert int(row[COL_PERIOD_COUNT]) == 1
+        assert float(row[COL_PERIOD_MIN_HIT_RATE]) == pytest.approx(0.75, abs=EXACT_TOLERANCE)
+        assert SUPPORT_PERIOD not in str(row[COL_UNMET_SUPPORT])
+
+    def test_판정_가능한_구간이_무너지면_시기_항목을_못_넘는다(self) -> None:
+        """
+        목적: 필터가 시기 항목을 무력화하지 않음을 고정한다
+
+        Given: 판정 가능한 구간의 적중률이 하한 아래인 표
+        When: 판정하면
+        Then: 시기 항목이 미충족으로 남는다
+        """
+        # Given
+        periods = _periods([0.29, 0.60], judgeable=[JUDGEABLE_YES, JUDGEABLE_YES])
+
+        # When
+        row = screen_candidates(_down_summary(), periods, axis_column=AXIS).iloc[0]
+
+        # Then
+        assert int(row[COL_SUPPORT_TOTAL]) == 3
+        assert SUPPORT_PERIOD in str(row[COL_UNMET_SUPPORT])

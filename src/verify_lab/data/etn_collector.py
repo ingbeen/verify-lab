@@ -38,6 +38,7 @@ from verify_lab.common_constants import (
     COL_VALUE,
     COL_VOLUME,
     MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
     PRICE_COLUMNS,
     REQUIRED_COLUMNS,
     SERIES_DIR,
@@ -81,8 +82,8 @@ RECENT_EXCLUSION_DAYS = 1
 # 저장 직전 정수화 대상. KRX 원화 가격과 거래량은 정수다
 INTEGER_COLUMNS = [*PRICE_COLUMNS, COL_VOLUME]
 
-# 저장 파일명. 기간은 파일명에 넣지 않고 항상 받을 수 있는 전 기간을 받는다
-FILE_NAME_TEMPLATE = "{ticker}_max.csv"
+# 지표가치 저장 파일명. **이 파일에서만 쓰므로 여기 둔다** — 시세 파일명과 달리
+# 아직 읽는 계층이 없다 (`src/verify_lab/CLAUDE.md` 「상수 관리」)
 INDICATIVE_VALUE_FILE_NAME_TEMPLATE = "{ticker}_IV.csv"
 
 # 지표가치 저장 자릿수. 호가가 아니라 계산된 값이라 소스가 소수 둘째 자리까지 준다.
@@ -341,7 +342,7 @@ def collect_etn_history(
 
     # 6. 저장. 검증을 통과한 뒤에만 실행한다
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / FILE_NAME_TEMPLATE.format(ticker=symbol)
+    path = output_dir / MARKET_FILE_TEMPLATE.format(ticker=symbol)
     df.to_csv(path, index=False)
 
     first_date = df[COL_DATE].iloc[0]

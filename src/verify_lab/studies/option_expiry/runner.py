@@ -26,6 +26,9 @@ from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_REASON,
     COL_HORIZON,
+    COL_JUDGEABLE,
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
     REASON_NONE,
 )
 from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
@@ -39,12 +42,14 @@ from verify_lab.measure.statistics import (
     COL_MEAN_P_VALUE,
     COL_MEDIAN_EXCESS,
     COL_MEDIAN_P_VALUE,
+    COL_SAMPLE_COUNT,
     COL_TEST_NOTE,
     COL_UP_RATE_P_VALUE,
     COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
+    MIN_SAMPLE_FOR_TEST,
     excess,
     permutation_test,
     summarize,
@@ -71,7 +76,6 @@ from verify_lab.studies.option_expiry.constants import (
     HALF_RATE,
     HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
-    MIN_SAMPLE_FOR_HALVES,
     WEEKDAY_LABELS,
     Dataset,
 )
@@ -467,8 +471,13 @@ def _aggregate_month_halves(
     표본이 4~17건으로 들쭉날쭉하고, 10건 미만 칸에는 검정이 붙지 않는다
     (측정의 원칙 12). 여기서는 신호를 시간순으로 세어 균등하게 갈라 양쪽 표본을 맞춘다.
 
-    **절반으로 갈랐을 때 한쪽이라도 검정 하한에 못 미치는 달은 내지 않는다.** 쪼갤 수 없다는
-    사실 자체가 결과이며, 억지로 쪼개 숫자를 만드는 것이 더 나쁘다.
+    **표본이 모자란 달도 행을 남긴다** (측정의 원칙 17). 전에는 통째로 버렸는데, 그러면
+    「쪼갤 수 없었다」와 「애초에 신호가 없었다」가 산출물에서 구별되지 않는다. 행을 남기고
+    지표를 비운 뒤 `판정가능` 을 「아니오」로 적는다 — `leverage_tracking` 과 `strategy` 가
+    이미 쓰는 관용이다. **0 으로 채우지 않는다**(「손실도 이익도 없었다」로 읽힌다).
+
+    **판정에는 쓰이지 않는다.** 후보 판정의 시기 항목은 `판정가능` 이 「예」인 행만 읽으므로
+    (`measure.screening`), 행을 복원해도 등급은 달라지지 않는다.
 
     Args:
         signal: 신호군 long-form (유효 행)
@@ -477,16 +486,14 @@ def _aggregate_month_halves(
         seed: 순열 검정 시드
 
     Returns:
-        만기월 × 앞뒤 절반 집계. 쪼갤 수 없는 달은 행이 없다
+        만기월 × 앞뒤 절반 집계. 신호가 있는 달은 **언제나 두 행**이며,
+        쪼갤 수 없었던 달은 `판정가능` 이 「아니오」다
     """
     blocks: list[pd.DataFrame] = []
     months = sorted(set(signal[COL_DATE].dt.month.tolist()))
 
     for month in months:
         month_signal = signal[signal[COL_DATE].dt.month == month].sort_values(COL_DATE)
-        if len(month_signal) < MIN_SAMPLE_FOR_HALVES:
-            continue
-
         month_baseline = baseline[baseline[COL_DATE].dt.month == month]
         boundary = month_signal[COL_DATE].iloc[len(month_signal) // 2]
         halves = (
@@ -499,23 +506,58 @@ def _aggregate_month_halves(
             # `_aggregate_by_month` 와 같은 관용이다
             half_signal = month_signal[signal_mask].assign(**{COL_HORIZON: month})
             half_baseline = month_baseline[baseline_mask].assign(**{COL_HORIZON: month})
-            if half_signal.empty or half_baseline.empty:
-                continue
-
-            summary = summarize(half_signal)
-            test = permutation_test(half_signal, half_baseline, repeats=repeats, seed=seed)
-            merged = summary.merge(
-                test[[COL_BASIS, COL_HORIZON, COL_UP_RATE_P_VALUE, COL_DOWN_RATE_P_VALUE, COL_TEST_NOTE]],
-                on=[COL_BASIS, COL_HORIZON],
-            )
-            merged[COL_EXPIRY_MONTH_NUMBER] = month
-            merged[COL_TIME_HALF] = label
-            blocks.append(merged.drop(columns=[COL_BASIS, COL_HORIZON]))
+            blocks.append(_half_block(half_signal, half_baseline, month=month, label=label, repeats=repeats, seed=seed))
 
     if not blocks:
         return pd.DataFrame()
 
     return pd.concat(blocks, ignore_index=True)
+
+
+def _half_block(
+    half_signal: pd.DataFrame,
+    half_baseline: pd.DataFrame,
+    *,
+    month: int,
+    label: str,
+    repeats: int,
+    seed: int,
+) -> pd.DataFrame:
+    """시기 절반 한 칸을 집계해 **반드시 한 행**을 만든다.
+
+    표본이 0건이어도 행을 남기는 것이 이 함수의 존재 이유다. 스키마는 `summarize` 와
+    `permutation_test` 가 소유하므로, 빈 칸도 **같은 병합을 거친 뒤 한 줄로 늘려**
+    컬럼 구성이 갈라지지 않게 한다.
+
+    Args:
+        half_signal: 그 절반의 신호군 long-form
+        half_baseline: 그 절반의 베이스라인 long-form
+        month: 만기월 (1~12)
+        label: 앞 절반·뒤 절반 표시 이름
+        repeats: 순열 검정 반복 수
+        seed: 순열 검정 시드
+
+    Returns:
+        집계 한 행. 표본이 하한에 못 미치면 `판정가능` 이 「아니오」다
+    """
+    summary = summarize(half_signal)
+    test = permutation_test(half_signal, half_baseline, repeats=repeats, seed=seed)
+    merged = summary.merge(
+        test[[COL_BASIS, COL_HORIZON, COL_UP_RATE_P_VALUE, COL_DOWN_RATE_P_VALUE, COL_TEST_NOTE]],
+        on=[COL_BASIS, COL_HORIZON],
+    )
+
+    if merged.empty:
+        # 신호가 하나도 없는 절반이다. **행을 지우지 않고 지표만 비운다.**
+        # 표본 수는 0 이 사실이므로 적는다 (측정의 원칙 3 — 표본 수를 생략하지 않는다)
+        merged = merged.reindex([0])
+        merged[COL_SAMPLE_COUNT] = 0
+
+    merged[COL_EXPIRY_MONTH_NUMBER] = month
+    merged[COL_TIME_HALF] = label
+    merged[COL_JUDGEABLE] = JUDGEABLE_YES if len(half_signal) >= MIN_SAMPLE_FOR_TEST else JUDGEABLE_NO
+
+    return merged.drop(columns=[COL_BASIS, COL_HORIZON])
 
 
 def _mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:

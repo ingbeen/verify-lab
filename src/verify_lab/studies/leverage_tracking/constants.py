@@ -10,6 +10,13 @@
 from dataclasses import dataclass
 from typing import Final
 
+# **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 검증에 요구하는 개념이라
+# 검증마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
+from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES
+from verify_lab.report.constants import DISPLAY_JUDGEABLE
+
+__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES"]
+
 # ============================================================
 # 측정 대상
 # ============================================================
@@ -115,12 +122,6 @@ MIN_SAMPLE_PER_CELL: Final = 10
 # 결과 스키마 (내부 계산용 영문 토큰)
 # ============================================================
 
-COL_INDEX_NAME: Final = "IndexName"
-COL_BASE_TICKER: Final = "BaseTicker"
-COL_TARGET_TICKER: Final = "TargetTicker"
-COL_MULTIPLE: Final = "Multiple"
-COL_PRODUCT_TYPE: Final = "ProductType"
-
 # 짝지어 정렬한 종가
 COL_BASE_CLOSE: Final = "BaseClose"
 COL_TARGET_CLOSE: Final = "TargetClose"
@@ -184,10 +185,6 @@ PERIOD_HIGH_RATE: Final = "고금리(2022~)"
 
 COL_SAMPLE_COUNT: Final = "SampleCount"
 COL_NON_OVERLAPPING_COUNT: Final = "NonOverlappingCount"
-COL_JUDGEABLE: Final = "Judgeable"
-
-JUDGEABLE_YES: Final = "예"
-JUDGEABLE_NO: Final = "아니오"
 
 # ============================================================
 # 표시용 한글 레이블 (CSV 헤더)
@@ -218,7 +215,6 @@ DISPLAY_REALIZED_MULTIPLE_COUNT: Final = "실현 배수 표본"
 
 # 롤링 전수는 이웃끼리 겹치므로 표본 수만 적으면 실제보다 단단해 보인다
 DISPLAY_NON_OVERLAPPING: Final = "비중첩 표본"
-DISPLAY_JUDGEABLE: Final = "판정가능"
 
 DISPLAY_AXIS: Final = "축"
 DISPLAY_AXIS_VALUE: Final = "구분"

@@ -27,7 +27,7 @@ import argparse
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR
+from verify_lab.common_constants import ADJUSTED_FILE_TEMPLATE, COL_CLOSE, COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE
 from verify_lab.data.loader import load_market_csv
 from verify_lab.studies.option_expiry.constants import COL_EXPIRY_DATE, COL_OFFSET, KR_MONTHLY_EXPIRY, MAX_OFFSET
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
@@ -211,8 +211,8 @@ def main() -> int:
     args = parse_args()
     ticker = args.ticker
 
-    raw = load_market_csv(MARKET_DIR / f"{ticker}_max.csv")
-    adjusted = load_market_csv(MARKET_DIR / f"{ticker}_adjusted_max.csv")
+    raw = load_market_csv(MARKET_DIR / MARKET_FILE_TEMPLATE.format(ticker=ticker))
+    adjusted = load_market_csv(MARKET_DIR / ADJUSTED_FILE_TEMPLATE.format(ticker=ticker))
     logger.debug(f"분배락 실측 시작: {ticker}, 원본가 {len(raw):,}행, 수정주가 {len(adjusted):,}행")
 
     distributions = _find_distribution_dates(raw, adjusted)

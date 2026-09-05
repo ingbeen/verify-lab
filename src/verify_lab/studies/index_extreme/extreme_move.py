@@ -73,11 +73,17 @@ def find_extreme_move_events(
     direction: Direction,
     rank_cut: int = DEFAULT_RANK_CUT,
     start_date: pd.Timestamp | None = None,
+    ranks: pd.DataFrame | None = None,
 ) -> pd.Series:
     """판정 시점 순위가 컷 이내인 날을 신호로 고른다.
 
     **집계 시작일은 여기서 처리한다.** 호출 측이 시세를 먼저 자르면 순위 축적 구간을 잃어
     다른 결과가 나오지만 예외가 나지 않는다. 그 사고를 구조로 막는다.
+
+    **순위를 미리 계산해 넘길 수 있다.** `expanding_rank` 는 시세 길이의 제곱에 비례하는
+    반복이라, 같은 시세에 파라미터만 바꿔 수십 번 부르는 실행 계층에서는 그 값이 매번
+    새로 만들어진다. 넘기지 않으면 여기서 계산하므로 **단독 호출은 그대로 동작한다** —
+    실행 계층이 아닌 곳(`strategy/runner.py`)은 미리 계산한 값을 갖고 있지 않다.
 
     Args:
         df: 날짜 오름차순 시세 (`data/loader.py` 가 검증해 돌려준 형태)
@@ -85,6 +91,9 @@ def find_extreme_move_events(
         rank_cut: 순위 컷 (1 이상). 이 순위 이내면 신호다
         start_date: 신호 집계를 시작할 날. `None` 이면 전 기간을 집계한다.
             이 날 이전은 신호로 세지 않되 순위 축적에는 들어간다
+        ranks: 같은 시세로 미리 낸 `expanding_rank` 결과. `None` 이면 여기서 계산한다.
+            **행 수가 시세와 다르면 거부한다** — 어긋난 순위를 쓰면 엉뚱한 날이 신호가 되고
+            그 사고는 예외 없이 일어난다
 
     Returns:
         신호인 날이 True 인 bool Series (인덱스는 입력 시세와 동일).
@@ -92,12 +101,16 @@ def find_extreme_move_events(
 
     Raises:
         ValueError: 순위 컷이 1 미만인 경우, 시세가 비었거나 필수 컬럼이 없는 경우,
-            날짜가 오름차순이 아닌 경우
+            날짜가 오름차순이 아닌 경우, 넘긴 순위가 시세와 길이가 다른 경우
     """
     if rank_cut < 1:
         raise ValueError(f"순위 컷은 1 이상이어야 합니다: {rank_cut}")
 
-    ranks = expanding_rank(df)
+    if ranks is None:
+        ranks = expanding_rank(df)
+    elif len(ranks) != len(df):
+        raise ValueError(f"넘긴 순위가 시세와 길이가 다릅니다: 순위 {len(ranks)}행, 시세 {len(df)}행")
+
     column = COL_SURGE_RANK if direction is Direction.UP else COL_PLUNGE_RANK
 
     # 순위가 없는 첫 행은 비교 결과가 False 라 자연히 신호에서 빠진다
