@@ -15,14 +15,18 @@
 import pandas as pd
 import pytest
 
+from verify_lab.measure.constants import MIN_SAMPLE_PER_CELL
 from verify_lab.strategy.constants import (
+    DISPLAY_GAP_STOP_COUNT,
+    DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_JUDGEABLE,
     DISPLAY_PERIOD,
     DISPLAY_SIGNAL_COUNT,
+    EXIT_INTRADAY_STOP,
+    EXIT_LIMIT,
     EXPIRY_PERIODS,
     JUDGEABLE_NO,
     JUDGEABLE_YES,
-    MIN_PERIOD_SAMPLE,
     PERIOD_ALL,
     PERIOD_FIRST_HALF,
     PERIOD_RECENT_5Y,
@@ -189,7 +193,7 @@ class TestJudgeable:
         Then: 전체 행의 판정가능이 예다
         """
         # Given
-        years = list(range(2016, 2016 + MIN_PERIOD_SAMPLE))
+        years = list(range(2016, 2016 + MIN_SAMPLE_PER_CELL))
 
         # When
         rows = {
@@ -209,7 +213,7 @@ class TestJudgeable:
         Then: 전체 행의 판정가능이 아니오다
         """
         # Given
-        years = list(range(2017, 2017 + MIN_PERIOD_SAMPLE - 1))
+        years = list(range(2017, 2017 + MIN_SAMPLE_PER_CELL - 1))
 
         # When
         rows = {
@@ -290,3 +294,62 @@ class TestValidation:
         # When / Then
         with pytest.raises(ValueError, match="길이"):
             period_rows(entries, [0.01, 0.02], last_day=pd.Timestamp("2026-08-25"))
+
+
+class TestEmptyPeriodMetrics:
+    """표본 0건 구간에서는 **모든** 지표가 비어 있다"""
+
+    def test_손절_건수도_비어_있다(self) -> None:
+        """
+        목적: 0 으로 채우는 마지막 자리를 없앤다 (루트 `CLAUDE.md` 측정의 원칙 17).
+
+        합계·평균·승률·최고·최악은 이미 비우면서 갭손절·장중손절 건수만 `0` 이 찍혔다.
+        **`0` 은 「그런 일이 없었다」로 읽히는데 실제로는 「잰 적이 없다」다.**
+        같은 행 안에서 어떤 칸은 비고 어떤 칸은 0 이면 읽는 사람이 그 차이를 뜻으로 받아들인다.
+
+        Given: 최근 5년에 진입이 하나도 없는 체결 목록 (청산 사유는 함께 넘긴다)
+        When: 구간별 성적 행을 만든다
+        Then: 최근 5년 행의 손절 건수 두 칸이 비어 있다
+        """
+        # Given
+        years = list(range(2000, 2011))
+        entry_dates = _dates(years)
+        returns = _returns(len(years))
+        reasons = [EXIT_INTRADAY_STOP] * len(years)
+        last_day = pd.Timestamp("2026-08-25")
+
+        # When
+        rows = period_rows(entry_dates, returns, last_day=last_day, reasons=reasons)
+        recent = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_RECENT_5Y)
+
+        # Then
+        assert recent[DISPLAY_SIGNAL_COUNT] == 0
+        assert pd.isna(recent[DISPLAY_GAP_STOP_COUNT])
+        assert pd.isna(recent[DISPLAY_INTRADAY_STOP_COUNT])
+
+    def test_표본이_있으면_0건도_0으로_적는다(self) -> None:
+        """
+        목적: 「없었다」와 「못 쟀다」를 구분한다.
+
+        표본이 있는데 손절이 안 걸린 것은 **사실**이므로 0 이 맞다.
+        앞 테스트가 모든 0 을 지우는 방향으로 과잉 적용되지 않게 짝으로 둔다.
+
+        Given: 전 구간에 진입이 있고 손절은 하나도 걸리지 않은 목록
+        When: 구간별 성적 행을 만든다
+        Then: 전체 행의 손절 건수가 0 이다
+        """
+        # Given
+        years = list(range(2016, 2016 + MIN_SAMPLE_PER_CELL))
+        entry_dates = _dates(years)
+        returns = _returns(len(years))
+        reasons = [EXIT_LIMIT] * len(years)
+        last_day = pd.Timestamp(f"{years[-1]}-12-30")
+
+        # When
+        rows = period_rows(entry_dates, returns, last_day=last_day, reasons=reasons)
+        whole = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_ALL)
+
+        # Then
+        assert whole[DISPLAY_SIGNAL_COUNT] == len(years)
+        assert whole[DISPLAY_GAP_STOP_COUNT] == 0
+        assert whole[DISPLAY_INTRADAY_STOP_COUNT] == 0

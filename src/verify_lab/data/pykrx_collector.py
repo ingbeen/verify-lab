@@ -34,6 +34,7 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VALUE,
     COL_VOLUME,
+    KST,
     MARKET_DIR,
     MARKET_FILE_TEMPLATE,
     NAV_FILE_TEMPLATE,
@@ -41,6 +42,7 @@ from verify_lab.common_constants import (
     REQUIRED_COLUMNS,
     SERIES_DIR,
 )
+from verify_lab.data.constants import DOMESTIC_RECENT_EXCLUSION_DAYS, KRX_REQUEST_DATE_FORMAT
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.data.loader import validate_market_data, validate_series_data
 from verify_lab.utils.logger import get_logger
@@ -61,11 +63,7 @@ KRX_COLUMN_MAP = {
 KRX_INDEX_NAME = "날짜"
 
 # 조회 시작일 형식. pykrx 가 요구하는 표기다
-KRX_DATE_FORMAT = "%Y%m%d"
 
-# 저장에서 제외할 최근 구간 (달력일). 국내는 시차가 없어 전일 종가는 확정이지만,
-# **장중에도 당일 행이 그대로 반환되는 것이 실측**됐다. 미확정 종가가 남으면 그날이 극단 이벤트로 잡힌다
-RECENT_EXCLUSION_DAYS = 1
 
 # 저장 직전 정수화 대상. KRX 원화 가격과 거래량은 정수이며 반올림 규칙도 0자리다.
 # **부호 있는 int64 로 고정한다** — `get_etf_ohlcv_by_date` 는 가격을 `uint32` 로 주는데,
@@ -211,15 +209,15 @@ def collect_pykrx_history(
         raise ValueError("종목 코드가 비어 있습니다")
 
     try:
-        datetime.strptime(start_date, KRX_DATE_FORMAT)
+        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
     except ValueError as error:
         raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
 
-    today = date.today()
+    today = datetime.now(KST).date()
 
     # 1. 조회. 종료일을 오늘로 두고 확정되지 않은 행은 뒤에서 세어 빼낸다.
     #    애초에 어제까지만 요청하면 몇 건이 빠졌는지 셀 수 없다 (표본 보존)
-    raw = _fetch_ohlcv(symbol, start_date, today.strftime(KRX_DATE_FORMAT), adjusted)
+    raw = _fetch_ohlcv(symbol, start_date, today.strftime(KRX_REQUEST_DATE_FORMAT), adjusted)
 
     if raw.empty:
         raise ValueError(f"수집 결과가 비어 있습니다 - 종목: {symbol}, 수정주가: {adjusted}")
@@ -228,13 +226,13 @@ def collect_pykrx_history(
     df = _normalize(raw)
 
     # 3. 확정되지 않은 최근 구간을 제외한다. 몇 건이 빠졌는지 호출자에게 함께 돌려준다
-    cutoff_date = today - timedelta(days=RECENT_EXCLUSION_DAYS)
+    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
     total_count = len(df)
     df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
     excluded_recent_count = total_count - len(df)
 
     if df.empty:
-        raise ValueError(f"최근 {RECENT_EXCLUSION_DAYS}일 제외 후 남는 데이터가 없습니다 - 종목: {symbol}")
+        raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 데이터가 없습니다 - 종목: {symbol}")
 
     # 4. 저장 직전 정수화. KRX 원화 가격과 거래량은 정수이며, 이후 차분이 안전하도록
     #    부호 있는 int64 로 고정한다
@@ -254,7 +252,7 @@ def collect_pykrx_history(
 
     logger.debug(f"수집 완료: {symbol}, 수정주가={adjusted}, {len(df):,}행, 기간 {first_date} ~ {last_date}, 저장 위치 {path}")
     if excluded_recent_count > 0:
-        logger.debug(f"최근 {RECENT_EXCLUSION_DAYS}일 데이터 {excluded_recent_count}행을 제외했습니다")
+        logger.debug(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 데이터 {excluded_recent_count}행을 제외했습니다")
 
     return PykrxCollectionResult(
         ticker=symbol,
@@ -317,14 +315,14 @@ def collect_pykrx_nav(
         raise ValueError("종목 코드가 비어 있습니다")
 
     try:
-        datetime.strptime(start_date, KRX_DATE_FORMAT)
+        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
     except ValueError as error:
         raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
 
-    today = date.today()
+    today = datetime.now(KST).date()
     stock = _import_pykrx_stock()
 
-    raw = stock.get_etf_ohlcv_by_date(start_date, today.strftime(KRX_DATE_FORMAT), symbol)
+    raw = stock.get_etf_ohlcv_by_date(start_date, today.strftime(KRX_REQUEST_DATE_FORMAT), symbol)
 
     if raw.empty:
         raise ValueError(f"NAV 조회 결과가 비어 있습니다 - 종목: {symbol}")
@@ -338,13 +336,13 @@ def collect_pykrx_nav(
     df = df[[COL_DATE, COL_VALUE]]
 
     # 확정되지 않은 최근 구간을 제외한다. 시세 수집과 같은 기준을 쓴다
-    cutoff_date = today - timedelta(days=RECENT_EXCLUSION_DAYS)
+    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
     total_count = len(df)
     df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
     excluded_recent_count = total_count - len(df)
 
     if df.empty:
-        raise ValueError(f"최근 {RECENT_EXCLUSION_DAYS}일 제외 후 남는 NAV 가 없습니다 - 종목: {symbol}")
+        raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 NAV 가 없습니다 - 종목: {symbol}")
 
     df[COL_VALUE] = df[COL_VALUE].astype(float).round(NAV_DECIMALS)
 

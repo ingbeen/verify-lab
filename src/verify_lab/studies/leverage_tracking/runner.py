@@ -53,9 +53,9 @@ from verify_lab.studies.leverage_tracking.constants import (
     COL_TOTAL_DIVERGENCE,
     COL_VOLATILITY_BUCKET,
     DISPLAY_ACTUAL,
-    DISPLAY_ANNUAL_DISTRIBUTION,
     DISPLAY_AXIS,
     DISPLAY_AXIS_VALUE,
+    DISPLAY_BASE_ANNUAL_DISTRIBUTION,
     DISPLAY_BASE_INDEX,
     DISPLAY_BASE_ONLY,
     DISPLAY_BASE_RETURN,
@@ -80,6 +80,7 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_REALIZED_MULTIPLE,
     DISPLAY_REALIZED_MULTIPLE_COUNT,
     DISPLAY_START_DATE,
+    DISPLAY_TARGET_ANNUAL_DISTRIBUTION,
     DISPLAY_TARGET_ONLY,
     DISPLAY_TARGET_TICKER,
     DISPLAY_TOTAL_DIVERGENCE,
@@ -216,7 +217,10 @@ def _summary_block(summary: pd.DataFrame, pair: LeveragePair, extra: dict[str, s
     for column, value in (extra or {}).items():
         block[column] = value
 
-    block[DISPLAY_HORIZON] = summary[COL_HORIZON].map(HORIZON_LABELS)
+    # **`map` 을 쓰지 않는다.** 사전에 없는 구간을 예외 없이 NaN 으로 만들어, 산출물의
+    # 「구간」 열만 빈 채로 나가고 나머지 수치는 정상이라 눈으로 발견되지 않는다.
+    # `_distribution_rows` 가 이미 대괄호 조회로 KeyError 를 내므로 그쪽에 맞춘다
+    block[DISPLAY_HORIZON] = [HORIZON_LABELS[int(horizon)] for horizon in summary[COL_HORIZON]]
     block[DISPLAY_SAMPLE_COUNT] = summary[COL_SAMPLE_COUNT]
     block[DISPLAY_NON_OVERLAPPING] = summary[COL_NON_OVERLAPPING_COUNT]
     block[DISPLAY_EXCLUDED] = summary[COL_EXCLUDED_COUNT]
@@ -289,10 +293,10 @@ def _distribution_rows(
         row: dict[str, object] = {}
         row.update(_identity(pair))
         row[DISPLAY_HORIZON] = HORIZON_LABELS[horizon]
-        row[f"1배 {DISPLAY_ANNUAL_DISTRIBUTION}"] = round(
+        row[DISPLAY_BASE_ANNUAL_DISTRIBUTION] = round(
             base_share.annual_contribution * RATE_TO_PERCENT, PERCENT_DECIMALS
         )
-        row[f"배수 {DISPLAY_ANNUAL_DISTRIBUTION}"] = round(
+        row[DISPLAY_TARGET_ANNUAL_DISTRIBUTION] = round(
             target_share.annual_contribution * RATE_TO_PERCENT, PERCENT_DECIMALS
         )
         row[DISPLAY_DIVIDEND_ADJUSTMENT] = round(

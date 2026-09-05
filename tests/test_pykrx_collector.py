@@ -601,3 +601,67 @@ def test_price_columns_are_preserved(
     assert saved[COL_CLOSE].tolist() == [close for _, close in old_rows]
     assert saved[COL_OPEN].tolist() == saved[COL_LOW].tolist()
     assert saved[COL_VOLUME].tolist() == [1_000] * len(old_rows)
+
+
+# UTC 와 KST 가 **다른 날짜**를 가리키는 시각. UTC 로는 8월 11일 저녁이지만 KST 로는 이미 12일 새벽이다.
+#
+# **`freeze_time` 아래에서 `date.today()` 는 이 시각을 UTC 로 읽어 8월 11일을 돌려주고,
+# `datetime.now(KST).date()` 는 8월 12일을 돌려준다.** 두 해석이 갈리는 유일한 창이라
+# 「기준 시각이 무엇인가」를 이 자리에서만 검사할 수 있다
+FROZEN_UTC_EVENING = "2026-08-11 20:00:00"
+
+# 위 시각의 KST 날짜. 이 날이 「오늘」이므로 제외 경계는 그 전날이다
+KST_TODAY_AT_FROZEN = "2026-08-12"
+
+
+class TestReferenceTimezone:
+    """「오늘」의 기준 시각은 실행 PC 가 아니라 KST 다"""
+
+    @freeze_time(FROZEN_UTC_EVENING)
+    def test_당일_제외가_KST_기준이다(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 수집 경계가 실행 PC 의 타임존에 흔들리지 않게 고정한다.
+
+        「장중에도 당일 행이 그대로 반환되므로 당일은 반드시 뺀다」는 계약
+        (`src/verify_lab/CLAUDE.md` 원시 시세 저장 규칙)이 로컬 타임존을 따르면,
+        TZ 가 다른 PC 에서 돌렸을 때 경계가 하루 밀린다.
+        **예외는 나지 않고 저장 범위만 달라진다.**
+
+        Given: KST 로 8월 12일 새벽인 시각에, 8월 11일과 12일 행을 함께 주는 스텁
+        When: 수집한다
+        Then: KST 기준 당일(12일)이 빠지고 11일까지만 저장된다
+        """
+        # Given
+        rows = [("2026-08-10", 30_000), ("2026-08-11", 30_500), (KST_TODAY_AT_FROZEN, 31_000)]
+        _stub_pykrx(monkeypatch, _etf_frame(rows))
+
+        # When
+        result = collect_pykrx_history(TICKER, LISTING_DATE, adjusted=False, output_dir=tmp_path)
+
+        # Then
+        assert result.end_date == date(2026, 8, 11)
+        assert result.excluded_recent_count == 1
+
+    @freeze_time(FROZEN_UTC_EVENING)
+    def test_조회_종료일도_KST_기준이다(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 조회 구간의 끝도 같은 기준을 쓰는지 고정한다.
+
+        제외만 KST 로 하고 조회는 로컬로 하면 **KST 당일 행을 애초에 받지 못해**
+        「몇 건이 빠졌는지」를 셀 수 없다 (표본 보존).
+
+        Given: KST 로 8월 12일 새벽인 시각
+        When: 수집한다
+        Then: pykrx 에 넘긴 종료일이 KST 기준 오늘이다
+        """
+        # Given
+        rows = [("2026-08-10", 30_000), ("2026-08-11", 30_500)]
+        recorded = _stub_pykrx(monkeypatch, _etf_frame(rows))
+
+        # When
+        collect_pykrx_history(TICKER, LISTING_DATE, adjusted=False, output_dir=tmp_path)
+
+        # Then
+        args = recorded["args"]
+        assert isinstance(args, tuple)
+        assert args[1] == KST_TODAY_AT_FROZEN.replace("-", "")

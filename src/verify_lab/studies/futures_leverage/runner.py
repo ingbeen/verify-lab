@@ -43,7 +43,15 @@ from verify_lab.common_constants import (
 )
 from verify_lab.common_constants import COL_VALUE as COL_SERIES_VALUE
 from verify_lab.data.loader import load_futures_csv, load_market_csv, load_series_csv
-from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HORIZON, REASON_NONE
+from verify_lab.measure.constants import (
+    COL_EXCLUDED_REASON,
+    COL_HORIZON,
+    COL_JUDGEABLE,
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
+    MIN_SAMPLE_PER_CELL,
+    REASON_NONE,
+)
 from verify_lab.measure.distribution import dividend_adjustment, measure_distribution_share
 from verify_lab.measure.statistics import max_non_overlapping
 from verify_lab.studies.futures_leverage.comparison import (
@@ -56,6 +64,36 @@ from verify_lab.studies.futures_leverage.comparison import (
 )
 from verify_lab.studies.futures_leverage.constants import (
     BASELINE_METHOD,
+    COL_ACTUAL_MULTIPLE,
+    COL_AHEAD_HORIZON_COUNT,
+    COL_AS_OF_DATE,
+    COL_BREAKEVEN_HORIZON,
+    COL_CONTRACT_MULTIPLIER,
+    COL_DIVIDEND_ADJUSTMENT,
+    COL_END_DATE,
+    COL_EQUITY_SIZE,
+    COL_EXECUTABLE,
+    COL_FIRST_WIPEOUT_DATE,
+    COL_INDEX_NAME,
+    COL_INTEGER_CONTRACTS,
+    COL_INTEREST,
+    COL_MAX_LEVERAGE_DAILY,
+    COL_MAX_LEVERAGE_MONTHLY,
+    COL_MEAN_RETURN,
+    COL_MEDIAN_RETURN,
+    COL_METHOD,
+    COL_MULTIPLE,
+    COL_NON_OVERLAPPING,
+    COL_NOTIONAL,
+    COL_PERIOD,
+    COL_PRICE,
+    COL_ROLL_RULE,
+    COL_SAMPLE_COUNT,
+    COL_START_DATE,
+    COL_TARGET_TICKER,
+    COL_TESTED_HORIZON_COUNT,
+    COL_WINDOW_COUNT,
+    COL_WIPEOUT_COUNT,
     DISPLAY_PERIOD_HIGH_RATE,
     DISPLAY_PERIOD_LOW_RATE,
     HIGH_RATE_START_YEAR,
@@ -85,36 +123,9 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 내부 계산용 컬럼
-COL_INDEX_NAME = "IndexName"
-COL_TARGET_TICKER = "TargetTicker"
-COL_MULTIPLE = "Multiple"
-COL_METHOD = "Method"
-COL_ROLL_RULE = "RollRule"
-COL_INTEREST = "Interest"
-COL_PERIOD = "Period"
-COL_SAMPLE_COUNT = "SampleCount"
-COL_NON_OVERLAPPING = "NonOverlapping"
-COL_MEAN_RETURN = "MeanReturn"
-COL_MEDIAN_RETURN = "MedianReturn"
-COL_JUDGEABLE = "Judgeable"
-COL_START_DATE = "StartDate"
-COL_END_DATE = "EndDate"
-COL_AS_OF_DATE = "AsOfDate"
-COL_PRICE = "Price"
-COL_CONTRACT_MULTIPLIER = "ContractMultiplier"
-COL_NOTIONAL = "Notional"
-COL_EQUITY_SIZE = "EquitySize"
-COL_INTEGER_CONTRACTS = "IntegerContracts"
-COL_ACTUAL_MULTIPLE = "ActualMultiple"
-COL_EXECUTABLE = "Executable"
-
 # 이자 가정의 표시값. 참·거짓 대신 사람이 읽는 말을 쓴다
 DISPLAY_INTEREST_ON = "이자 있음"
 DISPLAY_INTEREST_OFF = "이자 없음"
-
-# 축을 쪼갤 수 있는 최소 유효 표본 (측정의 원칙 12)
-MIN_SAMPLE_FOR_AXIS = 10
 
 # 단일 값 시계열 파일명. **이 파일에서만 쓰므로 여기 둔다** — 시세·선물 파일명과 달리
 # 이름이 곧 계열 이름이라 공유할 규칙이 없다 (`src/verify_lab/CLAUDE.md` 「상수 관리」)
@@ -206,7 +217,9 @@ def _summarize(values: np.ndarray, horizon: int) -> dict[str, object]:
         COL_NON_OVERLAPPING: _non_overlapping_count(usable, horizon),
         COL_MEAN_RETURN: float(np.mean(values[usable])) if sample_count else np.nan,
         COL_MEDIAN_RETURN: float(np.median(values[usable])) if sample_count else np.nan,
-        COL_JUDGEABLE: sample_count >= MIN_SAMPLE_FOR_AXIS,
+        # **불린이 아니라 문자열이다.** 네 계층이 같은 어휘를 써야 산출물을 나란히 읽을 수 있고,
+        # `screening` 이 「예」로 거르므로 불린을 담으면 그 표는 전 칸이 조용히 제외된다
+        COL_JUDGEABLE: JUDGEABLE_YES if sample_count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO,
     }
 
 
@@ -330,9 +343,9 @@ def _run_pair(
                         COL_METHOD: METHOD_BY_REBALANCE[rebalance],
                         COL_ROLL_RULE: roll_rule,
                         COL_HORIZON: horizon,
-                        "WipeoutCount": int(wiped.sum()),
-                        "WindowCount": int((~np.isnan(base_return)).sum()),
-                        "FirstWipeoutDate": dates.iloc[int(np.flatnonzero(wiped)[0])] if wiped.any() else None,
+                        COL_WIPEOUT_COUNT: int(wiped.sum()),
+                        COL_WINDOW_COUNT: int((~np.isnan(base_return)).sum()),
+                        COL_FIRST_WIPEOUT_DATE: dates.iloc[int(np.flatnonzero(wiped)[0])] if wiped.any() else None,
                     }
                 )
 
@@ -402,13 +415,13 @@ def _run_pair(
                     COL_SAMPLE_COUNT: int(usable.sum()),
                     COL_NON_OVERLAPPING: _non_overlapping_count(usable, horizon),
                     **{column: float(parts.loc[usable, column].mean()) for column in parts.columns},
-                    "DividendAdjustment": dividend_adjustment(base_share, target_share, pair.multiple, horizon),
+                    COL_DIVIDEND_ADJUSTMENT: dividend_adjustment(base_share, target_share, pair.multiple, horizon),
                 }
             )
 
             # 4. 시작일 원자료. 첫 롤 규칙만 남긴다 — 두 벌을 다 남기면 파일이 두 배가 된다.
-            #    **표 만들기는 `comparison` 이 소유한다** — 여기서 다시 조립하면 제외 사유가
-            #    갈라진다(실제로 이 자리에 다른 문자열이 박혀 있었다). 시기 축만 덧붙인다
+            #    **표 만들기는 `comparison` 이 소유한다** — 여기서 다시 조립하면 제외 사유
+            #    문자열이 두 곳에서 나와 갈라진다. 시기 축만 덧붙인다
             if roll_rule == ROLL_RULES[0]:
                 window = build_window_table(
                     dates,
@@ -434,8 +447,8 @@ def _run_pair(
                     COL_MULTIPLE: pair.multiple,
                     COL_ROLL_RULE: roll_rule,
                     COL_HORIZON: horizon,
-                    "MaxEffectiveLeverageDaily": abs(pair.multiple),
-                    "MaxEffectiveLeverageMonthly": drift,
+                    COL_MAX_LEVERAGE_DAILY: abs(pair.multiple),
+                    COL_MAX_LEVERAGE_MONTHLY: drift,
                 }
             )
 
@@ -654,9 +667,9 @@ def _build_breakeven(comparison: pd.DataFrame) -> pd.DataFrame:
                     COL_MULTIPLE: multiple,
                     COL_METHOD: method,
                     COL_ROLL_RULE: roll_rule,
-                    "BreakevenHorizon": int(ahead[COL_HORIZON].iloc[0]) if not ahead.empty else None,
-                    "AheadHorizonCount": len(ahead),
-                    "TestedHorizonCount": len(merged),
+                    COL_BREAKEVEN_HORIZON: int(ahead[COL_HORIZON].iloc[0]) if not ahead.empty else None,
+                    COL_AHEAD_HORIZON_COUNT: len(ahead),
+                    COL_TESTED_HORIZON_COUNT: len(merged),
                 }
             )
 

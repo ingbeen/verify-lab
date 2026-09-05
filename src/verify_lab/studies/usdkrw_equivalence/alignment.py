@@ -173,7 +173,8 @@ def to_market_dates(spot: pd.DataFrame) -> pd.DataFrame:
     **D−1 의 시장**이다. 그대로 쓰면 ETF 종가와 하루 어긋난 채로 계산되며,
     **예외는 나지 않고 결과만 틀린다** — 261240 과의 일간 상관이 −0.03 으로 무의미해진다.
 
-    보정은 고시일을 한 칸 앞으로 당기는 것이다. 첫 행은 대응할 시장일이 없어 빠진다.
+    보정은 고시일을 `SPOT_PUBLICATION_LAG_ROWS` 칸 앞으로 당기는 것이다.
+    앞쪽 그만큼의 행은 대응할 시장일이 없어 빠진다.
 
     **이 함수는 측정 전용이다.** 시장일 D 의 값을 알려면 D+1 의 고시를 봐야 하므로,
     매매 판정에 쓰면 look-ahead 가 된다.
@@ -182,7 +183,7 @@ def to_market_dates(spot: pd.DataFrame) -> pd.DataFrame:
         spot: 고시일 기준 매매기준율 (`load_series_csv` 가 돌려준 형태)
 
     Returns:
-        시장일 기준으로 옮긴 시계열. 행 수가 하나 줄어든다
+        시장일 기준으로 옮긴 시계열. 행 수가 `SPOT_PUBLICATION_LAG_ROWS` 만큼 줄어든다
 
     Raises:
         ValueError: 컬럼이 없거나, 날짜가 오름차순이 아니거나, 행이 두 개 미만인 경우

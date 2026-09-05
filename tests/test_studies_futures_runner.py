@@ -12,7 +12,9 @@ import math
 
 import numpy as np
 
+from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
 from verify_lab.measure.statistics import max_non_overlapping
+from verify_lab.studies.futures_leverage import constants as futures_constants
 from verify_lab.studies.futures_leverage.runner import (
     COL_NON_OVERLAPPING,
     _max_effective_leverage,
@@ -132,3 +134,88 @@ class TestMaxEffectiveLeverage:
 
         # Then
         assert result > 2.0
+
+
+class TestJudgeableValue:
+    """`판정가능` 은 다른 세 검증과 같은 말을 쓴다"""
+
+    def test_판정_가능한_칸이_예다(self) -> None:
+        """
+        목적: 이 검증만 `True`/`False` 를 내던 것을 막는다.
+
+        같은 이름의 컬럼이 검증마다 다른 값을 가지면 두 산출물을 나란히 읽을 수 없고,
+        `measure.screening` 이 `== JUDGEABLE_YES` 로 거르므로 이 표를 판정에 넘기면
+        전 칸이 조용히 제외된다.
+
+        Given: 하한을 넘는 유효 표본
+        When: 집계 한 줄을 만든다
+        Then: `판정가능` 이 「예」 문자열이다
+        """
+        # Given
+        values = np.full(MIN_SAMPLE_PER_CELL + 2, 0.01)
+
+        # When
+        summarized = _summarize(values, horizon=1)
+
+        # Then
+        assert summarized[COL_JUDGEABLE] == JUDGEABLE_YES
+
+    def test_표본이_모자란_칸이_아니오다(self) -> None:
+        """
+        목적: 반대쪽 값도 같은 어휘를 쓰는지 고정한다.
+
+        Given: 하한에 못 미치는 유효 표본
+        When: 집계 한 줄을 만든다
+        Then: `판정가능` 이 「아니오」 문자열이다
+        """
+        # Given
+        values = np.full(MIN_SAMPLE_PER_CELL - 1, 0.01)
+
+        # When
+        summarized = _summarize(values, horizon=1)
+
+        # Then
+        assert summarized[COL_JUDGEABLE] == JUDGEABLE_NO
+
+    def test_판정가능은_불린이_아니다(self) -> None:
+        """
+        목적: 값이 우연히 참·거짓으로 읽히는 것을 막는다.
+
+        `"예" == True` 는 거짓이지만 `bool` 을 그대로 두면 CSV 에 `True` 로 나가고
+        사용자가 여는 파일에 영문 토큰이 남는다 (`src/verify_lab/CLAUDE.md` 「내부/출력 분리」).
+
+        Given: 표본이 충분한 칸과 모자란 칸
+        When: 두 집계를 만든다
+        Then: 둘 다 `bool` 이 아니다
+        """
+        # Given
+        enough = np.full(MIN_SAMPLE_PER_CELL + 1, 0.01)
+        few = np.full(1, 0.01)
+
+        # When
+        results = [_summarize(enough, horizon=1), _summarize(few, horizon=1)]
+
+        # Then
+        assert not any(isinstance(row[COL_JUDGEABLE], bool) for row in results)
+
+
+class TestOutputLabelOwnership:
+    """산출물 레이블 사전은 `src` 가 소유한다"""
+
+    def test_레이블_사전이_검증_상수에_있다(self) -> None:
+        """
+        목적: 다른 네 검증과 같은 관용으로 맞춘다.
+
+        이 검증만 사전을 `scripts/` 에 두고 **문자열 리터럴로** `src` 의 컬럼과 연결하고 있었다.
+        한쪽 이름만 바뀌면 영문 토큰이 그대로 사용자에게 나간다.
+
+        Given: 검증 상수 모듈
+        When: 산출물 레이블 사전을 읽는다
+        Then: 비어 있지 않은 사전이다
+        """
+        # When
+        labels = futures_constants.OUTPUT_LABELS
+
+        # Then
+        assert isinstance(labels, dict)
+        assert labels

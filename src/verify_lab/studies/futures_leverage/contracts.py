@@ -75,10 +75,18 @@ def contract_multiplier_on(product_id: str, target: date) -> float:
 
     Raises:
         ValueError: 이력에 없는 상품이거나, 이력이 시작되기 전 날짜인 경우
+        RuntimeError: 이력이 시간순이 아닌 경우 (내부 불변조건 위반)
     """
     history = CONTRACT_MULTIPLIER_HISTORY.get(product_id)
     if history is None:
         raise ValueError(f"거래승수 이력이 없는 상품입니다: {product_id} (있는 상품: {sorted(CONTRACT_MULTIPLIER_HISTORY)})")
+
+    # 아래 순회는 **뒤에 오는 것이 더 최신**이라고 전제하고 마지막으로 걸린 값을 고른다.
+    # 정렬이 어긋나면 옛 승수를 골라 명목금액이 두 배로 틀리는데 예외는 나지 않는다.
+    # 이력은 이 저장소가 소유한 상수이므로 어긋남은 입력 오류가 아니라 내부 불변조건 위반이다
+    days = [effective_from for effective_from, _ in history]
+    if days != sorted(days):
+        raise RuntimeError(f"내부 불변조건 위반: 거래승수 이력이 시간순이 아닙니다 - 상품: {product_id}, 날짜: {days}")
 
     selected: int | None = None
     for effective_from, multiplier in history:

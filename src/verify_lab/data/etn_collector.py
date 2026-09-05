@@ -37,11 +37,17 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VALUE,
     COL_VOLUME,
+    KST,
     MARKET_DIR,
     MARKET_FILE_TEMPLATE,
     PRICE_COLUMNS,
     REQUIRED_COLUMNS,
     SERIES_DIR,
+)
+from verify_lab.data.constants import (
+    DOMESTIC_RECENT_EXCLUSION_DAYS,
+    KRX_REQUEST_DATE_FORMAT,
+    KRX_RESPONSE_DATE_FORMAT,
 )
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.data.loader import validate_market_data, validate_series_data
@@ -60,7 +66,6 @@ ETN_COLUMN_MAP = {
 
 # KRX 응답의 날짜 컬럼과 그 표기
 ETN_DATE_COLUMN = "TRD_DD"
-ETN_RESPONSE_DATE_FORMAT = "%Y/%m/%d"
 
 # 증권당 지표가치 컬럼. ETF 의 NAV 에 해당한다
 ETN_INDICATIVE_VALUE_COLUMN = "PER1SECU_INDIC_VAL"
@@ -73,11 +78,7 @@ ETN_BASIC_ISIN_COLUMN = "ISU_CD"
 BLD_ETN_DAILY_PRICE = "dbms/MDC/STAT/standard/MDCSTAT06601"
 
 # 조회 인자의 날짜 형식
-KRX_DATE_FORMAT = "%Y%m%d"
 
-# 저장에서 제외할 최근 구간 (달력일). 국내는 시차가 없어 전일 종가는 확정이지만
-# 장중에도 당일 행이 반환되므로 당일은 반드시 뺀다. `pykrx_collector` 와 같은 기준이다
-RECENT_EXCLUSION_DAYS = 1
 
 # 저장 직전 정수화 대상. KRX 원화 가격과 거래량은 정수다
 INTEGER_COLUMNS = [*PRICE_COLUMNS, COL_VOLUME]
@@ -142,6 +143,9 @@ def _import_krx_client() -> tuple[Any, Any]:
     올라가기 전에 로그인이 시도되므로, 순서를 지키는 유일한 방법은 import 를 이 함수 안에
     두는 것이다. `pykrx_collector` 와 같은 이유다.
 
+    **반환 타입이 `Any` 인 것은 좁힐 수 없어서다** — pykrx 에 타입 스텁이 없어
+    이 클래스들의 정체를 타입 검사기가 알 방법이 없다.
+
     Returns:
         (ETN 전종목기본종목 클래스, KrxWebIo 기반 클래스) 짝
     """
@@ -194,6 +198,10 @@ def _fetch_daily_price(isin: str, start_date: str, end_date: str) -> pd.DataFram
     """
     _, web_io_class = _import_krx_client()
 
+    # **`type: ignore` 를 없앨 수 없다.** 기반 클래스를 런타임에 얻으므로 타입 검사기가
+    # 그 정체를 모르고(`valid-type`), 모르는 것을 상속하는 것도 막는다(`misc`).
+    # pykrx 는 타입 스텁을 제공하지 않아 좁힐 방법이 없다 — 없애려면 스텁을 직접 쓰거나
+    # 상속을 버려야 하는데, 상속은 pykrx 내부 프로토콜을 따르는 유일한 방법이다
     class ETN개별종목시세(web_io_class):  # type: ignore[misc, valid-type]
         @property
         def bld(self) -> str:
@@ -245,7 +253,7 @@ def _normalize(raw: pd.DataFrame) -> pd.DataFrame:
     for column in INTEGER_COLUMNS:
         df[column] = _to_numeric(df[column])
 
-    df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=ETN_RESPONSE_DATE_FORMAT).dt.date
+    df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=KRX_RESPONSE_DATE_FORMAT).dt.date
 
     return df.sort_values(COL_DATE).reset_index(drop=True)[REQUIRED_COLUMNS]
 
@@ -260,7 +268,7 @@ def _exclude_recent(df: pd.DataFrame, today: date) -> tuple[pd.DataFrame, int]:
     Returns:
         (제외 후 DataFrame, 제외된 행 수)
     """
-    cutoff_date = today - timedelta(days=RECENT_EXCLUSION_DAYS)
+    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
     total_count = len(df)
     trimmed = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
 
@@ -277,7 +285,7 @@ def _validated_start_date(start_date: str) -> None:
         ValueError: 형식이 잘못된 경우
     """
     try:
-        datetime.strptime(start_date, KRX_DATE_FORMAT)
+        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
     except ValueError as error:
         raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
 
@@ -315,13 +323,13 @@ def collect_etn_history(
 
     _validated_start_date(start_date)
 
-    today = date.today()
+    today = datetime.now(KST).date()
 
     # 1. 종목 코드를 ISIN 으로 바꾼다. 시세 조회가 ISIN 만 받는다
     isin = _resolve_isin(symbol)
 
     # 2. 조회. 종료일을 오늘로 두고 확정되지 않은 행은 뒤에서 세어 빼낸다 (표본 보존)
-    raw = _fetch_daily_price(isin, start_date, today.strftime(KRX_DATE_FORMAT))
+    raw = _fetch_daily_price(isin, start_date, today.strftime(KRX_REQUEST_DATE_FORMAT))
 
     if raw.empty:
         raise ValueError(f"수집 결과가 비어 있습니다 - 종목: {symbol}, ISIN: {isin}")
@@ -333,7 +341,7 @@ def collect_etn_history(
     df, excluded_recent_count = _exclude_recent(df, today)
 
     if df.empty:
-        raise ValueError(f"최근 {RECENT_EXCLUSION_DAYS}일 제외 후 남는 데이터가 없습니다 - 종목: {symbol}")
+        raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 데이터가 없습니다 - 종목: {symbol}")
 
     # 5. 저장 직전 정수화. KRX 원화 가격과 거래량은 정수다.
     #    결측이 남아 있으면 정수 변환에서 예외가 나므로 먼저 이상치 검증을 지난다
@@ -350,7 +358,7 @@ def collect_etn_history(
 
     logger.debug(f"ETN 수집 완료: {symbol}, {len(df):,}행, 기간 {first_date} ~ {last_date}, 저장 위치 {path}")
     if excluded_recent_count > 0:
-        logger.debug(f"최근 {RECENT_EXCLUSION_DAYS}일 데이터 {excluded_recent_count}행을 제외했습니다")
+        logger.debug(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 데이터 {excluded_recent_count}행을 제외했습니다")
 
     return EtnCollectionResult(
         ticker=symbol,
@@ -392,9 +400,9 @@ def collect_etn_indicative_value(
 
     _validated_start_date(start_date)
 
-    today = date.today()
+    today = datetime.now(KST).date()
     isin = _resolve_isin(symbol)
-    raw = _fetch_daily_price(isin, start_date, today.strftime(KRX_DATE_FORMAT))
+    raw = _fetch_daily_price(isin, start_date, today.strftime(KRX_REQUEST_DATE_FORMAT))
 
     if raw.empty:
         raise ValueError(f"지표가치 조회 결과가 비어 있습니다 - 종목: {symbol}, ISIN: {isin}")
@@ -403,14 +411,14 @@ def collect_etn_indicative_value(
         raise ValueError(f"응답에 지표가치 컬럼이 없습니다 (반환 컬럼: {list(raw.columns)})")
 
     df = raw.rename(columns={ETN_DATE_COLUMN: COL_DATE, ETN_INDICATIVE_VALUE_COLUMN: COL_VALUE})
-    df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=ETN_RESPONSE_DATE_FORMAT).dt.date
+    df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=KRX_RESPONSE_DATE_FORMAT).dt.date
     df[COL_VALUE] = _to_numeric(df[COL_VALUE]).round(INDICATIVE_VALUE_DECIMALS)
     df = df.sort_values(COL_DATE).reset_index(drop=True)[[COL_DATE, COL_VALUE]]
 
     df, excluded_recent_count = _exclude_recent(df, today)
 
     if df.empty:
-        raise ValueError(f"최근 {RECENT_EXCLUSION_DAYS}일 제외 후 남는 지표가치가 없습니다 - 종목: {symbol}")
+        raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 지표가치가 없습니다 - 종목: {symbol}")
 
     # 단일 값 시계열의 판정을 그대로 쓴다. 로더와 갈라지면 읽을 수 없는 파일이 생긴다
     validate_series_data(df)

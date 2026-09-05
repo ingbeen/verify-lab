@@ -16,51 +16,19 @@ from pathlib import Path
 
 import pandas as pd
 
-from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_SAMPLE_COUNT
+from verify_lab.measure.constants import COL_HORIZON
 from verify_lab.report.tables import print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.futures_leverage.constants import (
     BREAKEVEN_FILENAME,
+    COL_WIPEOUT_COUNT,
     COMPARISON_FILENAME,
     DECOMPOSITION_FILENAME,
-    DISPLAY_ACTUAL_MULTIPLE,
-    DISPLAY_ADJUSTMENT_FACTOR,
-    DISPLAY_BREAKEVEN_HORIZON,
-    DISPLAY_CONTRACT_NOTIONAL,
-    DISPLAY_DECISION_DATE,
-    DISPLAY_DIVIDEND_ADJUSTMENT,
-    DISPLAY_END_DATE,
-    DISPLAY_EQUITY_SIZE,
-    DISPLAY_EXECUTABLE,
-    DISPLAY_EXECUTION_DATE,
-    DISPLAY_HOLD_ERROR,
-    DISPLAY_INDEX_NAME,
-    DISPLAY_INTEGER_CONTRACTS,
-    DISPLAY_INTEREST,
-    DISPLAY_INTEREST_GAIN,
-    DISPLAY_JUDGEABLE,
-    DISPLAY_METHOD,
-    DISPLAY_MULTIPLE,
-    DISPLAY_NEAR_CONTRACT,
-    DISPLAY_NEAR_OPEN_INTEREST,
-    DISPLAY_NEXT_CONTRACT,
-    DISPLAY_NEXT_OPEN_INTEREST,
-    DISPLAY_NON_OVERLAPPING,
-    DISPLAY_REBALANCE_ERROR,
-    DISPLAY_RESIDUAL,
-    DISPLAY_ROLL_COST,
-    DISPLAY_ROLL_RULE,
-    DISPLAY_START_DATE,
-    DISPLAY_TARGET_MULTIPLE,
-    DISPLAY_TARGET_TICKER,
-    DISPLAY_WIPEOUT_DATE,
     INTEGER_CONTRACTS_FILENAME,
     LEVERAGE_DRIFT_FILENAME,
-    METHOD_ETF,
-    METHOD_FUTURES_DAILY,
-    METHOD_FUTURES_HOLD,
-    METHOD_FUTURES_MONTHLY,
+    OUTPUT_LABELS,
     PAIRS,
+    PERCENT_OUTPUT_COLUMNS,
     ROLL_EVENTS_FILENAME,
     STUDY_NAME,
     WIPEOUTS_FILENAME,
@@ -89,122 +57,6 @@ SCREEN_HORIZON = 252
 # 검증마다 다른 말을 쓰지 않게 한다
 # ============================================================
 
-# 여러 표가 함께 쓰는 식별 컬럼
-COMMON_LABELS = {
-    "IndexName": DISPLAY_INDEX_NAME,
-    "TargetTicker": DISPLAY_TARGET_TICKER,
-    "Multiple": DISPLAY_MULTIPLE,
-    "RollRule": DISPLAY_ROLL_RULE,
-    "Horizon": DISPLAY_HORIZON,
-}
-
-COMPARISON_LABELS = {
-    **COMMON_LABELS,
-    "Method": DISPLAY_METHOD,
-    "Interest": DISPLAY_INTEREST,
-    "StartDate": DISPLAY_START_DATE,
-    "EndDate": DISPLAY_END_DATE,
-    "SampleCount": DISPLAY_SAMPLE_COUNT,
-    "NonOverlapping": DISPLAY_NON_OVERLAPPING,
-    "MeanReturn": "평균 수익률(%)",
-    "MedianReturn": "중앙 수익률(%)",
-    "Judgeable": DISPLAY_JUDGEABLE,
-}
-COMPARISON_PERCENTS = ("MeanReturn", "MedianReturn")
-
-DECOMPOSITION_LABELS = {
-    **COMMON_LABELS,
-    "SampleCount": DISPLAY_SAMPLE_COUNT,
-    "NonOverlapping": DISPLAY_NON_OVERLAPPING,
-    "RollCost": DISPLAY_ROLL_COST,
-    "RebalanceError": DISPLAY_REBALANCE_ERROR,
-    "HoldError": DISPLAY_HOLD_ERROR,
-    "InterestGain": DISPLAY_INTEREST_GAIN,
-    "Residual": DISPLAY_RESIDUAL,
-    "FuturesMinusEtf": "선물 − ETF(%p)",
-    "HoldMinusEtf": "선물 그대로 − ETF(%p)",
-    "DividendAdjustment": DISPLAY_DIVIDEND_ADJUSTMENT,
-}
-DECOMPOSITION_PERCENTS = (
-    "RollCost",
-    "RebalanceError",
-    "HoldError",
-    "InterestGain",
-    "Residual",
-    "FuturesMinusEtf",
-    "HoldMinusEtf",
-    "DividendAdjustment",
-)
-
-ROLL_EVENT_LABELS = {
-    "IndexName": DISPLAY_INDEX_NAME,
-    "RollRule": DISPLAY_ROLL_RULE,
-    "DecisionDate": DISPLAY_DECISION_DATE,
-    "ExecutionDate": DISPLAY_EXECUTION_DATE,
-    "FromContract": DISPLAY_NEAR_CONTRACT,
-    "FromName": "근월물 이름",
-    "ToContract": DISPLAY_NEXT_CONTRACT,
-    "ToName": "차월물 이름",
-    "AdjustmentFactor": DISPLAY_ADJUSTMENT_FACTOR,
-    "FromOpenInterest": DISPLAY_NEAR_OPEN_INTEREST,
-    "ToOpenInterest": DISPLAY_NEXT_OPEN_INTEREST,
-    "Fallback": "만기가 강제한 롤",
-}
-
-BREAKEVEN_LABELS = {
-    "IndexName": DISPLAY_INDEX_NAME,
-    "TargetTicker": DISPLAY_TARGET_TICKER,
-    "Multiple": DISPLAY_MULTIPLE,
-    "Method": DISPLAY_METHOD,
-    "RollRule": DISPLAY_ROLL_RULE,
-    "BreakevenHorizon": DISPLAY_BREAKEVEN_HORIZON,
-    "AheadHorizonCount": "선물이 앞선 구간 수",
-    "TestedHorizonCount": "잰 구간 수",
-}
-
-LEVERAGE_DRIFT_LABELS = {
-    **COMMON_LABELS,
-    "MaxEffectiveLeverageDaily": "매일 리밸런싱 최대 유효 레버리지",
-    "MaxEffectiveLeverageMonthly": "월 1회 최대 유효 레버리지",
-}
-
-WIPEOUT_LABELS = {
-    **COMMON_LABELS,
-    "Method": DISPLAY_METHOD,
-    "WipeoutCount": "자기자본 소진 구간 수",
-    "WindowCount": "잰 구간 수",
-    "FirstWipeoutDate": DISPLAY_WIPEOUT_DATE,
-}
-
-WINDOW_LABELS = {
-    "Date": DISPLAY_START_DATE,
-    "Horizon": DISPLAY_HORIZON,
-    "Period": "시기",
-    METHOD_ETF: f"{METHOD_ETF}(%)",
-    METHOD_FUTURES_DAILY: f"{METHOD_FUTURES_DAILY}(%)",
-    METHOD_FUTURES_MONTHLY: f"{METHOD_FUTURES_MONTHLY}(%)",
-    METHOD_FUTURES_HOLD: f"{METHOD_FUTURES_HOLD}(%)",
-    "ExcludedReason": "제외 사유",
-}
-WINDOW_PERCENTS = (METHOD_ETF, METHOD_FUTURES_DAILY, METHOD_FUTURES_MONTHLY, METHOD_FUTURES_HOLD)
-
-# 정수 계약 대조표. **본선과 달리 자기자본 규모가 결과를 만든다** —
-# 계약 하나를 살 수 있는지가 규모에 달렸기 때문이다
-INTEGER_CONTRACT_LABELS = {
-    "IndexName": DISPLAY_INDEX_NAME,
-    "TargetTicker": DISPLAY_TARGET_TICKER,
-    "Multiple": DISPLAY_TARGET_MULTIPLE,
-    "AsOfDate": "기준일",
-    "Price": "정산가",
-    "ContractMultiplier": "거래승수",
-    "Notional": DISPLAY_CONTRACT_NOTIONAL,
-    "EquitySize": DISPLAY_EQUITY_SIZE,
-    "IntegerContracts": DISPLAY_INTEGER_CONTRACTS,
-    "ActualMultiple": DISPLAY_ACTUAL_MULTIPLE,
-    "Executable": DISPLAY_EXECUTABLE,
-    "ExcludedReason": "제외 사유",
-}
-
 
 def parse_args() -> argparse.Namespace:
     """명령행 인자를 파싱한다.
@@ -222,21 +74,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _display(table: pd.DataFrame, labels: dict[str, str], percent_columns: tuple[str, ...] = ()) -> pd.DataFrame:
+def _display(table: pd.DataFrame) -> pd.DataFrame:
     """저장 직전에 헤더를 한글로 바꾸고 비율을 백분율로 맞춘다.
 
-    사전에 없는 컬럼이 하나라도 있으면 `to_display_columns` 가 예외를 던진다 —
-    컬럼을 새로 만들고 한글 이름을 빠뜨리면 영문 토큰이 그대로 사용자에게 나간다.
+    사전은 **`src` 가 소유한다** (`OUTPUT_LABELS`). 표마다 컬럼 구성이 다르므로 변환 대상은
+    그 표에 실제로 있는 것만 고른다. 사전에 없는 컬럼이 하나라도 있으면 `to_display_columns` 가
+    예외를 던진다 — 컬럼을 새로 만들고 한글 이름을 빠뜨리면 영문 토큰이 그대로 사용자에게 나간다.
 
     Args:
         table: 저장할 표 (영문 헤더)
-        labels: 영문 → 한글 사전
-        percent_columns: 비율(0~1)로 들어와 백분율로 내보낼 컬럼
 
     Returns:
         헤더가 한글이고 단위가 맞춰진 표
     """
-    return to_display_columns(table, labels, percent_columns=percent_columns)
+    columns = set(table.columns)
+
+    return to_display_columns(
+        table,
+        OUTPUT_LABELS,
+        percent_columns=[column for column in PERCENT_OUTPUT_COLUMNS if column in columns],
+    )
 
 
 def _save_outputs(outputs: StudyOutputs) -> str:
@@ -253,21 +110,19 @@ def _save_outputs(outputs: StudyOutputs) -> str:
     """
     directory = create_run_directory(STUDY_NAME)
 
-    save_table(directory, COMPARISON_FILENAME, _display(outputs.comparison, COMPARISON_LABELS, COMPARISON_PERCENTS))
-    save_table(
-        directory, DECOMPOSITION_FILENAME, _display(outputs.decomposition, DECOMPOSITION_LABELS, DECOMPOSITION_PERCENTS)
-    )
-    save_table(directory, ROLL_EVENTS_FILENAME, _display(outputs.roll_events, ROLL_EVENT_LABELS))
-    save_table(directory, BREAKEVEN_FILENAME, _display(outputs.breakeven, BREAKEVEN_LABELS))
-    save_table(directory, LEVERAGE_DRIFT_FILENAME, _display(outputs.leverage_drift, LEVERAGE_DRIFT_LABELS))
-    save_table(directory, WIPEOUTS_FILENAME, _display(outputs.wipeouts, WIPEOUT_LABELS))
-    save_table(directory, INTEGER_CONTRACTS_FILENAME, _display(outputs.integer_contracts, INTEGER_CONTRACT_LABELS))
+    save_table(directory, COMPARISON_FILENAME, _display(outputs.comparison))
+    save_table(directory, DECOMPOSITION_FILENAME, _display(outputs.decomposition))
+    save_table(directory, ROLL_EVENTS_FILENAME, _display(outputs.roll_events))
+    save_table(directory, BREAKEVEN_FILENAME, _display(outputs.breakeven))
+    save_table(directory, LEVERAGE_DRIFT_FILENAME, _display(outputs.leverage_drift))
+    save_table(directory, WIPEOUTS_FILENAME, _display(outputs.wipeouts))
+    save_table(directory, INTEGER_CONTRACTS_FILENAME, _display(outputs.integer_contracts))
 
     for pair_name, windows in outputs.windows_by_pair.items():
         save_table(
             directory,
             WINDOWS_FILENAME_TEMPLATE.format(pair=pair_name),
-            _display(windows, WINDOW_LABELS, WINDOW_PERCENTS),
+            _display(windows),
         )
 
     return str(directory)
@@ -292,7 +147,7 @@ def main() -> int:
         "decomposition_rows": len(outputs.decomposition),
         "roll_event_rows": len(outputs.roll_events),
         "breakeven_rows": len(outputs.breakeven),
-        "wipeout_window_total": int(outputs.wipeouts["WipeoutCount"].sum()),
+        "wipeout_window_total": int(outputs.wipeouts[COL_WIPEOUT_COUNT].sum()),
         "integer_contract_rows": len(outputs.integer_contracts),
         "window_files": sorted(outputs.windows_by_pair),
     }
@@ -300,20 +155,20 @@ def main() -> int:
     # 오래된 실행은 그 폴더만 남고 「무슨 조건으로 돌렸는지」를 잃는다
     save_run_summary(Path(directory), summary)
 
-    screen = outputs.comparison[outputs.comparison["Horizon"] == SCREEN_HORIZON]
+    screen = outputs.comparison[outputs.comparison[COL_HORIZON] == SCREEN_HORIZON]
     if not screen.empty:
         print_dataframe(
-            _display(screen, COMPARISON_LABELS, COMPARISON_PERCENTS),
+            _display(screen),
             logger,
             title=f"보유 {SCREEN_HORIZON}거래일 — 방식별 성적",
         )
 
     if not outputs.breakeven.empty:
-        print_dataframe(_display(outputs.breakeven, BREAKEVEN_LABELS), logger, title="선물이 앞서기 시작하는 보유 기간")
+        print_dataframe(_display(outputs.breakeven), logger, title="선물이 앞서기 시작하는 보유 기간")
 
     if not outputs.integer_contracts.empty:
         print_dataframe(
-            _display(outputs.integer_contracts, INTEGER_CONTRACT_LABELS),
+            _display(outputs.integer_contracts),
             logger,
             title="정수 계약 대조 — 자기자본 규모별 실제 배수",
         )

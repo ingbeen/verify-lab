@@ -9,7 +9,6 @@ import inspect
 import logging
 from collections.abc import Callable
 from functools import wraps
-from typing import Any
 
 
 def cli_exception_handler(func: Callable[[], int]) -> Callable[[], int]:
@@ -33,7 +32,7 @@ def cli_exception_handler(func: Callable[[], int]) -> Callable[[], int]:
     """
 
     @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> int:
+    def wrapper() -> int:
         module = inspect.getmodule(func)
         logger: logging.Logger | None = getattr(module, "logger", None)
 
@@ -41,7 +40,7 @@ def cli_exception_handler(func: Callable[[], int]) -> Callable[[], int]:
             raise RuntimeError(f"내부 불변조건 위반: 모듈에 logger 가 없습니다 - {func.__module__}.{func.__qualname__}")
 
         try:
-            return func(*args, **kwargs)
+            return func()
 
         except Exception:
             logger.error("예외 발생", exc_info=True)

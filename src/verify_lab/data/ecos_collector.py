@@ -232,9 +232,9 @@ def fetch_rows(service: str, path_parts: list[str], api_key: str) -> list[dict[s
 
     body = payload[service]
 
-    # **기본값을 두지 않는다.** 전에는 전체 건수가 없으면 `len(rows)` 로 채웠는데, 그러면
-    # 바로 아래의 잘림 대조가 **언제나 통과**해 안전장치가 스스로 꺼진다. 행 키도 마찬가지로
-    # 빈 목록으로 두면 응답 스키마가 바뀐 것이 「데이터 0건」과 구분되지 않는다
+    # **기본값을 두지 않는다.** 전체 건수를 `len(rows)` 로 채우면 바로 아래의 잘림 대조가
+    # **언제나 통과**해 안전장치가 스스로 꺼진다. 행 키를 빈 목록으로 두면 응답 스키마가
+    # 바뀐 것이 「데이터 0건」과 구분되지 않는다
     if KEY_ROW not in body:
         raise ValueError(f"ECOS 응답에 행 목록({KEY_ROW})이 없습니다 (서비스: {service}, 키: {sorted(body)})")
 

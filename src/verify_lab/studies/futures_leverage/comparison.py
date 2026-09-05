@@ -64,6 +64,13 @@ import pandas as pd
 from verify_lab.common_constants import COL_DATE
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HORIZON, REASON_NONE, REASON_OUT_OF_RANGE
 from verify_lab.studies.futures_leverage.constants import (
+    COL_FUTURES_MINUS_ETF,
+    COL_HOLD_ERROR,
+    COL_HOLD_MINUS_ETF,
+    COL_INTEREST_GAIN,
+    COL_REBALANCE_ERROR,
+    COL_RESIDUAL,
+    COL_ROLL_COST,
     HOLDING_HORIZONS,
     REBALANCE_DAILY,
     REBALANCE_INTERVAL_DAYS,
@@ -126,11 +133,10 @@ def _segment_boundaries(horizon: int, rebalance_rule: str) -> list[int]:
     if rebalance_rule != REBALANCE_MONTHLY:
         raise ValueError(f"모르는 리밸런싱 규칙입니다: {rebalance_rule} (가능: {list(REBALANCE_RULES)})")
 
-    boundaries = list(range(0, horizon, REBALANCE_INTERVAL_DAYS))
-    if boundaries[-1] != horizon:
-        boundaries.append(horizon)
-
-    return boundaries
+    # `range` 는 `horizon` 직전에서 멈추므로 **구간 끝을 반드시 덧붙인다.**
+    # 마지막 조각이 빠지면 그만큼의 손익이 통째로 사라지는데, 수익률이 조금 작게 나올 뿐이라
+    # 눈으로 발견되지 않는다
+    return [*range(0, horizon, REBALANCE_INTERVAL_DAYS), horizon]
 
 
 def leveraged_window_returns(
@@ -182,7 +188,7 @@ def leveraged_window_returns(
     wiped_out = np.zeros(row_count, dtype=bool)
     boundaries = _segment_boundaries(horizon, rebalance_rule)
 
-    for start_offset, end_offset in zip(boundaries[:-1], boundaries[1:], strict=False):
+    for start_offset, end_offset in zip(boundaries[:-1], boundaries[1:], strict=True):
         segment_start = np.where(usable, positions + start_offset, 0)
         segment_end = np.where(usable, positions + end_offset, 0)
         segment_return = prices[segment_end] / prices[segment_start] - 1.0
@@ -274,7 +280,16 @@ def build_window_table(
 
     Returns:
         `Date` · `Horizon` · 방식별 수익률 컬럼 · `ExcludedReason` 을 갖는 DataFrame
+
+    Raises:
+        ValueError: 방식이 하나도 없는 경우
     """
+    # 제외 사유를 어느 방식에서든 같게 낼 수 있다는 전제로 아래에서 첫 방식을 꺼내므로,
+    # 비어 있으면 `StopIteration` 이 오른다 — 「반복이 끝났다」는 뜻이라 원인이 드러나지 않고
+    # 제너레이터 안에서는 조용히 반복을 끝내버린다
+    if not returns_by_method:
+        raise ValueError("방식이 하나도 없습니다 — 시작일 원자료 표를 만들 수 없습니다")
+
     table = pd.DataFrame({COL_DATE: dates.to_numpy(), COL_HORIZON: horizon})
 
     for method, values in returns_by_method.items():
@@ -326,14 +341,14 @@ def decompose(
 
     return pd.DataFrame(
         {
-            "RollCost": roll_cost,
-            "RebalanceError": rebalance_error,
-            "HoldError": hold_error,
-            "InterestGain": interest_gain,
-            "Residual": residual,
-            "FuturesMinusEtf": futures_minus_etf,
+            COL_ROLL_COST: roll_cost,
+            COL_REBALANCE_ERROR: rebalance_error,
+            COL_HOLD_ERROR: hold_error,
+            COL_INTEREST_GAIN: interest_gain,
+            COL_RESIDUAL: residual,
+            COL_FUTURES_MINUS_ETF: futures_minus_etf,
             # **사용자 질문에 직접 답하는 열이다** — 「1억을 넣고 그대로 두면 ETF 와 같은가」
-            "HoldMinusEtf": futures_hold - etf_return,
+            COL_HOLD_MINUS_ETF: futures_hold - etf_return,
         }
     )
 

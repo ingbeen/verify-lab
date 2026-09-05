@@ -20,7 +20,7 @@ yfinance 는 웹 API 를 감싼 라이브러리라 기본 인자와 반환 컬�
 """
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -29,6 +29,7 @@ import yfinance as yf
 from verify_lab.common_constants import (
     ADJUSTED_FILE_TEMPLATE,
     COL_DATE,
+    KST,
     MARKET_DIR,
     MARKET_FILE_TEMPLATE,
     PRICE_COLUMNS,
@@ -41,7 +42,10 @@ from verify_lab.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # 저장에서 제외할 최근 구간 (달력일). 미국장은 한국 시각 기준으로 하루가 밀리고,
-# 마감 직후 값은 확정값이 아니다. 미확정 종가를 그대로 남기면 그날이 극단 이벤트로 잡힐 수 있다
+# 마감 직후 값은 확정값이 아니다. 미확정 종가를 그대로 남기면 그날이 극단 이벤트로 잡힐 수 있다.
+#
+# **국내(`data/constants.DOMESTIC_RECENT_EXCLUSION_DAYS`)보다 하루 많다** — 그 하루가 시차다.
+# 여기 두는 것은 미국 수집기가 이 파일뿐이라서다 (`src/verify_lab/CLAUDE.md` 「상수 관리」)
 RECENT_EXCLUSION_DAYS = 2
 
 
@@ -114,7 +118,7 @@ def collect_yfinance_history(
     df[COL_DATE] = pd.to_datetime(df[COL_DATE]).dt.date
 
     # 4. 확정되지 않은 최근 구간을 제외한다. 몇 건이 빠졌는지 호출자에게 함께 돌려준다
-    cutoff_date = date.today() - timedelta(days=RECENT_EXCLUSION_DAYS)
+    cutoff_date = datetime.now(KST).date() - timedelta(days=RECENT_EXCLUSION_DAYS)
     total_count = len(df)
     df = df.loc[df[COL_DATE] <= cutoff_date, REQUIRED_COLUMNS].reset_index(drop=True)
     excluded_recent_count = total_count - len(df)

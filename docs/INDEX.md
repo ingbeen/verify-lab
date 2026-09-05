@@ -15,10 +15,10 @@
 
 | 순서 | 문서 | 왜 |
 | --- | --- | --- |
-| 1 | [../CLAUDE.md](../CLAUDE.md) | 프로젝트 규칙. 측정의 원칙 17개와 후보 판정 기준 |
+| 1 | [../CLAUDE.md](../CLAUDE.md) | 프로젝트 규칙. 측정의 원칙과 후보 판정 기준 |
 | 2 | [context/README.md](context/README.md) | **사용자의 현재 운용 상태와 이 프로젝트가 시작된 이유. 가장 중요** |
 | 3 | 작업 대상의 `spec/` · `research/` · `strategy/` | 아래 3절에서 고릅니다 |
-| 4 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 구조, 측정 계층의 절대 원칙 5가지, **계층 간 계약 9종** |
+| 4 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 구조, 측정 계층의 절대 원칙, **계층 간 계약** |
 
 **전부 읽지 않습니다.** 하네스 설정·문서 정리·단순 질의응답이면 1·2 에서 멈춥니다.
 
@@ -34,7 +34,7 @@
 | [../CLAUDE.md](../CLAUDE.md) | 프로젝트 전반 규칙, 측정의 원칙, 사고 절차, 수술적 변경 | **항상 자동** |
 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 분리, 상수 관리 3계층, 핵심 패턴, 절대 원칙 | `src/verify_lab/` 작업 시 자동 |
 | [../scripts/CLAUDE.md](../scripts/CLAUDE.md) | CLI 계층 책임, 예외 처리, 명령행 인자 정책 | `scripts/` 작업 시 자동 |
-| [../tests/CLAUDE.md](../tests/CLAUDE.md) | 필수 테스트 3종, Given-When-Then, 부동소수점 비교, 파일 격리 | `tests/` 작업 시 자동 |
+| [../tests/CLAUDE.md](../tests/CLAUDE.md) | 필수 테스트, Given-When-Then, 부동소수점 비교, 파일 격리 | `tests/` 작업 시 자동 |
 | [../.claude/rules/research.md](../.claude/rules/research.md) | 결과 문서 작성 규칙 | `docs/research/**` Read 시점에 자동 |
 | [../.claude/rules/python.md](../.claude/rules/python.md) | 코딩 표준, 반올림 규칙, 로깅 정책, 주석 규칙 | `**/*.py` **Read 시점**에 자동 (실측 확인) |
 | [../.claude/rules/docs.md](../.claude/rules/docs.md) | 문서 종류와 SoT 역할, 계획서 수명 | `docs/**` **Read 시점**에 자동 (실측 확인) |
@@ -56,12 +56,12 @@
 | [context/README.md](context/README.md) | 두 운용 문서의 안내와 핵심 결론 | 항상 |
 | [context/RESEARCH_q2_2xs_qqq_correlation.md](context/RESEARCH_q2_2xs_qqq_correlation.md) | 운용 포트폴리오의 QQQ 상관 분해. **이 프로젝트의 출발점** | 검증 결과를 해석할 때 |
 | [context/RESEARCH_qqq_late_entry.md](context/RESEARCH_qqq_late_entry.md) | 현재 보유 판정(이번 사이클 미진입)과 근거 | 같음 |
-| [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정 결정 8건, 사전 실측 기록 | 검증 #1 관련 전부 |
-| [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | **원달러 그리드 트랙의 SoT** — 데이터 실측 기록 15개 절(ECOS/FRED 코드, ETF 2종, 매매기준율 시차, 동적 범위, 슬롯 상한, 환전 비용, 그리드 엔진 실행 8회 — 비용 없음·거래비용·이자·ETF 경로·하단 이탈 B안·지표 계층·벤치마크·견고성 검사)과 확정된 설계 결정(A1~A4·B1~B2·C1~C118) | 원달러 그리드·검증 #5 관련 전부. **§4 가 원본 사양서를 이긴다** |
+| [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정된 설계 결정, 사전 실측 기록 | 검증 #1 관련 전부 |
+| [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | **원달러 그리드 트랙의 SoT** — 데이터 실측 기록(ECOS/FRED 코드, ETF, 매매기준율 시차, 동적 범위, 슬롯 상한, 환전 비용, 그리드 엔진 실행 — 비용 없음·거래비용·이자·ETF 경로·하단 이탈 B안·지표 계층·벤치마크·견고성 검사)과 확정된 설계 결정 | 원달러 그리드·검증 #5 관련 전부. **§4 가 원본 사양서를 이긴다** |
 | [spec/usdkrw_grid_rules.md](spec/usdkrw_grid_rules.md) | 원달러 그리드 **매매 규칙의 원본 사양서** (사용자 작성). **일부 규정이 실측으로 바뀌었으므로 위 spec 의 §4 가 SoT** | 그리드 규칙 본문(격자·범위·자금배분·체결·비용·지표)을 볼 때 |
-| [spec/leverage_tracking.md](spec/leverage_tracking.md) | **검증 #8 확정 설계** — 괴리를 「경로 효과 + 상품 비용」으로 나누는 산식, 측정 대상 27종·22쌍의 선정 근거(거래대금·상장일·기초지수·총보수), 확정 결정 ①~⑦, 데이터 실측 4건(**ETN 시세를 KRX `MDCSTAT06601` 로 직접 받는 법**·yfinance 분할 조정·비중첩 표본·251340 상장일) | 검증 #8 관련 전부. **ETN 시세가 필요할 때 §6.1** |
-| [spec/futures_leverage.md](spec/futures_leverage.md) | **검증 #9 확정 설계** — 세 방식(ETF·선물 매일·선물 월1회) 비교와 차이 분해 산식, 확정 결정 ①~⑨, 데이터 실측 6건(**국내 선물 계약별 시세를 KRX `MDCSTAT12601` 로 받는 법**·거를 것 다섯·상장 첫날·거래승수 역산·만기일 유도·전용 로더가 필요한 이유) | 검증 #9 관련 전부. **국내 선물 시세가 필요할 때 §5.2, 함정은 §5.3** |
-| [spec/option_expiry.md](spec/option_expiry.md) | **검증 #7 확정 설계** — 만기일 달력 규칙(미국 셋째 금요일·한국 둘째 목요일)과 휴장 앞당김, 상대 거래일(offset) 정의, **달력 기준 청산(만기일 매수 → 다음주 금요일 매도)**, 가격 기준 결정, 확정 결정 ①~㉔, 데이터 실측 13건(만기 달력·QQQ 배당락·재수집·pykrx 수정주가 창·KODEX 분배락·만기일 요일 분포·DIA 수집·휴장 규칙 대조·9월) | 옵션 만기일 검증 관련 전부 |
+| [spec/leverage_tracking.md](spec/leverage_tracking.md) | **검증 #8 확정 설계** — 괴리를 「경로 효과 + 상품 비용」으로 나누는 산식, 측정 대상의 선정 근거(거래대금·상장일·기초지수·총보수), 확정된 설계 결정, 데이터 실측 기록(**ETN 시세를 KRX `MDCSTAT06601` 로 직접 받는 법**·yfinance 분할 조정·비중첩 표본·251340 상장일) | 검증 #8 관련 전부. **ETN 시세가 필요할 때 §6.1** |
+| [spec/futures_leverage.md](spec/futures_leverage.md) | **검증 #9 확정 설계** — 세 방식(ETF·선물 매일·선물 월1회) 비교와 차이 분해 산식, 확정된 설계 결정, 데이터 실측 기록(**국내 선물 계약별 시세를 KRX `MDCSTAT12601` 로 받는 법**·거를 것·상장 첫날·거래승수 역산·만기일 유도·전용 로더가 필요한 이유) | 검증 #9 관련 전부. **국내 선물 시세가 필요할 때 §5.2, 함정은 §5.3** |
+| [spec/option_expiry.md](spec/option_expiry.md) | **검증 #7 확정 설계** — 만기일 달력 규칙(미국 셋째 금요일·한국 둘째 목요일)과 휴장 앞당김, 상대 거래일(offset) 정의, **달력 기준 청산(만기일 매수 → 다음주 금요일 매도)**, 가격 기준 결정, 확정된 설계 결정, 데이터 실측 기록(만기 달력·QQQ 배당락·재수집·pykrx 수정주가 창·KODEX 분배락·만기일 요일 분포·DIA 수집·휴장 규칙 대조·9월) | 옵션 만기일 검증 관련 전부 |
 | [research/원달러_ETF_등가성.md](research/원달러_ETF_등가성.md) | **검증 #5 결과** — 261240 이 「환전 + 달러 예치」의 대체재인가. 판정은 조건부 가능 | 원달러 그리드의 ETF 경로를 다룰 때 |
 | [research/옵션_만기일.md](research/옵션_만기일.md) | **검증 #7 결과** — 만기 앞뒤 상대 거래일 -10~+10 의 수익률과 **「만기일 매수 → 다음주 금요일 매도」 매매**(§11), **만기월별 통계**(§12). 판정은 **우위 없음**(유의 칸 24개 대 우연 기대치 21.0개). **유일한 예외는 미국 9월** — 같은 달 대비 -0.91~-0.97%p 이지만 다중 비교를 넘지 못한다(§12.3). 베이스라인·가격 기준 선택이 결론을 바꾼 기록이 §8·§14 | 옵션 만기일 결과를 인용하거나 재실행할 때. **만기일 요일 분포**(§3.4)를 확인할 때 |
 | [research/지수_극단_이벤트.md](research/지수_극단_이벤트.md) | **검증 #1 결과** — 역대급 등락 이후 수익률 측정과 판정. 사용자 판정 기준(적중률 60% · 방향 기대값 0 초과)을 역방향 전체 192칸 중 **109칸(56.8%)** 이 통과한다 | 검증 #1 결과를 인용하거나 재실행할 때 |
@@ -81,7 +81,7 @@
 
 ---
 
-## 4. reference/ — 참고용 원본 (읽기 전용, 28개)
+## 4. reference/ — 참고용 원본 (읽기 전용)
 
 수정·import·실행하지 않습니다. 읽고 이해한 뒤 `src/verify_lab/`에 새로 작성합니다.
 품질 검사(Ruff·PyRight·pytest) 대상에서 제외돼 있습니다.

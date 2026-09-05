@@ -12,10 +12,10 @@ from typing import Final
 
 # **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 검증에 요구하는 개념이라
 # 검증마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
-from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES
+from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
 from verify_lab.report.constants import DISPLAY_JUDGEABLE
 
-__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES"]
+__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES", "MIN_SAMPLE_PER_CELL"]
 
 # ============================================================
 # 측정 대상
@@ -114,9 +114,8 @@ HORIZON_LABELS: Final = {
 # 평균이 무의미해진다. 이 값 미만인 구간은 실현 배수를 비우고 사유를 남긴다
 MIN_BASE_RETURN_FOR_REALIZED_MULTIPLE: Final = 0.01
 
-# 축을 쪼갤 때 칸당 요구하는 최소 유효 표본. 이보다 적으면 쪼개지 않고
-# "쪼갤 수 없다"를 값으로 남긴다 (루트 CLAUDE.md 측정의 원칙 12)
-MIN_SAMPLE_PER_CELL: Final = 10
+# 축을 쪼갤 때 칸당 요구하는 최소 유효 표본은 **공통 계층이 소유한다** —
+# 위 import 로 가져와 이름만 다시 내보낸다 (루트 CLAUDE.md 측정의 원칙 12)
 
 # ============================================================
 # 결과 스키마 (내부 계산용 영문 토큰)
@@ -224,6 +223,11 @@ DISPLAY_BASE_RETURN_AXIS: Final = "1배 수익률 분위"
 DISPLAY_PERIOD_AXIS: Final = "시기"
 
 DISPLAY_ANNUAL_DISTRIBUTION: Final = "연율 분배 기여(%)"
+
+# 같은 항목을 1배와 배수 상품 각각에 대해 낸다. **두 열이 한 표에 나란히 오므로**
+# 접두사를 붙여 구별한다 — 붙이는 자리를 실행 계층에 두면 그 문자열이 산출물 헤더가 된다
+DISPLAY_BASE_ANNUAL_DISTRIBUTION: Final = f"1배 {DISPLAY_ANNUAL_DISTRIBUTION}"
+DISPLAY_TARGET_ANNUAL_DISTRIBUTION: Final = f"배수 {DISPLAY_ANNUAL_DISTRIBUTION}"
 DISPLAY_DIVIDEND_ADJUSTMENT: Final = "배당 보정분(%p)"
 DISPLAY_DISTRIBUTION_MEASURED: Final = "측정 여부"
 DISPLAY_DISTRIBUTION_PERIOD: Final = "분배 측정 구간"

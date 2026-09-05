@@ -49,6 +49,17 @@ from verify_lab.common_constants import (
     COL_SPOT,
 )
 from verify_lab.studies.futures_leverage.constants import (
+    COL_ADJUSTMENT_FACTOR,
+    COL_DECISION_DATE,
+    COL_EXECUTION_DATE,
+    COL_FALLBACK,
+    COL_FROM_CONTRACT,
+    COL_FROM_NAME,
+    COL_FROM_OPEN_INTEREST,
+    COL_ROLL_RULE,
+    COL_TO_CONTRACT,
+    COL_TO_NAME,
+    COL_TO_OPEN_INTEREST,
     ROLL_DAYS_BEFORE_EXPIRY,
     ROLL_RULE_DAYS_BEFORE_EXPIRY,
     ROLL_RULE_OPEN_INTEREST,
@@ -66,6 +77,22 @@ COL_ROW_COUNT = "RowCount"
 # 연속 계열의 컬럼
 COL_ADJUSTED_SETTLE = "AdjustedSettle"
 COL_SEGMENT = "Segment"
+
+# 롤 이벤트 표의 컬럼과 dtype. 이벤트가 0건이어도 같은 스키마를 유지해 저장 계층이 분기하지 않게 한다.
+# **판정일은 결측을 담을 수 있어야 한다** — 규칙대로 못 한 롤에는 판정일이 없다
+ROLL_EVENT_DTYPES = {
+    COL_ROLL_RULE: "object",
+    COL_DECISION_DATE: "datetime64[ns]",
+    COL_EXECUTION_DATE: "datetime64[ns]",
+    COL_FROM_CONTRACT: "object",
+    COL_FROM_NAME: "object",
+    COL_TO_CONTRACT: "object",
+    COL_TO_NAME: "object",
+    COL_ADJUSTMENT_FACTOR: "float64",
+    COL_FROM_OPEN_INTEREST: "float64",
+    COL_TO_OPEN_INTEREST: "float64",
+    COL_FALLBACK: "bool",
+}
 
 # 조정계수의 타당 범위. 근월물과 차월물의 가격 차이는 3개월치 캐리라 몇 %를 넘지 않는다.
 # 이 밖으로 나가면 계약을 잘못 짝지었거나 정산가가 잘못 들어온 것이다
@@ -87,8 +114,10 @@ class RollEvent:
         adjustment_factor: `차월물 정산가 ÷ 근월물 정산가` (집행일 기준)
         from_open_interest: 집행일의 근월물 미결제약정
         to_open_interest: 집행일의 차월물 미결제약정
-        fallback: 규칙이 롤 시점을 집어내지 못해 최종거래일로 밀린 경우 True.
-            미결제약정이 끝내 역전되지 않은 계약이 여기 해당한다
+        fallback: **규칙이 정한 날에 롤하지 못한 경우** True. 두 가지가 여기 해당한다 —
+            미결제약정이 끝내 역전되지 않아 최종거래일로 밀린 경우와,
+            두 계약이 겹치는 날이 모자라 앞당겨진 경우다.
+            둘 다 판정일이 없으므로 그 열로는 구별되지 않는다
     """
 
     decision_date: pd.Timestamp | None
@@ -191,7 +220,7 @@ def _decide_execution_date(
         expiry: 근월물 최종거래일
 
     Returns:
-        (판정일 또는 None, 집행일, 규칙이 못 집어내 최종거래일로 밀렸으면 True)
+        (판정일 또는 None, 집행일, **규칙이 정한 날에 롤하지 못했으면 True**)
 
     Raises:
         ValueError: 두 계약이 겹치는 거래일이 없는 경우
@@ -206,9 +235,11 @@ def _decide_execution_date(
         raise ValueError(f"두 계약이 겹치는 거래일이 없습니다 - 근월물: {current}, 차월물: {following}")
 
     if rule == ROLL_RULE_DAYS_BEFORE_EXPIRY:
-        # 만기에서 N거래일 앞. 구간이 그보다 짧으면 가능한 가장 이른 날로 앞당긴다
-        position = max(len(candidates) - 1 - ROLL_DAYS_BEFORE_EXPIRY, 0)
-        return None, candidates[position], False
+        # 만기에서 N거래일 앞. 구간이 그보다 짧으면 가능한 가장 이른 날로 앞당긴다.
+        # **그 경우를 표시한다** — 규칙이 정한 날이 아닌데 산출물에서 정상 롤과 구별되지 않으면
+        # 「만기 전 고정」이 실제로 몇 건에서 지켜졌는지 셀 수 없다
+        offset = len(candidates) - 1 - ROLL_DAYS_BEFORE_EXPIRY
+        return None, candidates[max(offset, 0)], offset < 0
 
     if rule != ROLL_RULE_OPEN_INTEREST:
         raise ValueError(f"모르는 롤 규칙입니다: {rule} (가능: {list(ROLL_RULES)})")
@@ -344,6 +375,12 @@ def build_continuous_series(df: pd.DataFrame, rule: str) -> tuple[pd.DataFrame, 
 
     first_date = df[COL_DATE].min()
     present = calendar[calendar[COL_FIRST_DATE] <= first_date]
+
+    # `plan_rolls` 가 같은 조건을 이미 막지만 여기서도 본다 — 한 모듈 안에서 방어 수준이
+    # 갈리면 나중에 호출 순서가 바뀌었을 때 이쪽만 무방비로 남는다
+    if present.empty:
+        raise RuntimeError(f"내부 불변조건 위반 - 첫 거래일에 존재하는 계약이 없습니다: first_date={first_date}")
+
     segment_contracts = [str(present.iloc[0][COL_CONTRACT])] + [event.to_contract for event in events]
 
     # 구간 경계. 각 구간은 (시작일, 종료일] 이 아니라 [시작일, 집행일] 이다 —
@@ -397,28 +434,46 @@ def roll_events_frame(events: list[RollEvent], rule: str) -> pd.DataFrame:
     사용자가 차트와 대조하는 자리이므로 **판정일과 집행일을 따로 남긴다** — 둘이 같으면
     미래를 참조한 것이고, 하루 벌어져 있어야 정상이다.
 
+    **이벤트가 없어도 컬럼을 유지한다.** 컬럼 없는 빈 표를 내면 저장 계층이
+    「한글 이름이 없는 컬럼」 검사도 못 하고 그대로 죽는다.
+
     Args:
         events: 롤 이벤트 목록
         rule: 롤 규칙 (표에 함께 남긴다)
 
     Returns:
-        롤 이벤트 표
+        롤 이벤트 표. 이벤트가 없으면 같은 컬럼의 0행 표
     """
+    if not events:
+        return _empty_roll_events_frame()
+
     return pd.DataFrame(
         [
             {
-                "RollRule": rule,
-                "DecisionDate": event.decision_date,
-                "ExecutionDate": event.execution_date,
-                "FromContract": event.from_contract,
-                "FromName": event.from_name,
-                "ToContract": event.to_contract,
-                "ToName": event.to_name,
-                "AdjustmentFactor": event.adjustment_factor,
-                "FromOpenInterest": event.from_open_interest,
-                "ToOpenInterest": event.to_open_interest,
-                "Fallback": event.fallback,
+                COL_ROLL_RULE: rule,
+                COL_DECISION_DATE: event.decision_date,
+                COL_EXECUTION_DATE: event.execution_date,
+                COL_FROM_CONTRACT: event.from_contract,
+                COL_FROM_NAME: event.from_name,
+                COL_TO_CONTRACT: event.to_contract,
+                COL_TO_NAME: event.to_name,
+                COL_ADJUSTMENT_FACTOR: event.adjustment_factor,
+                COL_FROM_OPEN_INTEREST: event.from_open_interest,
+                COL_TO_OPEN_INTEREST: event.to_open_interest,
+                COL_FALLBACK: event.fallback,
             }
             for event in events
         ]
     )
+
+
+def _empty_roll_events_frame() -> pd.DataFrame:
+    """롤이 하나도 없을 때 돌려줄 빈 원자료 표를 만든다.
+
+    값이 없다는 이유로 컬럼과 dtype 이 사라지면 저장 계층이 헤더를 한글로 바꾸지 못하고,
+    빈 표라는 사실보다 「스키마가 없다」가 먼저 드러난다. 이 저장소의 다른 빈 표와 같은 관용이다.
+
+    Returns:
+        롤 이벤트 표와 같은 구성의 0행 DataFrame
+    """
+    return pd.DataFrame({column: pd.Series(dtype=dtype) for column, dtype in ROLL_EVENT_DTYPES.items()})

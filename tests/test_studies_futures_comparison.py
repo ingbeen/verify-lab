@@ -552,3 +552,56 @@ class TestHorizons:
         # Given / When / Then
         with pytest.raises(ValueError, match=message):
             horizons_or_default(horizons)
+
+
+class TestWindowTableGuard:
+    """빈 입력은 예외로 막는다"""
+
+    def test_방식이_하나도_없으면_거부한다(self) -> None:
+        """
+        목적: `StopIteration` 대신 뜻이 드러나는 예외를 내게 한다.
+
+        `next(iter(...))` 앞에 검사가 없으면 빈 dict 에서 `StopIteration` 이 오르는데,
+        그것은 「반복이 끝났다」는 뜻이라 호출 측이 원인을 알 수 없고
+        제너레이터 안에서는 조용히 반복을 끝내버리기까지 한다.
+
+        Given: 방식이 하나도 없는 수익률 dict
+        When: 시작일 원자료 표를 만든다
+        Then: 뜻이 드러나는 `ValueError` 가 오른다
+        """
+        # Given
+        dates = pd.Series(pd.bdate_range("2020-01-01", periods=3))
+
+        # When · Then
+        with pytest.raises(ValueError, match="방식"):
+            build_window_table(dates, {}, horizon=1)
+
+
+class TestSegmentBoundaries:
+    """리밸런싱 경계는 언제나 구간 끝을 포함한다"""
+
+    @pytest.mark.parametrize(
+        ("horizon", "expected"),
+        [
+            (1, [0, 1]),
+            (5, [0, 5]),
+            (REBALANCE_INTERVAL_DAYS, [0, REBALANCE_INTERVAL_DAYS]),
+            (REBALANCE_INTERVAL_DAYS * 2, [0, REBALANCE_INTERVAL_DAYS, REBALANCE_INTERVAL_DAYS * 2]),
+        ],
+    )
+    def test_월_1회_경계가_구간_끝을_포함한다(self, horizon: int, expected: list[int]) -> None:
+        """
+        목적: 경계 산출을 값으로 고정한다.
+
+        마지막 조각이 빠지면 그만큼의 손익이 통째로 사라지는데, 수익률이 조금 작게 나올 뿐이라
+        눈으로 발견되지 않는다.
+
+        Given: 보유 기간
+        When: 월 1회 리밸런싱 경계를 낸다
+        Then: 0 에서 시작해 구간 끝으로 닫힌다
+        """
+        # When
+        boundaries = _segment_boundaries(horizon, REBALANCE_MONTHLY)
+
+        # Then
+        assert boundaries == expected
