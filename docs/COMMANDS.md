@@ -344,10 +344,14 @@ poetry run python scripts/studies/run_futures_leverage.py --index KOSDAQ150
 - 선행 조건: `storage/market/` 에 **선물 2종**(`KRDRVFUK2I_max.csv`·`KRDRVFUKQI_max.csv`)과
   **짝이 되는 ETF·ETN 8종**, `storage/series/CD91.csv` 가 있어야 합니다
 - 산출물은 `storage/results/<실행시각>_futures_leverage/` 에 남습니다
-  - `comparison.csv` — 지수 × 배수 × 방식 × 구간 집계. **가장 먼저 볼 표입니다**
-  - `decomposition.csv` — 차이 분해(롤·베이시스 몫 · 리밸런싱 오차 · 여유현금 이자 · 잔여)
+  - `comparison.csv` — 지수 × 배수 × 방식 × 구간 집계. **가장 먼저 볼 표입니다**.
+    방식은 넷이며(레버리지 ETF · 선물 매일 · 선물 월 1회 · **선물 그대로**),
+    **「선물 그대로」가 「1억을 넣고 그냥 두면 같은가」에 답합니다**
+  - `decomposition.csv` — 차이 분해(롤·베이시스 몫 · 리밸런싱 오차 · **그대로 두기 오차** · 여유현금 이자 · 잔여)
   - `roll_events.csv` — 롤 이벤트 원자료. **판정일과 집행일이 따로** 있습니다
-  - `breakeven.csv` · `wipeouts.csv` · `leverage_drift.csv`
+  - `breakeven.csv` — **매일 리밸런싱과 그대로 두기를 각각** ETF 와 견준 결과
+  - `integer_contracts.csv` — 자기자본 규모별 정수 계약과 **실제 배수**. 계약 하나도 못 사면 「집행 불가」
+  - `wipeouts.csv` · `leverage_drift.csv`
   - `windows_<지수>_<종목>.csv` — 시작일 전체 목록. 차트 대조용입니다
 - **CSV 헤더는 한글**이고 비율은 백분율 2자리로 저장됩니다
 - 확정 설계는 [spec/futures_leverage.md](spec/futures_leverage.md) 입니다

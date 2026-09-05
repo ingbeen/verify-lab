@@ -1,7 +1,10 @@
 """세 방식의 구간 수익률과 차이 분해
 
 같은 자기자본·같은 목표 배수·같은 구간에서 **① 레버리지 ETF ② 선물 매일 리밸런싱
-③ 선물 월 1회 리밸런싱** 을 나란히 낸다.
+③ 선물 월 1회 리밸런싱 ④ 선물 그대로 두기** 를 나란히 낸다.
+
+**④ 가 사용자가 실제로 하는 것이다** — 1억을 넣고 계약 수를 그대로 두는 것. ①~③ 은
+「선물로 ETF 를 복제할 수 있는가」에 답하고, ④ 는 「그냥 사서 들고 있으면 같은가」에 답한다.
 
 ## 구간 수익률을 엔진으로 하나씩 돌리지 않는다
 
@@ -19,6 +22,8 @@ E = E_구간시작 × (1 + 배수 × 구간수익률) × Π(1 + 이자율)
 
 - **매일 리밸런싱** — 조각이 하루씩이므로 일간 누적곱 하나로 전 구간이 나온다
 - **월 1회** — 조각이 진입일로부터 `REBALANCE_INTERVAL_DAYS` 거래일마다다
+- **그대로 두기** — 조각이 하나뿐이라 `배수 × 구간수익률` 로 닫힌다. 복리가 붙지 않는 것이
+  다른 둘과의 차이이며, 그 대가로 **배수가 표류한다**
 
 두 경로가 엔진과 정확히 같은 값을 내는지는 테스트로 고정한다 (절대 원칙 5 판정식 단일화).
 
@@ -31,6 +36,7 @@ E = E_구간시작 × (1 + 배수 × 구간수익률) × Π(1 + 이자율)
 | --- | --- | --- |
 | **롤·베이시스 몫** | `선물 연속계열 구간수익률 − 현물지수 구간수익률` | 독립 산식 |
 | **리밸런싱 오차** | `선물(월1회) − 선물(매일)` | 정의상 이 차이 하나 |
+| **그대로 두기 오차** | `선물(그대로) − 선물(매일)` | 정의상 이 차이 하나 |
 | **여유현금 이자** | `선물(이자 있음) − 선물(이자 없음)` | 정의상 이 차이 하나 |
 | **잔여** | `[선물(매일·이자없음) − ETF] − 배수 × 롤·베이시스 몫` | 남는 것 = ETF 총보수·차입·추적오차·배당 미반영 |
 
@@ -62,7 +68,9 @@ from verify_lab.studies.futures_leverage.constants import (
     REBALANCE_DAILY,
     REBALANCE_INTERVAL_DAYS,
     REBALANCE_MONTHLY,
+    REBALANCE_NONE,
     REBALANCE_RULES,
+    WIPEOUT_RETURN,
 )
 from verify_lab.utils.logger import get_logger
 
@@ -113,6 +121,10 @@ def _segment_boundaries(horizon: int, rebalance_rule: str) -> list[int]:
     if rebalance_rule == REBALANCE_DAILY:
         return list(range(horizon + 1))
 
+    # 그대로 두기는 진입일과 종료일 둘뿐이다 — 구간 안에서 한 번도 배수를 되돌리지 않는다
+    if rebalance_rule == REBALANCE_NONE:
+        return [0, horizon]
+
     if rebalance_rule != REBALANCE_MONTHLY:
         raise ValueError(f"모르는 리밸런싱 규칙입니다: {rebalance_rule} (가능: {list(REBALANCE_RULES)})")
 
@@ -136,9 +148,13 @@ def leveraged_window_returns(
     `E = E_시작 × (1 + 배수 × 구간수익률) × Π(1 + 이자율)` 이므로, 보유 구간의 수익률은
     리밸런싱 경계로 자른 조각들의 곱이 된다.
 
-    **자기자본이 0 이하로 떨어지는 구간은 예외를 던지지 않고 표시해서 돌려준다.**
-    강제청산을 모델링하지 않으므로 그 구간의 수익률은 정의되지 않지만, 예외로 멈추면
-    **그런 구간이 몇 개였는지가 산출물에서 통째로 사라진다.** 몇 건이 왜 빠졌는지 남긴다
+    **자기자본이 0 이하로 떨어지는 구간은 `WIPEOUT_RETURN`(−100%) 으로 돌려준다.**
+    강제청산되면 자기자본이 전액 사라지므로 그것이 그 구간의 성적이다. 비워두면 살아남은
+    구간만 평균에 들어가 **생존편향**이 생긴다 — 그대로 두기 축에서 소진이 대량 발생하며,
+    제외하면 망한 구간이 결과에서 통째로 사라진다.
+
+    **구간이 데이터를 넘어가 못 잰 시작일과는 구분한다.** 그쪽은 «성적이 없는» 것이라
+    `NaN` 이다. 소진 표시는 별도로 함께 돌려주므로 몇 건이었는지 그대로 남는다
     (`src/verify_lab/CLAUDE.md` 절대 원칙 4 표본 보존).
 
     Args:
@@ -151,8 +167,8 @@ def leveraged_window_returns(
         interest_factor: 첫날을 1 로 하는 이자 누적 배수. None 이면 이자 없음
 
     Returns:
-        (구간 수익률, 자기자본 소진 표시) 짝. 구간 끝이 데이터를 넘어가거나
-        자기자본이 소진된 시작일의 수익률은 NaN 이다
+        (구간 수익률, 자기자본 소진 표시) 짝. 구간 끝이 데이터를 넘어간 시작일은 NaN 이고,
+        자기자본이 소진된 시작일은 `WIPEOUT_RETURN`(−100%) 이다
 
     Raises:
         ValueError: 보유 기간이 1 미만인 경우
@@ -185,7 +201,12 @@ def leveraged_window_returns(
         )
         growth = np.where(usable & ~wiped_out, growth * window_interest, growth)
 
-    return np.where(usable & ~wiped_out, growth - 1.0, np.nan), wiped_out
+    # **소진과 「못 잼」을 구분한다.** 소진은 −100% 라는 «성적» 이고, 구간이 데이터를
+    # 넘어간 시작일은 «성적이 없는» 것이다. 소진을 비우면 살아남은 구간만 평균에 들어가
+    # 생존편향이 생기고, 못 잰 칸을 −100% 로 채우면 없던 손실을 지어낸다
+    result = np.where(usable, np.where(wiped_out, WIPEOUT_RETURN, growth - 1.0), np.nan)
+
+    return result, wiped_out
 
 
 def plain_window_returns(prices: np.ndarray, horizon: int) -> np.ndarray:
@@ -277,6 +298,7 @@ def decompose(
     etf_return: np.ndarray,
     futures_daily: np.ndarray,
     futures_monthly: np.ndarray,
+    futures_hold: np.ndarray,
     futures_daily_with_interest: np.ndarray,
     continuous_return: np.ndarray,
     spot_return: np.ndarray,
@@ -291,6 +313,7 @@ def decompose(
         etf_return: ETF 보유의 구간 수익률
         futures_daily: 선물 매일 리밸런싱(이자 없음)의 구간 수익률. **비교의 기준선**
         futures_monthly: 선물 월 1회(이자 없음)의 구간 수익률
+        futures_hold: 선물 그대로 두기(이자 없음)의 구간 수익률
         futures_daily_with_interest: 선물 매일 리밸런싱(이자 있음)의 구간 수익률
         continuous_return: 선물 연속 계열의 1배 구간 수익률
         spot_return: **현물지수**의 구간 수익률. 1배 ETF 가 아니다 — ETF 를 쓰면
@@ -298,11 +321,13 @@ def decompose(
         multiple: 목표 배수
 
     Returns:
-        `RollCost` · `RebalanceError` · `InterestGain` · `Residual` · `FuturesMinusEtf` 컬럼.
+        `RollCost` · `RebalanceError` · `HoldError` · `InterestGain` · `Residual` ·
+        `FuturesMinusEtf` · `HoldMinusEtf` 컬럼.
         `RollCost` 는 **양수면 롤 수익**(백워데이션), 음수면 롤 비용(콘탱고)이다
     """
     roll_cost = continuous_return - spot_return
     rebalance_error = futures_monthly - futures_daily
+    hold_error = futures_hold - futures_daily
     interest_gain = futures_daily_with_interest - futures_daily
     futures_minus_etf = futures_daily - etf_return
     residual = futures_minus_etf - multiple * roll_cost
@@ -311,9 +336,12 @@ def decompose(
         {
             "RollCost": roll_cost,
             "RebalanceError": rebalance_error,
+            "HoldError": hold_error,
             "InterestGain": interest_gain,
             "Residual": residual,
             "FuturesMinusEtf": futures_minus_etf,
+            # **사용자 질문에 직접 답하는 열이다** — 「1억을 넣고 그대로 두면 ETF 와 같은가」
+            "HoldMinusEtf": futures_hold - etf_return,
         }
     )
 
