@@ -17,6 +17,9 @@ from verify_lab.studies.leverage_tracking.breakdown import (
     summarize_by_horizon,
 )
 from verify_lab.studies.leverage_tracking.constants import (
+    BASE_RETURN_BUCKETS,
+    COL_BASE_RETURN,
+    COL_BASE_RETURN_BUCKET,
     COL_DIRECTION,
     COL_JUDGEABLE,
     COL_NON_OVERLAPPING_COUNT,
@@ -190,6 +193,112 @@ class TestAttachAxes:
         # When / Then
         with pytest.raises(ValueError, match="모르는 날짜"):
             attach_axes(divergence, alignment_b.frame)
+
+
+class TestBaseReturnBuckets:
+    """1배 수익률 분위 축 — 방향(부호)만으로는 보이지 않는 것을 본다
+
+    기존 방향 축은 `1배 수익률 > 0` 이면 「오름」이라 **+1% 와 +50% 가 같은 칸**에 들어간다.
+    경로 효과는 크기의 함수이므로 그 축으로는 «완만한 상승에서 가장 많이 깎인다» 가 보이지 않는다.
+    """
+
+    def test_분위는_구간별로_따로_매긴다(self) -> None:
+        """
+        목적: 분위 경계가 **보유 기간마다 따로** 정해짐을 고정한다.
+
+        보유 기간이 다르면 같은 수익률이 다른 뜻이다. 한 덩어리로 매기면 긴 구간이
+        상위 분위를 독점해 **재려는 것이 아닌 축이 결과에 섞인다.**
+
+        Given: 꾸준히 오르는 가격과 서로 다른 두 보유 기간
+        When: 축을 붙인다
+        Then: 두 구간 모두 분위가 전 범위에 걸쳐 나온다
+        """
+        # Given
+        closes = [100.0 * (1.0 + day * 0.01) for day in range(30)]
+
+        # When
+        prepared = _prepared(closes, [value / 2 for value in closes], horizons=(1, 5))
+
+        # Then
+        for horizon in (1, 5):
+            labels = prepared[(prepared[COL_HORIZON] == horizon) & prepared[COL_BASE_RETURN_BUCKET].notna()]
+            assert set(labels[COL_BASE_RETURN_BUCKET]) == set(BASE_RETURN_BUCKETS)
+
+    def test_잴_수_없는_시작일은_분위가_비어_있다(self) -> None:
+        """
+        목적: 구간이 데이터를 넘어가 1배 수익률이 없는 시작일에 **라벨을 붙이지 않음**을 고정한다.
+
+        없는 값에 분위를 매기면 그 칸을 «쟀다» 로 읽게 된다 (기존 방향 축과 같은 규약).
+
+        Given: 구간 끝이 데이터를 넘어가는 시작일이 섞인 짝
+        When: 축을 붙인다
+        Then: 1배 수익률이 결측인 행의 분위가 비어 있다
+        """
+        # Given
+        closes = [100.0 * (1.0 + day * 0.01) for day in range(12)]
+
+        # When
+        prepared = _prepared(closes, [value / 2 for value in closes], horizons=(5,))
+
+        # Then
+        unusable = prepared[prepared[COL_BASE_RETURN].isna()]
+        assert not unusable.empty
+        assert unusable[COL_BASE_RETURN_BUCKET].isna().all()
+
+    def test_표본이_모자라면_예외_없이_비운다(self) -> None:
+        """
+        목적: 분위 수보다 표본이 적어도 **예외를 던지지 않음**을 고정한다.
+
+        예외로 멈추면 짝 하나 때문에 전체 실행이 죽는다. 나누지 못하면 비운 채로 두고
+        그 사실이 산출물에 남게 한다 (절대 원칙 4 표본 보존).
+
+        Given: 잴 수 있는 시작일이 분위 수보다 적은 짝
+        When: 축을 붙인다
+        Then: 예외가 나지 않고 분위가 비어 있다
+        """
+        # Given
+        closes = [100.0, 101.0, 102.0, 103.0]
+
+        # When
+        prepared = _prepared(closes, [value / 2 for value in closes], horizons=(2,))
+
+        # Then
+        assert prepared[COL_BASE_RETURN_BUCKET].isna().all()
+
+    def test_값이_한쪽에_몰려도_깨지지_않는다(self) -> None:
+        """
+        목적: 1배 수익률이 같은 값에 몰려 분위 경계가 겹쳐도 **실행이 멈추지 않음**을 고정한다.
+
+        `qcut` 은 중복 경계에서 예외를 던진다. 변동성 축과 같은 규약으로 처리한다.
+
+        Given: 매일 같은 비율로 오르는 가격 (구간 수익률이 전부 같다)
+        When: 축을 붙인다
+        Then: 예외가 나지 않는다
+        """
+        # Given
+        closes = [100.0 * (1.01**day) for day in range(20)]
+
+        # When
+        prepared = _prepared(closes, [value / 2 for value in closes], horizons=(1,))
+
+        # Then
+        assert COL_BASE_RETURN_BUCKET in prepared.columns
+
+    def test_기존_세_축은_그대로다(self) -> None:
+        """
+        목적: 축을 하나 더해도 **기존 축의 값이 바뀌지 않음**을 고정한다 (회귀 방지).
+
+        Given: 오르고 내리는 짝
+        When: 축을 붙인다
+        Then: 방향·시기·시작일 위치가 기존 정의대로 나온다
+        """
+        # Given / When
+        prepared = _prepared([100.0, 110.0, 110.0, 99.0], [50.0, 55.0, 55.0, 49.0], horizons=(1,))
+
+        # Then
+        directions = prepared[prepared[COL_DIRECTION].notna()][COL_DIRECTION].tolist()
+        assert directions == [DIRECTION_UP, DIRECTION_FLAT, DIRECTION_DOWN]
+        assert sorted(prepared[COL_START_POSITION].unique().tolist()) == [0, 1, 2, 3]
 
 
 class TestSummarize:
