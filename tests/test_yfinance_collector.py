@@ -209,7 +209,7 @@ def test_adjusted_is_saved_to_a_separate_file(
     목적: 수정주가가 원본가 파일을 덮어쓰지 않음을 고정한다.
 
     **가격 기준이 다르면 내용이 다른 데이터**이므로 한 파일에 섞지 않는다
-    (`docs/ROADMAP.md` "확정된 원시 시세 저장 규칙"). 파일명이 같으면 `--adjusted` 한 번에
+    (`src/verify_lab/CLAUDE.md` 「계층 간 계약」의 원시 시세 저장 규칙). 파일명이 같으면 `--adjusted` 한 번에
     본검증용 원본가가 사라지고, 파일은 정상으로 보여 눈으로는 발견되지 않는다.
     `pykrx_collector` 와 같은 규칙을 쓴다.
 

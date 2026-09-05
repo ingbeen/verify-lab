@@ -10,17 +10,20 @@
 
 ## 1. 처음 온 세션이 읽을 순서
 
+**진입 순서 자체는 [../.claude/rules/session-bootstrap.md](../.claude/rules/session-bootstrap.md) 가 정합니다.**
+그 규칙은 `paths` 가 없어 **매 세션 자동 로드**되며, 첫 작업 전에 이 지도를 열도록 지시합니다.
+
 | 순서 | 문서 | 왜 |
 | --- | --- | --- |
-| 1 | [../CLAUDE.md](../CLAUDE.md) | 프로젝트 규칙. 측정의 원칙과 후보 판정 기준 |
+| 1 | [../CLAUDE.md](../CLAUDE.md) | 프로젝트 규칙. 측정의 원칙 17개와 후보 판정 기준 |
 | 2 | [context/README.md](context/README.md) | **사용자의 현재 운용 상태와 이 프로젝트가 시작된 이유. 가장 중요** |
-| 3 | [ROADMAP.md](ROADMAP.md) | 검증 대상 목록과 Phase 진행 상태 |
-| 4 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 첫 검증의 확정 설계 |
-| 5 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 구조와 측정 계층의 절대 원칙 5가지 |
+| 3 | 작업 대상의 `spec/` · `research/` · `strategy/` | 아래 3절에서 고릅니다 |
+| 4 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 구조, 측정 계층의 절대 원칙 5가지, **계층 간 계약 8종** |
 
-새 세션의 진입점은 저장소 루트의 `다음세션_프롬프트.md` 입니다. 현재 상태·남은 일·이번 세션에 할 것이
-정리돼 있으며, **작업이 진척되면 `/handoff` 로 그 파일을 갱신합니다.**
-파일명·위치·추적 여부의 규칙은 [../CLAUDE.md](../CLAUDE.md) "세션 인계 규칙" 이 SoT입니다.
+**전부 읽지 않습니다.** 하네스 설정·문서 정리·단순 질의응답이면 1·2 에서 멈춥니다.
+
+> **진행 상태 문서와 인계 문서를 두지 않습니다.** 무엇이 끝났는지는 git 이력과 결과 문서가 말하고,
+> 무엇을 다음에 할지는 그때 사용자가 정합니다. `tests/test_index.py` 가 이 규칙을 집행합니다.
 
 ---
 
@@ -32,7 +35,7 @@
 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 분리, 상수 관리 3계층, 핵심 패턴, 절대 원칙 | `src/verify_lab/` 작업 시 자동 |
 | [../scripts/CLAUDE.md](../scripts/CLAUDE.md) | CLI 계층 책임, 예외 처리, 명령행 인자 정책 | `scripts/` 작업 시 자동 |
 | [../tests/CLAUDE.md](../tests/CLAUDE.md) | 필수 테스트 3종, Given-When-Then, 부동소수점 비교, 파일 격리 | `tests/` 작업 시 자동 |
-| [research/CLAUDE.md](research/CLAUDE.md) | 결과 문서 작성 규칙 | `docs/research/` 작업 시 자동 |
+| [../.claude/rules/research.md](../.claude/rules/research.md) | 결과 문서 작성 규칙 | `docs/research/**` Read 시점에 자동 |
 | [../.claude/rules/python.md](../.claude/rules/python.md) | 코딩 표준, 반올림 규칙, 로깅 정책, 주석 규칙 | `**/*.py` **Read 시점**에 자동 (실측 확인) |
 | [../.claude/rules/docs.md](../.claude/rules/docs.md) | 문서 종류와 SoT 역할, 계획서 수명 | `docs/**` **Read 시점**에 자동 (실측 확인) |
 | [../.claude/rules/reference.md](../.claude/rules/reference.md) | reference 폴더 읽기 전용 4금지 | `reference/**` Read 시점에 자동 |
@@ -42,7 +45,7 @@
 
 > **자동 로드는 편집이 아니라 읽기에서 걸립니다.** 기존 파일을 Read 하면 해당 경로의 규칙이 함께 들어옵니다.
 > 따라서 **기존 파일을 열지 않고 새 파일부터 만드는 경우**에만 규칙 문서를 직접 열면 됩니다.
-> 실측 근거는 [ROADMAP.md](ROADMAP.md) Phase 0에 있습니다.
+> 실측 근거는 [../.claude/rules/session-bootstrap.md](../.claude/rules/session-bootstrap.md) 4절에 있습니다.
 
 ---
 
@@ -53,7 +56,6 @@
 | [context/README.md](context/README.md) | 두 운용 문서의 안내와 핵심 결론 | 항상 |
 | [context/RESEARCH_q2_2xs_qqq_correlation.md](context/RESEARCH_q2_2xs_qqq_correlation.md) | 운용 포트폴리오의 QQQ 상관 분해. **이 프로젝트의 출발점** | 검증 결과를 해석할 때 |
 | [context/RESEARCH_qqq_late_entry.md](context/RESEARCH_qqq_late_entry.md) | 현재 보유 판정(이번 사이클 미진입)과 근거 | 같음 |
-| [ROADMAP.md](ROADMAP.md) | 검증 목록(8개), Phase 상태, **원달러 그리드 트랙 종료 기록과 다음 트랙이 알아야 할 것**, 계획서 승격 목적지 | 작업 시작·종료 시 |
 | [spec/index_extreme_events.md](spec/index_extreme_events.md) | 검증 #1 확정 설계, 확정 결정 8건, 사전 실측 기록 | 검증 #1 관련 전부 |
 | [spec/usdkrw_grid.md](spec/usdkrw_grid.md) | **원달러 그리드 트랙의 SoT** — 데이터 실측 기록 15개 절(ECOS/FRED 코드, ETF 2종, 매매기준율 시차, 동적 범위, 슬롯 상한, 환전 비용, 그리드 엔진 실행 8회 — 비용 없음·거래비용·이자·ETF 경로·하단 이탈 B안·지표 계층·벤치마크·견고성 검사)과 확정된 설계 결정(A1~A4·B1~B2·C1~C118) | 원달러 그리드·검증 #5 관련 전부. **§4 가 원본 사양서를 이긴다** |
 | [spec/usdkrw_grid_rules.md](spec/usdkrw_grid_rules.md) | 원달러 그리드 **매매 규칙의 원본 사양서** (사용자 작성). **일부 규정이 실측으로 바뀌었으므로 위 spec 의 §4 가 SoT** | 그리드 규칙 본문(격자·범위·자금배분·체결·비용·지표)을 볼 때 |
@@ -71,7 +73,6 @@
 | [strategy/원달러_그리드.md](strategy/원달러_그리드.md) | **원달러 그리드의 규칙과 성적** — 확정 규칙(§1)·성적(§2)·결정 근거(§3)·한계(§4)·체결 원자료(§5). **채택되지 않았다**(§2.8) — 급등장에 달러가 0이 되어 사용자 목적과 충돌한다. 성적은 **왜 안 쓰는지의 근거**로 보존 | 그리드를 다시 검토하거나 그 성적을 인용할 때 |
 | [strategy/옵션_만기일_매매_규칙.md](strategy/옵션_만기일_매매_규칙.md) | **옵션 만기일 매매의 SoT** — 확정 규칙(§1)·구간별 성적(§2)·결정 근거(§3)·한계(§4)·원자료(§5). 7칸(9월 넷·12월 셋), 손절 −5%, **알림 없음(직접 챙김)** | **9월·12월에 매매하기 전에 §1 만 읽으면 된다.** 2026년 실행 날짜는 §1.6 |
 | [strategy/역방향_매매_규칙.md](strategy/역방향_매매_규칙.md) | **현재 운용 중인 매매 규칙의 SoT** — 확정 규칙(§1)·성적·결정 근거·신호일 원자료. 측정이 아니라 측정 결과로부터 도출한 규칙이다 | **"확정된 매매법만 참고하라"의 지시 대상은 §1** |
-| [HANDS_ON.md](HANDS_ON.md) | **직접 대조 가이드** — 스크립트 실행부터 신호일·수익률을 손으로 검산하는 절차 | 결과를 코드 없이 직접 확인할 때 |
 | [COMMANDS.md](COMMANDS.md) | 실행 명령어 단일 SoT | 스크립트 만들거나 실행할 때 |
 | [../README.md](../README.md) | 프로젝트 소개 (사람용) | — |
 
@@ -163,8 +164,8 @@
 | `storage/results/<실행시각>_<검증명>/` | 검증 산출물 (CSV, summary.json) | 제외 (재생성 가능) |
 
 국내 두 파일은 `scripts/data/collect_pykrx.py` 로 한 번에 재수집합니다.
-**같은 `_max.csv` 라도 종목에 따라 가격 기준이 다릅니다** — 이유와 근거는 [ROADMAP.md](ROADMAP.md)
-"확정된 원시 시세 저장 규칙"에 있습니다.
+**같은 `_max.csv` 라도 종목에 따라 가격 기준이 다릅니다** — 이유와 근거는
+[../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 「계층 간 계약」의 원시 시세 저장 규칙에 있습니다.
 
 ---
 

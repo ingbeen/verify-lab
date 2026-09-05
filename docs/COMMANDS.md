@@ -26,7 +26,7 @@ poetry run black .
 
 > 검증이 **세 항목 모두 실패**하면서 `Command not found` 가 보이면 코드 문제가 아니라 실행 환경 문제입니다.
 > `poetry env info --path` 가 프로젝트의 `.venv` 를 가리키는지 먼저 확인하세요.
-> 원인과 대처는 [ROADMAP.md](ROADMAP.md) Phase 0 의 실측 기록에 있습니다.
+> 원인과 대처는 [.claude/rules/session-bootstrap.md](../.claude/rules/session-bootstrap.md) 5절에 있습니다.
 
 > **`failed=0 skipped=0` 이 통과 기준입니다.** 이 둘만 보면 됩니다.
 >
@@ -411,8 +411,8 @@ poetry run python scripts/studies/run_usdkrw_equivalence.py --model usd_rate
 ### 원달러 그리드 — 코드 삭제됨 (2026-08-30)
 
 **실행할 스크립트가 없다.** 그리드는 채택되지 않았고 구현을 지웠다.
-규칙과 성적은 [strategy/원달러_그리드.md](strategy/원달러_그리드.md), 확정 설계는
-[spec/usdkrw_grid.md](spec/usdkrw_grid.md), 기각 근거는 [ROADMAP.md](ROADMAP.md) 「G5 이후 — 트랙 종료」에 있다.
+규칙·성적과 **기각 근거(§2.8)** 는 [strategy/원달러_그리드.md](strategy/원달러_그리드.md),
+확정 설계는 [spec/usdkrw_grid.md](spec/usdkrw_grid.md) 에 있다.
 
 ### 역방향 매매 규칙
 

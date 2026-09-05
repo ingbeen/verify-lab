@@ -56,7 +56,7 @@
 
 > **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —
 > 그리드는 채택되지 않아 2026-08-30 에 구현을 지웠고 기록하는 스크립트가 없다.
-> 기각 근거는 [docs/ROADMAP.md](../docs/ROADMAP.md) 「G5 이후 — 트랙 종료」에 있다.
+> 기각 근거는 [docs/strategy/원달러_그리드.md](../docs/strategy/원달러_그리드.md) §2.8 에 있다.
 
 ---
 
