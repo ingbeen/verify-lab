@@ -635,7 +635,7 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
     df = _load(dataset)
     trading_days = pd.DatetimeIndex(df[COL_DATE])
     last_date = trading_days[-1]
-    identity = {COL_TICKER: dataset.ticker}
+    identity = {COL_TICKER: dataset.label}
 
     grid_blocks: list[pd.DataFrame] = []
     period_blocks: list[pd.DataFrame] = []
@@ -731,7 +731,7 @@ def _run_base_cell(
     Returns:
         요약에 담을 수치
     """
-    identity = {COL_TICKER: dataset.ticker}
+    identity = {COL_TICKER: dataset.label}
 
     # 신호일 원자료. 진입·청산 가격과 날짜를 전부 남겨 사용자가 차트로 대조한다 (측정의 원칙 8)
     raw = signal.drop(columns=[COL_BASIS, COL_HORIZON]).copy()

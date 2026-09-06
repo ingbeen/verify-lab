@@ -32,6 +32,7 @@ def simulate_expiry_trade(
     *,
     bet_down: bool,
     stop_level: float | None,
+    price_column: str = COL_CLOSE,
 ) -> TradeResult:
     """만기 진입 하나에 손절을 걸어 체결 결과를 낸다.
 
@@ -55,13 +56,17 @@ def simulate_expiry_trade(
         bet_down: 아래로 거는 칸인지 여부. 참이면 원지수가 내려야 이익이다
         stop_level: 손절선 (비율, 0.05 = 5%). **`None` 이면 무손절**이며
             얼마나 밀려도 청산일까지 보유한다
+        price_column: 가격 컬럼 이름. **지수는 종가 계열이라 이름이 다르다**
+            (`storage/series/` 의 `Value`). 손절을 걸 때는 이 값을 바꿀 수 없다 —
+            장중 판정에 시가·고가·저가가 필요한데 지수에는 없다
 
     Returns:
         체결 결과
 
     Raises:
         ValueError: 청산 위치가 진입 위치보다 뒤가 아니거나 시세 범위를 벗어난 경우,
-            손절선이 양수가 아닌 경우, 필요한 컬럼이 없거나 진입 위치가 범위 밖인 경우
+            손절선이 양수가 아닌 경우, 필요한 컬럼이 없거나 진입 위치가 범위 밖인 경우,
+            **종가가 아닌 가격 컬럼에 손절선을 건 경우**
         RuntimeError: 청산일까지 체결되지 않은 경우 (내부 불변조건 위반)
     """
     if not entry_position < exit_position < len(frame):
@@ -72,7 +77,14 @@ def simulate_expiry_trade(
     hold_days = exit_position - entry_position
 
     if stop_level is None:
-        return _scheduled_exit(frame, entry_position, exit_position, bet_down=bet_down, hold_days=hold_days)
+        return _scheduled_exit(
+            frame, entry_position, exit_position, bet_down=bet_down, hold_days=hold_days, price_column=price_column
+        )
+
+    # 손절 경로는 시가·고가·저가를 읽으므로 시세 스키마에서만 성립한다. 조용히 종가로 재면
+    # 장중에 밀린 손실을 못 보고 실제보다 손절이 덜 걸려 성적이 좋아진다
+    if price_column != COL_CLOSE:
+        raise ValueError(f"장중 손절은 시세 스키마에서만 잴 수 있습니다 (고가·저가가 필요합니다): 가격 컬럼 {price_column}")
 
     result = simulate_signal(
         frame,
@@ -95,24 +107,29 @@ def _scheduled_exit(
     *,
     bet_down: bool,
     hold_days: int,
+    price_column: str,
 ) -> TradeResult:
     """무손절 체결 — 청산일 종가로만 계산한다.
 
     **손절 판정이 없으므로 시가도 장중도 보지 않는다.** 이 행은 손절 격자의 대조축이며,
     `.claude/rules/strategy.md` 가 「손절이 무엇을 막았는가」를 수치로 남기도록 요구한다.
 
+    **종가 하나만 읽으므로 지수 계열도 이 경로로 지난다.** 지수는 시가·고가·저가가 없어
+    손절 경로에 들어갈 수 없고, 그래서 무손절이 지수가 갈 수 있는 유일한 길이다.
+
     Args:
-        frame: 시세
+        frame: 시세 또는 지수 계열
         entry_position: 진입일의 위치 인덱스
         exit_position: 청산일의 위치 인덱스
         bet_down: 아래로 거는 칸인지 여부
         hold_days: 보유 거래일 수
+        price_column: 가격 컬럼 이름
 
     Returns:
         청산일 종가로 나간 체결 결과
     """
-    entry_price = float(frame.iloc[entry_position][COL_CLOSE])
-    exit_price = float(frame.iloc[exit_position][COL_CLOSE])
+    entry_price = float(frame.iloc[entry_position][price_column])
+    exit_price = float(frame.iloc[exit_position][price_column])
     sign = -1.0 if bet_down else 1.0
 
     return TradeResult((exit_price / entry_price - 1.0) * sign, EXIT_LIMIT, hold_days)

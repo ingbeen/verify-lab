@@ -43,6 +43,8 @@ from verify_lab.strategy.constants import (
     DISPLAY_MEAN_HOLD,
     DISPLAY_MIN,
     DISPLAY_PERIOD,
+    DISPLAY_PERIOD_END,
+    DISPLAY_PERIOD_START,
     DISPLAY_RETURN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_STDEV,
@@ -413,6 +415,7 @@ def period_rows(
             days[masks[period]] if days is not None else None,
             labels[masks[period]] if labels is not None else None,
             excluded_count if period == PERIOD_ALL else 0,
+            entry_dates[masks[period]],
         )
         for period in EXPIRY_PERIODS
     ]
@@ -424,6 +427,7 @@ def _period_row(
     days: np.ndarray | None,
     labels: np.ndarray | None,
     excluded_count: int,
+    entry_dates: pd.DatetimeIndex,
 ) -> dict[str, Any]:
     """구간 하나의 집계를 만든다.
 
@@ -433,12 +437,17 @@ def _period_row(
     **표본이 0건이면 지표를 비운다.** 0 으로 채우면 「손실도 이익도 없었다」로 읽히는데
     실제로는 「잰 적이 없다」이다.
 
+    **구간 기간을 함께 낸다.** 구간 이름만으로는 어느 기간인지 알 수 없다 —
+    「앞 절반」이 30년 지수에서는 1996~2011 이고 11년 ETF 에서는 2015~2020 이다.
+    기간이 다른 행을 한 표에 놓고 비교하게 되므로 그 사실이 행 안에서 드러나야 한다.
+
     Args:
         period: 구간 이름
         values: 그 구간의 수익률 (비율)
         days: 그 구간의 보유 거래일 수
         labels: 그 구간의 청산 사유
         excluded_count: 제외 건수
+        entry_dates: 그 구간의 진입일. 기간의 양 끝을 여기서 낸다
 
     Returns:
         성적표 한 줄
@@ -469,6 +478,9 @@ def _period_row(
         DISPLAY_MEAN_HOLD: np.nan if (empty or days is None) else round(float(days.mean()), HOLD_DAYS_DECIMALS),
         # **미달이어도 행은 남는다.** 이 컬럼이 「판정에 쓰지 말라」를 표에 남기는 자리다
         DISPLAY_JUDGEABLE: JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO,
+        # **표본이 없으면 비운다.** 임의의 날짜로 채우면 잰 적이 없는 구간이 잰 것처럼 읽힌다
+        DISPLAY_PERIOD_START: np.nan if empty else entry_dates.min().strftime(DATE_FORMAT),
+        DISPLAY_PERIOD_END: np.nan if empty else entry_dates.max().strftime(DATE_FORMAT),
     }
 
 
