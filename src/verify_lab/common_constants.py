@@ -28,7 +28,7 @@ MARKET_DIR: Final = STORAGE_DIR / "market"
 # 잘못된 로더를 부르면 컬럼 검증에서야 걸린다. 폴더가 다르면 그 판단이 경로에서 끝난다
 SERIES_DIR: Final = STORAGE_DIR / "series"
 
-# 검증 산출물. 실행 시각으로 구분해 쌓이며 언제든 재생성 가능하므로 git 에서 제외한다
+# 검증 산출물. 실행 시각으로 구분해 쌓이며 git 으로 동기화한다 — 결과 문서가 근거로 인용하기 때문이다
 RESULTS_DIR: Final = STORAGE_DIR / "results"
 
 # 실행 이력. 최근 N개만 순환 저장한다 (개수는 `utils/meta_manager.py` 가 소유)

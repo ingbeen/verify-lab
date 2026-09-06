@@ -1,0 +1,135 @@
+{
+  "max_offset": 10,
+  "permutation_repeats": 1000,
+  "permutation_seed": 0,
+  "datasets": [
+    {
+      "ticker": "QQQ",
+      "file": "QQQ_max.csv",
+      "rows": 6915,
+      "period": "1999-03-10 ~ 2026-09-03",
+      "expiry_count": 330,
+      "advanced_count": 8,
+      "inside_window_days": 6573,
+      "expiry_weekdays": {
+        "목요일": 8,
+        "금요일": 322
+      },
+      "weekly_trade": [
+        {
+          "exit_weekday": "금요일",
+          "entry_count": 330,
+          "excluded_count": 0,
+          "hold_days": {
+            "4": 78,
+            "5": 252
+          },
+          "baseline_entry_count": 1385
+        }
+      ]
+    },
+    {
+      "ticker": "SPY",
+      "file": "SPY_max.csv",
+      "rows": 8450,
+      "period": "1993-01-29 ~ 2026-08-25",
+      "expiry_count": 403,
+      "advanced_count": 8,
+      "inside_window_days": 8024,
+      "expiry_weekdays": {
+        "목요일": 8,
+        "금요일": 395
+      },
+      "weekly_trade": [
+        {
+          "exit_weekday": "금요일",
+          "entry_count": 403,
+          "excluded_count": 1,
+          "hold_days": {
+            "4": 93,
+            "5": 309
+          },
+          "baseline_entry_count": 1692
+        }
+      ]
+    },
+    {
+      "ticker": "DIA",
+      "file": "DIA_max.csv",
+      "rows": 7195,
+      "period": "1998-01-20 ~ 2026-08-26",
+      "expiry_count": 343,
+      "advanced_count": 8,
+      "inside_window_days": 6828,
+      "expiry_weekdays": {
+        "목요일": 8,
+        "금요일": 335
+      },
+      "weekly_trade": [
+        {
+          "exit_weekday": "금요일",
+          "entry_count": 343,
+          "excluded_count": 1,
+          "hold_days": {
+            "4": 81,
+            "5": 261
+          },
+          "baseline_entry_count": 1439
+        }
+      ]
+    },
+    {
+      "ticker": "KODEX 200",
+      "file": "069500_max.csv",
+      "rows": 5898,
+      "period": "2002-10-14 ~ 2026-09-04",
+      "expiry_count": 286,
+      "advanced_count": 7,
+      "inside_window_days": 5597,
+      "expiry_weekdays": {
+        "월요일": 1,
+        "화요일": 1,
+        "수요일": 4,
+        "목요일": 280
+      },
+      "weekly_trade": [
+        {
+          "exit_weekday": "금요일",
+          "entry_count": 286,
+          "excluded_count": 0,
+          "hold_days": {
+            "3": 5,
+            "4": 4,
+            "5": 42,
+            "6": 235
+          },
+          "baseline_entry_count": 1190
+        },
+        {
+          "exit_weekday": "목요일",
+          "entry_count": 286,
+          "excluded_count": 0,
+          "hold_days": {
+            "2": 2,
+            "3": 6,
+            "4": 40,
+            "5": 238
+          },
+          "baseline_entry_count": 1190
+        }
+      ]
+    }
+  ],
+  "row_counts": {
+    "expiries": 1362,
+    "signals": 27022,
+    "trade_signals": 1648,
+    "trade_summary": 19,
+    "trade_excess": 19,
+    "trade_test": 19,
+    "trade_by_month": 60,
+    "trade_by_month_halves": 120,
+    "candidates": 60
+  },
+  "output_dir": "/home/yblee/workspace/verify-lab/storage/results/20260906_080311_option_expiry"
+}

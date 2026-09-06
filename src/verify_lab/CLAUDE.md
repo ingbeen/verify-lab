@@ -182,7 +182,8 @@ def find_events(df: pd.DataFrame) -> pd.Series:
 | 위치 | 내용 | git |
 | --- | --- | --- |
 | `storage/market/` | 수집한 원시 시세 | 동기화 |
-| `storage/results/<실행시각>_<검증명>/` | 검증 산출물 (CSV, summary.json) | 제외 (재생성 가능) |
+| `storage/results/<실행시각>_<검증명>/` | 검증 산출물 (CSV, summary.json) | 동기화 (결과 문서가 근거로 인용한다) |
+| `storage/results/meta.json` | 실행 이력 (최근 5개 순환) | 제외 (실행마다 재작성돼 PC 간 충돌) |
 
 - 경로는 `common_constants.py`의 상수로만 참조합니다. 하드코딩 금지
 - 검증 산출물은 덮어쓰지 않고 실행 시각으로 구분합니다 — 같은 검증을 파라미터만 바꿔 여러 번 돌리는 것이 전제입니다

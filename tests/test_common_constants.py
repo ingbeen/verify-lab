@@ -42,7 +42,7 @@ def test_market_dir_holds_raw_prices() -> None:
 
 def test_results_dir_holds_study_outputs() -> None:
     """
-    목적: 검증 산출물의 위치 계약을 고정한다 (git 제외, 재생성 가능).
+    목적: 검증 산출물의 위치 계약을 고정한다 (git 동기화 대상).
 
     Given: 공통 상수
     When: RESULTS_DIR 을 확인한다

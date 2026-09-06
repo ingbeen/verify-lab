@@ -527,7 +527,7 @@ KODEX 200 원본가가 SMA 1,631일·EMA 1,609일(3,837일 중)이다. **국내�
 ### 데이터 소스 실측 — pykrx KODEX 200 (2026-08-11)
 
 `scripts/data/check_pykrx_etf.py` 를 `069500` / `20021014 ~ 20260811` 로 실행한 결과다.
-KRX 를 5회 호출했고 원자료는 `storage/results/` 에 CSV 로 남았다(재생성 가능, git 제외).
+KRX 를 5회 호출했고 원자료는 `storage/results/` 에 CSV 로 남았다(`scripts/data/check_pykrx_etf.py` 로 재생성 가능).
 
 #### 함수별 반환
 

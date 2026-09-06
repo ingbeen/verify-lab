@@ -353,3 +353,89 @@ class TestEmptyPeriodMetrics:
         assert whole[DISPLAY_SIGNAL_COUNT] == len(years)
         assert whole[DISPLAY_GAP_STOP_COUNT] == 0
         assert whole[DISPLAY_INTRADAY_STOP_COUNT] == 0
+
+
+class TestPeriodSpan:
+    """구간이 실제로 어느 기간인지 행 안에서 드러난다"""
+
+    def test_구간_기간이_그_구간의_진입일_최소최대다(self) -> None:
+        """
+        목적: 구간 시작일·종료일이 **그 구간에 실제로 들어간 진입일의 최소·최대**임을 고정한다.
+
+        구간 이름만으로는 기간을 알 수 없다 — 「앞 절반」이 30년 지수에서는 1996~2011 이고
+        11년 ETF 에서는 2015~2020 이다. 대상마다 기간이 다른 행을 한 표에 놓고 비교하게 되므로
+        그 사실이 행 안에서 드러나야 한다.
+
+        Given: 2016~2025 의 진입 10건
+        When: 구간별 성적 행을 만든다
+        Then: 전체는 2016~2025, 앞 절반은 2016~2020, 뒤 절반은 2021~2025 다
+        """
+        # Given
+        from verify_lab.strategy.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
+
+        years = list(range(2016, 2026))
+        entry_dates = _dates(years)
+
+        # When
+        rows = period_rows(entry_dates, _returns(len(years)), last_day=pd.Timestamp("2025-12-30"))
+        by_period = {row[DISPLAY_PERIOD]: row for row in rows}
+
+        # Then
+        assert by_period[PERIOD_ALL][DISPLAY_PERIOD_START] == "2016-09-15"
+        assert by_period[PERIOD_ALL][DISPLAY_PERIOD_END] == "2025-09-15"
+        assert by_period[PERIOD_FIRST_HALF][DISPLAY_PERIOD_START] == "2016-09-15"
+        assert by_period[PERIOD_FIRST_HALF][DISPLAY_PERIOD_END] == "2020-09-15"
+        assert by_period[PERIOD_SECOND_HALF][DISPLAY_PERIOD_START] == "2021-09-15"
+        assert by_period[PERIOD_SECOND_HALF][DISPLAY_PERIOD_END] == "2025-09-15"
+
+    def test_표본이_0건인_구간은_기간을_비운다(self) -> None:
+        """
+        목적: 표본이 없는 구간의 기간을 **비움**을 고정한다.
+
+        임의의 날짜로 채우면 **잰 적이 없는 구간이 잰 것처럼 읽힌다.**
+        `_period_row` 가 이미 지표를 비우는 것과 같은 규칙이다.
+
+        Given: 오래된 진입만 있어 최근 5년이 비는 목록
+        When: 구간별 성적 행을 만든다
+        Then: 최근 5년 행의 기간이 비어 있다
+        """
+        # Given
+        from verify_lab.strategy.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
+
+        years = list(range(2000, 2010))
+        entry_dates = _dates(years)
+
+        # When
+        rows = period_rows(entry_dates, _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+        recent = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_RECENT_5Y)
+
+        # Then
+        assert recent[DISPLAY_SIGNAL_COUNT] == 0
+        assert pd.isna(recent[DISPLAY_PERIOD_START])
+        assert pd.isna(recent[DISPLAY_PERIOD_END])
+
+    def test_구간_기간이_전체_범위를_벗어나지_않는다(self) -> None:
+        """
+        목적: 어느 구간도 **전체 구간의 범위 밖으로 나가지 않음**을 고정한다.
+
+        경계 계산이 어긋나면 값은 나오는데 예외가 없다.
+
+        Given: 2016~2025 의 진입 10건
+        When: 구간별 성적 행을 만든다
+        Then: 표본이 있는 모든 구간이 전체 범위 안에 있다
+        """
+        # Given
+        from verify_lab.strategy.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
+
+        years = list(range(2016, 2026))
+
+        # When
+        rows = period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2025-12-30"))
+        whole = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_ALL)
+
+        # Then
+        for row in rows:
+            if row[DISPLAY_SIGNAL_COUNT] == 0:
+                continue
+            assert row[DISPLAY_PERIOD_START] >= whole[DISPLAY_PERIOD_START]
+            assert row[DISPLAY_PERIOD_END] <= whole[DISPLAY_PERIOD_END]

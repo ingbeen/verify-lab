@@ -332,6 +332,82 @@ class TestDisplayTables:
         assert {COL_TARGET_DAY, COL_OFFSET} <= set(outputs.grid.columns)
 
 
+class TestDatasetIdentity:
+    """산출물의 대상 식별자 — 종목명이 구분자다"""
+
+    def test_labels_are_unique_across_datasets(self) -> None:
+        """
+        목적: `DATASETS` 의 **종목명이 겹치지 않음**을 고정한다.
+
+        산출물의 대상 컬럼에 종목명이 들어가므로 **종목명이 곧 데이터셋 구분자**다.
+        겹치면 서로 다른 대상의 행이 조용히 뒤섞이는데 예외가 나지 않는다 —
+        `ticker` 가 구분자였을 때 중복을 막았던 것과 같은 이유다
+        (`src/verify_lab/CLAUDE.md` 실행 계층 계약).
+
+        Given: 기본 대상 목록
+        When: 종목명을 모은다
+        Then: 대상 수와 종목명의 가짓수가 같다
+        """
+        # Given
+        from verify_lab.studies.kosdaq_month_end.constants import DATASETS
+
+        # When
+        labels = [dataset.label for dataset in DATASETS]
+
+        # Then
+        assert len(set(labels)) == len(DATASETS), f"종목명이 겹칩니다: {labels}"
+
+    def test_tickers_are_unique_across_datasets(self) -> None:
+        """
+        목적: 종목코드도 여전히 겹치지 않음을 고정한다.
+
+        **코드는 산출물에서 빠졌지만 `summary.json` 의 데이터셋 목록에 남는다.**
+        거기서 종목명과 코드를 잇는 유일한 자리이므로 여기서도 겹치면 안 된다.
+
+        Given: 기본 대상 목록
+        When: 종목코드를 모은다
+        Then: 대상 수와 코드의 가짓수가 같다
+        """
+        # Given
+        from verify_lab.studies.kosdaq_month_end.constants import DATASETS
+
+        # When
+        tickers = [dataset.ticker for dataset in DATASETS]
+
+        # Then
+        assert len(set(tickers)) == len(DATASETS), f"종목코드가 겹칩니다: {tickers}"
+
+    def test_saved_tables_carry_the_label_not_the_code(self, etf_outputs: StudyOutputs) -> None:
+        """
+        목적: 저장 표의 대상 컬럼이 **종목명**임을 고정한다 (숫자 코드가 아니다).
+
+        사용자가 CSV 를 열었을 때 `229200` 만 보면 무엇을 잰 것인지 알 수 없다.
+        **숫자만으로 된 값이 하나도 없어야** 코드가 새어 나가지 않은 것이다.
+
+        Given: 합성 ETF 하나를 돌린 산출물
+        When: 저장 표들의 대상 컬럼 값을 모은다
+        Then: 숫자만으로 이루어진 값이 없다
+        """
+        # Given
+        from verify_lab.studies.kosdaq_month_end.constants import DISPLAY_TICKER
+
+        tables = display_tables(etf_outputs)
+
+        # When
+        checked = 0
+        for name, table in tables.items():
+            if DISPLAY_TICKER not in table.columns:
+                continue
+            values = set(table[DISPLAY_TICKER].astype(str))
+
+            # Then
+            numeric = {value for value in values if value.isdigit()}
+            assert not numeric, f"{name} 표의 대상 컬럼에 종목코드가 남아 있습니다: {sorted(numeric)}"
+            checked += 1
+
+        assert checked >= 1, "대상 컬럼을 가진 표를 하나도 찾지 못했습니다"
+
+
 def test_empty_dataset_list_raises() -> None:
     """
     목적: 대상이 없으면 조용히 빈 결과를 내지 않고 실패함을 고정한다.
