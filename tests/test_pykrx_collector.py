@@ -26,12 +26,14 @@ from verify_lab.common_constants import (
     COL_HIGH,
     COL_LOW,
     COL_OPEN,
+    COL_VALUE,
     COL_VOLUME,
     REQUIRED_COLUMNS,
+    SERIES_REQUIRED_COLUMNS,
 )
 from verify_lab.data import pykrx_collector
-from verify_lab.data.loader import load_market_csv
-from verify_lab.data.pykrx_collector import collect_pykrx_history
+from verify_lab.data.loader import load_market_csv, load_series_csv
+from verify_lab.data.pykrx_collector import collect_pykrx_history, collect_pykrx_index
 
 # 테스트에서 오늘로 고정하는 날짜. 최근 제외 기준일은 이 날짜에서 계산된다
 FROZEN_TODAY = "2026-08-12"
@@ -137,6 +139,7 @@ def _stub_pykrx(monkeypatch: pytest.MonkeyPatch, frame: pd.DataFrame) -> dict[st
     stub_stock = SimpleNamespace(
         get_etf_ohlcv_by_date=_record("get_etf_ohlcv_by_date"),
         get_market_ohlcv=_record("get_market_ohlcv"),
+        get_index_ohlcv=_record("get_index_ohlcv"),
     )
     monkeypatch.setattr(pykrx_collector, "_import_pykrx_stock", lambda: stub_stock)
 
@@ -665,3 +668,199 @@ class TestReferenceTimezone:
         args = recorded["args"]
         assert isinstance(args, tuple)
         assert args[1] == KST_TODAY_AT_FROZEN.replace("-", "")
+
+
+# ============================================================
+# 지수 수집 — 검증 #10 의 기간 확장 축
+# ============================================================
+
+# 실측한 코스닥 지수 코드 (`docs/spec/kosdaq_month_end.md` §7.4)
+INDEX_TICKER_KOSDAQ = "2001"
+INDEX_TICKER_KOSDAQ150 = "2203"
+INDEX_START_DATE = "19960701"
+
+
+def _index_frame(rows: list[tuple[str, float]], *, zero_ohlc: bool = False) -> pd.DataFrame:
+    """`get_index_ohlcv` 반환 형태를 모사한다.
+
+    ETF 조회와 달리 **가격이 `float64`** 이고 `거래대금`·`상장시가총액` 이 함께 온다.
+    `zero_ohlc` 는 코스닥150 지수의 소급 산출 구간을 재현한다 — 종가만 있고
+    시가·고가·저가가 전부 0 인 실제 데이터다 (`docs/spec/kosdaq_month_end.md` §7.4).
+
+    Args:
+        rows: (날짜 문자열, 종가) 목록
+        zero_ohlc: 시가·고가·저가를 0 으로 둘지 여부
+
+    Returns:
+        pykrx 지수 조회 반환값을 모사한 DataFrame
+    """
+    closes = [close for _, close in rows]
+    others = [0.0] * len(rows) if zero_ohlc else closes
+    index = pd.DatetimeIndex([pd.Timestamp(day) for day, _ in rows], name=pykrx_collector.KRX_INDEX_NAME)
+
+    return pd.DataFrame(
+        {
+            "시가": others,
+            "고가": others,
+            "저가": others,
+            "종가": closes,
+            "거래량": [1_000] * len(rows),
+            "거래대금": [10_000_000] * len(rows),
+            "상장시가총액": [0] * len(rows),
+        },
+        index=index,
+    )
+
+
+class TestIndexCollection:
+    """지수는 종가 하나짜리 계열로 저장된다"""
+
+    @freeze_time(FROZEN_TODAY)
+    def test_index_is_saved_as_a_single_value_series(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 지수 파일명과 스키마 계약을 고정한다.
+
+        지수는 살 수 없어 시가에 집행할 수 없으므로 OHLCV 를 들고 있을 이유가 없다.
+        스키마의 구분자는 폴더라는 계층 계약에 따라 단일 값 시계열로 저장한다.
+
+        Given: 정상 응답을 돌려주는 스텁
+        When: 지수를 수집한다
+        Then: `<지수>_index.csv` 가 만들어지고 컬럼이 날짜·값 둘뿐이다
+        """
+        # Given
+        rows = [(OLD_DATES[0], 745.23), (OLD_DATES[1], 750.11), (OLD_DATES[2], 738.9)]
+        _stub_pykrx(monkeypatch, _index_frame(rows))
+
+        # When
+        result = collect_pykrx_index(INDEX_TICKER_KOSDAQ, INDEX_START_DATE, output_dir=tmp_path)
+
+        # Then
+        assert result.path == tmp_path / f"{INDEX_TICKER_KOSDAQ}_index.csv"
+        assert list(pd.read_csv(result.path).columns) == SERIES_REQUIRED_COLUMNS
+
+    @freeze_time(FROZEN_TODAY)
+    def test_index_values_keep_their_decimals(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: **지수를 정수화하지 않음**을 고정한다.
+
+        ETF 원화 가격은 정수라 정수화하지만 지수는 소수 둘째 자리까지 있는 계산된 값이다.
+        같은 수집기 안에 두 정책이 있으므로 섞이면 조용히 값이 깎인다.
+
+        Given: 소수 종가를 돌려주는 스텁
+        When: 지수를 수집한다
+        Then: 저장된 값이 소수 그대로다
+        """
+        # Given
+        rows = [(OLD_DATES[0], 745.23), (OLD_DATES[1], 750.11), (OLD_DATES[2], 738.9)]
+        _stub_pykrx(monkeypatch, _index_frame(rows))
+
+        # When
+        result = collect_pykrx_index(INDEX_TICKER_KOSDAQ, INDEX_START_DATE, output_dir=tmp_path)
+
+        # Then
+        saved = load_series_csv(result.path)
+        assert saved[COL_VALUE].tolist() == pytest.approx([745.23, 750.11, 738.9], abs=1e-12)
+
+    @freeze_time(FROZEN_TODAY)
+    def test_index_accepts_rows_whose_ohlc_is_zero(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 소급 산출 구간을 버리지 않음을 고정한다.
+
+        코스닥150 지수는 2010-01-04 ~ 2015-07-10 의 1,369건이 **시가·고가·저가 전부 0** 이다.
+        시세 스키마로 받으면 `validate_market_data` 의 「0 이하 가격」에 걸려 통째로 못 받는다.
+        종가만 남기므로 이 구간이 살아 있어야 한다.
+
+        Given: 시가·고가·저가가 0 이고 종가만 있는 응답
+        When: 지수를 수집한다
+        Then: 예외 없이 전 행이 저장된다
+        """
+        # Given
+        rows = [(OLD_DATES[0], 1000.0), (OLD_DATES[1], 1005.86), (OLD_DATES[2], 1020.16)]
+        _stub_pykrx(monkeypatch, _index_frame(rows, zero_ohlc=True))
+
+        # When
+        result = collect_pykrx_index(INDEX_TICKER_KOSDAQ150, INDEX_START_DATE, output_dir=tmp_path)
+
+        # Then
+        assert result.row_count == len(rows)
+
+    @freeze_time(FROZEN_TODAY)
+    def test_index_uses_the_index_query_function(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 지수 전용 조회 함수를 쓴다는 계약을 고정한다.
+
+        ETF 경로(`get_etf_ohlcv_by_date`)로는 지수를 받을 수 없다.
+
+        Given: 호출을 기록하는 스텁
+        When: 지수를 수집한다
+        Then: `get_index_ohlcv` 가 불린다
+        """
+        # Given
+        rows = [(OLD_DATES[0], 745.23), (OLD_DATES[1], 750.11)]
+        recorded = _stub_pykrx(monkeypatch, _index_frame(rows))
+
+        # When
+        collect_pykrx_index(INDEX_TICKER_KOSDAQ, INDEX_START_DATE, output_dir=tmp_path)
+
+        # Then
+        assert recorded["function"] == "get_index_ohlcv"
+
+    @freeze_time(FROZEN_TODAY)
+    def test_index_without_close_column_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 종가 컬럼이 없으면 즉시 실패함을 고정한다.
+
+        pykrx 는 KRX 웹 래퍼라 반환 컬럼이 조용히 바뀔 수 있다. 그때 빈 파일을 남기면
+        그 위의 측정이 통째로 잘못된다.
+
+        Given: 종가 컬럼이 빠진 응답
+        When: 지수를 수집한다
+        Then: ValueError 가 나고 파일이 만들어지지 않는다
+        """
+        # Given
+        rows = [(OLD_DATES[0], 745.23)]
+        frame = _index_frame(rows).drop(columns=["종가"])
+        _stub_pykrx(monkeypatch, frame)
+
+        # When / Then
+        with pytest.raises(ValueError, match="종가"):
+            collect_pykrx_index(INDEX_TICKER_KOSDAQ, INDEX_START_DATE, output_dir=tmp_path)
+
+        assert not (tmp_path / f"{INDEX_TICKER_KOSDAQ}_index.csv").exists()
+
+    @freeze_time(FROZEN_TODAY)
+    def test_index_excludes_unconfirmed_recent_rows(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 확정되지 않은 최근 구간을 시세 수집과 **같은 기준**으로 제외함을 고정한다.
+
+        장중에도 당일 행이 그대로 반환되므로 그대로 두면 미확정 종가가 신호에 섞인다.
+
+        Given: 오늘(2026-08-12) 행이 섞인 응답
+        When: 지수를 수집한다
+        Then: 그 행이 빠지고 제외 건수가 보고된다
+        """
+        # Given
+        rows = [("2026-08-10", 745.23), ("2026-08-11", 750.11), (FROZEN_TODAY, 999.99)]
+        _stub_pykrx(monkeypatch, _index_frame(rows))
+
+        # When
+        result = collect_pykrx_index(INDEX_TICKER_KOSDAQ, INDEX_START_DATE, output_dir=tmp_path)
+
+        # Then
+        assert result.excluded_recent_count == 1
+        assert result.end_date == date(2026, 8, 11)
+
+    def test_index_with_invalid_start_date_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 시작일 형식 검증을 고정한다.
+
+        Given: YYYYMMDD 가 아닌 시작일
+        When: 지수를 수집한다
+        Then: ValueError 가 난다
+        """
+        # Given
+        _stub_pykrx(monkeypatch, _index_frame([(OLD_DATES[0], 745.23)]))
+
+        # When / Then
+        with pytest.raises(ValueError, match="시작일"):
+            collect_pykrx_index(INDEX_TICKER_KOSDAQ, "1996-07-01", output_dir=tmp_path)

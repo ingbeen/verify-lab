@@ -123,6 +123,11 @@ FUTURES_FILE_TEMPLATE: Final = "{product_id}_max.csv"
 # 수집기가 쓰고 검증이 읽으므로 두 계층이 같은 이름을 봐야 한다
 NAV_FILE_TEMPLATE: Final = "{ticker}_NAV.csv"
 
+# 지수는 시세가 아니라 **종가 하나짜리 계열**로 저장해 `SERIES_DIR` 에 둔다.
+# 살 수 없어 시가 집행이 불가능하므로 OHLCV 를 들고 있을 이유가 없고, 코스닥150 지수는
+# 소급 산출 구간에 시가·고가·저가가 아예 0 이다 (`docs/spec/kosdaq_month_end.md` §7.4)
+INDEX_FILE_TEMPLATE: Final = "{ticker}_index.csv"
+
 # ============================================================
 # 가격 표기
 # ============================================================

@@ -19,8 +19,10 @@ import argparse
 
 from verify_lab.data.pykrx_collector import (
     PykrxCollectionResult,
+    PykrxIndexResult,
     PykrxNavResult,
     collect_pykrx_history,
+    collect_pykrx_index,
     collect_pykrx_nav,
 )
 from verify_lab.utils.cli_helpers import cli_exception_handler
@@ -33,6 +35,10 @@ logger = get_logger(__name__)
 # 인자 없이 실행했을 때 받는 종목과 그 상장일. 검증 #1 의 국내 대상이다
 DEFAULT_TICKER = "069500"
 DEFAULT_START_DATE = "20021014"
+
+# `--index` 로 실행했을 때 받는 지수와 그 산출 시작일. 검증 #10 의 최장 기간 축이다
+DEFAULT_INDEX_TICKER = "2001"
+DEFAULT_INDEX_START_DATE = "19960701"
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_PYKRX_COLLECT = "pykrx_collect"
@@ -53,6 +59,7 @@ COLUMN_GAP = "  "
 DISPLAY_RAW = "원본가"
 DISPLAY_ADJUSTED = "수정주가"
 DISPLAY_NAV = "NAV"
+DISPLAY_INDEX = "지수 종가"
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,12 +68,16 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
-    parser = argparse.ArgumentParser(description="pykrx 에서 국내 ETF 시세를 받아 원시 시세 파일로 저장합니다 (KRX 계정 필요).")
-    parser.add_argument("--ticker", default=DEFAULT_TICKER, help=f"종목 티커 (기본값: {DEFAULT_TICKER})")
+    parser = argparse.ArgumentParser(description="pykrx 에서 국내 ETF 시세나 지수를 받아 파일로 저장합니다 (KRX 계정 필요).")
+    parser.add_argument(
+        "--ticker",
+        default=None,
+        help=f"종목 티커 (기본값: ETF {DEFAULT_TICKER} · 지수 {DEFAULT_INDEX_TICKER})",
+    )
     parser.add_argument(
         "--start",
-        default=DEFAULT_START_DATE,
-        help=f"조회 시작일 YYYYMMDD, 보통 상장일 (기본값: {DEFAULT_START_DATE})",
+        default=None,
+        help=f"조회 시작일 YYYYMMDD, 보통 상장일 (기본값: ETF {DEFAULT_START_DATE} · 지수 {DEFAULT_INDEX_START_DATE})",
     )
     parser.add_argument(
         "--adjusted",
@@ -77,6 +88,11 @@ def parse_args() -> argparse.Namespace:
         "--nav",
         action="store_true",
         help="시세 대신 NAV 를 받아 `storage/series/` 에 단일 값 시계열로 저장한다",
+    )
+    parser.add_argument(
+        "--index",
+        action="store_true",
+        help="ETF 가 아니라 지수의 종가를 받아 `storage/series/` 에 단일 값 시계열로 저장한다",
     )
     return parser.parse_args()
 
@@ -161,6 +177,49 @@ def _collect_nav(ticker: str, start_date: str) -> int:
     return 0
 
 
+def _collect_index(ticker: str, start_date: str) -> int:
+    """지수를 수집하고 결과를 표로 표시한다.
+
+    Args:
+        ticker: 지수 코드
+        start_date: 조회 시작일 (YYYYMMDD)
+
+    Returns:
+        종료 코드 (성공 0)
+    """
+    result: PykrxIndexResult = collect_pykrx_index(ticker, start_date)
+
+    TableLogger(SUMMARY_COLUMNS, logger).print_table(
+        [
+            [
+                DISPLAY_INDEX,
+                f"{result.start_date} ~ {result.end_date}",
+                f"{result.row_count:,}",
+                f"{result.excluded_recent_count}행",
+                f"{COLUMN_GAP}{result.path.name}",
+            ]
+        ],
+        title=f"지수 수집 결과 — {result.ticker} (저장 폴더: {result.path.parent})",
+    )
+
+    save_metadata(
+        KEY_META_PYKRX_COLLECT,
+        {
+            "ticker": result.ticker,
+            "start_date": start_date,
+            "index": {
+                "path": str(result.path),
+                "row_count": result.row_count,
+                "start_date": str(result.start_date),
+                "end_date": str(result.end_date),
+                "excluded_recent_count": result.excluded_recent_count,
+            },
+        },
+    )
+
+    return 0
+
+
 @cli_exception_handler
 def main() -> int:
     """수집을 실행하고 결과를 표로 표시한다.
@@ -170,10 +229,20 @@ def main() -> int:
     """
     args = parse_args()
 
-    if args.nav:
-        return _collect_nav(args.ticker, args.start)
+    # 지수는 기본 티커가 ETF 와 다르다. 인자를 비워 두고 실행해도 각자의 확정 기본값으로 돈다
+    if args.index:
+        return _collect_index(
+            args.ticker or DEFAULT_INDEX_TICKER,
+            args.start or DEFAULT_INDEX_START_DATE,
+        )
 
-    result = collect_pykrx_history(args.ticker, args.start, adjusted=args.adjusted)
+    ticker = args.ticker or DEFAULT_TICKER
+    start_date = args.start or DEFAULT_START_DATE
+
+    if args.nav:
+        return _collect_nav(ticker, start_date)
+
+    result = collect_pykrx_history(ticker, start_date, adjusted=args.adjusted)
 
     table = TableLogger(SUMMARY_COLUMNS, logger)
     table.print_table(
@@ -185,7 +254,7 @@ def main() -> int:
         KEY_META_PYKRX_COLLECT,
         {
             "ticker": result.ticker,
-            "start_date": args.start,
+            "start_date": start_date,
             "price_basis": _metadata(result),
         },
     )

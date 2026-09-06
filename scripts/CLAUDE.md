@@ -55,6 +55,7 @@
 | `reverse_trading_strategy` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 손절선·보유 한도, 결과 폴더 |
 | `expiry_trading_strategy` | `strategy/run_expiry_trading.py` | 대상 칸과 손절선, 성적표·체결 원자료의 행 수, 결과 폴더 |
 | `expiry_dividend_probe` | `data/check_expiry_dividend.py` | 칸별로 보유 구간에 배당락이 걸린 건수와 그 규모 |
+| `kosdaq_month_end_study` | `studies/run_kosdaq_month_end.py` | 결과 폴더, 측정한 대상, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |
 
 > **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —
 > 그리드는 채택되지 않아 구현을 지웠고 기록하는 스크립트가 없다.

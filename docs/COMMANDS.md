@@ -171,6 +171,23 @@ poetry run python scripts/data/collect_pykrx.py --ticker 261250 --start 20161227
   제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다
 
+#### 코스닥 지수 수집 (검증 #10 용)
+
+```bash
+# 코스닥 종합지수 (기본값) — 1996-07-01 부터
+poetry run python scripts/data/collect_pykrx.py --index
+
+# 코스닥150 지수 — 2010-01-04 부터 (소급 산출분 포함)
+poetry run python scripts/data/collect_pykrx.py --index --ticker 2203 --start 20100104
+```
+
+- **`storage/series/<지수>_index.csv` 에 종가 하나짜리 계열로 저장합니다.** 시세가 아닙니다 —
+  지수는 살 수 없어 시가에 집행할 수 없고, **코스닥150 지수는 소급 산출 구간(2010-01-04 ~
+  2015-07-10, 1,369건)의 시가·고가·저가가 전부 0** 이라 시세 스키마로는 전 구간이 막힙니다.
+  근거는 [spec/kosdaq_month_end.md](spec/kosdaq_month_end.md) §7.6 에 있습니다
+- **값을 정수화하지 않습니다.** ETF 원화 가격과 달리 지수는 소수 둘째 자리까지 있는 계산된 값입니다
+- `--index` 는 ETF 와 **기본 티커가 다릅니다** — 인자 없이 주면 코스닥 종합(`2001`)을 받습니다
+
 ### 국내 선물 (코스피200·코스닥150 계약별 시세 — 검증 #9 용)
 
 **KRX 데이터포털 계정이 필요합니다.** pykrx 와 같은 `.env` 설정을 씁니다.
@@ -400,6 +417,30 @@ poetry run python scripts/studies/run_usdkrw_equivalence.py --model usd_rate
 - `daily.csv` 는 **손으로 검산하는 원자료**입니다. 현물 변화와 이자 기여분을 따로 담아
   이론값이 어떻게 만들어졌는지 그대로 따라갈 수 있습니다
 - 결과와 판정은 [research/원달러_ETF_등가성.md](research/원달러_ETF_등가성.md) 에 있습니다
+
+### 검증 #10 — 코스닥 월말 진입
+
+```bash
+# 전 대상 실행 (기본값) — ETF 2종 + 지수 2종, 진입 11칸 × 청산 7칸
+poetry run python scripts/studies/run_kosdaq_month_end.py
+
+# 대상을 골라서 (여러 번 줄 수 있습니다)
+poetry run python scripts/studies/run_kosdaq_month_end.py --ticker 229200 --ticker 2001
+
+# 무작위 뽑기 대조의 반복 수·시드 (기본값 1000 / 0)
+poetry run python scripts/studies/run_kosdaq_month_end.py --repeats 2000 --seed 1
+```
+
+- **하나의 칸을 고르지 않습니다.** 진입 달력일 15~25일 × 청산 상대 거래일 −3~+3 을 전부 산출해
+  나란히 보고합니다 — 20일만 튀는지 이웃도 같은지가 오버피팅 판정의 근거입니다
+- 산출물은 `storage/results/<실행시각>_kosdaq_month_end/` 에 CSV 7개(`trades`·`grid`·`months`·
+  `month_halves`·`periods`·`grid_candidates`·`month_candidates`)와 `summary.json` 으로 남습니다
+- **`trades.csv` 는 원 매매법 칸(20일 → 말일)의 신호일 원자료**입니다. 진입일·청산일·진입가·청산가·
+  보유일이 전부 들어 있어 차트로 직접 대조할 수 있습니다
+- **월별 분해는 원 매매법 칸에만 겁니다.** 격자 전체를 쪼개면 924칸이 되어 다중 비교가 폭발합니다
+- 선행 조건은 ETF 두 파일과 **지수 두 파일**입니다. 지수는 위 「코스닥 지수 수집」으로 받습니다
+- 결과와 판정은 `docs/research/코스닥_월말_진입.md`, 확정 설계는
+  [spec/kosdaq_month_end.md](spec/kosdaq_month_end.md) 입니다
 
 ---
 

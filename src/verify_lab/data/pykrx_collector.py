@@ -34,11 +34,13 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VALUE,
     COL_VOLUME,
+    INDEX_FILE_TEMPLATE,
     KST,
     MARKET_DIR,
     MARKET_FILE_TEMPLATE,
     NAV_FILE_TEMPLATE,
     PRICE_COLUMNS,
+    PRICE_DECIMALS,
     REQUIRED_COLUMNS,
     SERIES_DIR,
 )
@@ -51,11 +53,14 @@ logger = get_logger(__name__)
 
 # pykrx 가 돌려주는 한글 컬럼 → 공통 스키마. 두 조회 함수가 함께 주는 컬럼만 담는다.
 # `NAV`·`거래대금`·`기초지수`·`등락률` 은 공통 스키마에 없으므로 저장하지 않는다
+# pykrx 가 돌려주는 종가 컬럼 이름. 지수 수집도 이 컬럼 하나만 꺼내 쓴다
+KRX_CLOSE_COLUMN = "종가"
+
 KRX_COLUMN_MAP = {
     "시가": COL_OPEN,
     "고가": COL_HIGH,
     "저가": COL_LOW,
-    "종가": COL_CLOSE,
+    KRX_CLOSE_COLUMN: COL_CLOSE,
     "거래량": COL_VOLUME,
 }
 
@@ -359,6 +364,116 @@ def collect_pykrx_nav(
     logger.debug(f"NAV 수집 완료: {symbol}, {len(df):,}행, 기간 {first_date} ~ {last_date}, 저장 위치 {path}")
 
     return PykrxNavResult(
+        ticker=symbol,
+        path=path,
+        row_count=len(df),
+        start_date=first_date,
+        end_date=last_date,
+        excluded_recent_count=excluded_recent_count,
+    )
+
+
+@dataclass(frozen=True)
+class PykrxIndexResult:
+    """지수 수집 결과 요약.
+
+    Attributes:
+        ticker: 조회한 지수 코드
+        path: 저장된 CSV 경로
+        row_count: 저장된 행 수
+        start_date: 저장 구간의 첫 거래일
+        end_date: 저장 구간의 마지막 거래일
+        excluded_recent_count: 최근 구간 제외로 빠진 행 수
+    """
+
+    ticker: str
+    path: Path
+    row_count: int
+    start_date: date
+    end_date: date
+    excluded_recent_count: int
+
+
+def collect_pykrx_index(
+    ticker: str,
+    start_date: str,
+    output_dir: Path = SERIES_DIR,
+) -> PykrxIndexResult:
+    """지수의 일별 종가를 받아 **단일 값 시계열**로 저장한다.
+
+    **OHLCV 가 아니라 종가 하나만 남긴다.** 지수는 살 수 없어 시가에 집행할 수 없으므로
+    나머지 가격을 들고 있을 이유가 없고, 코스닥150 지수(`2203`)는 소급 산출 구간
+    (2010-01-04 ~ 2015-07-10, 1,369건)의 시가·고가·저가가 **전부 0** 이라 시세 스키마로는
+    `validate_market_data` 를 통과하지 못한다 (`docs/spec/kosdaq_month_end.md` §7.4).
+    같은 이유로 저장 폴더가 `SERIES_DIR` 이다 — 스키마의 구분자는 폴더라는 계층 계약을 따른다.
+
+    값은 **정수화하지 않는다.** ETF 원화 가격과 달리 지수는 소수 둘째 자리까지 있는 계산된 값이라
+    정수로 반올림하면 그만큼이 사라진다.
+
+    Args:
+        ticker: 지수 코드 (앞뒤 공백 무관). 코스닥 종합 `2001`, 코스닥150 `2203`
+        start_date: 조회 시작일 (YYYYMMDD). 받을 수 있는 구간보다 이르면 있는 데부터 온다
+        output_dir: 저장 디렉터리. 기본값은 단일 값 시계열 폴더
+
+    Returns:
+        저장 결과 요약
+
+    Raises:
+        ValueError: 지수 코드가 비었거나, 시작일 형식이 잘못됐거나, 조회 결과가 비었거나,
+            종가 컬럼이 없거나, 최근 구간 제외 후 남는 행이 없거나, 결측이 발견된 경우
+    """
+    symbol = ticker.strip()
+    if not symbol:
+        raise ValueError("지수 코드가 비어 있습니다")
+
+    try:
+        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
+    except ValueError as error:
+        raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
+
+    today = datetime.now(KST).date()
+    stock = _import_pykrx_stock()
+
+    # 1. 조회. 종료일을 오늘로 두고 확정되지 않은 행은 뒤에서 세어 빼낸다 (표본 보존)
+    raw = stock.get_index_ohlcv(start_date, today.strftime(KRX_REQUEST_DATE_FORMAT), symbol)
+
+    if raw.empty:
+        raise ValueError(f"지수 조회 결과가 비어 있습니다 - 지수: {symbol}")
+
+    if KRX_CLOSE_COLUMN not in raw.columns:
+        raise ValueError(f"응답에 종가 컬럼이 없습니다 (반환 컬럼: {list(raw.columns)})")
+
+    # 2. 종가만 꺼내 단일 값 스키마로 정규화한다
+    df = raw.rename_axis(KRX_INDEX_NAME).reset_index()
+    df = df.rename(columns={KRX_INDEX_NAME: COL_DATE, KRX_CLOSE_COLUMN: COL_VALUE})
+    df[COL_DATE] = pd.to_datetime(df[COL_DATE]).dt.date
+    df = df[[COL_DATE, COL_VALUE]]
+
+    # 3. 확정되지 않은 최근 구간을 제외한다. 시세 수집과 같은 기준을 쓴다
+    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
+    total_count = len(df)
+    df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
+    excluded_recent_count = total_count - len(df)
+
+    if df.empty:
+        raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 지수가 없습니다 - 지수: {symbol}")
+
+    df[COL_VALUE] = df[COL_VALUE].astype(float).round(PRICE_DECIMALS)
+
+    # 4. 단일 값 시계열의 판정을 그대로 쓴다. 로더와 갈라지면 "받아는 놨는데 읽을 수 없는" 파일이 생긴다
+    validate_series_data(df)
+
+    # 5. 저장. 검증을 통과한 뒤에만 실행한다
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / INDEX_FILE_TEMPLATE.format(ticker=symbol)
+    df.to_csv(path, index=False)
+
+    first_date = df[COL_DATE].iloc[0]
+    last_date = df[COL_DATE].iloc[-1]
+
+    logger.debug(f"지수 수집 완료: {symbol}, {len(df):,}행, 기간 {first_date} ~ {last_date}, 저장 위치 {path}")
+
+    return PykrxIndexResult(
         ticker=symbol,
         path=path,
         row_count=len(df),
