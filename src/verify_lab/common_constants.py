@@ -34,6 +34,10 @@ RESULTS_DIR: Final = STORAGE_DIR / "results"
 # 실행 이력. 최근 N개만 순환 저장한다 (개수는 `utils/meta_manager.py` 가 소유)
 META_JSON_PATH: Final = RESULTS_DIR / "meta.json"
 
+# 설계·결과·매매 규칙 문서. 결과 문서가 산출물 폴더를 근거로 인용하므로
+# 「어느 산출물이 아직 쓰이는가」를 판정하는 입력이 된다 (`utils/result_citations.py`)
+DOCS_DIR: Final = BASE_DIR / "docs"
+
 # ============================================================
 # 시세 스키마 컬럼 상수 (내부 계산용 영문 토큰)
 # ============================================================

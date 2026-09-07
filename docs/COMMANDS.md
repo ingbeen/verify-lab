@@ -39,6 +39,27 @@ poetry run black .
 
 ---
 
+## 저장소 정리
+
+```bash
+# 목록만 보기 — 문서가 인용한 폴더와 정리 대상을 가릅니다
+poetry run python scripts/maintenance/clean_results.py
+
+# 정리 대상 삭제
+poetry run python scripts/maintenance/clean_results.py --delete
+```
+
+- **삭제 전에 문서의 조준이 최신인지 먼저 확인합니다.** 아직 산출물 폴더를 겨누지 않은 문서가
+  있으면 그 근거가 정리 대상에 섞입니다. 절차는 `/clean-results` 스킬에 있습니다
+- 인용 판정은 [result_citations.py](../src/verify_lab/utils/result_citations.py) 하나가 소유하며,
+  [test_result_citations.py](../tests/test_result_citations.py) 가 **같은 함수로**
+  「인용됐는데 없는 폴더」를 검사합니다. 인용한 폴더를 지우면 품질 검증이 실패합니다
+- **되돌릴 수 있는지가 git 추적 여부로 갈립니다.** 추적 중이던 폴더는 이력에 남아 되살릴 수 있고,
+  **미추적 폴더는 지우면 끝입니다** — 이 저장소에만 있던 마지막 사본입니다
+- 삭제는 파일 조작이라 스크립트가 하지만, **그 삭제를 이력에 남기는 커밋은 직접 하셔야 합니다**
+
+---
+
 ## 데이터 수집
 
 > **AI 모델도 직접 실행합니다.** 다만 외부 서버(Yahoo Finance, KRX, ECOS, FRED)에 실제 요청을
