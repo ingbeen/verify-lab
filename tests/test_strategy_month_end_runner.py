@@ -49,7 +49,7 @@ from verify_lab.strategy.month_end_runner import (
     TradingOutputs,
     run_month_end_trading,
 )
-from verify_lab.studies.kosdaq_month_end.constants import Dataset
+from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP, Dataset
 
 # 합성 시세 구간. 12개월이 다 차려면 몇 해가 필요하다
 SYNTHETIC_START = "2018-01-01"
@@ -96,13 +96,14 @@ def _write_market(directory: Path, ticker: str) -> Dataset:
         price_column=COL_CLOSE,
         price_decimals=PRICE_DECIMALS_KRW,
         is_index=False,
+        execution_role=EXECUTION_ROLE_UP,
     )
 
 
 def _write_index(directory: Path, ticker: str) -> Dataset:
     """합성 지수 계열을 만든다.
 
-    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/spec/kosdaq_month_end.md` §7.6),
+    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/spec/month_end.md` §7.6),
     그래서 장중 손절을 잴 수 없다.
 
     Args:
@@ -129,6 +130,7 @@ def _write_index(directory: Path, ticker: str) -> Dataset:
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,
+        execution_role=EXECUTION_ROLE_NONE,
     )
 
 
@@ -400,6 +402,7 @@ class TestLookAhead:
             price_column=COL_CLOSE,
             price_decimals=PRICE_DECIMALS_KRW,
             is_index=False,
+            execution_role=EXECUTION_ROLE_UP,
         )
 
         # When

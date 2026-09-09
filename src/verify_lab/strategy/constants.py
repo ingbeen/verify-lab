@@ -274,7 +274,7 @@ DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
 DISPLAY_STOP_APPLICABLE: Final = "손절적용"
 
 # **빈칸으로 두지 않는다** — 빈칸은 「값을 못 구했다」로 읽히는데 실제로는 「잴 수 없다」이다.
-# 지수는 종가만 있어(`docs/spec/kosdaq_month_end.md` §7.6) 장중 최악을 알 수 없으므로,
+# 지수는 종가만 있어(`docs/spec/month_end.md` §7.6) 장중 최악을 알 수 없으므로,
 # 종가로 근사하면 실제보다 손절이 덜 걸려 성적이 좋아진다
 STOP_APPLICABLE: Final = "가능"
 STOP_NOT_APPLICABLE: Final = "불가(고저가 없음)"

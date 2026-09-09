@@ -7,7 +7,7 @@
 **하나의 칸을 고르지 않는다.** 「왜 하필 20일·말일인가」에 답하려면 이웃 칸도 함께 봐야 하므로
 진입 달력일과 청산 상대 거래일을 격자로 산출해 나란히 보고한다.
 
-확정 설계는 `docs/spec/kosdaq_month_end.md` 가 SoT 다.
+확정 설계는 `docs/spec/month_end.md` 가 SoT 다.
 """
 
 from .constants import (

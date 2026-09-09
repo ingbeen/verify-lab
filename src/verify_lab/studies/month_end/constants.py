@@ -1,6 +1,6 @@
 """검증 #10(코스닥 월 하순 진입) 이벤트 정의와 실행이 공유하는 상수
 
-파라미터 값은 `docs/spec/kosdaq_month_end.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
+파라미터 값은 `docs/spec/month_end.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
 격자 축을 나란히 산출해 보고하기 위한 목록이므로 하나를 골라 두지 않는다 (측정의 원칙 1).
 
 표시용 한글 레이블도 여기 둔다. `report` 는 어떤 검증이 자기를 쓰는지 몰라야 하므로
@@ -77,11 +77,31 @@ from verify_lab.report.constants import (
 )
 
 # 산출물 폴더 이름에 붙는 검증 이름
-STUDY_NAME: Final = "kosdaq_month_end"
+STUDY_NAME: Final = "month_end"
 
 
 # ============================================================
-# 검증 대상 (`docs/spec/kosdaq_month_end.md` §3.4)
+# 검증 대상 (`docs/spec/month_end.md` §3.4)
+# ============================================================
+
+# 집행 역할 — **이 상품으로 어느 방향을 거는가.** 방향을 고르는 값이 아니라 상품의 성질이다
+# (측정의 원칙 11 은 그대로 지킨다 — 산출물은 언제나 두 방향을 나란히 낸다).
+#
+# 「아래」를 1배 ETF 의 하락률로 재면 분배락 하락이 이익으로 잡히는데 **인버스는 그만큼 오르지
+# 않는다** (코스닥 4월 실측 +0.65%p). 인버스 종가에는 분배락·총보수·일일 리밸런싱 손실이
+# 이미 들어 있어 따로 뺄 것이 없다. 근거는 `docs/spec/month_end.md` §7.9 다
+EXECUTION_ROLE_UP: Final = "위 집행"
+EXECUTION_ROLE_DOWN: Final = "아래 집행"
+EXECUTION_ROLE_NONE: Final = "불가"
+
+EXECUTION_ROLES: Final = (EXECUTION_ROLE_UP, EXECUTION_ROLE_DOWN, EXECUTION_ROLE_NONE)
+
+MARKET_KOSPI: Final = "코스피"
+MARKET_KOSDAQ: Final = "코스닥"
+
+
+# ============================================================
+# 검증 대상 정의
 # ============================================================
 
 
@@ -92,6 +112,7 @@ class Dataset:
     **ETF 와 지수는 스키마가 다르다.** ETF 는 시세(`storage/market/`)의 `Close`,
     지수는 단일 값 계열(`storage/series/`)의 `Value` 다. 코스닥150 지수는 소급 산출 구간의
     시가·고가·저가가 전부 0 이라 시세 스키마로 받을 수 없었다 (spec §7.6).
+    코스피 두 지수도 같은 성질이며 그 실측은 spec §7.11 에 있다.
 
     Attributes:
         ticker: 종목 또는 지수 코드. **산출물의 데이터셋 구분자이므로 겹치면 안 된다**
@@ -101,6 +122,7 @@ class Dataset:
         price_column: 가격 컬럼 이름
         price_decimals: 가격 출력 자릿수. 원시 데이터를 저장한 값과 같아야 한다
         is_index: 지수면 True. **살 수 없다는 사실을 산출물에 남기기 위한 값**이다
+        execution_role: 이 상품으로 거는 방향. 지수는 `EXECUTION_ROLE_NONE` 이다
     """
 
     ticker: str
@@ -110,6 +132,7 @@ class Dataset:
     price_column: str
     price_decimals: int
     is_index: bool
+    execution_role: str
 
     @property
     def path(self) -> Path:
@@ -121,9 +144,55 @@ class Dataset:
         return self.directory / self.file_template.format(ticker=self.ticker)
 
 
-# 인자 없이 실행했을 때 재는 대상. **ETF 둘이 본검증이고 지수 둘은 기간 확장용 보조**다.
-# 지수는 살 수 없으므로(측정의 원칙 9) 결과 문서에 그 사실을 적는다
-DATASETS: Final = (
+# 시장마다 **ETF 둘이 본검증이고 지수 둘은 기간 확장용 보조**다.
+# 지수는 살 수 없으므로(측정의 원칙 9) 결과 문서에 그 사실을 적는다.
+#
+# **두 시장을 나눠 두는 이유**는 `strategy` 가 코스닥만 돌기 때문이다. 손절 격자는 아직
+# 코스닥에서만 냈으므로, 전체 목록을 기본값으로 받으면 매매 규칙이 조용히 코스피까지 돈다
+DATASETS_KOSPI: Final = (
+    Dataset(
+        ticker="069500",
+        label="KODEX 200",
+        directory=MARKET_DIR,
+        file_template=MARKET_FILE_TEMPLATE,
+        price_column=COL_CLOSE,
+        price_decimals=PRICE_DECIMALS_KRW,
+        is_index=False,
+        execution_role=EXECUTION_ROLE_UP,
+    ),
+    Dataset(
+        ticker="114800",
+        label="KODEX 인버스",
+        directory=MARKET_DIR,
+        file_template=MARKET_FILE_TEMPLATE,
+        price_column=COL_CLOSE,
+        price_decimals=PRICE_DECIMALS_KRW,
+        is_index=False,
+        execution_role=EXECUTION_ROLE_DOWN,
+    ),
+    Dataset(
+        ticker="1028",
+        label="코스피200 지수",
+        directory=SERIES_DIR,
+        file_template=INDEX_FILE_TEMPLATE,
+        price_column=COL_VALUE,
+        price_decimals=PRICE_DECIMALS,
+        is_index=True,
+        execution_role=EXECUTION_ROLE_NONE,
+    ),
+    Dataset(
+        ticker="1001",
+        label="코스피 종합지수",
+        directory=SERIES_DIR,
+        file_template=INDEX_FILE_TEMPLATE,
+        price_column=COL_VALUE,
+        price_decimals=PRICE_DECIMALS,
+        is_index=True,
+        execution_role=EXECUTION_ROLE_NONE,
+    ),
+)
+
+DATASETS_KOSDAQ: Final = (
     Dataset(
         ticker="229200",
         label="KODEX 코스닥150",
@@ -132,6 +201,7 @@ DATASETS: Final = (
         price_column=COL_CLOSE,
         price_decimals=PRICE_DECIMALS_KRW,
         is_index=False,
+        execution_role=EXECUTION_ROLE_UP,
     ),
     Dataset(
         ticker="251340",
@@ -141,6 +211,7 @@ DATASETS: Final = (
         price_column=COL_CLOSE,
         price_decimals=PRICE_DECIMALS_KRW,
         is_index=False,
+        execution_role=EXECUTION_ROLE_DOWN,
     ),
     Dataset(
         ticker="2203",
@@ -150,6 +221,7 @@ DATASETS: Final = (
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,
+        execution_role=EXECUTION_ROLE_NONE,
     ),
     Dataset(
         ticker="2001",
@@ -159,11 +231,22 @@ DATASETS: Final = (
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,
+        execution_role=EXECUTION_ROLE_NONE,
     ),
 )
 
+# 인자 없이 실행했을 때 재는 대상 — 두 시장 전부
+DATASETS: Final = DATASETS_KOSPI + DATASETS_KOSDAQ
+
+# 종목명 → 시장. **두 목록에서 파생시킨다** — 대상마다 시장을 손으로 적으면 목록과 어긋나도
+# 예외가 나지 않는다. 구분자가 종목명인 것은 출력 계약과 같다
+MARKET_BY_LABEL: Final = {
+    **{dataset.label: MARKET_KOSPI for dataset in DATASETS_KOSPI},
+    **{dataset.label: MARKET_KOSDAQ for dataset in DATASETS_KOSDAQ},
+}
+
 # ============================================================
-# 격자 축 (`docs/spec/kosdaq_month_end.md` §3.3 결정 ③)
+# 격자 축 (`docs/spec/month_end.md` §3.3 결정 ③)
 # ============================================================
 
 # 진입 목표 달력일. 원 매매법인 20일 앞뒤를 감싼다 — 20일만 튀는지 이웃도 같은지가
@@ -253,6 +336,12 @@ COL_BASELINE_KIND: Final = "baseline"
 # 평균의 부호와 방향 비율이 어긋나는 칸 (측정의 원칙 13)
 COL_MEAN_RATE_CONFLICT: Final = "mean_rate_conflict"
 
+# 그 행을 실제로 집행하는 상품이 무엇인가
+COL_EXECUTION_ROLE: Final = "execution_role"
+
+# 집행 축 표가 어느 시장의 행인가. 코스피와 코스닥을 나란히 읽으려면 축이 하나 더 필요하다
+COL_MARKET: Final = "market"
+
 # 어느 기준선과 견줬는지 밝히는 이름. 둘은 묻는 질문이 다르다 (spec §3.6 결정 ⑤)
 BASELINE_MONTH_ANY: Final = "그 달 아무 날 진입"
 BASELINE_MATCHED_LENGTH: Final = "같은 길이 단순 보유"
@@ -296,6 +385,8 @@ DISPLAY_MONTH_NUMBER: Final = "월"
 DISPLAY_PERIOD: Final = "시기"
 DISPLAY_BASELINE_KIND: Final = "기준선"
 DISPLAY_MEAN_RATE_CONFLICT: Final = "평균-비율 어긋남"
+DISPLAY_MARKET: Final = "시장"
+DISPLAY_EXECUTION_ROLE: Final = "집행"
 
 # `report/constants.py` 에 없어 이 검증이 정한다 — 원자료 표에만 쓰인다
 DISPLAY_RETURN: Final = "수익률(%)"

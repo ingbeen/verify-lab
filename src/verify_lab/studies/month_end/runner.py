@@ -3,7 +3,7 @@
 **계산하지 않는다.** 이벤트 정의(`schedule`)와 측정(`measure`)을 조합해 돌리고, 어느 행이
 어떤 설정의 결과인지를 붙여 쌓기만 한다.
 
-**축을 동시에 쪼개지 않는다** (`docs/spec/kosdaq_month_end.md` §3.7). 집계는 세 층이다.
+**축을 동시에 쪼개지 않는다** (`docs/spec/month_end.md` §3.7). 집계는 세 층이다.
 
 1. **격자** — 진입 달력일 11칸 × 청산 상대 거래일 7칸. 월별 분해 없음
 2. **월별** — 원 매매법 칸(20일 → 말일) **하나만** 12개월로 쪼갠다
@@ -55,14 +55,16 @@ from verify_lab.measure.statistics import (
 )
 from verify_lab.report.constants import DISPLAY_HIT_RATE, DISPLAY_SCREEN
 from verify_lab.report.tables import build_candidates_table, to_display_columns
-from verify_lab.studies.kosdaq_month_end.constants import (
+from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
     BASELINE_SUFFIX,
     COL_ENTRY_CLOSE,
+    COL_EXECUTION_ROLE,
     COL_EXIT_CLOSE,
     COL_GRID_CELL,
     COL_HOLD_DAYS,
+    COL_MARKET,
     COL_MEAN_RATE_CONFLICT,
     COL_MONTH_NUMBER,
     COL_PERIOD,
@@ -70,8 +72,10 @@ from verify_lab.studies.kosdaq_month_end.constants import (
     COL_TICKER,
     COLUMN_LABELS,
     DATASETS,
+    DISPLAY_EXECUTION_ROLE,
     DISPLAY_EXIT_OFFSET,
     DISPLAY_GRID_CELL,
+    DISPLAY_MARKET,
     DISPLAY_MONTH_NUMBER,
     DISPLAY_PERIOD_EARLY,
     DISPLAY_PERIOD_LATE,
@@ -79,19 +83,21 @@ from verify_lab.studies.kosdaq_month_end.constants import (
     DISPLAY_TARGET_DAY,
     DISPLAY_TICKER,
     ENTRY_CALENDAR_DAYS,
+    EXECUTION_ROLE_NONE,
     EXIT_OFFSETS,
     GRID_CELL_TEMPLATE,
     GRID_EXIT_MONTH_END,
     GRID_EXIT_RELATIVE,
     HALF_RATE,
     JUDGING_PERIODS,
+    MARKET_BY_LABEL,
     PERCENT_COLUMNS,
     PROBABILITY_COLUMNS,
     RECENT_WINDOWS_YEARS,
     Dataset,
 )
-from verify_lab.studies.kosdaq_month_end.constants import COL_EXIT_OFFSET as COL_OFFSET
-from verify_lab.studies.kosdaq_month_end.schedule import (
+from verify_lab.studies.month_end.constants import COL_EXIT_OFFSET as COL_OFFSET
+from verify_lab.studies.month_end.schedule import (
     converged_month_count,
     every_day_entries,
     month_entry_dates,
@@ -135,6 +141,8 @@ class StudyOutputs:
         periods: 격자 칸별 시기 분해 (균등 2분할 + 최근 10년·5년)
         grid_candidates: 격자 축의 후보 판정
         month_candidates: 월별 축의 후보 판정
+        execution: 월별 판정표에서 **살 수 있는 상품의 행만** 골라낸 표.
+            사용자가 이 한 장만 열어도 실제 매매 수치가 된다
         summary: 실행 요약
     """
 
@@ -145,6 +153,7 @@ class StudyOutputs:
     periods: pd.DataFrame
     grid_candidates: pd.DataFrame
     month_candidates: pd.DataFrame
+    execution: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -183,7 +192,7 @@ def _load(dataset: Dataset) -> pd.DataFrame:
     """대상의 가격 데이터를 읽는다.
 
     **ETF 와 지수는 로더가 다르다.** 지수는 종가 계열이라 시세 판정(0 이하 가격·급등락)을
-    걸 수 없다 (`docs/spec/kosdaq_month_end.md` §7.6).
+    걸 수 없다 (`docs/spec/month_end.md` §7.6).
 
     Args:
         dataset: 검증 대상 정의
@@ -780,6 +789,40 @@ def _hold_day_counts(frame: pd.DataFrame) -> dict[str, int]:
     return {str(days): int(count) for days, count in counts.items()}
 
 
+def _execution_rows(month_candidates: pd.DataFrame, datasets: tuple[Dataset, ...]) -> pd.DataFrame:
+    """월별 판정표에서 **실제로 살 수 있는 상품의 행만** 골라낸다.
+
+    사용자가 이 표 하나만 열어도 「실제로 매매했을 때의 수치」가 되는 것이 목적이다.
+    **다시 계산하지 않고 고르기만 한다** — 재계산하면 같은 값이 두 곳에서 갈라진다.
+
+    「아래」 방향을 인버스 실물로 재는 것이 이 표의 핵심이다. 1배 ETF 의 하락률로 재면
+    분배락 하락이 이익으로 잡히는데 인버스는 그만큼 오르지 않는다. 인버스 종가에는
+    분배락·총보수·일일 리밸런싱 손실이 이미 들어 있다.
+
+    Args:
+        month_candidates: 월별 축의 후보 판정표
+        datasets: 이번 실행의 대상 목록
+
+    Returns:
+        집행 가능한 대상의 행만 남기고 시장·집행 역할을 앞에 붙인 표.
+        살 수 있는 대상이 하나도 없으면 빈 표를 돌려준다
+    """
+    executable = {dataset.label: dataset for dataset in datasets if dataset.execution_role != EXECUTION_ROLE_NONE}
+
+    if month_candidates.empty or not executable:
+        logger.debug(f"집행 가능한 대상이 없어 집행 축 표를 비웁니다 (대상 {len(datasets)}개)")
+        return month_candidates.iloc[0:0].copy()
+
+    selected = month_candidates[month_candidates[COL_TICKER].isin(executable)].copy()
+
+    selected.insert(0, COL_MARKET, selected[COL_TICKER].map(lambda label: MARKET_BY_LABEL.get(label, "")))
+    selected.insert(2, COL_EXECUTION_ROLE, selected[COL_TICKER].map(lambda label: executable[label].execution_role))
+
+    logger.debug(f"집행 축 표: {len(selected):,}행 (집행 가능 대상 {len(executable)}개)")
+
+    return selected.reset_index(drop=True)
+
+
 def run_study(
     datasets: tuple[Dataset, ...] = DATASETS,
     *,
@@ -815,6 +858,8 @@ def run_study(
         KEY_DATASETS: dataset_summaries,
     }
 
+    month_candidates = _concat(accumulator.month_candidates)
+
     tables = {
         "trades": _concat(accumulator.trades),
         "grid": _concat(accumulator.grid),
@@ -822,7 +867,8 @@ def run_study(
         "month_halves": _concat(accumulator.month_halves),
         "periods": _concat(accumulator.periods),
         "grid_candidates": _concat(accumulator.grid_candidates),
-        "month_candidates": _concat(accumulator.month_candidates),
+        "month_candidates": month_candidates,
+        "execution": _execution_rows(month_candidates, datasets),
     }
 
     # **요약을 먼저 완성한 뒤 산출물을 만든다.** 만들고 나서 그 안의 dict 를 고치면
@@ -868,7 +914,36 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
             built.insert(0, DISPLAY_TICKER, table[COL_TICKER].to_numpy())
             tables[name] = built
 
+    if not outputs.execution.empty:
+        tables["execution"] = _execution_display(outputs.execution)
+
     return tables
+
+
+def _execution_display(execution: pd.DataFrame) -> pd.DataFrame:
+    """집행 축 표를 표시용으로 바꾼다.
+
+    월별 판정표와 **같은 규격**을 쓰고 앞에 시장·종목·집행 세 열만 더 붙인다 —
+    두 표를 나란히 읽을 수 있어야 「골라낸 표」라는 것이 눈으로 확인된다.
+
+    Args:
+        execution: 집행 축 표 (영문 헤더)
+
+    Returns:
+        한글 헤더에 단위가 맞춰진 표
+    """
+    identity = [COL_MARKET, COL_TICKER, COL_EXECUTION_ROLE]
+
+    built = build_candidates_table(
+        execution.drop(columns=identity), axis_column=COL_MONTH_NUMBER, axis_label=DISPLAY_MONTH_NUMBER
+    )
+
+    for position, (column, label) in enumerate(
+        ((COL_MARKET, DISPLAY_MARKET), (COL_TICKER, DISPLAY_TICKER), (COL_EXECUTION_ROLE, DISPLAY_EXECUTION_ROLE))
+    ):
+        built.insert(position, label, execution[column].to_numpy())
+
+    return built
 
 
 def _display(table: pd.DataFrame) -> pd.DataFrame:

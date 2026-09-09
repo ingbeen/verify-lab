@@ -418,6 +418,7 @@ verify-lab/
 │   ├── strategy/            # 매매 규칙과 그 성적 (예외 계층)
 │   └── plans/               # 작업 계획서 (임시 산출물, 주기적으로 비움)
 ├── reference/               # 참고용 원본 코드·문서 (읽기 전용, 상세: reference/README.md)
+├── claude-config/           # 전역 Claude 설정 번들 (다른 PC 로 옮기는 사본, 아래 「예외」 참고)
 └── storage/
     ├── market/              # 수집한 원시 시세 (git 동기화)
     └── results/             # 검증 실행 결과 (git 동기화, meta.json 만 제외)
@@ -431,6 +432,20 @@ verify-lab/
 각 파일의 출처와 용도는 [reference/README.md](reference/README.md)를 참고하세요.
 
 **이 프로젝트는 저장소 밖의 경로를 참조하지 않습니다.** 참고할 것은 전부 안에 있습니다.
+
+### 예외 — `claude-config/` 와 두 하네스 스킬
+
+**유일한 예외입니다.** `claude-config/` 는 측정과 무관하며, 회사 mac 과 집 Windows 두 대에서
+같은 Claude 하네스를 쓰기 위한 **전역 설정(`~/.claude` 와 `~/.claude.json`)의 사본**입니다.
+`.claude/skills/claude-config-export`(내보내기)와 `claude-config-import`(받기)가 저장소 밖의
+그 경로를 읽고 씁니다.
+
+- **이 저장소에 둔 이유**: 받는 PC 에 전역 스킬이 없으면 마이그레이션을 시작할 수 없습니다.
+  스킬이 저장소 안에 있어야 clone 만으로 따라옵니다
+- **번들은 사람이 손으로 고치지 않습니다.** 내보내기 스킬이 통째로 다시 만드는 산출물입니다
+- **자격증명은 담기지 않습니다** — 이 저장소는 PUBLIC 이라 커밋되면 git 이력에서 지울 수 없습니다.
+  `tests/test_claude_config_bundle.py` 가 이를 기계로 고정합니다
+- Ruff·Black 검사에서 제외돼 있습니다 (`pyproject.toml`). **포맷하면 백업이 원본과 달라집니다**
 
 ### 공통 계층과 개별 검증의 경계 (CRITICAL)
 

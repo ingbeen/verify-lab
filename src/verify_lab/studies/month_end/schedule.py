@@ -2,7 +2,7 @@
 
 `measure/forward_return.py` 는 **고정 거래일 구간**만 잰다. 이 매매는 진입도 청산도
 **달력 기준**이라 보유 거래일 수가 달마다 다르므로 그 틀에 들어가지 않는다 —
-실측에서 3~9거래일에 걸쳐 있었다 (`docs/spec/kosdaq_month_end.md` §7.3).
+실측에서 3~9거래일에 걸쳐 있었다 (`docs/spec/month_end.md` §7.3).
 
 **진입일은 목표 달력일이고 휴장이면 직전 거래일로 앞당긴다**(결정 ①). 앞당김은 **그 달
 안에서만** 일어난다 — 전월로 넘어가면 「그 달 20일에 산다」가 아닌 다른 매매가 된다.
@@ -38,7 +38,7 @@ from verify_lab.measure.constants import (
     REASON_OUT_OF_RANGE,
 )
 from verify_lab.measure.forward_return import ReturnBasis
-from verify_lab.studies.kosdaq_month_end.constants import (
+from verify_lab.studies.month_end.constants import (
     COL_ENTRY_CLOSE,
     COL_EXIT_CLOSE,
     COL_EXIT_DATE,

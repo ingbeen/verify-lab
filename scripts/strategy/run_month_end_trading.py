@@ -31,7 +31,7 @@ from verify_lab.strategy.constants import (
     PERIOD_ALL,
 )
 from verify_lab.strategy.month_end_runner import DISPLAY_MONTH, run_month_end_trading
-from verify_lab.studies.kosdaq_month_end.constants import DATASETS
+from verify_lab.studies.month_end.constants import DATASETS_KOSDAQ
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -95,9 +95,9 @@ def _selected_datasets(tickers: list[str] | None) -> tuple:
         ValueError: 알 수 없는 코드를 지목한 경우
     """
     if not tickers:
-        return DATASETS
+        return DATASETS_KOSDAQ
 
-    known = {dataset.ticker: dataset for dataset in DATASETS}
+    known = {dataset.ticker: dataset for dataset in DATASETS_KOSDAQ}
     unknown = [ticker for ticker in tickers if ticker not in known]
     if unknown:
         raise ValueError(f"알 수 없는 대상입니다: {unknown} (가능한 값: {sorted(known)})")

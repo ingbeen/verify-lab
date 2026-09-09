@@ -30,7 +30,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
-from verify_lab.studies.kosdaq_month_end.constants import (
+from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
     COL_GRID_CELL,
@@ -39,12 +39,14 @@ from verify_lab.studies.kosdaq_month_end.constants import (
     DISPLAY_PERIOD_LATE,
     DISPLAY_PERIOD_RECENT,
     ENTRY_CALENDAR_DAYS,
+    EXECUTION_ROLE_NONE,
+    EXECUTION_ROLE_UP,
     EXIT_OFFSETS,
     RECENT_WINDOWS_YEARS,
     Dataset,
 )
-from verify_lab.studies.kosdaq_month_end.constants import COL_EXIT_OFFSET as COL_OFFSET
-from verify_lab.studies.kosdaq_month_end.runner import (
+from verify_lab.studies.month_end.constants import COL_EXIT_OFFSET as COL_OFFSET
+from verify_lab.studies.month_end.runner import (
     StudyOutputs,
     display_tables,
     grid_cell_label,
@@ -92,6 +94,7 @@ def _write_market(directory: Path, ticker: str) -> Dataset:
         price_column=COL_CLOSE,
         price_decimals=PRICE_DECIMALS_KRW,
         is_index=False,
+        execution_role=EXECUTION_ROLE_UP,
     )
 
 
@@ -122,6 +125,7 @@ def _write_index(directory: Path, ticker: str) -> Dataset:
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,
+        execution_role=EXECUTION_ROLE_NONE,
     )
 
 
@@ -349,7 +353,7 @@ class TestDatasetIdentity:
         Then: 대상 수와 종목명의 가짓수가 같다
         """
         # Given
-        from verify_lab.studies.kosdaq_month_end.constants import DATASETS
+        from verify_lab.studies.month_end.constants import DATASETS
 
         # When
         labels = [dataset.label for dataset in DATASETS]
@@ -369,7 +373,7 @@ class TestDatasetIdentity:
         Then: 대상 수와 코드의 가짓수가 같다
         """
         # Given
-        from verify_lab.studies.kosdaq_month_end.constants import DATASETS
+        from verify_lab.studies.month_end.constants import DATASETS
 
         # When
         tickers = [dataset.ticker for dataset in DATASETS]
@@ -389,7 +393,7 @@ class TestDatasetIdentity:
         Then: 숫자만으로 이루어진 값이 없다
         """
         # Given
-        from verify_lab.studies.kosdaq_month_end.constants import DISPLAY_TICKER
+        from verify_lab.studies.month_end.constants import DISPLAY_TICKER
 
         tables = display_tables(etf_outputs)
 

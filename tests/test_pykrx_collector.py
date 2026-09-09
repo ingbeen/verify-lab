@@ -674,7 +674,7 @@ class TestReferenceTimezone:
 # 지수 수집 — 검증 #10 의 기간 확장 축
 # ============================================================
 
-# 실측한 코스닥 지수 코드 (`docs/spec/kosdaq_month_end.md` §7.4)
+# 실측한 코스닥 지수 코드 (`docs/spec/month_end.md` §7.4)
 INDEX_TICKER_KOSDAQ = "2001"
 INDEX_TICKER_KOSDAQ150 = "2203"
 INDEX_START_DATE = "19960701"
@@ -685,7 +685,7 @@ def _index_frame(rows: list[tuple[str, float]], *, zero_ohlc: bool = False) -> p
 
     ETF 조회와 달리 **가격이 `float64`** 이고 `거래대금`·`상장시가총액` 이 함께 온다.
     `zero_ohlc` 는 코스닥150 지수의 소급 산출 구간을 재현한다 — 종가만 있고
-    시가·고가·저가가 전부 0 인 실제 데이터다 (`docs/spec/kosdaq_month_end.md` §7.4).
+    시가·고가·저가가 전부 0 인 실제 데이터다 (`docs/spec/month_end.md` §7.4).
 
     Args:
         rows: (날짜 문자열, 종가) 목록

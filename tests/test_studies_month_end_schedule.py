@@ -6,7 +6,7 @@
 고정하는 계약은 여덟이다.
 
 - 목표 달력일이 거래일이면 그날이 진입일이다
-- 목표 달력일이 휴장이면 **직전 거래일로 앞당긴다** (`docs/spec/kosdaq_month_end.md` 결정 ①)
+- 목표 달력일이 휴장이면 **직전 거래일로 앞당긴다** (`docs/spec/month_end.md` 결정 ①)
 - **데이터의 마지막 달에는 진입일을 만들지 않는다** (결정 ⑧) — 그 달의 「말일」은
   실제 월말이 아니라 데이터가 끊긴 지점이라 보유 0 의 가짜 표본이 된다
 - 청산 상대 거래일 0 은 그 달 마지막 거래일, +1 은 익월 첫 거래일이다 (결정 ②)
@@ -30,7 +30,7 @@ from verify_lab.measure.constants import (
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
-from verify_lab.studies.kosdaq_month_end.constants import (
+from verify_lab.studies.month_end.constants import (
     COL_ENTRY_CLOSE,
     COL_EXIT_CLOSE,
     COL_EXIT_DATE,
@@ -42,7 +42,7 @@ from verify_lab.studies.kosdaq_month_end.constants import (
     REASON_NO_ENTRY_DAY,
     REASON_NO_HOLDING,
 )
-from verify_lab.studies.kosdaq_month_end.schedule import (
+from verify_lab.studies.month_end.schedule import (
     MonthExitSchedule,
     month_entry_dates,
     month_exit_returns,

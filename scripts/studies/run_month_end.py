@@ -5,7 +5,7 @@
 청산 상대 거래일 7칸을 전부 산출해 나란히 보고한다 — 20일만 튀는지 이웃도 같은지가
 오버피팅 판정의 근거다.
 
-확정 설계는 `docs/spec/kosdaq_month_end.md` 가 SoT 다.
+확정 설계는 `docs/spec/month_end.md` 가 SoT 다.
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
 """
 
@@ -14,8 +14,8 @@ import argparse
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
-from verify_lab.studies.kosdaq_month_end.constants import DATASETS, STUDY_NAME
-from verify_lab.studies.kosdaq_month_end.runner import (
+from verify_lab.studies.month_end.constants import DATASETS, STUDY_NAME
+from verify_lab.studies.month_end.runner import (
     base_cell_headline,
     candidates_headline,
     display_tables,
@@ -28,7 +28,7 @@ from verify_lab.utils.meta_manager import save_metadata
 logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
-KEY_META_STUDY = "kosdaq_month_end_study"
+KEY_META_STUDY = "month_end_study"
 
 # 화면에 낼 원 매매법 칸의 컬럼. 전 컬럼을 내면 가로로 넘쳐 읽을 수 없다
 HEADLINE_COLUMNS = [

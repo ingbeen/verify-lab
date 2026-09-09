@@ -5,7 +5,7 @@
 
 | 빌려 쓰는 것 | 어디서 |
 | --- | --- |
-| 진입일·청산일 정의 | `studies/kosdaq_month_end/schedule.py` — 검증 #10 과 **같은 날에 들어간다** |
+| 진입일·청산일 정의 | `studies/month_end/schedule.py` — 검증 #10 과 **같은 날에 들어간다** |
 | 손절 판정 (시가 → 장중 → 청산일) | `strategy/expiry_trading.simulate_expiry_trade` |
 | 구간별 성적 산식 | `strategy/expiry_runner.period_rows` |
 
@@ -49,15 +49,15 @@ from verify_lab.strategy.constants import (
 )
 from verify_lab.strategy.expiry_runner import period_rows
 from verify_lab.strategy.expiry_trading import simulate_expiry_trade
-from verify_lab.studies.kosdaq_month_end.constants import (
+from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
     COL_EXIT_DATE,
     COL_MONTH,
-    DATASETS,
+    DATASETS_KOSDAQ,
     Dataset,
 )
-from verify_lab.studies.kosdaq_month_end.schedule import month_entry_dates, month_exit_schedule
+from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_schedule
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -338,7 +338,7 @@ def _run_cell(
 
 
 def run_month_end_trading(
-    datasets: tuple[Dataset, ...] = DATASETS,
+    datasets: tuple[Dataset, ...] = DATASETS_KOSDAQ,
     *,
     stop_levels: tuple[float, ...] = MONTH_END_STOP_LEVELS,
 ) -> TradingOutputs:
@@ -370,7 +370,7 @@ def run_month_end_trading(
     etf_levels: tuple[float | None, ...] = (*stop_levels, None)
 
     # **지수는 무손절 한 줄뿐이다.** 장중 손절에는 고가·저가가 필요한데 지수는 종가만 있고
-    # (`docs/spec/kosdaq_month_end.md` §7.6), 종가로 근사하면 실제보다 손절이 덜 걸려
+    # (`docs/spec/month_end.md` §7.6), 종가로 근사하면 실제보다 손절이 덜 걸려
     # 성적이 좋아진다. 거부하지 않고 강등하는 것은 **30년 축을 성적표에서 보기 위해서**다
     index_levels: tuple[float | None, ...] = (None,)
 
