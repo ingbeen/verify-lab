@@ -39,7 +39,7 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
 
 ## 1. 보내는 쪽 (mac) 에서 할 일
 
-- [ ] **1-1. 파일이 있는지 확인한다**
+- [x] **1-1. 파일이 있는지 확인한다**
 
   ```bash
   ls -l ~/.claude/keys/
@@ -47,7 +47,7 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
 
   `sheets-mcp-oauth.json` 이 없으면 **1-5 로 건너뛴다**(Console 재발급이 답이다).
 
-- [ ] **1-2. 맞는 파일인지만 가린다 — 내용은 출력하지 않는다**
+- [x] **1-2. 맞는 파일인지만 가린다 — 내용은 출력하지 않는다**
 
   ```bash
   python3 -c "
@@ -63,19 +63,19 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
   **`client_secret` 을 화면에 찍지 않는다.** 대화 로그에 남으면 옮기는 의미가 없다.
   위 명령은 신원을 확인할 만큼만 본다.
 
-- [ ] **1-3. 사용자가 가져갈 수 있게 꺼내둔다**
+- [x] **1-3. 사용자가 가져갈 수 있게 꺼내둔다**
 
   ```bash
-  cp ~/.claude/keys/sheets-mcp-oauth.json ~/Desktop/sheets-mcp-oauth.json
+  cp ~/.claude/keys/sheets-mcp-oauth.json ~/Downloads/sheets-mcp-oauth.json
   ```
 
   **저장소에 복사하지 않는다.** verify-lab 안 어디에도 두지 않고 `git add` 하지 않는다.
   설치형 앱의 시크릿이라 절대 비밀은 아니지만, PUBLIC 저장소에 올라가면 자동 스캐너가
   **무효화하거나 남이 할당량을 쓴다.**
 
-- [ ] **1-4. 사용자에게 알린다**
+- [x] **1-4. 사용자에게 알린다**
 
-  바탕화면에 꺼내뒀고, **직접 옮긴 뒤 원본 사본을 지우면 된다**고 전한다.
+  다운로드 폴더에 꺼내뒀고, **직접 옮긴 뒤 원본 사본을 지우면 된다**고 전한다.
   전달 수단은 사용자가 고른다 — USB, 비밀번호 관리자, 종단간 암호화된 메신저 중 하나.
 
 - [ ] **1-5. (파일이 없을 때만) Console 재발급을 안내한다**
@@ -83,12 +83,12 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
   같은 프로젝트의 「사용자 인증 정보」에서 **데스크톱 앱 클라이언트**의 JSON 을 내려받으면 된다.
   새 클라이언트를 만들 경우 **동의화면의 테스트 사용자 목록에 그 계정이 있는지** 확인한다.
 
-- [ ] **1-6. 4 절에 상태를 적고, 사용자에게 커밋을 요청한다** (git 은 사용자가 직접 한다)
+- [x] **1-6. 4 절에 상태를 적고, 사용자에게 커밋을 요청한다** (git 은 사용자가 직접 한다)
 
 - [ ] **1-7. 전달이 끝났다는 확인을 받으면 꺼내둔 사본을 지운다**
 
   ```bash
-  rm ~/Desktop/sheets-mcp-oauth.json
+  rm ~/Downloads/sheets-mcp-oauth.json
   ```
 
 ---
@@ -153,11 +153,11 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
 
 | 항목 | 상태 |
 | --- | --- |
-| 파일이 있었나 | (있음 / 없음) |
-| `project_id` | (프로젝트 식별용. 시크릿이 아니다) |
-| 어떻게 처리했나 | (바탕화면으로 꺼냄 / Console 재발급 안내) |
-| 사용자에게 전달 안내했나 | (예 / 아니오) |
-| 꺼내둔 사본을 지웠나 | (예 / 아직) |
+| 파일이 있었나 | **있음** (405 bytes · 권한 600 · 타입 `installed`) |
+| `project_id` | `yubeen-mcp-tools` |
+| 어떻게 처리했나 | **다운로드 폴더로 꺼냄** — 원본과 바이트 동일 확인(`cmp`) |
+| 사용자에게 전달 안내했나 | **예** |
+| 꺼내둔 사본을 지웠나 | **아직** — WSL 도착 확인 뒤 1-7 실행 |
 
 ### 받는 쪽 (WSL)
 
