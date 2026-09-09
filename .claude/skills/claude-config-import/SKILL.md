@@ -51,6 +51,76 @@ poetry run python .claude/skills/claude-config-import/plan_apply.py --apply
 적용 전에 `~/.claude/settings.json` 과 `~/.claude.json` 을 타임스탬프로 백업한다.
 적용 후 Claude Code 를 다시 시작해야 반영된다.
 
+### 5. 대조 — 이 PC 에만 있던 것이 사라졌는지 본다
+
+**`settings.json` 은 병합이 아니라 번들 기준으로 통째로 재작성된다**(`rebuild_settings()`).
+그래서 **번들에 없는 키는 이 PC 에 있었더라도 조용히 빠진다.** 백업과 대조해 되살린다.
+
+```bash
+python3 - <<'EOF'
+import json, pathlib
+home = pathlib.Path.home()
+backup = sorted((home / ".claude").glob("settings.json.bak-*"))[-1]
+before = json.loads(backup.read_text())
+after = json.loads((home / ".claude/settings.json").read_text())
+print("사라진 키:", [k for k in before if k not in after] or "없음")
+def hooks(d):
+    return {(e, g.get("matcher", "*"), x.get("command", ""))
+            for e, gs in d.get("hooks", {}).items() for g in gs for x in g.get("hooks", [])}
+print("사라진 훅:", [f"{e}[{m}]" for e, m, _ in hooks(before) - hooks(after)] or "없음")
+EOF
+```
+
+**완료 기준: 둘 다 「없음」이 될 때까지 되살린다.**
+
+되살릴 것을 **적용 전에 먼저 떠둔다** — 이 PC 고유의 알림 훅이 대표적이다.
+번들의 대응 훅을 「제외」로 정했다면 그 자리는 비고, 이 PC 것도 함께 사라진다.
+
+### 6. 옮겨왔지만 못 쓰는 것을 쓸 수 있게 만든다
+
+**적용은 설정을 옮길 뿐 실행 환경을 만들지 않는다.** 온 것 중 이 PC 에서 실행되지 않는 것을
+찾아 **바로 갖춘다.** 「나중에」로 미루면 다음 세션이 원인을 다시 찾는다.
+
+| 무엇을 보나 | 어떻게 |
+| --- | --- |
+| MCP 서버의 실행 파일 | `~/.claude.json` 의 `command` 가 실재하는지 확인하고, 없으면 설치한다. **`type` 이 `http` 인 서버는 `command` 가 없는 것이 정상**이다 |
+| MCP 서버가 참조하는 파일 | `env` 의 경로(`CREDENTIALS_PATH` 등)가 실재하는지 확인한다 |
+| 훅이 부르는 도구 | 판정 단계가 「이 PC 에 없는 도구」로 이미 알려준다 |
+| **권한 규칙이 가리키는 실행 파일** | `Bash(/...)` 규칙의 절대경로를 본다. **venv 는 번들에 담기지 않으므로 여기서 드러난다** |
+
+**venv 는 스크립트의 import 를 읽어 재생성한다.** 무엇을 넣을지는 추측하지 않는다 —
+표준 라이브러리가 아닌 import 가 곧 설치 목록이다.
+
+```bash
+uv venv ~/.claude/<도구>/venv --python 3.12
+uv pip install --python ~/.claude/<도구>/venv/bin/python <패키지>
+```
+
+**`python3 -m venv` 를 쓰지 않는다** — Debian 계열은 `ensurepip` 가 별도 패키지라 실패한다.
+`uv` 는 시스템 패키지 없이 만든다.
+
+**설치할 수 있는 것은 승인만 받고 바로 설치한다.** 사용자만 만들 수 있는 것(브라우저 인증,
+발급받아야 하는 시크릿)은 **무엇을 어디서 받아야 하는지까지 적어** 보고한다.
+
+### 7. 번들을 지운다
+
+적용이 끝나면 `claude-config/` 의 **번들 본체를 지우고 `decisions/` 만 남긴다.**
+
+```bash
+rm -rf claude-config/home claude-config/claude_json.json claude-config/MANIFEST.json claude-config/README.md
+```
+
+**git 은 사용자가 직접 한다.** 지운 자국은 `git status` 에 그대로 드러난다.
+
+**왜 지우나**: 번들은 `~/.claude` 사본이라 스킬·규칙·설정 문서가 저장소에 **두 벌**로 존재한다.
+저장소를 검색하면 사본이 원본과 함께 걸려 결과를 오염시킨다.
+
+**왜 `decisions/` 는 남기나**: 다음 마이그레이션에서 **이미 승인한 항목을 다시 묻지 않게** 한다.
+경로 매핑도 여기 있어, 지우면 같은 함정을 다시 밟는다.
+
+**번들이 필요해지면 보내는 PC 에서 `claude-config-export` 를 다시 돌린다.** 그것이 원본이고
+이 폴더는 사본이다. 테스트는 번들이 없으면 통과하도록 이미 짜여 있다.
+
 ## 훅을 자동 판정하지 않는 이유
 
 셸 명령의 이식성은 **문맥을 알아야** 판단할 수 있다.
@@ -115,8 +185,17 @@ MCP 서버의 API 키는 파일이 아니라 `~/.claude.json` 안에 **값**으�
 
 ## 무엇이 애초에 번들에 없는가
 
-자격증명·세션 이력·venv·플러그인은 내보낼 때 빠진다. 없다고 놀라지 말고
-`claude-config/README.md` 의 「애초에 담기지 않은 것」을 본다.
+내보낼 때 빠지는 것은 아래가 전부다. 없다고 놀라지 않는다.
+
+| 빠지는 것 | 왜 |
+| --- | --- |
+| 자격증명 (`keys/**` · `*.env` · `*.pem` · `*.key`) | 이 저장소가 PUBLIC 이다 |
+| MCP 서버의 자격증명 «값» (`headers`·`env` 의 비경로 값) | 센티널로 가려 담는다. 위 절이 처리를 정한다 |
+| 세션 상태와 이력 (`projects/` · `sessions/` · `history.jsonl` · `file-history/`) | 다른 PC 의 이력이 섞이면 되돌릴 수 없다 |
+| 감사 로그 (`db/*.jsonl`) | 그 PC 에서만 뜻이 있다 |
+| 플랫폼 venv (`**/venv/**`) | 바이너리라 받는 쪽에서 쓸 수 없다. 필요하면 재생성한다 |
+| 플러그인 (`plugins/**`) | 공식 마켓플레이스 사본이며 받는 쪽에서 자동으로 다시 설치된다 |
+| 캐시와 자동 백업 (`cache/` · `backups/` · `*.bak-*`) | 옮길 값이 아니다 |
 
 **받는 PC 에서 필요한 자격증명은 그 PC 에서 새로 만든다.** 다만 「새로 만든다」가 무엇을
 뜻하는지는 파일마다 갈린다 — 구글시트의 두 파일이 그 예다.
@@ -128,3 +207,51 @@ MCP 서버의 API 키는 파일이 아니라 `~/.claude.json` 안에 **값**으�
 
 **「재인증하면 되겠지」로 넘기면 두 번째 파일에서 막힌다.** 지라(atlassian)처럼 브라우저
 OAuth 로 인증하는 서버는 이 PC 에서 한 번 인증하면 된다.
+
+## 실측 기록 — 회사 mac 에서 집 WSL 로 (2026-09-09)
+
+`yubeens-Mac-mini.local` (darwin) -> `DESKTOP-4CN5LK3` (linux, WSL2).
+**그대로 249건 · 변환 40건 · 제외 14건**으로 끝났고, 권한 규칙이 allow 49->142 · deny 9->68 ·
+ask 4->26 으로 늘었다.
+
+### 판정이 그대로 통과시키면 틀리는 것 넷
+
+| 무엇 | 어떻게 드러났나 | 어떻게 했나 |
+| --- | --- | --- |
+| **홈 이름은 같아도 폴더 이름이 다르다** | mac 은 `~/Workspace`, 이 PC 는 `~/workspace` (**소문자**). 홈 치환만 걸려 `/home/yblee/Workspace` 라는 없는 경로가 됐고, **판정은 이것을 「변환 후 적용」으로 통과시킨다** — 권한 규칙 12건이 조용히 빗나간다 | `path_map` 에 쌍을 넣었다. 넣지 않으면 저장소를 읽을 때마다 승인창이 뜬다 |
+| **macOS 의 심볼릭 링크 쌍** | 원본 `additionalDirectories` 에 `/tmp` 와 `/private/tmp` 가 **둘 다** 있었다(mac 에서는 같은 곳). `/private/tmp` -> `/tmp` 로 바꾸면 **중복**이 된다 | `/private/tmp` 는 제외했다. 원본의 `/tmp` 가 그대로 살아 목적은 이미 이뤄진다 |
+| **번들에 없는 키는 사라진다** | 이 PC 의 `outputStyle: "korean"` 이 조용히 빠졌다. mac 에 그 키가 없었고 `settings.json` 은 통째로 재작성되기 때문이다. **스크립트는 이것을 보고하지 않는다** | 5 단계의 대조로 잡는다 |
+| **알림 훅은 자리를 두고 부딪힌다** | mac 은 `terminal-notifier`, 이 PC 는 `wsl_toast.py` 로 **같은 이벤트**(`Notification`·`Stop`·`PreToolUse[AskUserQuestion]`)를 쓴다. mac 것을 제외하면 이 PC 것도 함께 사라진다 | 적용 전에 떠두고 적용 후 되살렸다 |
+
+### 제외한 14건
+
+| 무엇 | 왜 |
+| --- | --- |
+| macOS 알림 훅 3건 | `terminal-notifier` 가 없다. 이 PC 는 `wsl_toast.py` 로 대체 |
+| 회사 전용 훅 2건 (`block-acme-prd-write` · `block-acmeq-script-registry`) | 대상 저장소가 없다. **무해하지만 Bash 호출마다 python3 기동 비용**이 붙는다. 쓰게 되면 그때 적용한다 |
+| 없는 저장소의 `projects` 9건 | clone 하면 어차피 새로 생긴다 |
+
+**훅 스크립트 6개는 번들에 함께 온다.** `$HOME/.claude/hooks/*.py` 를 부르는 훅은 파일이
+따라오므로 그대로 적용된다 — 「이 PC 에 없는 도구」로 보이지 않는다.
+
+**`[ -f "$f" ] && ... || exit 0` 가드가 있는 훅은 대상이 없어도 적용한다.** 조용히 통과하고,
+나중에 그 저장소를 clone 하면 살아난다.
+
+### 6 단계에서 실제로 나온 것
+
+| 무엇 | 결과 |
+| --- | --- |
+| `context7` MCP | 정상. `type: http` 라 `command` 가 없고, 이 PC 의 키가 유지됐다 |
+| `google-sheets` MCP | `uvx` 를 설치해 실행 경로는 갖췄다. **자격증명 2개가 남았고 그중 하나는 재인증으로 생기지 않는다** |
+| `db/venv` | 재생성했다 — 외부 패키지는 `pymysql` 하나였다. 다만 **접속 자격증명(`.env`)이 없어 실제 조회는 못 한다** |
+| `tools/msg/` | 왔고 **표준 라이브러리만 써서 그대로 동작한다** |
+| `tools/pptx/build_v14.py` | 왔지만 **`lxml`·`python-pptx` 를 돌릴 인터프리터가 없다.** 권한 규칙의 venv 는 `xlsx/venv` 하나뿐이라, mac 이 그것을 공용으로 쓰는지 확인해야 한다 |
+| `tools/xlsx/` | **폴더째 오지 않았다** — 안에 venv 말고 파일이 없어 담을 것이 0개가 됐다. **같은 `tools/` 의 `msg/`·`pptx/` 는 왔으므로 `tools` 허용 자체는 정상이다** |
+| `/opt/homebrew/bin/drawio` 권한 | macOS 경로다. 권한 규칙이라 그대로 둔다 |
+
+**`tools/xlsx/` 와 `pptx` 인터프리터는 보내는 PC 를 봐야 풀린다.** 받는 쪽에는 「없다」는
+사실만 있고 「원래 무엇이 있었는지」가 없다 — 보내는 PC 에서 `pip freeze` 로 목록을 받아
+그것으로 재생성한다.
+
+**「권한 규칙은 왔는데 그 도구는 없다」가 이 스킬의 정상 상태다.** venv 는 번들에 담기지
+않으므로, `Bash(/...)` 규칙의 절대경로가 곧 6 단계의 재생성 목록이 된다.

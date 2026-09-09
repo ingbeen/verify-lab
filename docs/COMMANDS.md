@@ -81,6 +81,9 @@ poetry run python .claude/skills/claude-config-import/plan_apply.py --save-decis
 
 # 받기 — 실제 적용 (승인받지 않은 제외 후보가 남아 있으면 중단합니다)
 poetry run python .claude/skills/claude-config-import/plan_apply.py --apply
+
+# 받기 — 적용을 마친 뒤 번들 본체를 지웁니다 (decisions/ 는 남깁니다)
+rm -rf claude-config/home claude-config/claude_json.json claude-config/MANIFEST.json claude-config/README.md
 ```
 
 - **자격증명은 번들에 담기지 않습니다** — 이 저장소는 PUBLIC 이고, 커밋되면 파일을 지워도
@@ -88,6 +91,8 @@ poetry run python .claude/skills/claude-config-import/plan_apply.py --apply
 - **git 은 사용자가 직접 합니다.** 스크립트는 파일만 만듭니다
 - 적용 전에 `~/.claude/settings.json` 과 `~/.claude.json` 을 타임스탬프로 백업합니다
 - **훅은 자동 판정하지 않고 사람에게 묻습니다.** 이유는 `claude-config-import` 스킬 문서에 있습니다
+- **평소에 `claude-config/` 에 `decisions/` 만 있는 것이 정상입니다** — 적용을 마치면 번들 본체를
+  지웁니다. 사본이 원본과 함께 검색에 걸리기 때문이며, 필요하면 내보내기로 다시 만듭니다
 - 절차와 판정 기준의 SoT 는 각 스킬 문서입니다
 
 ---
