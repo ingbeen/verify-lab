@@ -1,0 +1,900 @@
+"""번들을 이 PC 에 어떻게 적용할지 판정하고, 승인 후 적용한다.
+
+**OS 가 다르다고 항목을 버리지 않는다.** 설정 대부분은 경로만 바꾸면 살아나므로 판정은
+셋으로 나뉜다 — 그대로 적용 / 변환 후 적용 / 승인 후 제외. 마지막 것만 사람에게 묻는다.
+
+판정 단위는 «파일» 이 아니라 «항목» 이다. `settings.json` 은 파일 하나지만 그 안에 권한
+142건과 훅 6개가 들어 있어, 파일 통째로 버리면 `terminal-notifier` 하나 때문에 나머지
+전부가 사라진다.
+
+한 번 내린 결정은 `decisions/<pc_id>.json` 에 쌓여 다음 실행 때 다시 묻지 않는다.
+다만 **원본 항목의 내용이 바뀌면 해시가 달라져 다시 묻는다** — 옛 결정을 바뀐 내용에
+적용하면 조용히 어긋난다.
+"""
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import socket
+import sys
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+# 저장소 루트. 이 파일은 <루트>/.claude/skills/claude-config-import/plan_apply.py 에 있다.
+# 받는 쪽이 경로를 입력하지 않아도 되도록 스스로 찾는다
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+BUNDLE_DIR = PROJECT_ROOT / "claude-config"
+BUNDLE_HOME_DIR = BUNDLE_DIR / "home"
+BUNDLE_CLAUDE_JSON_PATH = BUNDLE_DIR / "claude_json.json"
+MANIFEST_PATH = BUNDLE_DIR / "MANIFEST.json"
+DECISIONS_DIR = BUNDLE_DIR / "decisions"
+
+TARGET_CLAUDE_HOME = Path.home() / ".claude"
+TARGET_CLAUDE_JSON = Path.home() / ".claude.json"
+
+# 판정 결과
+APPLY = "apply"
+TRANSFORM = "transform"
+EXCLUDE = "exclude"
+
+DECISION_LABELS = {
+    APPLY: "그대로 적용",
+    TRANSFORM: "변환 후 적용",
+    EXCLUDE: "제외 (승인 필요)",
+}
+
+# 경로가 들어갈 수 있어 치환 대상이 되는 텍스트 파일
+TEXT_SUFFIXES = frozenset({".md", ".py", ".json", ".toml", ".txt", ".sh"})
+
+# 훅 명령에 나타나면 이식성을 의심할 도구들. **판단 재료이지 판정이 아니다.**
+#
+# 셸 명령을 파싱해 실행 파일을 뽑는 방식은 버렸다 — 명령치환·변수·조건식이 섞이면
+# `]` · `2>/dev/null)` · `/.claude/hooks/plan_gate.py` 같은 조각을 실행 파일로 오인하고,
+# 고칠 때마다 새로운 실패 형태가 나왔다. 잘못된 자동 판정은 멀쩡한 훅을 버리거나
+# 깨진 훅을 넣으며, 둘 다 조용히 나쁘다. 그래서 훅은 사람이 판단한다.
+#
+# 이름을 부분 문자열로 찾으므로 파싱이 필요 없고, 없는 도구를 사용자에게 알려줄 뿐이다
+PORTABILITY_HINT_TOOLS = ("terminal-notifier", "jq", "osascript", "pbpaste", "python3")
+
+
+@dataclass
+class Environment:
+    """적용 대상 PC 의 실측 정보."""
+
+    platform: str
+    hostname: str
+    home: Path
+    source_home: str
+    source_hostname: str
+    extra_path_map: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def path_map(self) -> dict[str, str]:
+        """치환할 경로 쌍. 긴 경로가 먼저 온다.
+
+        홈 경로 하나만으로는 모자란 경우가 있다 — 받는 PC 의 작업 폴더가 홈 밖이거나
+        이름이 다르면 `Workspace` 같은 경로가 어긋난다. 그때 결정 파일의 `path_map` 에
+        쌍을 추가하면 여기에 합쳐진다.
+
+        **긴 것부터 치환해야 한다.** 짧은 홈 경로를 먼저 바꾸면 그 안에 든 긴 경로가
+        이미 바뀌어 버려 뒤 규칙이 걸리지 않는다.
+
+        Returns:
+            dict[str, str]: 출처 경로 -> 이 PC 경로
+        """
+        merged = {self.source_home: self.home.as_posix()} if self.source_home else {}
+        merged.update(self.extra_path_map)
+
+        return dict(sorted(merged.items(), key=lambda pair: len(pair[0]), reverse=True))
+
+    @property
+    def pc_id(self) -> str:
+        """결정 파일을 가르는 식별자.
+
+        PC 마다 제외해야 할 것이 다르므로 결정도 PC 별로 쌓인다.
+
+        Returns:
+            str: 파일명으로 쓸 수 있는 식별자
+        """
+        safe_host = re.sub(r"[^A-Za-z0-9_.-]", "-", self.hostname)
+
+        return f"{safe_host}-{self.platform}"
+
+
+@dataclass
+class Verdict:
+    """항목 하나에 대한 판정."""
+
+    key: str
+    decision: str
+    reason: str
+    source_hash: str
+    detail: str = ""
+    needs_confirmation: bool = False
+
+
+@dataclass
+class Plan:
+    """이 PC 에 대한 적용 계획."""
+
+    environment: Environment
+    verdicts: list[Verdict] = field(default_factory=list)
+
+    def by_decision(self, decision: str) -> list[Verdict]:
+        """분류별 항목을 돌려준다.
+
+        Args:
+            decision: `APPLY` · `TRANSFORM` · `EXCLUDE` 중 하나
+
+        Returns:
+            list[Verdict]: 해당 분류의 판정
+        """
+        return [verdict for verdict in self.verdicts if verdict.decision == decision]
+
+
+def _hash_value(value: object) -> str:
+    """항목 값의 SHA-256 을 구한다.
+
+    「지난번과 같은 내용인가」를 판별하는 기준이다. dict 는 키 순서에 흔들리지 않도록
+    정렬해 직렬화한다.
+
+    Args:
+        value: 해시할 값
+
+    Returns:
+        str: 16진수 해시
+    """
+    serialized = json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def detect_environment() -> Environment:
+    """적용 대상 PC 와 번들 출처를 실측한다.
+
+    Returns:
+        Environment: 실측 결과
+
+    Raises:
+        ValueError: 번들이나 매니페스트가 없는 경우
+    """
+    if not MANIFEST_PATH.is_file():
+        raise ValueError(f"매니페스트가 없습니다: {MANIFEST_PATH}. 내보내기를 먼저 실행하세요")
+
+    manifest: dict[str, Any] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    source: dict[str, Any] = manifest["source"]
+
+    environment = Environment(
+        platform=sys.platform,
+        hostname=socket.gethostname(),
+        home=Path.home(),
+        source_home=str(source.get("home", "")),
+        source_hostname=str(source.get("hostname", "")),
+    )
+    environment.extra_path_map = dict(load_decisions(environment).get("path_map", {}))
+
+    return environment
+
+
+def transform_text(text: str, environment: Environment) -> str:
+    """출처 PC 의 홈 경로를 이 PC 의 홈 경로로 바꾼다.
+
+    경로 구분자는 `/` 를 유지한다. Claude Code 설정은 Windows 에서도 `/` 를 쓰며,
+    `\\` 로 바꾸면 JSON 안에서 이스케이프가 필요해져 규칙이 깨진다.
+
+    Args:
+        text: 원본 문자열
+        environment: 실측 정보
+
+    Returns:
+        str: 치환된 문자열
+    """
+    result = text
+    for source, target in environment.path_map.items():
+        result = result.replace(source, target)
+
+    return result
+
+
+def missing_hint_tools(command: str) -> list[str]:
+    """훅 명령에 나타나는 도구 중 이 PC 에서 찾을 수 없는 것을 고른다.
+
+    이름을 부분 문자열로 찾으므로 셸 문법을 해석하지 않는다. **판단 재료를 모을 뿐
+    판정하지 않는다** — 이 목록이 비어 있어도 그 훅이 이식 가능하다는 뜻은 아니다.
+
+    Args:
+        command: 훅의 셸 명령
+
+    Returns:
+        list[str]: 명령에 등장하지만 이 PC 에 없는 도구
+    """
+    return [tool for tool in PORTABILITY_HINT_TOOLS if tool in command and shutil.which(tool) is None]
+
+
+def _classify_value(key: str, value: object, environment: Environment) -> Verdict:
+    """설정 항목 하나를 판정한다.
+
+    **권한 규칙은 명령이 이 PC 에 없다는 이유로 제외하지 않는다.** 규칙은 「이 명령을
+    쓰면 승인 없이 실행한다」는 뜻이라 명령이 없으면 그냥 안 쓰일 뿐 해가 없고, 나중에
+    설치하면 그대로 살아난다. 빼면 오히려 그때 승인창이 뜬다.
+    실행 여부를 따지는 것은 «훅» 뿐이다 — 훅은 없는 명령을 부르면 매번 실패한다.
+
+    Args:
+        key: 항목 식별자
+        value: 항목 값
+        environment: 실측 정보
+
+    Returns:
+        Verdict: 판정 결과
+    """
+    source_hash = _hash_value(value)
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+    if environment.source_home and environment.source_home in text:
+        transformed = transform_text(text, environment)
+        return Verdict(
+            key=key,
+            decision=TRANSFORM,
+            reason="출처 PC 의 홈 경로를 이 PC 경로로 바꿉니다",
+            source_hash=source_hash,
+            detail=transformed,
+        )
+
+    return Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash)
+
+
+def hook_key(event: str, matcher: str, index: int) -> str:
+    """훅의 항목 식별자를 만든다.
+
+    **matcher 를 넣어야 키가 충돌하지 않는다.** 한 이벤트에 matcher 가 다른 그룹이
+    여럿 달리는데(`PreToolUse` 는 4개), 그룹 안에서만 센 순번을 쓰면 서로 다른 훅이
+    같은 키를 갖는다. 그러면 결정 파일에서 한쪽이 다른 쪽을 덮어쓴다.
+
+    Args:
+        event: 훅 이벤트 이름
+        matcher: 그룹의 matcher (없으면 `*`)
+        index: 그룹 안에서의 순번
+
+    Returns:
+        str: 항목 식별자
+    """
+    return f"settings.json#hooks.{event}[{matcher}][{index}]"
+
+
+def _classify_hook(event: str, matcher: str, index: int, hook: dict[str, Any], environment: Environment) -> Verdict:
+    """훅 하나를 판정한다.
+
+    **훅은 자동으로 판정하지 않고 사람에게 넘긴다.** 셸 명령의 이식성은 문맥을 알아야
+    판단할 수 있다 — `terminal-notifier` 는 macOS 전용이지만
+    `command -v python3 || command -v python` 은 폴백이 있어 그대로 동작한다.
+    이 차이를 파서가 알 수 없다.
+
+    기본 제안은 «제외» 다. 깨진 훅은 매 이벤트마다 실패하므로 그쪽이 안전하다.
+    사용자가 「적용」으로 바꾸면 그 결정이 누적돼 다음부터 묻지 않는다.
+
+    Args:
+        event: 훅 이벤트 이름
+        matcher: 그룹의 matcher
+        index: 그룹 안에서의 순번
+        hook: 훅 정의
+        environment: 실측 정보
+
+    Returns:
+        Verdict: 판정 결과
+    """
+    command = str(hook.get("command", ""))
+    key = hook_key(event, matcher, index)
+    missing = missing_hint_tools(command)
+
+    hint = f" (이 PC 에 없는 도구: `{'`, `'.join(missing)}`)" if missing else ""
+    transformed = transform_text(command, environment)
+    path_note = " — 경로 치환이 필요합니다" if transformed != command else ""
+
+    return Verdict(
+        key=key,
+        decision=EXCLUDE,
+        reason=f"훅은 이식성을 사람이 판단합니다{hint}{path_note}",
+        source_hash=_hash_value(hook),
+        detail=transformed,
+        needs_confirmation=True,
+    )
+
+
+def _classify_directory(key: str, raw_path: str, environment: Environment) -> Verdict:
+    """추가 작업 디렉터리를 판정한다.
+
+    권한 규칙과 달리 **경로는 실재를 따진다.** 없는 폴더를 작업 디렉터리로 등록하면
+    그 PC 에서 쓰이지 않는 항목이 쌓이고, 사용자는 왜 있는지 모른다.
+
+    Args:
+        key: 항목 식별자
+        raw_path: 번들에 적힌 경로
+        environment: 실측 정보
+
+    Returns:
+        Verdict: 판정 결과
+    """
+    transformed = transform_text(raw_path, environment)
+    source_hash = _hash_value(raw_path)
+
+    if not Path(transformed).is_dir():
+        return Verdict(
+            key=key,
+            decision=EXCLUDE,
+            reason="이 PC 에 없는 경로입니다",
+            source_hash=source_hash,
+            detail=transformed,
+            needs_confirmation=True,
+        )
+
+    if transformed != raw_path:
+        return Verdict(
+            key=key,
+            decision=TRANSFORM,
+            reason="경로를 이 PC 기준으로 바꿉니다",
+            source_hash=source_hash,
+            detail=transformed,
+        )
+
+    return Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash)
+
+
+def classify_settings(settings: dict[str, Any], environment: Environment) -> list[Verdict]:
+    """`settings.json` 을 항목 단위로 판정한다.
+
+    파일 통째로 판정하면 훅 하나 때문에 권한 142건이 함께 버려진다.
+
+    Args:
+        settings: 번들의 `settings.json` 내용
+        environment: 실측 정보
+
+    Returns:
+        list[Verdict]: 항목별 판정
+    """
+    verdicts: list[Verdict] = []
+
+    permissions: dict[str, Any] = settings.get("permissions", {})
+    for section, entries in permissions.items():
+        if not isinstance(entries, list):
+            verdicts.append(_classify_value(f"settings.json#permissions.{section}", entries, environment))
+            continue
+
+        for entry in entries:  # pyright: ignore[reportUnknownVariableType]
+            key = f"settings.json#permissions.{section}::{entry}"
+            if section == "additionalDirectories":
+                verdicts.append(_classify_directory(key, str(entry), environment))
+                continue
+            verdicts.append(_classify_value(key, entry, environment))
+
+    for event, groups in settings.get("hooks", {}).items():
+        for group in groups:
+            matcher = str(group.get("matcher", "*"))
+            for index, hook in enumerate(group.get("hooks", [])):
+                verdicts.append(_classify_hook(event, matcher, index, hook, environment))
+
+    for key, value in settings.items():
+        if key in ("permissions", "hooks"):
+            continue
+        verdicts.append(_classify_value(f"settings.json#{key}", value, environment))
+
+    return verdicts
+
+
+def classify_claude_json(claude_json: dict[str, Any], environment: Environment) -> list[Verdict]:
+    """`~/.claude.json` 에서 옮겨온 값을 판정한다.
+
+    프로젝트별 설정은 **그 저장소가 이 PC 에 있을 때만** 뜻이 있다. 없는 저장소의
+    권한을 넣으면 쓰이지 않는 항목이 쌓인다.
+
+    Args:
+        claude_json: 번들의 `claude_json.json` 내용
+        environment: 실측 정보
+
+    Returns:
+        list[Verdict]: 항목별 판정
+    """
+    verdicts: list[Verdict] = []
+
+    for name, definition in claude_json.get("mcpServers", {}).items():
+        verdicts.append(_classify_value(f"claude_json.json#mcpServers.{name}", definition, environment))
+
+    for project_path, definition in claude_json.get("projects", {}).items():
+        key = f"claude_json.json#projects.{project_path}"
+        transformed = transform_text(project_path, environment)
+
+        if not Path(transformed).is_dir():
+            verdicts.append(
+                Verdict(
+                    key=key,
+                    decision=EXCLUDE,
+                    reason="이 PC 에 없는 저장소입니다",
+                    source_hash=_hash_value(definition),
+                    detail=transformed,
+                    needs_confirmation=True,
+                )
+            )
+            continue
+
+        verdicts.append(
+            Verdict(
+                key=key,
+                decision=TRANSFORM if transformed != project_path else APPLY,
+                reason="저장소 경로를 이 PC 경로로 바꿉니다" if transformed != project_path else "",
+                source_hash=_hash_value(definition),
+                detail=transformed,
+            )
+        )
+
+    return verdicts
+
+
+def classify_files(environment: Environment) -> list[Verdict]:
+    """번들의 파일을 판정한다.
+
+    `settings.json` 은 항목 단위로 따로 판정하므로 여기서 제외한다.
+
+    Args:
+        environment: 실측 정보
+
+    Returns:
+        list[Verdict]: 파일별 판정
+
+    Raises:
+        ValueError: 번들이 없는 경우
+    """
+    if not BUNDLE_HOME_DIR.is_dir():
+        raise ValueError(f"번들이 없습니다: {BUNDLE_HOME_DIR}")
+
+    verdicts: list[Verdict] = []
+    for path in sorted(BUNDLE_HOME_DIR.rglob("*")):
+        if not path.is_file():
+            continue
+
+        relative = path.relative_to(BUNDLE_HOME_DIR)
+        if relative.as_posix() == "settings.json":
+            continue
+
+        raw = path.read_bytes()
+        source_hash = hashlib.sha256(raw).hexdigest()
+        key = f"home/{relative.as_posix()}"
+
+        if path.suffix not in TEXT_SUFFIXES or not environment.source_home:
+            verdicts.append(Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash))
+            continue
+
+        text = raw.decode("utf-8", errors="replace")
+        if environment.source_home in text:
+            occurrences = text.count(environment.source_home)
+            verdicts.append(
+                Verdict(
+                    key=key,
+                    decision=TRANSFORM,
+                    reason=f"출처 홈 경로 {occurrences}곳을 바꿉니다",
+                    source_hash=source_hash,
+                )
+            )
+            continue
+
+        verdicts.append(Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash))
+
+    return verdicts
+
+
+def load_decisions(environment: Environment) -> dict[str, Any]:
+    """이 PC 의 지난 결정을 읽는다.
+
+    Args:
+        environment: 실측 정보
+
+    Returns:
+        dict[str, Any]: 저장된 결정. 없으면 빈 구조
+    """
+    path = DECISIONS_DIR / f"{environment.pc_id}.json"
+    if not path.is_file():
+        return {"pc_id": environment.pc_id, "items": {}}
+
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def apply_previous_decisions(plan: Plan, decisions: dict[str, Any]) -> None:
+    """지난 결정을 이번 판정에 반영한다.
+
+    **해시가 같을 때만** 재사용한다. 내용이 바뀐 항목에 옛 결정을 적용하면 사용자가
+    승인한 적 없는 상태가 조용히 만들어진다.
+
+    Args:
+        plan: 이번 판정
+        decisions: 저장된 결정
+    """
+    stored: dict[str, Any] = decisions.get("items", {})
+
+    for verdict in plan.verdicts:
+        remembered = stored.get(verdict.key)
+        if remembered is None:
+            continue
+
+        if remembered.get("source_hash") != verdict.source_hash:
+            if verdict.decision == EXCLUDE:
+                verdict.reason = f"{verdict.reason} (지난 결정이 있으나 내용이 바뀌어 다시 묻습니다)"
+            continue
+
+        verdict.decision = str(remembered["decision"])
+        verdict.reason = str(remembered.get("reason", ""))
+        verdict.needs_confirmation = False
+
+
+def build_plan() -> Plan:
+    """이 PC 에 대한 적용 계획을 만든다.
+
+    Returns:
+        Plan: 판정 결과
+    """
+    environment = detect_environment()
+    plan = Plan(environment=environment)
+
+    plan.verdicts.extend(classify_files(environment))
+
+    settings_path = BUNDLE_HOME_DIR / "settings.json"
+    if settings_path.is_file():
+        plan.verdicts.extend(classify_settings(json.loads(settings_path.read_text(encoding="utf-8")), environment))
+
+    if BUNDLE_CLAUDE_JSON_PATH.is_file():
+        plan.verdicts.extend(
+            classify_claude_json(json.loads(BUNDLE_CLAUDE_JSON_PATH.read_text(encoding="utf-8")), environment)
+        )
+
+    apply_previous_decisions(plan, load_decisions(environment))
+
+    return plan
+
+
+def render_plan(plan: Plan) -> str:
+    """판정 결과를 사람이 읽을 표로 만든다.
+
+    제외 후보는 **하나씩 사유와 함께** 보여준다. 사유 없이 목록만 주면 승인할 수 없다.
+
+    Args:
+        plan: 판정 결과
+
+    Returns:
+        str: 출력할 본문
+    """
+    environment = plan.environment
+    lines = [
+        f"적용 대상: {environment.hostname} ({environment.platform})",
+        f"번들 출처: {environment.source_hostname} (홈 {environment.source_home})",
+        "",
+    ]
+
+    for decision in (APPLY, TRANSFORM, EXCLUDE):
+        items = plan.by_decision(decision)
+        lines.append(f"[{DECISION_LABELS[decision]}] {len(items)}건")
+
+    excluded = plan.by_decision(EXCLUDE)
+    pending = [verdict for verdict in excluded if verdict.needs_confirmation]
+
+    if pending:
+        lines.extend(["", f"--- 승인이 필요한 제외 후보 {len(pending)}건 ---"])
+        for verdict in pending:
+            lines.append(f"  {verdict.key}")
+            lines.append(f"      사유: {verdict.reason}")
+            if verdict.detail:
+                lines.append(f"      내용: {verdict.detail[:110]}")
+
+    transformed = plan.by_decision(TRANSFORM)
+    if transformed:
+        lines.extend(["", f"--- 경로를 바꿔 적용할 항목 {len(transformed)}건 ---"])
+        for verdict in transformed:
+            lines.append(f"  {verdict.key} — {verdict.reason}")
+
+    return "\n".join(lines)
+
+
+def save_decisions(plan: Plan) -> Path:
+    """이번 판정을 결정 파일로 남긴다.
+
+    Args:
+        plan: 판정 결과
+
+    Returns:
+        Path: 저장한 결정 파일 경로
+    """
+    DECISIONS_DIR.mkdir(parents=True, exist_ok=True)
+    path = DECISIONS_DIR / f"{plan.environment.pc_id}.json"
+
+    payload = {
+        "pc_id": plan.environment.pc_id,
+        "platform": plan.environment.platform,
+        "source_hostname": plan.environment.source_hostname,
+        "path_map": plan.environment.extra_path_map,
+        "updated_at": datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M %z"),
+        "items": {
+            verdict.key: {
+                "decision": verdict.decision,
+                "reason": verdict.reason,
+                "source_hash": verdict.source_hash,
+            }
+            for verdict in plan.verdicts
+        },
+    }
+
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    return path
+
+
+def _decision_map(plan: Plan) -> dict[str, Verdict]:
+    """항목 식별자로 판정을 찾을 수 있게 만든다.
+
+    Args:
+        plan: 판정 결과
+
+    Returns:
+        dict[str, Verdict]: 식별자 -> 판정
+    """
+    return {verdict.key: verdict for verdict in plan.verdicts}
+
+
+def _transformed(value: object, environment: Environment) -> object:
+    """값 안의 출처 경로를 이 PC 경로로 바꾼다.
+
+    문자열이 아니면 직렬화해 치환하고 되돌린다. 중첩된 구조 안의 경로도 바뀐다.
+
+    Args:
+        value: 원본 값
+        environment: 실측 정보
+
+    Returns:
+        object: 치환된 값
+    """
+    if isinstance(value, str):
+        return transform_text(value, environment)
+
+    return json.loads(transform_text(json.dumps(value, ensure_ascii=False), environment))
+
+
+def rebuild_settings(settings: dict[str, Any], plan: Plan, environment: Environment) -> dict[str, Any]:
+    """판정에 따라 `settings.json` 을 다시 조립한다.
+
+    제외된 항목만 빠지고 나머지는 살아남는다. 훅 그룹이 통째로 비면 그 그룹도 뺀다 —
+    빈 그룹을 남기면 Claude Code 가 읽을 때 의미 없는 항목이 된다.
+
+    Args:
+        settings: 번들의 `settings.json` 내용
+        plan: 판정 결과
+        environment: 실측 정보
+
+    Returns:
+        dict[str, Any]: 이 PC 에 쓸 설정
+    """
+    decisions = _decision_map(plan)
+    result: dict[str, Any] = {}
+
+    rebuilt_permissions: dict[str, Any] = {}
+    for section, entries in settings.get("permissions", {}).items():
+        if not isinstance(entries, list):
+            verdict = decisions.get(f"settings.json#permissions.{section}")
+            if verdict is not None and verdict.decision != EXCLUDE:
+                rebuilt_permissions[section] = entries
+            continue
+
+        kept: list[Any] = []
+        for entry in entries:  # pyright: ignore[reportUnknownVariableType]
+            verdict = decisions.get(f"settings.json#permissions.{section}::{entry}")
+            if verdict is None or verdict.decision == EXCLUDE:
+                continue
+            kept.append(_transformed(entry, environment) if verdict.decision == TRANSFORM else entry)
+
+        rebuilt_permissions[section] = kept
+
+    if rebuilt_permissions:
+        result["permissions"] = rebuilt_permissions
+
+    rebuilt_hooks: dict[str, Any] = {}
+    for event, groups in settings.get("hooks", {}).items():
+        kept_groups: list[Any] = []
+        for group in groups:
+            matcher = str(group.get("matcher", "*"))
+            kept_hooks: list[Any] = []
+
+            for index, hook in enumerate(group.get("hooks", [])):
+                verdict = decisions.get(hook_key(event, matcher, index))
+                if verdict is None or verdict.decision == EXCLUDE:
+                    continue
+                new_hook = dict(hook)
+                if verdict.decision == TRANSFORM:
+                    new_hook["command"] = transform_text(str(hook.get("command", "")), environment)
+                kept_hooks.append(new_hook)
+
+            if kept_hooks:
+                new_group = dict(group)
+                new_group["hooks"] = kept_hooks
+                kept_groups.append(new_group)
+
+        if kept_groups:
+            rebuilt_hooks[event] = kept_groups
+
+    if rebuilt_hooks:
+        result["hooks"] = rebuilt_hooks
+
+    for key, value in settings.items():
+        if key in ("permissions", "hooks"):
+            continue
+        verdict = decisions.get(f"settings.json#{key}")
+        if verdict is None or verdict.decision == EXCLUDE:
+            continue
+        result[key] = _transformed(value, environment) if verdict.decision == TRANSFORM else value
+
+    return result
+
+
+def backup_targets() -> list[Path]:
+    """덮어쓸 파일을 먼저 백업한다.
+
+    **되돌릴 수 없는 덮어쓰기를 만들지 않는다.** 받는 PC 에 그 PC 고유의 설정이
+    있을 수 있고, 적용 후에야 그것을 알아채는 경우가 있다.
+
+    Returns:
+        list[Path]: 만든 백업 파일
+    """
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    made: list[Path] = []
+
+    for path in (TARGET_CLAUDE_HOME / "settings.json", TARGET_CLAUDE_JSON):
+        if not path.is_file():
+            continue
+        backup = path.with_name(f"{path.name}.bak-{stamp}")
+        shutil.copy2(path, backup)
+        made.append(backup)
+
+    return made
+
+
+def merge_claude_json(plan: Plan, environment: Environment) -> None:
+    """`~/.claude.json` 에 MCP 등록과 프로젝트 설정을 «병합» 한다.
+
+    덮어쓰지 않는다. 이 파일에는 그 PC 의 온보딩 상태·캐시·통계가 들어 있어
+    통째로 바꾸면 Claude Code 가 처음 실행처럼 동작한다.
+
+    Args:
+        plan: 판정 결과
+        environment: 실측 정보
+    """
+    if not BUNDLE_CLAUDE_JSON_PATH.is_file():
+        return
+
+    bundle: dict[str, Any] = json.loads(BUNDLE_CLAUDE_JSON_PATH.read_text(encoding="utf-8"))
+    existing: dict[str, Any] = {}
+    if TARGET_CLAUDE_JSON.is_file():
+        existing = json.loads(TARGET_CLAUDE_JSON.read_text(encoding="utf-8"))
+
+    decisions = _decision_map(plan)
+
+    servers: dict[str, Any] = existing.get("mcpServers", {})
+    for name, definition in bundle.get("mcpServers", {}).items():
+        verdict = decisions.get(f"claude_json.json#mcpServers.{name}")
+        if verdict is None or verdict.decision == EXCLUDE:
+            continue
+        servers[name] = _transformed(definition, environment) if verdict.decision == TRANSFORM else definition
+    if servers:
+        existing["mcpServers"] = servers
+
+    projects: dict[str, Any] = existing.get("projects", {})
+    for project_path, definition in bundle.get("projects", {}).items():
+        verdict = decisions.get(f"claude_json.json#projects.{project_path}")
+        if verdict is None or verdict.decision == EXCLUDE:
+            continue
+
+        target_path = transform_text(project_path, environment)
+        merged: dict[str, Any] = dict(projects.get(target_path, {}))
+        merged.update(definition)
+        projects[target_path] = merged
+    if projects:
+        existing["projects"] = projects
+
+    TARGET_CLAUDE_JSON.write_text(json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def apply_plan(plan: Plan) -> list[str]:
+    """판정에 따라 이 PC 에 적용한다.
+
+    Args:
+        plan: 판정 결과
+
+    Returns:
+        list[str]: 수행한 작업 요약
+    """
+    environment = plan.environment
+    performed = [f"백업: {path}" for path in backup_targets()]
+
+    copied = 0
+    for verdict in plan.verdicts:
+        if not verdict.key.startswith("home/") or verdict.decision == EXCLUDE:
+            continue
+
+        relative = Path(verdict.key[len("home/") :])
+        source = BUNDLE_HOME_DIR / relative
+        target = TARGET_CLAUDE_HOME / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        if verdict.decision == TRANSFORM:
+            target.write_text(transform_text(source.read_text(encoding="utf-8"), environment), encoding="utf-8")
+        else:
+            shutil.copy2(source, target)
+        copied += 1
+
+    performed.append(f"파일 {copied}개 적용")
+
+    bundle_settings_path = BUNDLE_HOME_DIR / "settings.json"
+    if bundle_settings_path.is_file():
+        rebuilt = rebuild_settings(json.loads(bundle_settings_path.read_text(encoding="utf-8")), plan, environment)
+        (TARGET_CLAUDE_HOME / "settings.json").write_text(
+            json.dumps(rebuilt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        performed.append("settings.json 재조립 완료")
+
+    merge_claude_json(plan, environment)
+    performed.append("~/.claude.json 병합 완료")
+
+    return performed
+
+
+def parse_args() -> argparse.Namespace:
+    """명령행 인자를 해석한다.
+
+    Returns:
+        argparse.Namespace: 해석된 인자
+    """
+    parser = argparse.ArgumentParser(description="번들을 이 PC 에 어떻게 적용할지 판정한다")
+    parser.add_argument("--save-decisions", action="store_true", help="판정 결과를 결정 파일로 저장한다")
+    parser.add_argument("--apply", action="store_true", help="판정에 따라 실제로 적용한다 (승인 후에만 쓴다)")
+
+    return parser.parse_args()
+
+
+def main() -> int:
+    """스크립트 진입점.
+
+    Returns:
+        int: 종료 코드
+    """
+    args = parse_args()
+
+    try:
+        plan = build_plan()
+    except ValueError as error:
+        print(f"[오류] {error}", file=sys.stderr)
+        return 1
+
+    print(render_plan(plan))
+
+    if args.apply:
+        pending = [verdict for verdict in plan.by_decision(EXCLUDE) if verdict.needs_confirmation]
+        if pending:
+            print(
+                f"\n[중단] 승인받지 않은 제외 후보가 {len(pending)}건 남아 있습니다."
+                "\n판정표를 사용자에게 보여주고 결정을 받은 뒤 --save-decisions 로 저장하세요.",
+                file=sys.stderr,
+            )
+            return 1
+
+        for line in apply_plan(plan):
+            print(f"  {line}")
+        print("\n적용했습니다. Claude Code 를 다시 시작하면 반영됩니다.")
+
+    if args.save_decisions:
+        saved = save_decisions(plan)
+        print(f"\n결정을 저장했습니다: {saved}")
+    elif not args.apply:
+        print("\n(판정만 했습니다. 승인 후 --save-decisions 로 결정을 남기세요)")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

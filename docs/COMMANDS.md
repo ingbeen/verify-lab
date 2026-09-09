@@ -60,6 +60,38 @@ poetry run python scripts/maintenance/clean_results.py --delete
 
 ---
 
+## 전역 설정 동기화 (두 PC)
+
+회사 mac 과 집 Windows 에서 같은 하네스를 쓰기 위한 절차입니다.
+평소에는 스킬로 부릅니다(`/claude-config-export` · `/claude-config-import`).
+아래는 진단하거나 절차를 확인할 때 직접 실행하는 경로입니다.
+
+```bash
+# 내보내기 — 담길 항목을 하나씩 확인 (파일을 쓰지 않습니다)
+poetry run python .claude/skills/claude-config-export/export.py --dry-run
+
+# 내보내기 — claude-config/ 에 번들 생성
+poetry run python .claude/skills/claude-config-export/export.py
+
+# 받기 — 판정만 (파일을 쓰지 않습니다)
+poetry run python .claude/skills/claude-config-import/plan_apply.py
+
+# 받기 — 승인 결과를 결정 파일로 저장
+poetry run python .claude/skills/claude-config-import/plan_apply.py --save-decisions
+
+# 받기 — 실제 적용 (승인받지 않은 제외 후보가 남아 있으면 중단합니다)
+poetry run python .claude/skills/claude-config-import/plan_apply.py --apply
+```
+
+- **자격증명은 번들에 담기지 않습니다** — 이 저장소는 PUBLIC 이고, 커밋되면 파일을 지워도
+  git 이력에서 사라지지 않습니다. `tests/test_claude_config_bundle.py` 가 기계로 고정합니다
+- **git 은 사용자가 직접 합니다.** 스크립트는 파일만 만듭니다
+- 적용 전에 `~/.claude/settings.json` 과 `~/.claude.json` 을 타임스탬프로 백업합니다
+- **훅은 자동 판정하지 않고 사람에게 묻습니다.** 이유는 `claude-config-import` 스킬 문서에 있습니다
+- 절차와 판정 기준의 SoT 는 각 스킬 문서입니다
+
+---
+
 ## 데이터 수집
 
 > **AI 모델도 직접 실행합니다.** 다만 외부 서버(Yahoo Finance, KRX, ECOS, FRED)에 실제 요청을
@@ -192,7 +224,7 @@ poetry run python scripts/data/collect_pykrx.py --ticker 261250 --start 20161227
   제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다
 
-#### 코스닥 지수 수집 (검증 #10 용)
+#### 지수 수집 (검증 #10 용 — 코스피·코스닥 네 계열)
 
 ```bash
 # 코스닥 종합지수 (기본값) — 1996-07-01 부터
@@ -200,14 +232,38 @@ poetry run python scripts/data/collect_pykrx.py --index
 
 # 코스닥150 지수 — 2010-01-04 부터 (소급 산출분 포함)
 poetry run python scripts/data/collect_pykrx.py --index --ticker 2203 --start 20100104
+
+# 코스피 종합지수 — 1980-01-04 부터 (이 저장소에서 가장 긴 계열)
+poetry run python scripts/data/collect_pykrx.py --index --ticker 1001 --start 19800104
+
+# 코스피200 지수 — 1990-01-03 부터
+poetry run python scripts/data/collect_pykrx.py --index --ticker 1028 --start 19900103
 ```
 
 - **`storage/series/<지수>_index.csv` 에 종가 하나짜리 계열로 저장합니다.** 시세가 아닙니다 —
-  지수는 살 수 없어 시가에 집행할 수 없고, **코스닥150 지수는 소급 산출 구간(2010-01-04 ~
-  2015-07-10, 1,369건)의 시가·고가·저가가 전부 0** 이라 시세 스키마로는 전 구간이 막힙니다.
-  근거는 [spec/kosdaq_month_end.md](spec/kosdaq_month_end.md) §7.6 에 있습니다
+  지수는 살 수 없어 시가에 집행할 수 없고, **네 계열 모두 소급 산출 구간의 시가·고가·저가가
+  전부 0** 이라 시세 스키마로는 전 구간이 막힙니다.
+  근거는 [spec/month_end.md](spec/month_end.md) §7.6·§7.11 에 있습니다
 - **값을 정수화하지 않습니다.** ETF 원화 가격과 달리 지수는 소수 둘째 자리까지 있는 계산된 값입니다
 - `--index` 는 ETF 와 **기본 티커가 다릅니다** — 인자 없이 주면 코스닥 종합(`2001`)을 받습니다
+- **시작일을 직접 줍니다.** 기본값은 코스닥 종합의 산출 시작일이라 다른 지수에 그대로 쓰면
+  받을 수 있는 앞 구간을 잃습니다
+
+#### 월말 매매 보유 구간의 분배락 실측 (검증 #10 용)
+
+「20일 매수 → 말일 매도」의 보유 구간에 분배락이 들어가는지 봅니다. 같은 진입·청산 날짜로
+원본가와 수정주가의 수익률을 각각 계산해 빼므로 **임계값을 정할 필요가 없습니다.**
+
+```bash
+poetry run python scripts/data/check_month_end_dividend.py
+```
+
+- **외부 서버에 요청하지 않습니다.** ETF 네 종목의 원본가와 수정주가 파일이 둘 다 있어야 합니다
+- 지수는 대상이 아닙니다 — 계산값이라 분배금을 지급할 일이 없습니다
+- **「확인 불가」는 「없음」과 다릅니다.** pykrx 가 수정주가를 최근 3,000거래일만 주므로
+  KODEX 200 은 앞 12년을 못 잽니다. 그 건수를 함께 냅니다
+- 「아래」로 걸면 원본가 성적이 그만큼 **과대평가**돼 있습니다 — 인버스는 그만큼 오르지 않습니다.
+  실측 결과는 `docs/research/월말_진입.md` §10 에 있습니다
 
 ### 국내 선물 (코스피200·코스닥150 계약별 시세 — 검증 #9 용)
 
@@ -439,29 +495,33 @@ poetry run python scripts/studies/run_usdkrw_equivalence.py --model usd_rate
   이론값이 어떻게 만들어졌는지 그대로 따라갈 수 있습니다
 - 결과와 판정은 [research/원달러_ETF_등가성.md](research/원달러_ETF_등가성.md) 에 있습니다
 
-### 검증 #10 — 코스닥 월말 진입
+### 검증 #10 — 월말 진입 (코스피·코스닥)
 
 ```bash
-# 전 대상 실행 (기본값) — ETF 2종 + 지수 2종, 진입 11칸 × 청산 7칸
-poetry run python scripts/studies/run_kosdaq_month_end.py
+# 전 대상 실행 (기본값) — 두 시장의 ETF 4종 + 지수 4종, 진입 11칸 × 청산 7칸
+poetry run python scripts/studies/run_month_end.py
 
 # 대상을 골라서 (여러 번 줄 수 있습니다)
-poetry run python scripts/studies/run_kosdaq_month_end.py --ticker 229200 --ticker 2001
+poetry run python scripts/studies/run_month_end.py --ticker 069500 --ticker 1001
 
 # 무작위 뽑기 대조의 반복 수·시드 (기본값 1000 / 0)
-poetry run python scripts/studies/run_kosdaq_month_end.py --repeats 2000 --seed 1
+poetry run python scripts/studies/run_month_end.py --repeats 2000 --seed 1
 ```
 
 - **하나의 칸을 고르지 않습니다.** 진입 달력일 15~25일 × 청산 상대 거래일 −3~+3 을 전부 산출해
   나란히 보고합니다 — 20일만 튀는지 이웃도 같은지가 오버피팅 판정의 근거입니다
-- 산출물은 `storage/results/<실행시각>_kosdaq_month_end/` 에 CSV 7개(`trades`·`grid`·`months`·
-  `month_halves`·`periods`·`grid_candidates`·`month_candidates`)와 `summary.json` 으로 남습니다
+- 산출물은 `storage/results/<실행시각>_month_end/` 에 CSV 8개(`trades`·`grid`·`months`·
+  `month_halves`·`periods`·`grid_candidates`·`month_candidates`·`execution`)와
+  `summary.json` 으로 남습니다
+- **`execution.csv` 가 「실제로 매매했을 때의 수치」입니다.** 살 수 있는 ETF 넷의 행만 담고
+  지수는 빠집니다. **「아래」는 인버스 실물로 재므로** 분배락·총보수·리밸런싱 손실이 이미
+  들어가 있습니다. **격자에서 골라낸 행이지 다시 계산한 값이 아닙니다**
 - **`trades.csv` 는 원 매매법 칸(20일 → 말일)의 신호일 원자료**입니다. 진입일·청산일·진입가·청산가·
   보유일이 전부 들어 있어 차트로 직접 대조할 수 있습니다
-- **월별 분해는 원 매매법 칸에만 겁니다.** 격자 전체를 쪼개면 924칸이 되어 다중 비교가 폭발합니다
-- 선행 조건은 ETF 두 파일과 **지수 두 파일**입니다. 지수는 위 「코스닥 지수 수집」으로 받습니다
-- 결과와 판정은 `docs/research/코스닥_월말_진입.md`, 확정 설계는
-  [spec/kosdaq_month_end.md](spec/kosdaq_month_end.md) 입니다
+- **월별 분해는 원 매매법 칸에만 겁니다.** 격자 전체를 쪼개면 1,848칸이 되어 다중 비교가 폭발합니다
+- 선행 조건은 **ETF 네 파일과 지수 네 파일**입니다. 지수는 위 「지수 수집」으로 받습니다
+- 결과와 판정은 `docs/research/월말_진입.md`, 확정 설계는
+  [spec/month_end.md](spec/month_end.md) 입니다
 
 ---
 
@@ -558,7 +618,7 @@ poetry run python scripts/strategy/run_month_end_trading.py --ticker 229200
 
 - **인자는 `--ticker` 하나뿐입니다.** 방향·월·손절선은 전부 설계 확정값이라 고를 것이 없습니다
 - **지수도 받습니다. 다만 무손절 한 줄로 강등됩니다.** 장중 손절에 고가·저가가 필요한데
-  코스닥 지수 두 계열은 종가만 저장돼 있습니다 (`spec/kosdaq_month_end.md` §7.6).
+  코스닥 지수 두 계열은 종가만 저장돼 있습니다 (`spec/month_end.md` §7.6).
   **거부하지 않고 넣는 것은 ETF 11년으로는 볼 수 없는 기간(코스닥 종합 30년)이 거기 있기 때문**이며,
   성적표의 「손절적용」 컬럼이 그 행을 `불가(고저가 없음)` 로 표시합니다
 - **12개월을 전부 돕니다.** 눈에 띄는 달만 돌리면 그 선택이 손절 결과에도 그대로 실립니다
@@ -579,4 +639,4 @@ poetry run python scripts/strategy/run_month_end_trading.py --ticker 229200
   표본이 10건 미만인 구간도 행이 남고 `판정가능` 이 `아니오` 로 찍힙니다
 - **난수를 쓰지 않습니다.** 같은 데이터면 언제나 같은 결과이며 실행 시간은 수 초입니다
 - 규칙과 성적은 `docs/strategy/코스닥_월말_매매_규칙.md`, 신호의 통계적 근거는
-  `docs/research/코스닥_월말_진입.md` 입니다
+  `docs/research/월말_진입.md` 입니다

@@ -1,0 +1,70 @@
+---
+name: claude-config-export
+description: 이 PC 의 전역 Claude 설정(~/.claude 와 ~/.claude.json)을 저장소의 claude-config/ 로 내보낸다. 다른 PC 로 하네스를 옮기기 전에 실행한다. "전역 설정 백업", "하네스 내보내기", "다른 PC 로 설정 옮기기" 요청에 사용한다.
+---
+
+# 전역 설정 내보내기
+
+`~/.claude` 는 git 저장소가 아니라 다른 PC 로 옮길 통로가 없다. 이 스킬이 옮길 가치가 있는
+것만 골라 `claude-config/` 에 사본을 만든다. **받는 쪽은 `claude-config-import` 를 쓴다.**
+
+## 실행
+
+```bash
+# 무엇이 담기는지 먼저 본다 (파일을 쓰지 않는다)
+poetry run python .claude/skills/claude-config-export/export.py --dry-run
+
+# 번들 생성
+poetry run python .claude/skills/claude-config-export/export.py
+```
+
+`--dry-run` 은 담길 항목을 **하나씩 전부** 출력한다. 수십 개 규모라 눈으로 대조할 수 있고,
+담기면 안 되는 것이 섞였는지 그 자리에서 보인다. **번들을 만들기 전에 한 번 본다.**
+
+## 무엇을 담는가
+
+`~/.claude` 의 최상위에서 아래만 담는다. **허용목록 방식이다** — 금지목록으로 하면
+Claude Code 가 새 폴더를 만들 때마다 조용히 딸려온다.
+
+| 담는 것 | 왜 |
+| --- | --- |
+| `CLAUDE.md` · `settings.json` | 하네스의 본체 |
+| `skills/` · `commands/` · `rules/` · `hooks/` | 규칙과 자동화 |
+| `tools/` · `db/` | 도구 스크립트 (venv 는 제외) |
+| `~/.claude.json` 의 `mcpServers` 와 프로젝트별 권한 | **빠뜨리면 받는 쪽에서 MCP 가 통째로 사라진다.** 이 파일은 `~/.claude` 밖에 있어 놓치기 쉽다 |
+
+## 무엇을 담지 않는가 — 받는 쪽이 "왜 없지"를 되묻지 않게
+
+### 자격증명 (`keys/**` · `*.env` · `*.pem` · `*.key` · `.credentials.json`)
+
+**이 저장소는 PUBLIC 이다.** 한 번 커밋되면 파일을 지워도 git 이력에 남는다.
+회사 식별 정보는 걸러내지 않기로 했지만(사용자 결정), 자격증명은 층위가 다르다 —
+유출되면 실제 접근권이 넘어간다.
+
+Google OAuth 토큰은 옮겨도 실익이 없다. 동의화면이 「테스트」 상태라 **7일마다 만료**되므로
+받는 쪽에서 어차피 재인증해야 한다.
+
+**받는 PC 에서 필요한 자격증명은 그 PC 에서 새로 만든다.**
+
+### 그 밖에
+
+| 담지 않는 것 | 왜 |
+| --- | --- |
+| `projects/` · `sessions/` · `history.jsonl` · `file-history/` 등 | 세션 상태와 이력. `projects/` 만 426MB 이고, 다른 PC 의 이력이 섞이면 되돌릴 수 없다 |
+| `db/*.jsonl` | 감사 로그. 그 PC 에서만 뜻이 있다 |
+| `**/venv/**` | 플랫폼 바이너리. 받는 쪽에서 쓸 수 없고 필요하면 재생성한다 |
+| `plugins/**` | 공식 마켓플레이스 사본 6.4MB. `officialMarketplaceAutoInstalled` 가 말하듯 **받는 쪽에서 자동으로 다시 설치**되고, `known_marketplaces.json` 은 절대경로를 담고 있어 옮기면 변환 대상만 는다 |
+| `cache/` · `backups/` · `*.bak-*` | 캐시와 자동·수동 백업본 |
+
+## 실행 후
+
+1. **`git diff` 로 무엇이 바뀌었는지 본다.** 매니페스트에 항목별 해시가 있어 변경된 파일이 드러난다
+2. **git 은 사용자가 직접 한다.** 이 스킬은 파일만 만든다
+
+## 주의
+
+- **`home/` 은 통째로 지우고 다시 만든다.** 원본에서 지운 파일이 번들에 남으면 받는 쪽이
+  이미 없어진 설정을 적용하게 된다. `decisions/` 는 받는 쪽의 결정 누적이라 지우지 않는다
+- 담기면 안 되는 항목이 번들에 들어가면 **스크립트가 스스로 중단한다.** 같은 판정을
+  `tests/test_claude_config_bundle.py` 가 다시 검사한다 — 두 층 모두 `export.py` 의
+  **같은 함수**를 쓴다. 판정을 두 벌로 만들면 한쪽이 담아도 된다고 한 파일을 다른 쪽이 거부한다
