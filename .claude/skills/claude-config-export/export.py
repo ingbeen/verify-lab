@@ -15,6 +15,7 @@
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import platform
@@ -103,10 +104,27 @@ CLAUDE_JSON_PROJECT_KEYS = (
     "disabledMcpjsonServers",
 )
 
+# --- MCP 서버 정의의 자격증명 값 -------------------------------------------
+# 파일 판정(`_is_credential`)은 경로만 본다. `~/.claude.json` 은 `~/.claude` «밖» 에 있어
+# 그 판정을 아예 거치지 않으며, 실제로 이 자리에서 API 키가 번들에 들어간 적이 있다
+
+# 자격증명 값을 대신하는 고정 문자열. 받는 쪽이 이 값을 알아보고 그 PC 의 기존 값으로 되돌린다.
+# **양쪽 스킬이 같은 문자열을 써야 하며** 서로 import 하지 않으므로
+# `tests/test_claude_config_import.py` 가 일치를 고정한다
+REDACTED_SENTINEL = "__CLAUDE_CONFIG_REDACTED__"
+
+# 값을 가릴 블록. MCP 서버 정의에서 자격증명이 실제로 지나는 자리다.
+# `command`·`args` 는 실행 인자라 가리면 받는 쪽에서 서버가 뜨지 않는다
+CREDENTIAL_VALUE_BLOCKS = ("headers", "env")
+
+# 윈도우 드라이브로 시작하는 절대경로 (`C:\...` · `C:/...`)
+WINDOWS_ABSOLUTE_PATH_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
+
 # 받는 쪽이 "왜 없지"를 되묻지 않도록 README 와 매니페스트에 남기는 목록
 EXCLUSION_NOTICE = (
     "자격증명 (`keys/**` · `*.env` · `*.pem` · `*.key`) — 이 저장소가 PUBLIC 이라 담지 않는다. "
     "Google OAuth 토큰은 동의화면이 「테스트」 상태라 7일마다 만료돼 옮겨도 재인증이 필요하다",
+    "MCP 서버의 자격증명 «값» (`headers`·`env` 의 비경로 값) — 센티널로 가려 담는다. " "받는 쪽은 그 PC 에 이미 있던 값을 유지하고, 없으면 채울 항목으로 알려준다",
     "세션 상태와 이력 (`projects/` · `sessions/` · `history.jsonl` · `file-history/` 등) — 다른 PC 의 이력이 섞이면 되돌릴 수 없다",
     "감사 로그 (`db/*.jsonl`) — 그 PC 에서만 뜻이 있다",
     "플랫폼 venv (`**/venv/**`) — 바이너리라 받는 쪽에서 쓸 수 없다. 필요하면 재생성한다",
@@ -252,6 +270,85 @@ def extract_claude_json(source: Path) -> dict[str, Any]:
     return extracted
 
 
+def _is_absolute_path(value: str) -> bool:
+    """값이 절대경로 모양인지 판정한다.
+
+    경로는 자격증명이 아니라 **자격증명이 놓인 곳**이다. 받는 쪽이 그 문자열에서 출처 PC 의
+    홈을 찾아 자기 경로로 치환하므로, 가리면 그 기능이 죽는다.
+
+    판정을 절대경로로 **좁게** 잡는다. 넓게 잡으면 경로처럼 생긴 자격증명이 빠져나가고,
+    좁게 잡아 생기는 손해는 「가리지 않아도 될 값을 가리는 것」뿐이다.
+
+    Args:
+        value: 검사할 문자열
+
+    Returns:
+        bool: 절대경로 모양이면 True
+    """
+    if value.startswith(("/", "~/")):
+        return True
+
+    return bool(WINDOWS_ABSOLUTE_PATH_PATTERN.match(value))
+
+
+def _redact_server(definition: dict[str, Any]) -> list[str]:
+    """서버 정의 하나의 자격증명 값을 제자리에서 가린다.
+
+    Args:
+        definition: 서버 정의. **사본을 넘겨야 한다** — 이 함수는 제자리에서 고친다
+
+    Returns:
+        list[str]: 가린 필드 경로 (`headers.API_KEY` 형태). 서버 이름은 호출자가 붙인다
+    """
+    redacted_fields: list[str] = []
+
+    for block_name in CREDENTIAL_VALUE_BLOCKS:
+        block = definition.get(block_name)
+        if not isinstance(block, dict):
+            continue
+
+        for key, value in block.items():  # pyright: ignore[reportUnknownVariableType]
+            if not isinstance(value, str) or _is_absolute_path(value):
+                continue
+
+            block[key] = REDACTED_SENTINEL
+            redacted_fields.append(f"{block_name}.{key}")
+
+    return redacted_fields
+
+
+def redact_credentials(claude_json: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """MCP 서버 정의의 자격증명 값을 센티널로 바꾼다.
+
+    **허용목록 방식이다** — `headers`·`env` 의 문자열 값 중 절대경로가 «아닌» 것을 전부 가린다.
+    이름 패턴(`KEY`·`TOKEN` 이 들어간 키)으로 고르지 않는 이유는 실측에 있다:
+    구글시트의 `TOKEN_PATH` 가 그 패턴에 걸려 **살려야 할 경로가 죽고**, 새 서버가 다른 이름을
+    쓰면 조용히 샌다. 파일 판정을 허용목록으로 둔 것과 같은 이유다.
+
+    최상위 `mcpServers` 와 `projects[*].mcpServers` **양쪽**을 본다. 둘은 구조가 같아서
+    한쪽만 막으면 저장소별 서버를 등록하는 순간 새는 자리가 남는다.
+
+    Args:
+        claude_json: `extract_claude_json()` 이 추린 설정
+
+    Returns:
+        tuple[dict[str, Any], list[str]]: (가린 사본, 가린 키 경로 목록). 원본은 바뀌지 않는다
+    """
+    redacted = copy.deepcopy(claude_json)
+    replaced: list[str] = []
+
+    for name, definition in redacted.get("mcpServers", {}).items():
+        replaced.extend(f"mcpServers.{name}.{field}" for field in _redact_server(definition))
+
+    for project_path, project_value in redacted.get("projects", {}).items():
+        for name, definition in project_value.get("mcpServers", {}).items():
+            replaced.extend(
+                f"projects[{project_path}].mcpServers.{name}.{field}" for field in _redact_server(definition)
+            )
+
+    return redacted, replaced
+
+
 def file_sha256(path: Path) -> str:
     """파일의 SHA-256 을 구한다.
 
@@ -377,15 +474,20 @@ def render_readme(manifest: dict[str, Any]) -> str:
 """
 
 
-def _report(relative_paths: list[Path], manifest: dict[str, Any], *, detailed: bool) -> None:
+def _report(relative_paths: list[Path], manifest: dict[str, Any], redacted_keys: list[str], *, detailed: bool) -> None:
     """무엇을 담는지 사람이 읽을 수 있게 출력한다.
 
     `detailed` 는 dry-run 용이다. 항목이 수십 개 규모라 전부 보여줘야 사용자가
     「담기면 안 되는 것이 섞였는가」를 그 자리에서 대조할 수 있다.
 
+    **가린 값은 `detailed` 와 무관하게 전부 나열한다.** 치환이 허용목록 방식이라
+    자격증명이 아닌 설정값까지 가릴 수 있고, 그 오탐은 목록을 봐야 알아챈다.
+    0건일 때도 줄을 남긴다 — 「검사했고 없었다」와 「검사하지 않았다」는 다르다.
+
     Args:
         relative_paths: 담을 파일의 상대경로
         manifest: 매니페스트 내용
+        redacted_keys: 센티널로 가린 키 경로
         detailed: 항목을 하나씩 나열할지 여부
     """
     print(f"담을 항목: {len(relative_paths)}개 / {manifest['total_size']:,} bytes\n")
@@ -403,12 +505,16 @@ def _report(relative_paths: list[Path], manifest: dict[str, Any], *, detailed: b
         for top, count in sorted(grouped.items()):
             print(f"  {top:<12} {count:>4}개")
 
+    print(f"\n가린 자격증명 값: {len(redacted_keys)}개")
+    for key in redacted_keys:
+        print(f"  - {key}")
+
     print("\n담지 않는 것:")
     for line in EXCLUSION_NOTICE:
         print(f"  - {line}")
 
 
-def export_bundle(claude_home: Path) -> dict[str, Any]:
+def export_bundle(claude_home: Path, redacted_claude_json: dict[str, Any]) -> dict[str, Any]:
     """번들을 만든다.
 
     `home/` 은 통째로 지우고 다시 만든다. 원본에서 지운 파일이 번들에 남으면
@@ -416,6 +522,9 @@ def export_bundle(claude_home: Path) -> dict[str, Any]:
 
     Args:
         claude_home: `~/.claude` 에 해당하는 경로
+        redacted_claude_json: 자격증명을 이미 가린 `~/.claude.json` 추출본.
+            **가리는 일을 호출자가 하는 이유**는 `--dry-run` 도 같은 결과를 보여야 하기 때문이다 —
+            여기서 가리면 파일을 쓰지 않는 경로에서는 무엇을 가렸는지 알 수 없다
 
     Returns:
         dict[str, Any]: 매니페스트 내용
@@ -442,7 +551,7 @@ def export_bundle(claude_home: Path) -> dict[str, Any]:
     (DECISIONS_DIR / ".gitkeep").touch()
 
     BUNDLE_CLAUDE_JSON_PATH.write_text(
-        json.dumps(extract_claude_json(CLAUDE_JSON_PATH), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps(redacted_claude_json, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     MANIFEST_PATH.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     README_PATH.write_text(render_readme(manifest), encoding="utf-8")
@@ -479,13 +588,15 @@ def main() -> int:
         print("[오류] 담을 항목이 하나도 없습니다. 판정 규칙을 확인하세요.", file=sys.stderr)
         return 1
 
+    redacted_claude_json, redacted_keys = redact_credentials(extract_claude_json(CLAUDE_JSON_PATH))
+
     if args.dry_run:
-        _report(relative_paths, build_manifest(CLAUDE_HOME, relative_paths), detailed=True)
+        _report(relative_paths, build_manifest(CLAUDE_HOME, relative_paths), redacted_keys, detailed=True)
         print("\n(--dry-run 이므로 파일을 쓰지 않았습니다)")
         return 0
 
-    manifest = export_bundle(CLAUDE_HOME)
-    _report(relative_paths, manifest, detailed=False)
+    manifest = export_bundle(CLAUDE_HOME, redacted_claude_json)
+    _report(relative_paths, manifest, redacted_keys, detailed=False)
     print(f"\n번들을 만들었습니다: {BUNDLE_DIR}")
     print("git 에 올리는 것은 사용자가 직접 합니다.")
 

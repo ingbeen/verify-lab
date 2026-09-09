@@ -13,6 +13,7 @@
 """
 
 import argparse
+import copy
 import hashlib
 import json
 import re
@@ -50,6 +51,14 @@ DECISION_LABELS = {
 
 # 경로가 들어갈 수 있어 치환 대상이 되는 텍스트 파일
 TEXT_SUFFIXES = frozenset({".md", ".py", ".json", ".toml", ".txt", ".sh"})
+
+# 내보내는 쪽이 자격증명 값을 가릴 때 쓰는 고정 문자열.
+# **두 스킬은 서로 import 하지 않으므로 이 값이 갈라질 수 있다** — 갈라지면 가려진 값을
+# 알아보지 못하고 센티널을 그대로 등록한다. `tests/test_claude_config_import.py` 가 일치를 고정한다
+REDACTED_SENTINEL = "__CLAUDE_CONFIG_REDACTED__"
+
+# 가려진 값이 놓이는 블록. 내보내는 쪽과 같아야 한다
+CREDENTIAL_VALUE_BLOCKS = ("headers", "env")
 
 # 훅 명령에 나타나면 이식성을 의심할 도구들. **판단 재료이지 판정이 아니다.**
 #
@@ -385,7 +394,137 @@ def classify_settings(settings: dict[str, Any], environment: Environment) -> lis
     return verdicts
 
 
-def classify_claude_json(claude_json: dict[str, Any], environment: Environment) -> list[Verdict]:
+def _server_map(container: dict[str, Any]) -> dict[str, Any]:
+    """설정 조각에서 `mcpServers` 를 꺼낸다.
+
+    Args:
+        container: 최상위 설정이나 프로젝트 설정
+
+    Returns:
+        dict[str, Any]: 서버 묶음. 없거나 형태가 다르면 빈 dict
+    """
+    servers = container.get("mcpServers")
+
+    return servers if isinstance(servers, dict) else {}
+
+
+def _sentinel_fields(definition: dict[str, Any]) -> list[str]:
+    """서버 정의에서 가려진 필드 경로를 모은다.
+
+    Args:
+        definition: 서버 정의
+
+    Returns:
+        list[str]: 가려진 필드 경로 (`headers.API_KEY` 형태)
+    """
+    fields: list[str] = []
+
+    for block_name in CREDENTIAL_VALUE_BLOCKS:
+        block = definition.get(block_name)
+        if not isinstance(block, dict):
+            continue
+
+        fields.extend(f"{block_name}.{key}" for key, value in block.items() if value == REDACTED_SENTINEL)
+
+    return fields
+
+
+def restore_redacted(
+    bundle_definition: dict[str, Any], existing_definition: dict[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """가려진 자격증명 값을 이 PC 의 기존 값으로 되돌린다.
+
+    받는 쪽은 서버 정의를 통째로 대입하므로, 되돌리지 않으면 **이 PC 에서 쓰고 있던 진짜
+    키가 센티널로 덮인다.**
+
+    되돌릴 값이 없으면 센티널을 «남긴다». 서버를 통째로 빼면 「빠뜨리면 MCP 가 통째로
+    사라진다」는 이 기능의 취지에 역행하기 때문이며, 대신 무엇을 채워야 하는지 알려준다.
+
+    가려진 «자리마다» 판정한다. 블록 단위로 되돌리면 같은 `headers` 안에서 번들이 새로
+    바꾼 일반 헤더가 옛 값으로 돌아간다.
+
+    Args:
+        bundle_definition: 번들의 서버 정의
+        existing_definition: 이 PC 에 이미 있는 같은 서버의 정의 (없으면 빈 dict)
+
+    Returns:
+        tuple[dict[str, Any], list[str]]: (되돌린 사본, 직접 채워야 할 필드 경로).
+            원본은 바뀌지 않는다
+    """
+    restored = copy.deepcopy(bundle_definition)
+    missing: list[str] = []
+
+    for block_name in CREDENTIAL_VALUE_BLOCKS:
+        block = restored.get(block_name)
+        if not isinstance(block, dict):
+            continue
+
+        existing_block = existing_definition.get(block_name)
+        existing_block = existing_block if isinstance(existing_block, dict) else {}
+
+        for key, value in block.items():  # pyright: ignore[reportUnknownVariableType]
+            if value != REDACTED_SENTINEL:
+                continue
+
+            kept = existing_block.get(key)
+            if isinstance(kept, str) and kept != REDACTED_SENTINEL:
+                block[key] = kept
+                continue
+
+            missing.append(f"{block_name}.{key}")
+
+    return restored, missing
+
+
+def _redaction_note(bundle_servers: dict[str, Any], existing_servers: dict[str, Any]) -> str:
+    """가려진 값이 어떻게 처리되는지 한 줄로 만든다.
+
+    **적용한 뒤에 알면 늦다.** 무엇이 이 PC 의 값으로 남고 무엇을 직접 채워야 하는지를
+    승인 전에 보여준다.
+
+    Args:
+        bundle_servers: 번들의 서버 묶음
+        existing_servers: 이 PC 의 같은 자리 서버 묶음
+
+    Returns:
+        str: 안내 문구. 가려진 값이 없으면 빈 문자열
+    """
+    kept: list[str] = []
+    missing: list[str] = []
+
+    for name, definition in bundle_servers.items():
+        existing = existing_servers.get(name)
+        _restored, server_missing = restore_redacted(definition, existing if isinstance(existing, dict) else {})
+
+        for field_path in _sentinel_fields(definition):
+            target = missing if field_path in server_missing else kept
+            target.append(f"{name}.{field_path}")
+
+    notes: list[str] = []
+    if kept:
+        notes.append(f"이 PC 의 기존 값을 유지합니다 ({', '.join(kept)})")
+    if missing:
+        notes.append(f"이 PC 에서 직접 채워야 합니다 ({', '.join(missing)})")
+
+    return " / ".join(notes)
+
+
+def _with_note(reason: str, note: str) -> str:
+    """판정 사유에 안내를 덧붙인다.
+
+    Args:
+        reason: 기존 사유 (없을 수 있다)
+        note: 덧붙일 안내 (없을 수 있다)
+
+    Returns:
+        str: 합친 문구
+    """
+    return " / ".join(part for part in (reason, note) if part)
+
+
+def classify_claude_json(
+    claude_json: dict[str, Any], environment: Environment, existing_claude_json: dict[str, Any]
+) -> list[Verdict]:
     """`~/.claude.json` 에서 옮겨온 값을 판정한다.
 
     프로젝트별 설정은 **그 저장소가 이 PC 에 있을 때만** 뜻이 있다. 없는 저장소의
@@ -394,15 +533,21 @@ def classify_claude_json(claude_json: dict[str, Any], environment: Environment) 
     Args:
         claude_json: 번들의 `claude_json.json` 내용
         environment: 실측 정보
+        existing_claude_json: 이 PC 의 `~/.claude.json` 내용 (없는 PC 면 빈 dict).
+            **인자로 받는 이유**는 여기서 실경로를 직접 읽으면 테스트가 사용자 홈을 건드리기 때문이다
 
     Returns:
         list[Verdict]: 항목별 판정
     """
     verdicts: list[Verdict] = []
 
+    existing_servers = _server_map(existing_claude_json)
     for name, definition in claude_json.get("mcpServers", {}).items():
-        verdicts.append(_classify_value(f"claude_json.json#mcpServers.{name}", definition, environment))
+        verdict = _classify_value(f"claude_json.json#mcpServers.{name}", definition, environment)
+        verdict.reason = _with_note(verdict.reason, _redaction_note({name: definition}, existing_servers))
+        verdicts.append(verdict)
 
+    existing_projects: dict[str, Any] = existing_claude_json.get("projects", {})
     for project_path, definition in claude_json.get("projects", {}).items():
         key = f"claude_json.json#projects.{project_path}"
         transformed = transform_text(project_path, environment)
@@ -420,11 +565,16 @@ def classify_claude_json(claude_json: dict[str, Any], environment: Environment) 
             )
             continue
 
+        existing_project = existing_projects.get(transformed)
+        note = _redaction_note(
+            _server_map(definition), _server_map(existing_project) if isinstance(existing_project, dict) else {}
+        )
+
         verdicts.append(
             Verdict(
                 key=key,
                 decision=TRANSFORM if transformed != project_path else APPLY,
-                reason="저장소 경로를 이 PC 경로로 바꿉니다" if transformed != project_path else "",
+                reason=_with_note("저장소 경로를 이 PC 경로로 바꿉니다" if transformed != project_path else "", note),
                 source_hash=_hash_value(definition),
                 detail=transformed,
             )
@@ -544,8 +694,14 @@ def build_plan() -> Plan:
         plan.verdicts.extend(classify_settings(json.loads(settings_path.read_text(encoding="utf-8")), environment))
 
     if BUNDLE_CLAUDE_JSON_PATH.is_file():
+        existing_claude_json: dict[str, Any] = {}
+        if TARGET_CLAUDE_JSON.is_file():
+            existing_claude_json = json.loads(TARGET_CLAUDE_JSON.read_text(encoding="utf-8"))
+
         plan.verdicts.extend(
-            classify_claude_json(json.loads(BUNDLE_CLAUDE_JSON_PATH.read_text(encoding="utf-8")), environment)
+            classify_claude_json(
+                json.loads(BUNDLE_CLAUDE_JSON_PATH.read_text(encoding="utf-8")), environment, existing_claude_json
+            )
         )
 
     apply_previous_decisions(plan, load_decisions(environment))
@@ -590,6 +746,14 @@ def render_plan(plan: Plan) -> str:
     if transformed:
         lines.extend(["", f"--- 경로를 바꿔 적용할 항목 {len(transformed)}건 ---"])
         for verdict in transformed:
+            lines.append(f"  {verdict.key} — {verdict.reason}")
+
+    # 그대로 적용하는 항목은 원래 사유가 없다. 사유가 붙어 있다면 알아둘 것이 있다는 뜻이며,
+    # 지금은 가려진 자격증명 안내가 그 경로다. **여기서 보여주지 않으면 적용한 뒤에야 알게 된다**
+    noted = [verdict for verdict in plan.by_decision(APPLY) if verdict.reason]
+    if noted:
+        lines.extend(["", f"--- 그대로 적용하되 알아둘 것 {len(noted)}건 ---"])
+        for verdict in noted:
             lines.append(f"  {verdict.key} — {verdict.reason}")
 
     return "\n".join(lines)
@@ -755,18 +919,24 @@ def backup_targets() -> list[Path]:
     return made
 
 
-def merge_claude_json(plan: Plan, environment: Environment) -> None:
+def merge_claude_json(plan: Plan, environment: Environment) -> list[str]:
     """`~/.claude.json` 에 MCP 등록과 프로젝트 설정을 «병합» 한다.
 
     덮어쓰지 않는다. 이 파일에는 그 PC 의 온보딩 상태·캐시·통계가 들어 있어
     통째로 바꾸면 Claude Code 가 처음 실행처럼 동작한다.
 
+    가려진 자격증명은 **이 PC 의 기존 값으로 되돌린 뒤에** 넣는다. 그냥 대입하면
+    쓰고 있던 진짜 키가 센티널로 덮인다.
+
     Args:
         plan: 판정 결과
         environment: 실측 정보
+
+    Returns:
+        list[str]: 이 PC 에서 직접 채워야 하는 자격증명의 키 경로
     """
     if not BUNDLE_CLAUDE_JSON_PATH.is_file():
-        return
+        return []
 
     bundle: dict[str, Any] = json.loads(BUNDLE_CLAUDE_JSON_PATH.read_text(encoding="utf-8"))
     existing: dict[str, Any] = {}
@@ -774,13 +944,20 @@ def merge_claude_json(plan: Plan, environment: Environment) -> None:
         existing = json.loads(TARGET_CLAUDE_JSON.read_text(encoding="utf-8"))
 
     decisions = _decision_map(plan)
+    needs_fill: list[str] = []
 
     servers: dict[str, Any] = existing.get("mcpServers", {})
     for name, definition in bundle.get("mcpServers", {}).items():
         verdict = decisions.get(f"claude_json.json#mcpServers.{name}")
         if verdict is None or verdict.decision == EXCLUDE:
             continue
-        servers[name] = _transformed(definition, environment) if verdict.decision == TRANSFORM else definition
+
+        prepared = _transformed(definition, environment) if verdict.decision == TRANSFORM else definition
+        existing_server = servers.get(name)
+        restored, missing = restore_redacted(prepared, existing_server if isinstance(existing_server, dict) else {})
+
+        servers[name] = restored
+        needs_fill.extend(f"mcpServers.{name}.{field}" for field in missing)
     if servers:
         existing["mcpServers"] = servers
 
@@ -791,13 +968,30 @@ def merge_claude_json(plan: Plan, environment: Environment) -> None:
             continue
 
         target_path = transform_text(project_path, environment)
-        merged: dict[str, Any] = dict(projects.get(target_path, {}))
+        existing_project: dict[str, Any] = dict(projects.get(target_path, {}))
+        merged: dict[str, Any] = dict(existing_project)
         merged.update(definition)
+
+        bundle_servers = _server_map(definition)
+        if bundle_servers:
+            existing_project_servers = _server_map(existing_project)
+            restored_servers: dict[str, Any] = {}
+            for name, server in bundle_servers.items():
+                existing_server = existing_project_servers.get(name)
+                restored, missing = restore_redacted(
+                    server, existing_server if isinstance(existing_server, dict) else {}
+                )
+                restored_servers[name] = restored
+                needs_fill.extend(f"projects[{target_path}].mcpServers.{name}.{field}" for field in missing)
+            merged["mcpServers"] = restored_servers
+
         projects[target_path] = merged
     if projects:
         existing["projects"] = projects
 
     TARGET_CLAUDE_JSON.write_text(json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    return needs_fill
 
 
 def apply_plan(plan: Plan) -> list[str]:
@@ -838,8 +1032,12 @@ def apply_plan(plan: Plan) -> list[str]:
         )
         performed.append("settings.json 재조립 완료")
 
-    merge_claude_json(plan, environment)
+    needs_fill = merge_claude_json(plan, environment)
     performed.append("~/.claude.json 병합 완료")
+
+    if needs_fill:
+        performed.append(f"[중요] 이 PC 에서 직접 채워야 할 자격증명 {len(needs_fill)}건:")
+        performed.extend(f"    {key}" for key in needs_fill)
 
     return performed
 

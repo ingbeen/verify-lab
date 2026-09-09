@@ -17,6 +17,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -86,6 +87,55 @@ CREDENTIAL_PATHS = (
     Path("keys/sheets-mcp-oauth.json"),
     Path("keys/sheets-mcp-token.json"),
     Path("keys/whatever-comes-later.json"),
+)
+
+# 번들의 `claude_json.json` 경로. 파일 판정과 달리 «값» 을 검사해야 하는 유일한 자리다
+BUNDLE_CLAUDE_JSON_PATH = BUNDLE_DIR / "claude_json.json"
+
+# 값 치환 계약을 재는 표본. 실물 구조를 본떴다 —
+# 평문 키를 담는 서버(context7), 경로만 담는 서버(google-sheets),
+# 아무것도 담지 않는 서버, 그리고 프로젝트 스코프 서버
+SAMPLE_CLAUDE_JSON: dict[str, Any] = {
+    "mcpServers": {
+        "context7": {
+            "type": "http",
+            "url": "https://mcp.context7.com/mcp",
+            "headers": {"CONTEXT7_API_KEY": "ctx7sk-0000-example"},
+        },
+        "google-sheets": {
+            "type": "stdio",
+            "command": "/Users/someone/.local/bin/uvx",
+            "args": ["--with", "mcp<2", "mcp-google-sheets@latest"],
+            "env": {
+                "CREDENTIALS_PATH": "/Users/someone/.claude/keys/sheets-mcp-oauth.json",
+                "TOKEN_PATH": "/Users/someone/.claude/keys/sheets-mcp-token.json",
+            },
+        },
+        "bare": {"type": "http", "url": "https://example.com/mcp"},
+    },
+    "projects": {
+        "/Users/someone/Workspace/repo": {
+            "mcpServers": {
+                "internal": {
+                    "type": "http",
+                    "url": "https://internal.example.com/mcp",
+                    "headers": {"X_INTERNAL_TOKEN": "internal-secret-value"},
+                }
+            }
+        }
+    },
+}
+
+# 자격증명 형태를 잡는 그물의 «두 번째 겹».
+# 치환은 `headers`·`env` 만 덮으므로 `command`·`args` 같은 자리는 이 스캔이 맡는다.
+# **금지목록이라 새 형식은 놓칠 수 있다** — 치환의 대체가 아니라 보완이다
+SECRET_VALUE_PATTERNS = (
+    ("Context7", re.compile(r"ctx7sk-")),
+    ("OpenAI 계열", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
+    ("GitHub", re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}")),
+    ("AWS", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("Slack", re.compile(r"xox[baprs]-")),
+    ("PEM 개인키", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
 )
 
 
@@ -385,3 +435,205 @@ def test_real_bundle_stays_under_size_limit() -> None:
     assert total_size <= BUNDLE_SIZE_LIMIT_BYTES, (
         f"번들이 상한을 넘었습니다: {total_size:,} > {BUNDLE_SIZE_LIMIT_BYTES:,} bytes. " "담기면 안 되는 것이 섞였는지 확인하세요"
     )
+
+
+def test_redact_replaces_plain_header_value(export_module: ModuleType) -> None:
+    """
+    목적: MCP 헤더의 평문 자격증명이 번들에 남지 않음을 고정한다
+
+    **이 저장소가 PUBLIC 이라 유출은 되돌릴 수 없다.** 파일 판정(`should_include`)은
+    경로만 보므로 `~/.claude` 밖에 있는 `~/.claude.json` 을 통과시켰고, 실제로 이 자리에서
+    API 키가 번들에 들어갔다.
+
+    Given: 헤더에 평문 키를 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 값이 센티널로 바뀐다
+    """
+    # When
+    redacted, _replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    assert redacted["mcpServers"]["context7"]["headers"]["CONTEXT7_API_KEY"] == export_module.REDACTED_SENTINEL
+
+
+def test_redact_keeps_absolute_path_value(export_module: ModuleType) -> None:
+    """
+    목적: 경로 값은 살아남음을 고정한다
+
+    받는 쪽은 이 경로에서 출처 PC 의 홈을 찾아 자기 경로로 치환한다. 값까지 가리면
+    그 기능이 죽는다 — **자격증명 파일의 «경로» 는 자격증명이 아니다.**
+
+    Given: `env` 에 절대경로만 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 경로가 그대로 남는다
+    """
+    # When
+    redacted, _replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    env = redacted["mcpServers"]["google-sheets"]["env"]
+    assert env["CREDENTIALS_PATH"] == "/Users/someone/.claude/keys/sheets-mcp-oauth.json"
+    assert env["TOKEN_PATH"] == "/Users/someone/.claude/keys/sheets-mcp-token.json"
+
+
+def test_redact_covers_project_scoped_servers(export_module: ModuleType) -> None:
+    """
+    목적: 프로젝트 스코프 서버도 같게 막힘을 고정한다
+
+    `projects[*].mcpServers` 는 최상위와 구조가 같은 **두 번째 구멍**이다.
+    한쪽만 막으면 저장소별 서버를 등록하는 순간 조용히 샌다.
+
+    Given: 프로젝트 스코프에 평문 토큰을 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 값이 센티널로 바뀐다
+    """
+    # When
+    redacted, _replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    project = redacted["projects"]["/Users/someone/Workspace/repo"]
+    assert project["mcpServers"]["internal"]["headers"]["X_INTERNAL_TOKEN"] == export_module.REDACTED_SENTINEL
+
+
+def test_redact_leaves_other_keys_untouched(export_module: ModuleType) -> None:
+    """
+    목적: `headers`·`env` 밖의 키는 건드리지 않음을 고정한다
+
+    `command`·`args` 를 가리면 받는 쪽에서 서버가 실행되지 않는다.
+
+    Given: 실행 인자와 URL 을 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 그 값들이 원본과 같다
+    """
+    # When
+    redacted, _replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    sheets = redacted["mcpServers"]["google-sheets"]
+    assert sheets["command"] == "/Users/someone/.local/bin/uvx"
+    assert sheets["args"] == ["--with", "mcp<2", "mcp-google-sheets@latest"]
+    assert redacted["mcpServers"]["context7"]["url"] == "https://mcp.context7.com/mcp"
+
+
+def test_redact_reports_replaced_keys(export_module: ModuleType) -> None:
+    """
+    목적: 무엇을 가렸는지 사용자가 그 자리에서 알 수 있음을 고정한다
+
+    허용목록 방식이라 자격증명이 아닌 설정값까지 가릴 수 있다. **목록이 나와야
+    사용자가 오탐을 알아챈다.**
+
+    Given: 두 자리에 평문 값을 담은 설정
+    When: 자격증명을 치환한다
+    Then: 치환한 키 경로가 모두 보고된다
+    """
+    # When
+    _redacted, replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    assert sorted(replaced) == [
+        "mcpServers.context7.headers.CONTEXT7_API_KEY",
+        "projects[/Users/someone/Workspace/repo].mcpServers.internal.headers.X_INTERNAL_TOKEN",
+    ]
+
+
+def test_redact_replaces_relative_path_value(export_module: ModuleType) -> None:
+    """
+    목적: 상대경로는 치환됨을 고정한다 (경계)
+
+    경로 판정을 **절대경로로 좁게** 잡는다. 넓게 잡으면 자격증명이 경로처럼 생겼을 때
+    빠져나가고, 좁게 잡아 생기는 손해는 「가리지 않아도 될 값을 가리는 것」뿐이다.
+
+    Given: `env` 에 상대경로를 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 값이 센티널로 바뀐다
+    """
+    # Given
+    source = {"mcpServers": {"x": {"env": {"DATA_DIR": "data/cache"}}}}
+
+    # When
+    redacted, _replaced = export_module.redact_credentials(source)
+
+    # Then
+    assert redacted["mcpServers"]["x"]["env"]["DATA_DIR"] == export_module.REDACTED_SENTINEL
+
+
+@pytest.mark.parametrize("value", [3000, True, None, ["a", "b"]])
+def test_redact_keeps_non_string_value(export_module: ModuleType, value: object) -> None:
+    """
+    목적: 문자열이 아닌 값은 그대로 둠을 고정한다 (경계)
+
+    자격증명은 문자열이고, 숫자·불리언을 센티널 문자열로 바꾸면 받는 쪽에서 타입이 깨진다.
+
+    Given: `env` 에 문자열이 아닌 값을 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 값이 원본과 같다
+    """
+    # Given
+    source = {"mcpServers": {"x": {"env": {"PORT": value}}}}
+
+    # When
+    redacted, replaced = export_module.redact_credentials(source)
+
+    # Then
+    assert redacted["mcpServers"]["x"]["env"]["PORT"] == value
+    assert replaced == []
+
+
+def test_redact_handles_server_without_headers_or_env(export_module: ModuleType) -> None:
+    """
+    목적: 가릴 자리가 없는 서버에서 예외가 나지 않음을 고정한다 (경계)
+
+    실물의 atlassian 이 여기 해당한다 — `type` 과 `url` 뿐이다.
+
+    Given: `headers`·`env` 가 없는 서버 정의
+    When: 자격증명을 치환한다
+    Then: 정의가 그대로 나오고 보고할 것이 없다
+    """
+    # When
+    redacted, replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    assert redacted["mcpServers"]["bare"] == {"type": "http", "url": "https://example.com/mcp"}
+    assert "bare" not in " ".join(replaced)
+
+
+def test_redact_does_not_mutate_input(export_module: ModuleType) -> None:
+    """
+    목적: 원본 설정이 바뀌지 않음을 고정한다
+
+    호출자가 원본을 다시 쓸 수 있어야 한다 (`~/.claude/rules/python.md` 데이터 불변성).
+
+    Given: 평문 키를 담은 설정
+    When: 자격증명을 치환한다
+    Then: 원본의 값이 그대로다
+    """
+    # When
+    export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    assert SAMPLE_CLAUDE_JSON["mcpServers"]["context7"]["headers"]["CONTEXT7_API_KEY"] == "ctx7sk-0000-example"
+
+
+def test_real_bundle_claude_json_has_no_secret_pattern() -> None:
+    """
+    목적: 실재하는 번들에 자격증명 형태의 값이 없음을 고정한다
+
+    **`headers`·`env` 로 한정하지 않고 파일 전체를 본다.** 치환은 그 두 자리만 덮으므로
+    `command`·`args` 처럼 가릴 수 없는 자리는 이 검사가 맡는다.
+    번들이 아직 없으면 검사할 것이 없으므로 통과한다.
+
+    Given: 저장소의 `claude-config/claude_json.json` (있을 수도, 없을 수도)
+    When: 자격증명 패턴으로 스캔한다
+    Then: 걸리는 값이 없다
+    """
+    # Given
+    if not BUNDLE_CLAUDE_JSON_PATH.is_file():
+        return
+
+    content = BUNDLE_CLAUDE_JSON_PATH.read_text(encoding="utf-8")
+
+    # When
+    hits = [label for label, pattern in SECRET_VALUE_PATTERNS if pattern.search(content)]
+
+    # Then
+    assert hits == [], f"번들에 자격증명 형태의 값이 있습니다: {hits}. 내보내기를 다시 실행하세요"
