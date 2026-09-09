@@ -44,7 +44,7 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
 
 ## 1. 보내는 쪽 (mac) 에서 할 일
 
-- [ ] **1-1. `tools/` 에 실제로 무엇이 있는지 본다**
+- [x] **1-1. `tools/` 에 실제로 무엇이 있는지 본다**
 
   ```bash
   ls -laR ~/.claude/tools/
@@ -54,7 +54,7 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
   `xlsx/` 안에 venv 말고 파일이 있으면 **위 가설이 틀린 것**이다. 그때는
   `export.py` 의 `should_include()` 로 그 파일을 직접 판정해 왜 빠졌는지 밝힌다.
 
-- [ ] **1-2. 그 venv 의 패키지 목록을 뽑는다**
+- [x] **1-2. 그 venv 의 패키지 목록을 뽑는다**
 
   ```bash
   ~/.claude/tools/xlsx/venv/bin/python -m pip freeze
@@ -64,7 +64,7 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
   있으면 공용 인터프리터 가설이 맞고, 없으면 `pptx` 는 **별도 venv 를 쓰고 있다**는 뜻이라
   그 경로도 찾아야 한다.
 
-- [ ] **1-3. 두 도구를 무슨 인터프리터로 돌리는지 확인한다**
+- [x] **1-3. 두 도구를 무슨 인터프리터로 돌리는지 확인한다**
 
   ```bash
   grep -rn 'tools/xlsx\|tools/pptx\|build_v14' ~/.claude/
@@ -72,14 +72,14 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
 
   부르는 곳이 없으면 **대화에서 직접 실행하는 용도**다. 어떤 작업에 썼는지 사용자에게 묻는다.
 
-- [ ] **1-4. 받는 쪽이 만들 venv 경로를 정한다**
+- [x] **1-4. 받는 쪽이 만들 venv 경로를 정한다**
 
   `xlsx/venv` 하나로 갈지, `pptx/venv` 를 따로 둘지 **여기서 정한다.**
   받는 쪽이 추측하면 두 PC 의 구조가 갈린다.
 
-- [ ] **1-5. 결과를 4 절에 적는다** (패키지 목록과 경로를 그대로)
+- [x] **1-5. 결과를 4 절에 적는다** (패키지 목록과 경로를 그대로)
 
-- [ ] **1-6. export 를 고칠지 결정한다**
+- [x] **1-6. export 를 고칠지 결정한다**
 
   「담을 것이 0개가 된 폴더」를 스크립트가 **경고로 알릴지** 정한다. venv 를 담는 선택지는
   없다(바이너리·플랫폼 종속).
@@ -87,7 +87,7 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
   - 고치지 않기로 했다면 **그 판단과 이유를** 같은 스킬 문서에 남긴다.
     다음 마이그레이션에서 같은 것을 다시 조사하지 않게 하는 것이 목적이다
 
-- [ ] **1-7. 사용자에게 커밋을 요청한다** (git 은 사용자가 직접 한다)
+- [x] **1-7. 사용자에게 커밋을 요청한다** (git 은 사용자가 직접 한다)
 
 ---
 
@@ -144,14 +144,39 @@ python3 -c "import socket, sys; print(socket.gethostname(), '/', sys.platform)"
 
 > 1-5 에서 여기를 채운다. 받는 쪽은 **이 표만 보고** 2 절을 수행한다.
 
+> **[중요] 「공용 인터프리터」 가설은 틀렸다. venv 는 둘이고 패키지가 겹치지 않는다.**
+> 권한 규칙에 `xlsx` 만 있던 것은 공용이라서가 아니라 **`pptx` 규칙을 만든 적이 없어서**다
+> (mac 에 규칙 4개를 넣었으므로 다음 번들에는 두 경로가 다 온다).
+
 | 항목 | 값 |
 | --- | --- |
-| `tools/xlsx/` 안에 venv 말고 파일이 있었나 | (예 / 아니오 — 있었다면 무엇) |
-| `pip freeze` 목록 | (그대로 붙여넣기) |
-| `lxml`·`python-pptx` 가 목록에 있나 | (예 / 아니오) |
-| 두 도구를 부르는 곳 | (경로 / 없으면 「대화에서 직접」) |
-| **받는 쪽이 만들 venv 경로** | (예: `~/.claude/tools/xlsx/venv`) |
-| export 를 고쳤나 | (고침 / 안 고침 — 이유) |
+| `tools/xlsx/` 안에 venv 말고 파일이 있었나 | **아니오.** `venv` 하나뿐이고 숨김 파일도 없다 — 담을 것이 0개라 폴더째 사라진 것이 맞다 |
+| `pip freeze` 목록 | **xlsx**: `et_xmlfile==2.0.0` · `openpyxl==3.1.5` · `pillow==12.3.0` — **pptx**: `lxml==6.1.3` · `pillow==12.3.0` · `python-pptx==1.0.2` · `typing_extensions==4.16.0` · `xlsxwriter==3.2.9` |
+| `lxml`·`python-pptx` 가 목록에 있나 | **`pptx/venv` 에만 있다.** `xlsx/venv` 에는 없다 |
+| 두 도구를 부르는 곳 | **대화에서 직접.** `~/.claude` 안에서 부르는 코드 0건이고, 전역 `CLAUDE.md` 의 두 절이 실행 명령의 SoT 다 |
+| **받는 쪽이 만들 venv 경로** | **둘 다 만든다** — `~/.claude/tools/xlsx/venv` 와 `~/.claude/tools/pptx/venv`. 전역 `CLAUDE.md` 가 두 경로를 각각 고정하고 패키지 집합이 다르므로 합치면 그 문서가 거짓말이 된다 |
+| export 를 고쳤나 | **고침** — `EXCLUSION_NOTICE` 에 한 줄. 번들 README 와 매니페스트에 실려 **받는 쪽이 읽는 자리**에 뜬다. 0개 폴더를 스캔하는 경고는 «보내는 쪽»에만 떠서 넣지 않았다 |
+
+**받는 쪽이 실행할 것 — 2-2·2-3 은 이 두 쌍이다.**
+
+```bash
+uv venv ~/.claude/tools/xlsx/venv --python 3.12
+uv pip install --python ~/.claude/tools/xlsx/venv/bin/python openpyxl Pillow
+
+uv venv ~/.claude/tools/pptx/venv --python 3.12
+uv pip install --python ~/.claude/tools/pptx/venv/bin/python python-pptx XlsxWriter
+```
+
+직접 설치분만 적었다 — `lxml`·`pillow`·`et_xmlfile`·`typing_extensions` 는 전이 의존이라
+따라온다. **`Pillow` 를 빼면 안 된다**: openpyxl 은 Pillow 없이 시트 이미지를 로드조차 하지
+않고 저장할 때 **에러도 경고도 없이** 버린다.
+
+**이 목록은 보내는 PC 를 안 봐도 알 수 있었다.** 전역 `CLAUDE.md` 의 「로컬 엑셀 파일
+(.xlsx) 편집」·「로컬 파워포인트 파일 (.pptx) 편집」 두 절에 같은 값이 이미 있고 번들로 함께
+왔다 — `pip freeze` 와 일치했다. 그 절의 **생성 명령만** mac 전용(pyenv 절대경로)이라 위
+`uv` 로 대체한다.
+
+`tools/msg/` 는 표준 라이브러리(`struct`·`base64`·`email` 등)만 써서 **할 일이 없다.**
 
 ### 받는 쪽 결과 (WSL 이 채운다)
 

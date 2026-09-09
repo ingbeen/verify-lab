@@ -128,6 +128,8 @@ EXCLUSION_NOTICE = (
     "세션 상태와 이력 (`projects/` · `sessions/` · `history.jsonl` · `file-history/` 등) — 다른 PC 의 이력이 섞이면 되돌릴 수 없다",
     "감사 로그 (`db/*.jsonl`) — 그 PC 에서만 뜻이 있다",
     "플랫폼 venv (`**/venv/**`) — 바이너리라 받는 쪽에서 쓸 수 없다. 필요하면 재생성한다",
+    "**venv 만 든 폴더는 폴더째 사라진다** — 담을 것이 0개가 되기 때문이며 실물 사례가 `tools/xlsx/` 다. "
+    "무엇을 재생성해야 하는지는 `settings.json` 의 `Bash(/...)` 권한 규칙이 가리키는 절대경로가 말해준다",
     "플러그인 (`plugins/**`) — 공식 마켓플레이스 사본 6.4MB 이며 받는 쪽에서 자동으로 다시 설치된다",
     "캐시와 자동 백업 (`cache/` · `backups/` · `*.bak-*`)",
 )
