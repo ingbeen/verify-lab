@@ -139,6 +139,26 @@ SECRET_VALUE_PATTERNS = (
 )
 
 
+# 제외한 venv 를 재는 표본. `site-packages` 경로를 키로, 그 안의 `dist-info` 이름을 값으로 둔다.
+# `pip` 는 만드는 방식에 따라 있기도 없기도 해서(`uv` 는 넣지 않는다) 일부러 섞었다
+FAKE_VENV_DIST_INFOS: dict[str, tuple[str, ...]] = {
+    "tools/xlsx/venv/lib/python3.12/site-packages": ("openpyxl-3.1.5", "pillow-12.3.0", "pip-24.0"),
+    "tools/pptx/venv/lib/python3.12/site-packages": ("python_pptx-1.0.2", "lxml-6.1.3"),
+    "db/venv/Lib/site-packages": ("pymysql-1.2.0",),
+}
+
+# venv 안에 또 `venv` 이름이 나오는 자리. 설치된 배포판이 이런 이름을 쓸 수 있다
+NESTED_VENV_PATH = "tools/xlsx/venv/lib/python3.12/site-packages/virtualenv/venv"
+
+# 위 표본에서 나와야 하는 결과. 경로도 패키지도 정렬되며, 이름은 설치에 쓸 수 있는 형태다
+EXPECTED_VENV_INVENTORY = (
+    {"path": "db/venv", "packages": ["pymysql==1.2.0"]},
+    {"path": "tools/broken/venv", "packages": []},
+    {"path": "tools/pptx/venv", "packages": ["lxml==6.1.3", "python-pptx==1.0.2"]},
+    {"path": "tools/xlsx/venv", "packages": ["openpyxl==3.1.5", "pillow==12.3.0"]},
+)
+
+
 @pytest.fixture(scope="module")
 def export_module() -> ModuleType:
     """내보내기 스크립트를 파일 경로에서 로드한다.
@@ -637,3 +657,271 @@ def test_real_bundle_claude_json_has_no_secret_pattern() -> None:
 
     # Then
     assert hits == [], f"번들에 자격증명 형태의 값이 있습니다: {hits}. 내보내기를 다시 실행하세요"
+
+
+@pytest.fixture
+def fake_claude_home_with_venvs(tmp_path: Path) -> Path:
+    """venv 가 섞인 가짜 `~/.claude` 트리를 만든다.
+
+    실물 구조를 본떴다 — POSIX 레이아웃과 윈도우 레이아웃, 이름에 밑줄이 든 배포판,
+    부트스트랩 패키지, `site-packages` 가 없는 깨진 venv, 그리고 venv **안** 에 또
+    `venv` 이름의 폴더가 있는 경우.
+
+    Args:
+        tmp_path: pytest가 테스트마다 새로 만드는 임시 디렉터리
+
+    Returns:
+        Path: 가짜 `~/.claude` 루트
+    """
+    home = tmp_path / "claude-home"
+
+    for site_packages, dist_infos in FAKE_VENV_DIST_INFOS.items():
+        for dist_info in dist_infos:
+            (home / site_packages / f"{dist_info}.dist-info").mkdir(parents=True, exist_ok=True)
+
+    # site-packages 가 없는 venv. 「없었다」와 「못 읽었다」가 구별되어야 한다
+    (home / "tools" / "broken" / "venv").mkdir(parents=True, exist_ok=True)
+
+    # venv 안의 `venv` 이름 폴더. 배포판이 이런 이름을 쓰면 중복으로 세어진다
+    (home / NESTED_VENV_PATH).mkdir(parents=True, exist_ok=True)
+
+    return home
+
+
+def test_venv_inventory_reports_path_and_packages(export_module: ModuleType, fake_claude_home_with_venvs: Path) -> None:
+    """
+    목적: 제외한 venv 의 경로와 설치 패키지가 사실로 기록되는 것을 고정한다
+
+    **받는 쪽은 이 목록만 보고 재생성한다.** 권한 규칙과 스크립트 import 는 둘 다
+    간접 증거라서, venv 뿐인 폴더에 권한 규칙까지 없으면 어느 쪽에도 걸리지 않는다
+    (실측 2026-09-09: `tools/xlsx` 는 규칙으로만, `tools/pptx` 는 import 로만 겨우 걸렸다).
+
+    Given: venv 가 셋 있는 가짜 홈
+    When: venv 목록을 수집한다
+    Then: 경로와 패키지가 정렬된 채로 나온다
+    """
+    # Given
+    home = fake_claude_home_with_venvs
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    assert inventory == list(EXPECTED_VENV_INVENTORY)
+
+
+def test_venv_inventory_reads_windows_layout(export_module: ModuleType, fake_claude_home_with_venvs: Path) -> None:
+    """
+    목적: 윈도우 레이아웃(`Lib/site-packages`)의 venv 도 읽는 것을 고정한다
+
+    보내는 쪽이 윈도우면 경로가 `lib/python3.12/` 가 아니라 `Lib/` 다.
+    한쪽만 보면 그 PC 의 venv 가 통째로 빈 목록이 되어 **없는 것처럼 보인다.**
+
+    Given: `db/venv` 가 윈도우 레이아웃인 가짜 홈
+    When: venv 목록을 수집한다
+    Then: 그 venv 의 패키지가 비어 있지 않다
+    """
+    # Given
+    home = fake_claude_home_with_venvs
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    windows_venv = next(entry for entry in inventory if entry["path"] == "db/venv")
+    assert windows_venv["packages"] == ["pymysql==1.2.0"]
+
+
+def test_venv_inventory_drops_bootstrap_packages(export_module: ModuleType, fake_claude_home_with_venvs: Path) -> None:
+    """
+    목적: venv 를 만들 때 딸려오는 패키지가 목록에서 빠지는 것을 고정한다
+
+    `pip` 는 만드는 방식에 따라 있기도 없기도 하다(`uv` 는 넣지 않고 `python -m venv` 는 넣는다).
+    그대로 실으면 **두 PC 의 목록이 만든 방식 때문에 달라 보인다.**
+
+    Given: `pip` 가 설치된 venv 가 있는 가짜 홈
+    When: venv 목록을 수집한다
+    Then: `pip` 가 목록에 없다
+    """
+    # Given
+    home = fake_claude_home_with_venvs
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    xlsx_venv = next(entry for entry in inventory if entry["path"] == "tools/xlsx/venv")
+    assert not [package for package in xlsx_venv["packages"] if package.startswith("pip==")]
+
+
+def test_venv_inventory_normalizes_package_name(export_module: ModuleType, fake_claude_home_with_venvs: Path) -> None:
+    """
+    목적: 배포판 이름이 설치에 쓸 수 있는 형태로 정규화되는 것을 고정한다
+
+    `dist-info` 폴더는 이름을 밑줄로 적는다(`python_pptx-1.0.2.dist-info`).
+    **받는 쪽은 이 목록을 그대로 설치 명령에 넣으므로** 하이픈으로 되돌린다.
+
+    Given: `python_pptx` 가 설치된 venv 가 있는 가짜 홈
+    When: venv 목록을 수집한다
+    Then: `python-pptx==1.0.2` 로 나온다
+    """
+    # Given
+    home = fake_claude_home_with_venvs
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    pptx_venv = next(entry for entry in inventory if entry["path"] == "tools/pptx/venv")
+    assert "python-pptx==1.0.2" in pptx_venv["packages"]
+
+
+def test_venv_inventory_ignores_nested_venv(export_module: ModuleType, fake_claude_home_with_venvs: Path) -> None:
+    """
+    목적: venv 안의 `venv` 이름 폴더를 별도 venv 로 세지 않는 것을 고정한다
+
+    설치된 배포판이 그런 이름을 쓰면 **하나의 venv 가 둘로 보이고**, 받는 쪽은
+    존재하지 않는 도구를 재생성하려 든다.
+
+    Given: `site-packages` 아래에 `venv` 폴더가 있는 가짜 홈
+    When: venv 목록을 수집한다
+    Then: 그 경로가 목록에 없다
+    """
+    # Given
+    home = fake_claude_home_with_venvs
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    assert NESTED_VENV_PATH not in [entry["path"] for entry in inventory]
+
+
+def test_venv_inventory_keeps_broken_venv(export_module: ModuleType, fake_claude_home_with_venvs: Path) -> None:
+    """
+    목적: `site-packages` 를 못 찾은 venv 도 경로는 남기는 것을 고정한다
+
+    **「패키지가 없었다」와 「읽지 못했다」는 다르다.** 경로마저 지우면 받는 쪽은
+    그 도구가 있었다는 사실 자체를 모른다.
+
+    Given: `site-packages` 가 없는 venv 가 있는 가짜 홈
+    When: venv 목록을 수집한다
+    Then: 경로는 있고 패키지는 빈 목록이다
+    """
+    # Given
+    home = fake_claude_home_with_venvs
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    broken_venv = next(entry for entry in inventory if entry["path"] == "tools/broken/venv")
+    assert broken_venv["packages"] == []
+
+
+def test_venv_inventory_on_home_without_venv(export_module: ModuleType, fake_claude_home: Path) -> None:
+    """
+    목적: venv 가 하나도 없는 홈에서 빈 목록이 나오는 것을 고정한다
+
+    venv 가 없는 것은 정상이므로 예외가 아니다. **0건도 결과다.**
+
+    Given: venv 파일은 있지만 `site-packages` 트리가 없는 가짜 홈
+    When: venv 목록을 수집한다
+    Then: `db/venv` 와 `tools/xlsx/venv` 가 패키지 없이 잡히고 그 밖은 없다
+    """
+    # Given
+    home = fake_claude_home
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    assert [entry["path"] for entry in inventory] == ["db/venv", "tools/xlsx/venv"]
+
+
+def test_venv_inventory_on_empty_home(export_module: ModuleType, tmp_path: Path) -> None:
+    """
+    목적: 빈 홈에서 빈 목록이 나오는 것을 고정한다 (경계 조건)
+
+    Given: 아무것도 없는 폴더
+    When: venv 목록을 수집한다
+    Then: 빈 목록이다
+    """
+    # Given
+    home = tmp_path / "empty-home"
+    home.mkdir()
+
+    # When
+    inventory = export_module.collect_excluded_venvs(home)
+
+    # Then
+    assert inventory == []
+
+
+def test_venv_inventory_rejects_missing_home(export_module: ModuleType, tmp_path: Path) -> None:
+    """
+    목적: 없는 폴더를 넘기면 즉시 실패하는 것을 고정한다
+
+    `collect_relative_paths()` 와 같은 계약이다. 조용히 빈 목록을 돌려주면
+    **「venv 가 없다」와 「홈을 못 찾았다」가 구별되지 않는다.**
+
+    Given: 존재하지 않는 경로
+    When: venv 목록을 수집한다
+    Then: `ValueError` 가 난다
+    """
+    # Given
+    missing = tmp_path / "does-not-exist"
+
+    # When / Then
+    with pytest.raises(ValueError, match="설정 폴더"):
+        export_module.collect_excluded_venvs(missing)
+
+
+def test_manifest_carries_venv_inventory(
+    export_module: ModuleType, fake_claude_home_with_venvs: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    목적: 매니페스트가 venv 목록을 싣는 것을 고정한다
+
+    **받는 쪽이 읽는 자리는 매니페스트다.** 수집만 되고 실리지 않으면 아무 소용이 없다.
+    `_source_identity()` 가 실제 `~/.claude.json` 을 읽으므로 임시 파일로 격리한다.
+
+    Given: venv 가 있는 가짜 홈
+    When: 매니페스트를 만든다
+    Then: `excluded_venvs` 에 목록이 들어 있다
+    """
+    # Given
+    home = fake_claude_home_with_venvs
+    fake_claude_json = tmp_path / "claude.json"
+    fake_claude_json.write_text(json.dumps({"machineID": "test"}), encoding="utf-8")
+    monkeypatch.setattr(export_module, "CLAUDE_JSON_PATH", fake_claude_json)
+
+    # When
+    manifest = export_module.build_manifest(home, [])
+
+    # Then
+    assert manifest["excluded_venvs"] == list(EXPECTED_VENV_INVENTORY)
+
+
+def test_real_bundle_manifest_carries_venv_inventory() -> None:
+    """
+    목적: 실재하는 번들의 매니페스트에 venv 목록 자리가 있음을 고정한다
+
+    옛 번들에는 이 키가 없다. **다시 내보내면 생긴다** — 그때부터 받는 쪽이
+    조사 없이 재생성한다. 번들이 아직 없으면 검사할 것이 없으므로 통과한다.
+
+    Given: 저장소의 매니페스트 (있을 수도, 없을 수도)
+    When: 키를 확인한다
+    Then: `excluded_venvs` 가 리스트로 있다
+    """
+    # Given
+    if not MANIFEST_PATH.is_file():
+        return
+
+    manifest: dict[str, Any] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
+    # When
+    inventory = manifest.get("excluded_venvs")
+
+    # Then
+    assert isinstance(inventory, list), "매니페스트에 excluded_venvs 가 없습니다. 내보내기를 다시 실행하세요"

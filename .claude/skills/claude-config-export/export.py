@@ -79,6 +79,14 @@ DENY_SEGMENTS = frozenset(
     }
 )
 
+# `site-packages` 가 놓이는 자리. POSIX 와 윈도우의 레이아웃이 다르므로 둘 다 본다 —
+# 한쪽만 보면 그 PC 의 venv 가 통째로 빈 목록이 되어 「없는 것」처럼 보인다
+SITE_PACKAGES_GLOBS = ("lib/python*/site-packages", "Lib/site-packages")
+
+# venv 를 만들 때 딸려오는 것들. 만드는 방식에 따라 있기도 없기도 해서(`uv` 는 넣지 않고
+# `python -m venv` 는 넣는다) 목록에 실으면 **두 PC 의 패키지가 만든 방식 때문에 달라 보인다**
+VENV_BOOTSTRAP_PACKAGES = frozenset({"pip", "setuptools", "wheel", "pkg-resources"})
+
 # 감사로그·세션 이력이 쓰는 확장자
 DENY_SUFFIXES = frozenset({".jsonl"})
 
@@ -129,7 +137,7 @@ EXCLUSION_NOTICE = (
     "감사 로그 (`db/*.jsonl`) — 그 PC 에서만 뜻이 있다",
     "플랫폼 venv (`**/venv/**`) — 바이너리라 받는 쪽에서 쓸 수 없다. 필요하면 재생성한다",
     "**venv 만 든 폴더는 폴더째 사라진다** — 담을 것이 0개가 되기 때문이며 실물 사례가 `tools/xlsx/` 다. "
-    "무엇을 재생성해야 하는지는 `settings.json` 의 `Bash(/...)` 권한 규칙이 가리키는 절대경로가 말해준다",
+    "무엇을 재생성해야 하는지는 이 매니페스트의 `excluded_venvs` 가 경로와 패키지까지 적어 둔다",
     "플러그인 (`plugins/**`) — 공식 마켓플레이스 사본 6.4MB 이며 받는 쪽에서 자동으로 다시 설치된다",
     "캐시와 자동 백업 (`cache/` · `backups/` · `*.bak-*`)",
 )
@@ -211,6 +219,80 @@ def collect_relative_paths(claude_home: Path) -> list[Path]:
     ]
 
     return sorted(relative for relative in collected if should_include(relative))
+
+
+def _read_venv_packages(venv_dir: Path) -> list[str]:
+    """venv 에 설치된 배포판을 `이름==버전` 으로 읽는다.
+
+    `pip freeze` 를 부르지 않는다 — 인터프리터가 깨져 있으면 내보내기 전체가 실패하고,
+    외부 프로세스에 의존하게 된다. `dist-info` 폴더명이 같은 정보를 파일시스템만으로 준다.
+
+    이름은 PEP 503 으로 정규화한다(`python_pptx` → `python-pptx`). **받는 쪽이 이 값을
+    그대로 설치 명령에 넣기 때문**이고, 그래야 만든 도구(`pip`·`uv`)가 달라도 목록이 같아진다.
+
+    Args:
+        venv_dir: venv 루트
+
+    Returns:
+        list[str]: `이름==버전` 목록 (정렬됨). 읽을 자리가 없으면 빈 목록
+    """
+    dist_infos: set[Path] = set()
+    for site_packages in SITE_PACKAGES_GLOBS:
+        dist_infos.update(path for path in venv_dir.glob(f"{site_packages}/*.dist-info") if path.is_dir())
+
+    packages: list[str] = []
+    for dist_info in dist_infos:
+        name, _, version = dist_info.name.removesuffix(".dist-info").rpartition("-")
+        if not name or not version:
+            continue
+
+        normalized = name.replace("_", "-").lower()
+        if normalized in VENV_BOOTSTRAP_PACKAGES:
+            continue
+
+        packages.append(f"{normalized}=={version}")
+
+    return sorted(packages)
+
+
+def collect_excluded_venvs(claude_home: Path) -> list[dict[str, Any]]:
+    """번들에서 빠진 venv 의 경로와 설치 패키지를 모은다.
+
+    venv 자체는 플랫폼 바이너리라 담지 않는다. 그런데 **빠졌다는 사실이 받는 쪽에 남지
+    않아서** 도구가 죽은 채 넘어간 적이 있다(2026-09-09 `tools/xlsx`·`tools/pptx`).
+    권한 규칙과 스크립트 import 로 알아내는 방법은 둘 다 «간접 증거» 라, venv 뿐인 폴더에
+    권한 규칙까지 없으면 어느 쪽에도 걸리지 않는다.
+
+    **보내는 쪽은 venv 를 직접 보고 있으므로 추론할 필요가 없다.** 여기서 적어 두면
+    받는 쪽은 조사 없이 재생성한다.
+
+    Args:
+        claude_home: `~/.claude` 에 해당하는 경로
+
+    Returns:
+        list[dict[str, Any]]: `{"path": 상대경로, "packages": [이름==버전]}` (경로 정렬).
+            읽지 못한 venv 도 **경로는 남긴다** — 「패키지가 없었다」와 「읽지 못했다」는 다르다
+
+    Raises:
+        ValueError: 경로가 디렉터리가 아닌 경우
+    """
+    if not claude_home.is_dir():
+        raise ValueError(f"설정 폴더가 없습니다: {claude_home}")
+
+    inventory: list[dict[str, Any]] = []
+    for venv_dir in claude_home.rglob("venv"):
+        if not venv_dir.is_dir():
+            continue
+
+        relative = venv_dir.relative_to(claude_home)
+        # venv 안의 `venv` 이름 폴더는 설치된 배포판의 일부다. 하나가 둘로 보이면
+        # 받는 쪽이 존재하지 않는 도구를 재생성하려 든다
+        if "venv" in relative.parent.parts:
+            continue
+
+        inventory.append({"path": relative.as_posix(), "packages": _read_venv_packages(venv_dir)})
+
+    return sorted(inventory, key=lambda entry: str(entry["path"]))
 
 
 def find_forbidden_entries(bundle_home: Path) -> list[Path]:
@@ -420,8 +502,31 @@ def build_manifest(claude_home: Path, relative_paths: list[Path]) -> dict[str, A
         "entry_count": len(entries),
         "total_size": sum(int(entry["size"]) for entry in entries),
         "excluded_notice": list(EXCLUSION_NOTICE),
+        "excluded_venvs": collect_excluded_venvs(claude_home),
         "entries": entries,
     }
+
+
+def _render_venv_table(excluded_venvs: list[dict[str, Any]]) -> str:
+    """제외한 venv 를 받는 쪽이 읽을 표로 만든다.
+
+    **0건일 때도 줄을 남긴다** — 「검사했고 없었다」와 「검사하지 않았다」는 다르다.
+
+    Args:
+        excluded_venvs: `collect_excluded_venvs()` 의 결과
+
+    Returns:
+        str: 마크다운 표. venv 가 없으면 그 사실을 적은 한 줄
+    """
+    if not excluded_venvs:
+        return "이 PC 의 `~/.claude` 에는 venv 가 없었습니다."
+
+    rows: list[str] = []
+    for entry in excluded_venvs:
+        packages = " · ".join(f"`{package}`" for package in entry["packages"])
+        rows.append(f"| `{entry['path']}` | {packages or '**읽지 못했습니다**'} |")
+
+    return "\n".join(["| venv 경로 | 설치 패키지 |", "| --- | --- |", *rows])
 
 
 def render_readme(manifest: dict[str, Any]) -> str:
@@ -435,6 +540,7 @@ def render_readme(manifest: dict[str, Any]) -> str:
     """
     source: dict[str, Any] = manifest["source"]
     excluded = "\n".join(f"- {line}" for line in manifest["excluded_notice"])
+    venv_table = _render_venv_table(manifest["excluded_venvs"])
 
     return f"""# 전역 Claude 설정 번들
 
@@ -464,6 +570,13 @@ def render_readme(manifest: dict[str, Any]) -> str:
 ## 애초에 담기지 않은 것
 
 {excluded}
+
+### 제외한 venv — 받는 쪽에서 다시 만듭니다
+
+**이 표가 재생성의 근거입니다.** 권한 규칙이나 스크립트의 import 로 짐작하지 않아도 됩니다 —
+보내는 쪽이 실제로 본 것을 그대로 적었습니다. 만드는 절차는 `claude-config-import` 스킬 6단계에 있습니다.
+
+{venv_table}
 
 ## 폴더 구성
 
@@ -510,6 +623,12 @@ def _report(relative_paths: list[Path], manifest: dict[str, Any], redacted_keys:
     print(f"\n가린 자격증명 값: {len(redacted_keys)}개")
     for key in redacted_keys:
         print(f"  - {key}")
+
+    excluded_venvs: list[dict[str, Any]] = manifest["excluded_venvs"]
+    print(f"\n담지 않은 venv: {len(excluded_venvs)}개 — 받는 쪽은 이 목록으로 재생성한다")
+    for entry in excluded_venvs:
+        packages = ", ".join(entry["packages"])
+        print(f"  - {entry['path']}: {packages or '(패키지를 읽지 못했습니다)'}")
 
     print("\n담지 않는 것:")
     for line in EXCLUSION_NOTICE:
