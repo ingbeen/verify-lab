@@ -235,6 +235,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | --- | --- | --- |
 | `~/.claude/CLAUDE.md` (전역) | 항상 — 사고 절차·수술적 변경·개발 원칙·목표 주도 실행·검증 지침의 SoT | 자동 |
 | `CLAUDE.md` (루트, 이 문서) | 항상 — verify-lab 고유 맥락 | 자동 |
+| [docs/MEMORY.md](docs/MEMORY.md) | 항상 — 알아낸 함정·인계사항·환경 노하우 (아래 `@import`) | 자동 |
 | [docs/context/README.md](docs/context/README.md) | 항상 — 사용자의 현재 운용 상태와 프로젝트 배경 | 직접 |
 | [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) | 패키지 코드 작업 — 계층 분리, 상수 관리, 절대 원칙 | 자동 |
 | [scripts/CLAUDE.md](scripts/CLAUDE.md) | CLI 스크립트 작업 | 자동 |
@@ -246,6 +247,8 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | [.claude/rules/context.md](.claude/rules/context.md) | `docs/context/` 파일을 열었을 때 — 사용자 소유 문서 보호 | 자동 |
 | [.claude/rules/strategy.md](.claude/rules/strategy.md) | `strategy/` 경로 작업 — 매매 규칙 계층의 예외 규정과 제약 | 자동 |
 | `/impl-plan` 스킬 (전역) | 계획서 작성·갱신 | 호출 |
+
+@docs/MEMORY.md
 
 > **자동 로드는 파일을 "읽기만" 해도 걸립니다 — 단, `Read` 도구로 열었을 때입니다.**
 > 해당 경로의 파일을 Read 하는 순간 그 경로의 규칙 문서 본문이 함께 주입되는 것을
