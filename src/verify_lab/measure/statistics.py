@@ -19,8 +19,10 @@
 """
 
 from collections.abc import Sequence
+from typing import NamedTuple
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 
 from verify_lab.measure.constants import (
@@ -50,6 +52,16 @@ COL_MAX = "Max"
 COL_MIN = "Min"
 COL_STD = "Std"
 
+# 손익비의 두 재료. **어느 쪽이 「이긴 것」인지 정하지 않는다** — 방향은 이 계층이 모르고
+# (측정의 원칙 11) 부르는 쪽이 정한다. 음수 평균은 **절대값**이라 둘 다 양의 값이다.
+# 건수를 함께 내는 것은 **손익비의 분모가 전체 표본이 아니라 한쪽 건수**이기 때문이다 —
+# 적중률이 28건으로 만든 값일 때 손익비는 5건으로 만든 값일 수 있고, 그 사실이 표에 없으면
+# 5건으로 만든 1.034 와 2건으로 만든 16.822 가 같은 무게로 읽힌다 (측정의 원칙 3)
+COL_POSITIVE_MEAN = "PositiveMean"
+COL_NEGATIVE_MEAN = "NegativeMean"
+COL_POSITIVE_COUNT = "PositiveCount"
+COL_NEGATIVE_COUNT = "NegativeCount"
+
 SUMMARY_COLUMNS = [
     COL_BASIS,
     COL_HORIZON,
@@ -63,6 +75,10 @@ SUMMARY_COLUMNS = [
     COL_MAX,
     COL_MIN,
     COL_STD,
+    COL_POSITIVE_MEAN,
+    COL_NEGATIVE_MEAN,
+    COL_POSITIVE_COUNT,
+    COL_NEGATIVE_COUNT,
 ]
 
 # ============================================================
@@ -196,6 +212,125 @@ def max_non_overlapping(start_positions: Sequence[int], horizon: int) -> int:
     return count
 
 
+class PayoffProfile(NamedTuple):
+    """손익비와 그 값을 읽는 데 필요한 것.
+
+    Attributes:
+        payoff_ratio: 이길 때 평균 ÷ 질 때 평균. **진 적이 없으면 `NaN`** 이다
+        breakeven_hit_rate: 이 적중률을 넘어야 번다 (비율). 손익비가 없으면 `NaN`
+        losing_count: 손익비의 **분모가 된 표본 수**
+    """
+
+    payoff_ratio: float
+    breakeven_hit_rate: float
+    losing_count: int
+
+
+def payoff_profile(
+    *,
+    positive_mean: float,
+    negative_mean: float,
+    positive_count: int,
+    negative_count: int,
+    sample_count: int,
+    downward: bool,
+) -> PayoffProfile:
+    """방향을 받아 손익비를 조립한다.
+
+    **산식이 저장소에 한 벌만 있어야 한다.** 판정 계층과 매매 계층이 각자 계산하면 두 곳이
+    조용히 갈라지고, 그때 어느 쪽이 맞는지 판별할 방법이 없다 (판정식 단일화).
+
+    **방향을 인자로 받는 것은 방향을 「고르는」 것이 아니다.** 고르는 쪽은 부르는 계층이고,
+    이 계층의 산출물에는 방향이 남지 않는다 (측정의 원칙 11).
+
+    **손익분기는 전체 표본을 분모로 낸다.** 이 값은 같은 표의 적중률과 견주라고 있는 것인데,
+    적중률의 분모는 전체 표본이고 손익비의 분모는 이긴 것과 진 것뿐이다. **보합이 있으면 둘이
+    어긋나므로** `1 ÷ (1 + 손익비)` 가 아니라 결정된 거래의 비율을 곱한 값을 쓴다 — 그러지 않으면
+    보합만큼 손익분기가 과대평가되고, 실측에서 코스닥 월말 성적표 2,400행 중 54행이 그 경우였다.
+
+    **분자가 없는 것과 분모가 없는 것은 뜻이 다르다.**
+
+    | 없는 쪽 | 값 | 왜 |
+    | --- | --- | --- |
+    | 이긴 거래 | 손익비 `0.0` | 버는 것이 없다. 손익분기는 결정된 거래 전부를 이겨야 하는 값이 된다 |
+    | 진 거래 | 손익비 `NaN` · 손익분기 `NaN` | 수학적으로 무한대라 숫자로 적을 수 없다. **판정에서는 「어떤 기준도 넘는다」로 다뤄야 하며**, 비운 것을 미충족으로 세면 가장 좋은 칸이 깎인다 |
+
+    Args:
+        positive_mean: 수익률이 양수인 건들의 평균 (비율). 없으면 `NaN`
+        negative_mean: 수익률이 음수인 건들의 **절대값** 평균 (비율). 없으면 `NaN`
+        positive_count: 양수인 건수
+        negative_count: 음수인 건수
+        sample_count: 유효 표본 수. **보합을 포함한 전체**이며 손익분기의 분모가 된다
+        downward: 아래로 거는 칸인가. 참이면 음수 쪽이 「이길 때」다
+
+    Returns:
+        손익비·손익분기 적중률·질 때 표본 수
+
+    Raises:
+        ValueError: 건수가 음수인 경우
+        RuntimeError: 결정된 거래가 표본보다 많거나, 건수가 있는 쪽의 평균이 양수가 아닌 경우
+            (내부 불변조건 위반)
+    """
+    if positive_count < 0 or negative_count < 0:
+        raise ValueError(f"건수는 0 이상이어야 합니다: 양수 {positive_count}, 음수 {negative_count}")
+
+    decided_count = positive_count + negative_count
+    if decided_count > sample_count:
+        raise RuntimeError(f"내부 불변조건 위반: 결정된 거래 {decided_count}건이 표본 {sample_count}건보다 많습니다")
+
+    winning_mean = negative_mean if downward else positive_mean
+    losing_mean = positive_mean if downward else negative_mean
+    winning_count = negative_count if downward else positive_count
+    losing_count = positive_count if downward else negative_count
+
+    if losing_count == 0:
+        return PayoffProfile(np.nan, np.nan, 0)
+
+    # 두 평균 모두 절대값이므로 건수가 있으면 그 평균은 반드시 양수다. 진 쪽이 0 이면 아래에서
+    # 0 으로 나누게 되고, 이긴 쪽이 비어 있으면 손익비가 조용히 `NaN` 이 되어 **잴 수 없었던 칸이
+    # 「기준을 못 넘은 칸」으로 바뀐다.** 어느 쪽도 그냥 넘기지 않는다
+    if not losing_mean > 0:
+        raise RuntimeError(f"내부 불변조건 위반: 진 거래 {losing_count}건의 평균이 양수가 아닙니다 ({losing_mean})")
+    if winning_count > 0 and not winning_mean > 0:
+        raise RuntimeError(f"내부 불변조건 위반: 이긴 거래 {winning_count}건의 평균이 양수가 아닙니다 ({winning_mean})")
+
+    ratio = 0.0 if winning_count == 0 else winning_mean / losing_mean
+
+    return PayoffProfile(ratio, (decided_count / sample_count) / (1.0 + ratio), losing_count)
+
+
+def payoff_from_returns(returns: npt.ArrayLike) -> PayoffProfile:
+    """수익률 목록에서 바로 손익비를 낸다.
+
+    **매매 계층을 위한 진입점이다.** `strategy` 는 `summarize` 를 쓰지 않고 체결 수익률을
+    직접 들고 있는데, 거기서 손익비를 따로 계산하면 **산식이 두 벌**이 되어 조용히 갈라진다.
+    이 함수는 양수·음수를 갈라 `payoff_profile` 에 넘길 뿐 판정을 더하지 않는다.
+
+    **방향 인자를 두지 않는다.** 매매 계층의 수익률은 **이미 방향이 반영된 실현 손익**이라
+    아래로 거는 칸도 그 규칙대로 벌면 양수로 들어온다. 부호를 뒤집지 않은 값을 다뤄야 하는
+    자리가 생기면 `payoff_profile` 을 직접 부른다.
+
+    Args:
+        returns: 수익률 목록 (비율). 보합(정확히 0)은 양쪽 어디에도 들어가지 않지만
+            **손익분기의 분모에는 들어간다**
+
+    Returns:
+        손익비·손익분기 적중률·질 때 표본 수
+    """
+    values = np.asarray(returns, dtype=float)
+    positive = values[values > 0]
+    negative = -values[values < 0]
+
+    return payoff_profile(
+        positive_mean=float(positive.mean()) if positive.size else np.nan,
+        negative_mean=float(negative.mean()) if negative.size else np.nan,
+        positive_count=int(positive.size),
+        negative_count=int(negative.size),
+        sample_count=int(values.size),
+        downward=False,
+    )
+
+
 def summarize(frame: pd.DataFrame) -> pd.DataFrame:
     """(기준 × 구간) 칸별로 수익률 분포를 요약한다.
 
@@ -223,10 +358,21 @@ def summarize(frame: pd.DataFrame) -> pd.DataFrame:
         summary = counts.assign(
             **{
                 column: np.nan
-                for column in (COL_MEAN, COL_MEDIAN, COL_WIN_RATE, COL_LOSS_RATE, COL_MAX, COL_MIN, COL_STD)
+                for column in (
+                    COL_MEAN,
+                    COL_MEDIAN,
+                    COL_WIN_RATE,
+                    COL_LOSS_RATE,
+                    COL_MAX,
+                    COL_MIN,
+                    COL_STD,
+                    COL_POSITIVE_MEAN,
+                    COL_NEGATIVE_MEAN,
+                )
             }
         )
-        summary[COL_SAMPLE_COUNT] = 0
+        for column in (COL_SAMPLE_COUNT, COL_POSITIVE_COUNT, COL_NEGATIVE_COUNT):
+            summary[column] = 0
         return summary[SUMMARY_COLUMNS]
 
     # 승률은 양수 비율이다. 정확히 0인 날은 승리가 아니다
@@ -235,6 +381,12 @@ def summarize(frame: pd.DataFrame) -> pd.DataFrame:
     # 하락 비율은 **승률의 여집합이 아니다.** 보합(정확히 0)이 어느 쪽에도 들어가지 않으므로
     # `1 − 승률` 로 만들면 보합이 하락으로 새어 들어가 값이 부푼다
     usable[COL_LOSS_RATE] = usable[COL_FORWARD_RETURN] < 0
+
+    # 해당하지 않는 행을 **비워서**(NaN) 둔다. `mean` 은 그것을 분모에서 빼고 `count` 는
+    # 세지 않으므로, 보합이 양쪽 어디에도 들어가지 않는 것이 산식 하나로 함께 성립한다.
+    # 0 으로 채우면 평균이 0 쪽으로 끌려가고 건수가 부푼다
+    usable[COL_POSITIVE_MEAN] = usable[COL_FORWARD_RETURN].where(usable[COL_FORWARD_RETURN] > 0)
+    usable[COL_NEGATIVE_MEAN] = (-usable[COL_FORWARD_RETURN]).where(usable[COL_FORWARD_RETURN] < 0)
 
     grouped = usable.groupby([COL_BASIS, COL_HORIZON], as_index=False, sort=True).agg(
         **{
@@ -246,12 +398,17 @@ def summarize(frame: pd.DataFrame) -> pd.DataFrame:
             COL_MAX: (COL_FORWARD_RETURN, "max"),
             COL_MIN: (COL_FORWARD_RETURN, "min"),
             COL_STD: (COL_FORWARD_RETURN, "std"),
+            COL_POSITIVE_MEAN: (COL_POSITIVE_MEAN, "mean"),
+            COL_NEGATIVE_MEAN: (COL_NEGATIVE_MEAN, "mean"),
+            COL_POSITIVE_COUNT: (COL_POSITIVE_MEAN, "count"),
+            COL_NEGATIVE_COUNT: (COL_NEGATIVE_MEAN, "count"),
         }
     )
 
     # 표본이 0건인 칸도 남겨야 하므로 신호 수 쪽을 기준으로 붙인다
     summary = counts.merge(grouped, on=[COL_BASIS, COL_HORIZON], how="left")
-    summary[COL_SAMPLE_COUNT] = summary[COL_SAMPLE_COUNT].fillna(0).astype(int)
+    for column in (COL_SAMPLE_COUNT, COL_POSITIVE_COUNT, COL_NEGATIVE_COUNT):
+        summary[column] = summary[column].fillna(0).astype(int)
 
     return summary[SUMMARY_COLUMNS]
 

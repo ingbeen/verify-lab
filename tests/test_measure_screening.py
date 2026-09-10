@@ -3,10 +3,10 @@
 이 계층이 조용히 틀리면 **없는 우위를 있다고 보고한다.** 판정은 두 겹이며 역할이 다르다.
 
 - **1차 게이트** (적중률 · 방향 기대값) — 볼 목록에 올릴지를 가른다
-- **등급** (기준선 대비 차이 · 우연확률 · 시기 안정성) — 얼마나 믿을 만한지를 알려주되 **떨어뜨리지 않는다**
+- **등급** (기준선 대비 차이 · 우연확률 · 시기 안정성 · 손익비) — 얼마나 믿을 만한지를 알려주되 **떨어뜨리지 않는다**
 
 핵심 계약은 다섯이다.
-- 게이트를 넘으면 **나머지 셋을 하나도 충족하지 못해도 후보로 남는다** (판단은 사용자 몫)
+- 게이트를 넘으면 **나머지 넷을 하나도 충족하지 못해도 후보로 남는다** (판단은 사용자 몫)
 - 방향 기대값은 **방향 부호를 적용한 평균**이다 — 「아래」 칸은 평균이 양수면 기대값이 음수다
 - 오른 쪽과 내린 쪽을 **대칭으로** 판정한다 (측정의 원칙 11)
 - 시기를 쪼갤 수 없으면 등급의 **분모가 줄 뿐** 미충족으로 세지 않는다 (측정의 원칙 12)
@@ -19,9 +19,12 @@ import pytest
 from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES
 from verify_lab.measure.screening import (
     COL_BASELINE_GAP,
+    COL_BREAKEVEN_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
+    COL_LOSING_COUNT,
+    COL_PAYOFF_RATIO,
     COL_PERIOD_COUNT,
     COL_PERIOD_MIN_HIT_RATE,
     COL_SCREEN,
@@ -34,12 +37,14 @@ from verify_lab.measure.screening import (
     MIN_BASELINE_GAP,
     MIN_EXPECTED_VALUE,
     MIN_HIT_RATE,
+    MIN_PAYOFF_RATIO,
     MIN_PERIOD_HIT_RATE,
     SCREEN_CANDIDATE,
     SCREEN_EXCLUDED,
     SCREENING_COLUMNS,
     SUPPORT_GAP,
     SUPPORT_P_VALUE,
+    SUPPORT_PAYOFF,
     SUPPORT_PERIOD,
     screen_candidates,
 )
@@ -48,6 +53,10 @@ from verify_lab.measure.statistics import (
     COL_LOSS_RATE,
     COL_LOSS_RATE_EXCESS,
     COL_MEAN,
+    COL_NEGATIVE_COUNT,
+    COL_NEGATIVE_MEAN,
+    COL_POSITIVE_COUNT,
+    COL_POSITIVE_MEAN,
     COL_SAMPLE_COUNT,
     COL_UP_RATE_P_VALUE,
     COL_WIN_RATE,
@@ -71,8 +80,24 @@ def _summary(
     mean: float,
     sample: int = 30,
     axis_value: int = 9,
+    positive_mean: float = 0.010,
+    negative_mean: float = 0.012,
+    positive_count: int | None = None,
+    negative_count: int | None = None,
 ) -> pd.DataFrame:
-    """한 칸짜리 집계표를 만든다."""
+    """한 칸짜리 집계표를 만든다.
+
+    양수·음수 평균의 기본값은 **아래 방향 칸에서 손익비 1.2** 가 되도록 잡았다
+    (`_down_summary` 가 등급 만점이어야 한 조건씩 무너뜨리는 테스트가 성립한다).
+    **위 방향 칸에서는 같은 값이 손익비 0.833 이 되어 미달**이므로, 위 방향으로 등급을
+    다루는 테스트는 값을 명시해서 뒤집는다.
+
+    **건수는 표본 수에서 파생시킨다.** 따로 두면 표본만 바꾼 테스트에서 둘이 어긋나
+    「결정된 거래가 표본보다 많다」는 불변조건에 걸린다. 보합이 필요한 테스트는 건수를
+    명시해서 **합이 표본보다 작게** 만든다.
+    """
+    positives = (sample * 4 // 15) if positive_count is None else positive_count
+    negatives = (sample - positives) if negative_count is None else negative_count
     return pd.DataFrame(
         {
             AXIS: [axis_value],
@@ -84,6 +109,10 @@ def _summary(
             COL_LOSS_RATE_EXCESS: [loss_excess],
             COL_UP_RATE_P_VALUE: [up_p],
             COL_DOWN_RATE_P_VALUE: [down_p],
+            COL_POSITIVE_MEAN: [positive_mean],
+            COL_NEGATIVE_MEAN: [negative_mean],
+            COL_POSITIVE_COUNT: [positives],
+            COL_NEGATIVE_COUNT: [negatives],
         }
     )
 
@@ -241,16 +270,23 @@ class TestScreen:
 
     def test_등급을_하나도_충족하지_못해도_후보로_남는다(self) -> None:
         """
-        목적: **이 개편의 핵심 계약이다.** 나머지 세 지표는 등급일 뿐 게이트가 아니므로,
+        목적: **이 개편의 핵심 계약이다.** 나머지 네 지표는 등급일 뿐 게이트가 아니므로,
               전부 미달이어도 게이트를 넘었으면 사용자가 볼 목록에 남는다.
 
-        Given: 게이트는 넘지만 차이·우연확률·시기가 전부 미달인 칸
+        Given: 게이트는 넘지만 차이·우연확률·시기·손익비가 전부 미달인 칸
         When: 판정하면
-        Then: 후보이고 등급이 0/3 이다
+        Then: 후보이고 등급이 0/4 이다
         """
         # Given
         gap = MIN_BASELINE_GAP - 0.01
-        summary = _down_summary(loss_excess=gap, win_excess=-gap, down_p=0.40, up_p=0.40)
+        summary = _down_summary(
+            loss_excess=gap,
+            win_excess=-gap,
+            down_p=0.40,
+            up_p=0.40,
+            positive_mean=0.012,
+            negative_mean=0.010,
+        )
         weak = MIN_PERIOD_HIT_RATE - 0.10
 
         # When
@@ -260,7 +296,7 @@ class TestScreen:
         row = result.iloc[0]
         assert row[COL_SCREEN] == SCREEN_CANDIDATE
         assert int(row[COL_SUPPORT_COUNT]) == 0
-        assert int(row[COL_SUPPORT_TOTAL]) == 3
+        assert int(row[COL_SUPPORT_TOTAL]) == 4
 
     def test_제외된_칸도_행이_남는다(self) -> None:
         """
@@ -339,21 +375,21 @@ class TestExpectedValue:
 class TestSupport:
     """등급이 무엇을 세고 무엇을 세지 않는지 고정한다."""
 
-    def test_셋을_모두_충족하면_만점이고_미충족이_비어_있다(self) -> None:
+    def test_넷을_모두_충족하면_만점이고_미충족이_비어_있다(self) -> None:
         """
         목적: 등급의 만점 상태를 고정한다.
 
-        Given: 차이·우연확률·시기가 모두 하한을 넘는 칸
+        Given: 차이·우연확률·시기·손익비가 모두 하한을 넘는 칸
         When: 판정하면
-        Then: 3/3 이고 미충족 항목이 없다
+        Then: 4/4 이고 미충족 항목이 없다
         """
         # Given / When
         result = screen_candidates(_down_summary(), _strong_periods(), axis_column=AXIS)
 
         # Then
         row = result.iloc[0]
-        assert int(row[COL_SUPPORT_COUNT]) == 3
-        assert int(row[COL_SUPPORT_TOTAL]) == 3
+        assert int(row[COL_SUPPORT_COUNT]) == 4
+        assert int(row[COL_SUPPORT_TOTAL]) == 4
         assert row[COL_UNMET_SUPPORT] == ""
 
     def test_차이가_작으면_미충족에_남는다(self) -> None:
@@ -362,7 +398,7 @@ class TestSupport:
 
         Given: 기준선 대비 차이가 하한 미만
         When: 판정하면
-        Then: 2/3 이고 미충족에 차이가 남는다
+        Then: 3/4 이고 미충족에 차이가 남는다
         """
         # Given
         gap = MIN_BASELINE_GAP - 0.01
@@ -373,7 +409,7 @@ class TestSupport:
 
         # Then
         row = result.iloc[0]
-        assert int(row[COL_SUPPORT_COUNT]) == 2
+        assert int(row[COL_SUPPORT_COUNT]) == 3
         assert SUPPORT_GAP in str(row[COL_UNMET_SUPPORT])
 
     def test_우연확률이_높으면_미충족에_남는다(self) -> None:
@@ -382,7 +418,7 @@ class TestSupport:
 
         Given: 우연확률만 0.20
         When: 판정하면
-        Then: 2/3 이고 미충족에 우연확률이 남는다
+        Then: 3/4 이고 미충족에 우연확률이 남는다
         """
         # Given
         summary = _down_summary(down_p=0.20, up_p=0.20)
@@ -392,7 +428,7 @@ class TestSupport:
 
         # Then
         row = result.iloc[0]
-        assert int(row[COL_SUPPORT_COUNT]) == 2
+        assert int(row[COL_SUPPORT_COUNT]) == 3
         assert SUPPORT_P_VALUE in str(row[COL_UNMET_SUPPORT])
 
     def test_한_시기라도_무너지면_미충족에_남는다(self) -> None:
@@ -401,7 +437,7 @@ class TestSupport:
 
         Given: 전체는 73% 인데 뒤 시기가 하한 미만
         When: 판정하면
-        Then: 2/3 이고 미충족에 시기가 남는다
+        Then: 3/4 이고 미충족에 시기가 남는다
         """
         # Given
         weak = MIN_PERIOD_HIT_RATE - 0.05
@@ -411,7 +447,7 @@ class TestSupport:
 
         # Then
         row = result.iloc[0]
-        assert int(row[COL_SUPPORT_COUNT]) == 2
+        assert int(row[COL_SUPPORT_COUNT]) == 3
         assert SUPPORT_PERIOD in str(row[COL_UNMET_SUPPORT])
 
     def test_미충족이_여럿이면_모두_남는다(self) -> None:
@@ -420,7 +456,7 @@ class TestSupport:
 
         Given: 차이와 우연확률 둘 다 미달
         When: 판정하면
-        Then: 1/3 이고 둘 다 미충족에 남는다
+        Then: 2/4 이고 둘 다 미충족에 남는다
         """
         # Given
         gap = MIN_BASELINE_GAP - 0.02
@@ -431,7 +467,7 @@ class TestSupport:
 
         # Then
         row = result.iloc[0]
-        assert int(row[COL_SUPPORT_COUNT]) == 1
+        assert int(row[COL_SUPPORT_COUNT]) == 2
         assert SUPPORT_GAP in str(row[COL_UNMET_SUPPORT])
         assert SUPPORT_P_VALUE in str(row[COL_UNMET_SUPPORT])
 
@@ -442,15 +478,15 @@ class TestSupport:
 
         Given: 앞 둘은 충족하는데 시기 분할 행이 없는 칸
         When: 판정하면
-        Then: 2/2 이고 미충족이 비어 있으며 시기 구간 수가 0 이다
+        Then: 3/3 이고 미충족이 비어 있으며 시기 구간 수가 0 이다
         """
         # Given / When
         result = screen_candidates(_down_summary(), _empty_periods(), axis_column=AXIS)
 
         # Then
         row = result.iloc[0]
-        assert int(row[COL_SUPPORT_COUNT]) == 2
-        assert int(row[COL_SUPPORT_TOTAL]) == 2
+        assert int(row[COL_SUPPORT_COUNT]) == 3
+        assert int(row[COL_SUPPORT_TOTAL]) == 3
         assert row[COL_UNMET_SUPPORT] == ""
         assert int(row[COL_PERIOD_COUNT]) == 0
 
@@ -828,8 +864,8 @@ class TestTotalReturn:
         Then: **회당의 대소와 합산의 대소가 반대**다
         """
         # Given
-        small = _down_summary(mean=-0.0125).assign(**{AXIS: 9, COL_SAMPLE_COUNT: 23})
-        large = _down_summary(mean=-0.0088).assign(**{AXIS: 12, COL_SAMPLE_COUNT: 33})
+        small = _down_summary(mean=-0.0125, sample=23, axis_value=9)
+        large = _down_summary(mean=-0.0088, sample=33, axis_value=12)
         summary = pd.concat([small, large], ignore_index=True)
         periods = pd.concat([_strong_periods().assign(**{AXIS: value}) for value in (9, 12)], ignore_index=True)
 
@@ -869,7 +905,7 @@ class TestTotalReturn:
         Then: 여전히 후보다
         """
         # Given
-        summary = _down_summary().assign(**{COL_SAMPLE_COUNT: 1})
+        summary = _down_summary(sample=1)
 
         # When
         result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
@@ -904,7 +940,7 @@ class TestJudgeablePeriodFilter:
 
         Given: 시기 두 구간이 전부 「아니오」인 표
         When: 판정하면
-        Then: 시기 항목을 묻지 않은 것과 같아 분모가 2 이고 구간 수가 0 이다
+        Then: 시기 항목을 묻지 않은 것과 같아 분모가 3 이고 구간 수가 0 이다
         """
         # Given
         periods = _periods([0.29, 0.25], judgeable=[JUDGEABLE_NO, JUDGEABLE_NO])
@@ -913,7 +949,7 @@ class TestJudgeablePeriodFilter:
         row = screen_candidates(_down_summary(), periods, axis_column=AXIS).iloc[0]
 
         # Then
-        assert int(row[COL_SUPPORT_TOTAL]) == 2, "판정 불가 구간이 등급 분모에 들어갔습니다"
+        assert int(row[COL_SUPPORT_TOTAL]) == 3, "판정 불가 구간이 등급 분모에 들어갔습니다"
         assert int(row[COL_PERIOD_COUNT]) == 0
         assert SUPPORT_PERIOD not in str(row[COL_UNMET_SUPPORT])
 
@@ -951,5 +987,272 @@ class TestJudgeablePeriodFilter:
         row = screen_candidates(_down_summary(), periods, axis_column=AXIS).iloc[0]
 
         # Then
-        assert int(row[COL_SUPPORT_TOTAL]) == 3
+        assert int(row[COL_SUPPORT_TOTAL]) == 4
         assert SUPPORT_PERIOD in str(row[COL_UNMET_SUPPORT])
+
+
+class TestPayoffSupport:
+    """손익비 등급 항목의 계약을 고정한다.
+
+    **손익비는 게이트가 아니라 등급이다.** 실측에서 채택 매매법(DIA 12월)이 손익비 1.034 로
+    1.0 에 붙어 있고 그 값이 **진 거래 5건**으로 만들어졌다. 구간을 쪼개면 분모가 1~2건이
+    되어 값이 폭주한다(SPY 12월 최근 10년 16.822, 진 2건). **게이트로 쓰면 데이터
+    갱신만으로 채택 매매법이 죽고, 전승 구간에서는 아예 정의되지 않는다.**
+
+    반대로 등급으로는 충분히 갈린다 — KODEX 200 9월은 0.788 이고 진 7건으로 만들어졌다.
+    """
+
+    def test_뒷받침_분모가_넷이_된다(self) -> None:
+        """
+        목적: 등급 항목이 조용히 빠지면 분모만 줄어 판정이 관대해진다.
+
+        Given: 시기를 물을 수 있는 칸
+        When: 판정하면
+        Then: 뒷받침 분모가 4 다 (차이 · 우연확률 · 시기 · 손익비)
+        """
+        # Given
+        summary = _down_summary()
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert int(result[COL_SUPPORT_TOTAL].iloc[0]) == 4
+
+    def test_손익비가_미달이어도_후보로_남는다(self) -> None:
+        """
+        목적: **등급은 떨어뜨리지 않는다.** 이 계약이 깨지면 손익비가 사실상 게이트가 된다.
+
+        Given: 게이트를 넘지만 손익비가 1 미만인 아래 방향 칸
+        When: 판정하면
+        Then: 1차 판정은 후보이고 미충족에 「손익비」가 적힌다
+        """
+        # Given
+        summary = _down_summary(positive_mean=0.012, negative_mean=0.010)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert SUPPORT_PAYOFF in result[COL_UNMET_SUPPORT].iloc[0]
+
+    def test_아래로_거는_칸은_손익비가_뒤집힌다(self) -> None:
+        """
+        목적: 방향을 안 뒤집으면 예외 없이 값만 뒤집힌다.
+
+        Given: 양수 평균 1.0% · 음수 평균 1.2% 인 **아래 방향** 칸
+        When: 판정하면
+        Then: 손익비가 1.2 다 — 주가가 내릴 때 버는 쪽이므로 음수가 이길 때다
+        """
+        # Given
+        summary = _down_summary(positive_mean=0.010, negative_mean=0.012)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
+        assert float(result[COL_PAYOFF_RATIO].iloc[0]) == pytest.approx(1.2, abs=EXACT_TOLERANCE)
+
+    def test_질_때_표본이_방향을_따라간다(self) -> None:
+        """
+        목적: 손익비의 분모가 몇 건인지가 곧 그 값의 신뢰도다 (측정의 원칙 3).
+
+        Given: 양수 8건 · 음수 22건 인 아래 방향 칸
+        When: 판정하면
+        Then: 빗나간 표본은 **양수 건수**인 8 이다
+        """
+        # Given
+        summary = _down_summary()
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert int(result[COL_LOSING_COUNT].iloc[0]) == 8
+
+    def test_손익분기_적중률이_함께_나온다(self) -> None:
+        """
+        목적: 항등식 `손익분기 = 1 ÷ (1 + 손익비)` 를 판정표에 박는다.
+
+        Given: 손익비 1.2 가 나오는 아래 방향 칸
+        When: 판정하면
+        Then: 손익분기 적중률이 1/2.2 다
+        """
+        # Given
+        summary = _down_summary()
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert float(result[COL_BREAKEVEN_HIT_RATE].iloc[0]) == pytest.approx(1.0 / 2.2, abs=EXACT_TOLERANCE)
+
+    def test_빗나간_거래가_없으면_충족으로_센다(self) -> None:
+        """
+        목적: 전승 칸은 손익비가 무한대이므로 **어떤 기준도 넘는다.**
+        비우고 미충족으로 세면 「못 물은 것」이 「못 넘은 것」으로 바뀌어 **가장 좋은 칸이 깎인다.**
+
+        실측: 옵션 만기일 DIA 12월의 최근 10년·최근 5년이 진 거래 0건이다.
+
+        Given: 아래 방향인데 양수(= 빗나간 쪽)가 0건인 칸
+        When: 판정하면
+        Then: 손익비는 비어 있고 미충족에 「손익비」가 없다
+        """
+        # Given
+        summary = _down_summary(positive_mean=float("nan"), positive_count=0, negative_count=30)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert pd.isna(result[COL_PAYOFF_RATIO].iloc[0])
+        assert SUPPORT_PAYOFF not in result[COL_UNMET_SUPPORT].iloc[0]
+
+    def test_표본이_없는_칸은_항목을_묻지_않는다(self) -> None:
+        """
+        목적: 잴 수 없는 것을 미충족으로 세면 표본이 작다는 이유로 두 번 깎인다.
+        시기 항목과 같은 처리다 (측정의 원칙 12).
+
+        Given: 유효 표본이 0건인 칸
+        When: 판정하면
+        Then: 뒷받침 분모에서 손익비가 빠진다
+        """
+        # Given
+        summary = _down_summary(sample=0, positive_count=0, negative_count=0)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert int(result[COL_SUPPORT_TOTAL].iloc[0]) == 3
+
+    def test_임계값과_같으면_충족이다(self) -> None:
+        """
+        목적: 경계가 어느 쪽에 속하는지 고정한다. 하한은 **이상**이다.
+
+        Given: 손익비가 정확히 하한인 아래 방향 칸
+        When: 판정하면
+        Then: 미충족에 「손익비」가 없다
+        """
+        # Given
+        summary = _down_summary(positive_mean=0.010, negative_mean=0.010 * MIN_PAYOFF_RATIO)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert SUPPORT_PAYOFF not in result[COL_UNMET_SUPPORT].iloc[0]
+
+    def test_판정표_스키마에_들어_있다(self) -> None:
+        """
+        목적: 컬럼이 스키마에 없으면 저장 단계에서 조용히 빠진다.
+
+        Given: 아무 칸
+        When: 판정하면
+        Then: 세 컬럼이 `SCREENING_COLUMNS` 에 있다
+        """
+        # Given
+        summary = _down_summary()
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        for column in (COL_PAYOFF_RATIO, COL_BREAKEVEN_HIT_RATE, COL_LOSING_COUNT):
+            assert column in SCREENING_COLUMNS
+            assert column in result.columns
+
+
+class TestGateUnchanged:
+    """손익비를 더해도 **1차 게이트가 그대로**임을 고정한다.
+
+    이 계약이 깨지면 검증 #1 192칸·검증 #10 616칸의 통과/탈락이 조용히 달라진다.
+    """
+
+    def test_손익비가_0이어도_게이트는_두_축으로만_가른다(self) -> None:
+        """
+        목적: 게이트 조건에 손익비가 섞이지 않았음을 확인한다.
+
+        Given: 적중률과 기대값은 넘지만 손익비가 바닥인 칸
+        When: 판정하면
+        Then: 후보다
+        """
+        # Given
+        summary = _down_summary(negative_mean=0.0001)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+
+    def test_손익비가_좋아도_게이트를_못_넘으면_제외다(self) -> None:
+        """
+        목적: 등급이 게이트를 되살리지 못한다.
+
+        Given: 손익비는 높지만 적중률이 하한 아래인 칸
+        When: 판정하면
+        Then: 제외다
+        """
+        # Given
+        summary = _down_summary(loss_rate=MIN_HIT_RATE - 0.01, negative_mean=0.10)
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
+
+
+class TestAllFlatCell:
+    """전부 보합인 칸이 **전승 칸으로 읽히지 않는지** 고정한다."""
+
+    def test_전부_보합인_칸은_손익비를_묻지_않는다(self) -> None:
+        """
+        목적: 표본 수로 재면 「한 번도 지지 않았다」가 되어 **진짜 전승 칸과 구별되지 않는다.**
+              이긴 적도 진 적도 없는 것은 「잴 수 없었다」이지 「좋았다」가 아니다.
+
+        Given: 표본은 30건인데 이김도 짐도 0건인 칸 (전부 보합)
+        When: 판정하면
+        Then: 뒷받침 분모에서 손익비가 빠진다
+        """
+        # Given
+        summary = _down_summary(
+            positive_mean=float("nan"),
+            negative_mean=float("nan"),
+            positive_count=0,
+            negative_count=0,
+        )
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert int(result[COL_SUPPORT_TOTAL].iloc[0]) == 3
+        assert SUPPORT_PAYOFF not in result[COL_UNMET_SUPPORT].iloc[0]
+
+    def test_전승_칸은_손익비를_충족으로_센다(self) -> None:
+        """
+        목적: 위 테스트와 짝이다. **진 적이 없는 것과 이긴 적도 없는 것을 가른다.**
+
+        Given: 표본 30건이 전부 이긴 칸 (아래 방향이므로 음수 쪽이 이긴 것)
+        When: 판정하면
+        Then: 손익비를 묻되 충족으로 센다
+        """
+        # Given
+        summary = _down_summary(
+            positive_mean=float("nan"),
+            negative_mean=0.012,
+            positive_count=0,
+            negative_count=30,
+        )
+
+        # When
+        result = screen_candidates(summary, _strong_periods(), axis_column=AXIS)
+
+        # Then
+        assert int(result[COL_SUPPORT_TOTAL].iloc[0]) == 4
+        assert SUPPORT_PAYOFF not in result[COL_UNMET_SUPPORT].iloc[0]
+        assert pd.isna(result[COL_PAYOFF_RATIO].iloc[0])

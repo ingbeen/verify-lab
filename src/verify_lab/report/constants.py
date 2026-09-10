@@ -34,6 +34,13 @@ DISPLAY_MAX = "최고(%)"
 DISPLAY_MIN = "최악(%)"
 DISPLAY_STD = "표준편차(%)"
 
+# 손익비의 재료. **방향을 정하지 않은 이름을 쓴다** — 이 계층은 어느 쪽이 「이긴 것」인지
+# 모르므로 「이길 때/질 때」로 부를 수 없다 (`.claude/rules/docs.md` 용어 대응표)
+DISPLAY_POSITIVE_MEAN = "오른 평균(%)"
+DISPLAY_NEGATIVE_MEAN = "내린 평균(%)"
+DISPLAY_POSITIVE_COUNT = "오른 건수"
+DISPLAY_NEGATIVE_COUNT = "내린 건수"
+
 DISPLAY_BASELINE = "베이스라인"
 DISPLAY_POPULATION = "모집단"
 DISPLAY_SIGNAL_SAMPLE = "신호 표본"
@@ -80,6 +87,15 @@ DISPLAY_EXPECTED_VALUE = "방향 기대값(%)"
 # 신호가 드물거나 보유가 며칠짜리인 매매법은 **회당 평균이 구조적으로 작게 나와** 크기 감각을
 # 주지 못하므로 둘을 나란히 둔다 (루트 `CLAUDE.md` 측정의 원칙 16)
 DISPLAY_TOTAL_RETURN = "합산 수익률(%)"
+
+# 손익비는 백분율이 아니라 **배수**다(1.034). 그래서 백분율 변환 대상이 아니며
+# 반올림 자릿수도 다르다 — 2자리면 1.034 와 1.056 이 뭉개져 경계 판정이 흐려진다.
+# **빗나간 표본은 손익비의 «분모»가 된 건수**이며, 이 값이 없으면 5건으로 만든 1.034 와
+# 2건으로 만든 16.822 가 같은 무게로 읽힌다 (측정의 원칙 3)
+DISPLAY_PAYOFF_RATIO = "손익비"
+DISPLAY_BREAKEVEN_HIT_RATE = "손익분기 적중률(%)"
+DISPLAY_LOSING_COUNT = "빗나간 표본"
+
 DISPLAY_BASELINE_HIT_RATE = "기준선(%)"
 DISPLAY_BASELINE_GAP = "기준선 대비 차이(%p)"
 DISPLAY_P_VALUE = "우연확률"
@@ -90,7 +106,7 @@ DISPLAY_SUPPORT = "뒷받침"
 DISPLAY_UNMET_SUPPORT = "미충족"
 
 # 등급을 「충족/물음」 한 칸으로 합칠 때 쓰는 구분자. **분모를 떼지 않는다** —
-# 시기를 못 잰 칸은 분모가 2 여서 `2/2` 가 되는데, 이는 `3/3` 과 같은 뜻이 아니다
+# 시기를 못 잰 칸은 분모가 3 이어서 `3/3` 이 되는데, 이는 `4/4` 와 같은 뜻이 아니다
 SUPPORT_SEPARATOR = "/"
 
 # ============================================================
@@ -125,6 +141,10 @@ PERCENT_DECIMALS = 2
 
 # 확률 (p 값). 백분율이 아니므로 자릿수가 다르다
 PROBABILITY_DECIMALS = 4
+
+# 손익비. **배수라서 백분율도 확률도 아니다.** 2자리면 1.034 와 1.056 이 1.03 과 1.06 으로
+# 뭉개져 1.0 경계 근처의 칸을 구별할 수 없다 — 실측에서 채택 칸이 1.034, 제외 칸이 0.788 이었다
+PAYOFF_DECIMALS = 3
 
 # 값이 없는 칸의 표기. 빈칸으로 두면 "값이 0" 또는 "아직 안 돌았다"로 읽힌다
 EMPTY_MARK = "-"

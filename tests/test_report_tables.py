@@ -30,10 +30,13 @@ from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
 from verify_lab.measure.screening import (
     COL_BASELINE_GAP,
     COL_BASELINE_HIT_RATE,
+    COL_BREAKEVEN_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
+    COL_LOSING_COUNT,
     COL_P_VALUE,
+    COL_PAYOFF_RATIO,
     COL_PERIOD_COUNT,
     COL_PERIOD_MIN_HIT_RATE,
     COL_SCREEN,
@@ -642,10 +645,13 @@ class TestCandidatesTable:
                 COL_HIT_RATE: [0.6667],
                 COL_EXPECTED_VALUE: [0.010578],
                 COL_TOTAL_RETURN: [0.010578 * 27],
+                COL_PAYOFF_RATIO: [1.307],
+                COL_BREAKEVEN_HIT_RATE: [0.4334],
+                COL_LOSING_COUNT: [9],
                 COL_BASELINE_HIT_RATE: [0.4522],
                 COL_BASELINE_GAP: [0.2145],
                 COL_P_VALUE: [0.013],
-                COL_PERIOD_COUNT: [2 if support_total == 3 else 0],
+                COL_PERIOD_COUNT: [2 if support_total == 4 else 0],
                 COL_PERIOD_MIN_HIT_RATE: [period_min],
                 COL_SCREEN: [SCREEN_CANDIDATE],
                 COL_SUPPORT_COUNT: [support_count],
@@ -656,38 +662,38 @@ class TestCandidatesTable:
 
     def test_등급이_분모와_함께_표시된다(self) -> None:
         """
-        목적: **분모를 떼지 않는다.** 시기를 못 잰 칸은 `2/2` 가 되는데 이는 `3/3` 과
+        목적: **분모를 떼지 않는다.** 시기를 못 잰 칸은 `3/3` 이 되는데 이는 `4/4` 와
               같은 뜻이 아니며, 분모를 지우면 표본이 작은 칸이 만점처럼 보인다.
 
-        Given: 시기를 재서 3항목을 물은 칸
+        Given: 시기를 재서 4항목을 물은 칸
         When: 표시용으로 바꾸면
-        Then: 등급이 "3/3" 이다
+        Then: 등급이 "4/4" 이다
         """
         # Given
-        candidates = self._candidates(support_count=3, support_total=3, period_min=0.6428)
+        candidates = self._candidates(support_count=4, support_total=4, period_min=0.6428)
+
+        # When
+        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+
+        # Then
+        assert table[DISPLAY_SUPPORT].iloc[0] == "4/4"
+
+    def test_시기를_못_잰_칸은_분모가_3이다(self) -> None:
+        """
+        목적: 물을 수 있었던 항목 수가 표시에 그대로 드러난다.
+
+        Given: 시기 분할이 없어 3항목만 물은 칸
+        When: 표시용으로 바꾸면
+        Then: 등급이 "3/3" 이고 가장 약한 시기가 **0 으로 채워지지 않는다**
+        """
+        # Given
+        candidates = self._candidates(support_count=3, support_total=3, period_min=float("nan"))
 
         # When
         table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
         assert table[DISPLAY_SUPPORT].iloc[0] == "3/3"
-
-    def test_시기를_못_잰_칸은_분모가_2다(self) -> None:
-        """
-        목적: 물을 수 있었던 항목 수가 표시에 그대로 드러난다.
-
-        Given: 시기 분할이 없어 2항목만 물은 칸
-        When: 표시용으로 바꾸면
-        Then: 등급이 "2/2" 이고 가장 약한 시기가 **0 으로 채워지지 않는다**
-        """
-        # Given
-        candidates = self._candidates(support_count=2, support_total=2, period_min=float("nan"))
-
-        # When
-        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
-
-        # Then
-        assert table[DISPLAY_SUPPORT].iloc[0] == "2/2"
         assert pd.isna(table[DISPLAY_PERIOD_MIN_HIT_RATE].iloc[0])
 
     def test_방향_기대값이_백분율로_실린다(self) -> None:
@@ -699,7 +705,7 @@ class TestCandidatesTable:
         Then: 1.06 (%) 이다
         """
         # Given
-        candidates = self._candidates(support_count=3, support_total=3, period_min=0.6428)
+        candidates = self._candidates(support_count=4, support_total=4, period_min=0.6428)
 
         # When
         table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
@@ -716,7 +722,7 @@ class TestCandidatesTable:
         Then: ValueError
         """
         # Given
-        candidates = self._candidates(support_count=3, support_total=3, period_min=0.6428)
+        candidates = self._candidates(support_count=4, support_total=4, period_min=0.6428)
 
         # When / Then
         with pytest.raises(ValueError, match="축 컬럼"):
@@ -861,7 +867,7 @@ class TestCandidatesTotalReturn:
         Then: 합산 수익률이 회당 × 표본 값으로 실리고 표본 수도 함께 있다
         """
         # Given
-        candidates = TestCandidatesTable._candidates(support_count=3, support_total=3, period_min=0.6428)
+        candidates = TestCandidatesTable._candidates(support_count=4, support_total=4, period_min=0.6428)
 
         # When
         table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
@@ -880,7 +886,7 @@ class TestCandidatesTotalReturn:
         Then: 「방향 기대값(%)」 바로 다음 컬럼이 「합산 수익률(%)」이다
         """
         # Given
-        candidates = TestCandidatesTable._candidates(support_count=3, support_total=3, period_min=0.6428)
+        candidates = TestCandidatesTable._candidates(support_count=4, support_total=4, period_min=0.6428)
 
         # When
         columns = list(build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월").columns)

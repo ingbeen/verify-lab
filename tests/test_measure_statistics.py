@@ -46,9 +46,13 @@ from verify_lab.measure.statistics import (
     COL_MEDIAN_P_VALUE,
     COL_MEDIAN_PERCENTILE,
     COL_MIN,
+    COL_NEGATIVE_COUNT,
+    COL_NEGATIVE_MEAN,
     COL_OBSERVED_DOWN_RATE,
     COL_OBSERVED_MEAN,
     COL_OBSERVED_UP_RATE,
+    COL_POSITIVE_COUNT,
+    COL_POSITIVE_MEAN,
     COL_SAMPLE_COUNT,
     COL_SIGNAL_SAMPLE_COUNT,
     COL_STD,
@@ -65,6 +69,8 @@ from verify_lab.measure.statistics import (
     TEST_COLUMNS,
     excess,
     max_non_overlapping,
+    payoff_from_returns,
+    payoff_profile,
     permutation_test,
     summarize,
 )
@@ -873,3 +879,424 @@ class TestPopulationSameSizeAsSample:
         # Then
         assert result[COL_TEST_NOTE].iloc[0] != NOTE_NONE
         assert pd.isna(_only(result, COL_MEAN_P_VALUE))
+
+
+class TestSignedMeans:
+    """양수·음수 평균과 건수의 계약을 고정한다.
+
+    이 값들은 **방향을 모른 채** 나온다. 어느 쪽이 「이긴 것」인지 정하는 순간 측정 계층이
+    방향을 고르게 되고, 그 선택이 결론에 숨는다 (측정의 원칙 11).
+    """
+
+    def test_양수와_음수의_평균을_각각_낸다(self) -> None:
+        """
+        목적: 손익비의 두 재료를 손계산 값으로 박는다.
+
+        Given: +2% · +4% · -1% · -3% 인 칸
+        When: 집계하면
+        Then: 양수 평균 3% · 음수 평균 2% 다
+        """
+        # Given
+        frame = _cell([0.02, 0.04, -0.01, -0.03])
+
+        # When
+        result = summarize(frame)
+
+        # Then
+        assert _only(result, COL_POSITIVE_MEAN) == pytest.approx(0.03, abs=EXACT_TOLERANCE)
+        assert _only(result, COL_NEGATIVE_MEAN) == pytest.approx(0.02, abs=EXACT_TOLERANCE)
+
+    def test_음수_평균은_절대값이다(self) -> None:
+        """
+        목적: 부호를 남기면 손익비가 음수가 되어 크기 비교가 뒤집힌다.
+
+        Given: 음수만 있는 칸
+        When: 집계하면
+        Then: 음수 평균이 양의 값으로 나온다
+        """
+        # Given
+        frame = _cell([-0.01, -0.03])
+
+        # When
+        result = summarize(frame)
+
+        # Then
+        assert _only(result, COL_NEGATIVE_MEAN) > 0
+
+    def test_보합은_양쪽_어디에도_들어가지_않는다(self) -> None:
+        """
+        목적: 두 건수를 여집합으로 만들면 보합이 한쪽으로 새어 값이 부푼다.
+
+        방향 비율에서 이미 겪은 함정과 같은 계열이다 — 국내 ETF 원본가는 정수 가격이라
+        등락률이 정확히 0 인 날이 실제로 나온다.
+
+        Given: 표본 5건 중 하나가 정확히 0 인 칸
+        When: 집계하면
+        Then: 양수 2건 + 음수 2건 이고 **합이 표본 수보다 작다**
+        """
+        # Given
+        frame = _cell([0.02, 0.04, -0.01, -0.03, 0.0])
+
+        # When
+        result = summarize(frame)
+
+        # Then
+        positive = int(_only(result, COL_POSITIVE_COUNT))
+        negative = int(_only(result, COL_NEGATIVE_COUNT))
+        assert (positive, negative) == (2, 2)
+        assert positive + negative < int(_only(result, COL_SAMPLE_COUNT))
+
+    def test_해당_건이_없으면_평균이_비어_있다(self) -> None:
+        """
+        목적: 0 으로 채우면 「손실이 없었다」로 읽히고, 손익비 분모에 들어가면 무한대가 조용히 만들어진다.
+
+        Given: 전부 양수인 칸
+        When: 집계하면
+        Then: 음수 평균은 NaN 이고 음수 건수는 0 이다
+        """
+        # Given
+        frame = _cell([0.02, 0.04])
+
+        # When
+        result = summarize(frame)
+
+        # Then
+        assert pd.isna(_only(result, COL_NEGATIVE_MEAN))
+        assert int(_only(result, COL_NEGATIVE_COUNT)) == 0
+
+    def test_집계표_스키마에_들어_있다(self) -> None:
+        """
+        목적: 컬럼이 스키마에 없으면 저장 단계에서 조용히 빠진다.
+
+        Given: 아무 칸
+        When: 집계하면
+        Then: 네 컬럼이 `SUMMARY_COLUMNS` 에 있다
+        """
+        # Given
+        frame = _cell([0.02, -0.01])
+
+        # When
+        result = summarize(frame)
+
+        # Then
+        for column in (COL_POSITIVE_MEAN, COL_NEGATIVE_MEAN, COL_POSITIVE_COUNT, COL_NEGATIVE_COUNT):
+            assert column in SUMMARY_COLUMNS
+            assert column in result.columns
+
+
+class TestPayoffProfile:
+    """손익비 조립의 계약을 고정한다.
+
+    **산식이 저장소에 한 벌만 있어야 한다.** `screening` 과 `strategy` 가 각자 계산하면
+    두 곳이 조용히 갈라지고, 그때 어느 쪽이 맞는지 판별할 방법이 없다.
+    """
+
+    def test_위로_거는_칸은_양수가_이길_때다(self) -> None:
+        """
+        목적: 기본 방향의 분자·분모를 고정한다.
+
+        Given: 양수 평균 3% · 음수 평균 2%
+        When: 위로 거는 칸으로 조립하면
+        Then: 손익비가 1.5 다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=0.03,
+            negative_mean=0.02,
+            positive_count=2,
+            negative_count=2,
+            sample_count=4,
+            downward=False,
+        )
+
+        # Then
+        assert profile.payoff_ratio == pytest.approx(1.5, abs=EXACT_TOLERANCE)
+
+    def test_아래로_거는_칸은_분자와_분모가_뒤집힌다(self) -> None:
+        """
+        목적: 방향을 안 뒤집으면 **예외 없이 값만 뒤집힌다.**
+
+        Given: 같은 양수 평균 3% · 음수 평균 2%
+        When: 아래로 거는 칸으로 조립하면
+        Then: 손익비가 2/3 다 — 주가가 내릴 때 버는 쪽이므로 음수가 이길 때다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=0.03,
+            negative_mean=0.02,
+            positive_count=2,
+            negative_count=2,
+            sample_count=4,
+            downward=True,
+        )
+
+        # Then
+        assert profile.payoff_ratio == pytest.approx(2.0 / 3.0, abs=EXACT_TOLERANCE)
+
+    def test_질_때_표본도_방향을_따라간다(self) -> None:
+        """
+        목적: 손익비의 분모가 몇 건으로 만들어졌는지가 곧 그 값의 신뢰도다 (측정의 원칙 3).
+
+        Given: 양수 7건 · 음수 3건
+        When: 아래로 거는 칸으로 조립하면
+        Then: 질 때 표본은 **양수 건수**인 7 이다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=0.03,
+            negative_mean=0.02,
+            positive_count=7,
+            negative_count=3,
+            sample_count=10,
+            downward=True,
+        )
+
+        # Then
+        assert profile.losing_count == 7
+
+    def test_손익분기_적중률은_손익비에서_나온다(self) -> None:
+        """
+        목적: 항등식 `손익분기 = 1 ÷ (1 + 손익비)` 를 박는다.
+
+        Given: 손익비 1.5 가 나오는 입력
+        When: 조립하면
+        Then: 손익분기 적중률이 0.4 다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=0.03,
+            negative_mean=0.02,
+            positive_count=2,
+            negative_count=2,
+            sample_count=4,
+            downward=False,
+        )
+
+        # Then
+        assert profile.breakeven_hit_rate == pytest.approx(0.4, abs=EXACT_TOLERANCE)
+
+    def test_진_거래가_없으면_손익비가_비어_있다(self) -> None:
+        """
+        목적: 전승 칸은 손익비가 무한대다. 숫자로 적을 수 없으므로 비우되 **판정을 막지 않는다.**
+
+        실측: 옵션 만기일 DIA 12월의 최근 10년·최근 5년이 진 거래 0건이다.
+
+        Given: 음수가 하나도 없는 칸
+        When: 위로 거는 칸으로 조립하면
+        Then: 손익비와 손익분기가 비어 있고 질 때 표본이 0 이다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=0.03,
+            negative_mean=float("nan"),
+            positive_count=10,
+            negative_count=0,
+            sample_count=10,
+            downward=False,
+        )
+
+        # Then
+        assert pd.isna(profile.payoff_ratio)
+        assert pd.isna(profile.breakeven_hit_rate)
+        assert profile.losing_count == 0
+
+    def test_이긴_거래가_없으면_손익비가_0이다(self) -> None:
+        """
+        목적: 분자가 없는 것과 분모가 없는 것은 **뜻이 다르다.** 버는 게 없으면 0 이다.
+
+        Given: 양수가 하나도 없는 칸
+        When: 위로 거는 칸으로 조립하면
+        Then: 손익비 0 · 손익분기 1.0 (100% 적중해야 본전) 이다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=float("nan"),
+            negative_mean=0.02,
+            positive_count=0,
+            negative_count=10,
+            sample_count=10,
+            downward=False,
+        )
+
+        # Then
+        assert profile.payoff_ratio == pytest.approx(0.0, abs=EXACT_TOLERANCE)
+        assert profile.breakeven_hit_rate == pytest.approx(1.0, abs=EXACT_TOLERANCE)
+
+
+class TestPayoffFromReturns:
+    """매매 계층 진입점이 집계 경로와 **같은 값**을 내는지 고정한다.
+
+    두 진입점이 갈라지면 같은 매매법의 손익비가 산출물마다 달라지고, 그때 어느 쪽이 맞는지
+    판별할 방법이 없다 (판정식 단일화).
+    """
+
+    def test_집계_경로와_같은_손익비를_낸다(self) -> None:
+        """
+        목적: **이 테스트가 이 함수의 존재 이유다.** 산식이 두 벌이 되는 것을 막는다.
+
+        Given: 같은 수익률 목록
+        When: 집계표를 거친 값과 직접 낸 값을 비교하면
+        Then: 손익비와 질 때 표본이 일치한다
+        """
+        # Given
+        values = [0.02, 0.04, -0.01, -0.03, 0.0]
+
+        # When
+        summary = summarize(_cell(values))
+        direct = payoff_from_returns(values)
+        through_summary = payoff_profile(
+            positive_mean=_only(summary, COL_POSITIVE_MEAN),
+            negative_mean=_only(summary, COL_NEGATIVE_MEAN),
+            positive_count=int(_only(summary, COL_POSITIVE_COUNT)),
+            negative_count=int(_only(summary, COL_NEGATIVE_COUNT)),
+            sample_count=int(_only(summary, COL_SAMPLE_COUNT)),
+            downward=False,
+        )
+
+        # Then
+        assert direct.payoff_ratio == pytest.approx(through_summary.payoff_ratio, abs=EXACT_TOLERANCE)
+        assert direct.losing_count == through_summary.losing_count
+
+    def test_손계산_값과_맞는다(self) -> None:
+        """
+        목적: 산식을 손계산으로 박는다.
+
+        Given: +2% · +4% · -1% · -3%
+        When: 손익비를 내면
+        Then: 3% ÷ 2% = 1.5 다
+        """
+        # When
+        profile = payoff_from_returns([0.02, 0.04, -0.01, -0.03])
+
+        # Then
+        assert profile.payoff_ratio == pytest.approx(1.5, abs=EXACT_TOLERANCE)
+        assert profile.losing_count == 2
+
+    def test_체결이_하나도_없으면_비어_있다(self) -> None:
+        """
+        목적: 빈 목록에서 예외가 아니라 「계산 불가」가 나온다 (경계 조건).
+
+        Given: 체결이 없는 칸
+        When: 손익비를 내면
+        Then: 값이 비어 있고 질 때 표본이 0 이다
+        """
+        # When
+        profile = payoff_from_returns([])
+
+        # Then
+        assert pd.isna(profile.payoff_ratio)
+        assert profile.losing_count == 0
+
+
+class TestBreakevenDenominator:
+    """손익분기가 **적중률과 같은 분모**를 쓰는지 고정한다.
+
+    이 값은 같은 표의 적중률과 견주라고 있는 것인데, 적중률의 분모는 전체 표본이고
+    손익비의 분모는 이긴 것과 진 것뿐이다. **보합이 있으면 둘이 어긋난다** — 이 계층이
+    「두 방향 비율은 여집합이 아니다」를 이미 지키고 있으므로 여기서도 같은 함정이다.
+    """
+
+    def test_보합이_있으면_손익분기가_낮아진다(self) -> None:
+        """
+        목적: **`1 ÷ (1 + 손익비)` 를 그대로 쓰면 보합만큼 과대평가된다.**
+
+        Given: 이김 1건 · 짐 1건 · 보합 2건 (손익비 2.0)
+        When: 손익비를 조립하면
+        Then: 손익분기가 `(2/4) ÷ 3` 이지 `1 ÷ 3` 이 아니다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=0.02,
+            negative_mean=0.01,
+            positive_count=1,
+            negative_count=1,
+            sample_count=4,
+            downward=False,
+        )
+
+        # Then
+        assert profile.payoff_ratio == pytest.approx(2.0, abs=EXACT_TOLERANCE)
+        assert profile.breakeven_hit_rate == pytest.approx(0.5 / 3.0, abs=EXACT_TOLERANCE)
+
+    def test_보합이_없으면_예전_산식과_같다(self) -> None:
+        """
+        목적: 보합이 없을 때는 `1 ÷ (1 + 손익비)` 로 되돌아간다 (경계).
+
+        Given: 이김 1건 · 짐 1건 · 보합 없음
+        When: 손익비를 조립하면
+        Then: 손익분기가 `1 ÷ 3` 이다
+        """
+        # When
+        profile = payoff_profile(
+            positive_mean=0.02,
+            negative_mean=0.01,
+            positive_count=1,
+            negative_count=1,
+            sample_count=2,
+            downward=False,
+        )
+
+        # Then
+        assert profile.breakeven_hit_rate == pytest.approx(1.0 / 3.0, abs=EXACT_TOLERANCE)
+
+    def test_항등식이_보합이_있어도_성립한다(self) -> None:
+        """
+        목적: 루트 `CLAUDE.md` 가 SoT 로 삼은 항등식을 박는다 —
+              `회당 평균 = 질때 × (1 + 손익비) × (적중률 − 손익분기)`.
+
+        이 항등식이 보합에서 깨지면 「여유 > 0 과 평균 > 0 이 동치」라는 근거가 무너진다.
+
+        Given: 이김 1건(+2%) · 짐 1건(-1%) · 보합 2건
+        When: 항등식 우변을 계산하면
+        Then: 실제 평균 0.25% 와 같다
+        """
+        # Given
+        values = [0.02, -0.01, 0.0, 0.0]
+        profile = payoff_from_returns(values)
+        hit_rate = sum(1 for value in values if value > 0) / len(values)
+
+        # When
+        rebuilt = 0.01 * (1 + profile.payoff_ratio) * (hit_rate - profile.breakeven_hit_rate)
+
+        # Then
+        assert rebuilt == pytest.approx(sum(values) / len(values), abs=EXACT_TOLERANCE)
+
+    def test_결정된_거래가_표본보다_많으면_예외다(self) -> None:
+        """
+        목적: 표본과 건수가 어긋난 채로 들어오면 **손익분기가 1 을 넘는 값**이 조용히 나온다.
+
+        Given: 표본 1건인데 이김·짐이 각각 8·22 건이라고 주장하는 입력
+        When: 손익비를 조립하면
+        Then: 내부 불변조건 위반이다
+        """
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
+            payoff_profile(
+                positive_mean=0.01,
+                negative_mean=0.01,
+                positive_count=8,
+                negative_count=22,
+                sample_count=1,
+                downward=False,
+            )
+
+    def test_이긴_건수가_있는데_평균이_비어_있으면_예외다(self) -> None:
+        """
+        목적: 그대로 두면 손익비가 `NaN` 이 되고, 판정 계층에서 `NaN >= 1.0` 이 거짓이라
+              **「못 잰 칸」이 「기준을 못 넘은 칸」으로 바뀐다.** 진 쪽만 막고 이긴 쪽을
+              놔두면 그 비대칭이 조용한 오판을 만든다.
+
+        Given: 이긴 건수는 5 인데 그 평균이 비어 있는 입력
+        When: 손익비를 조립하면
+        Then: 내부 불변조건 위반이다
+        """
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
+            payoff_profile(
+                positive_mean=float("nan"),
+                negative_mean=0.02,
+                positive_count=5,
+                negative_count=3,
+                sample_count=8,
+                downward=False,
+            )

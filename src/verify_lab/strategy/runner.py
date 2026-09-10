@@ -17,8 +17,10 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
-from verify_lab.report.constants import DATE_FORMAT, DISPLAY_EXCLUDED, PERCENT_DECIMALS
+from verify_lab.measure.statistics import payoff_from_returns
+from verify_lab.report.constants import DATE_FORMAT, DISPLAY_EXCLUDED, PAYOFF_DECIMALS, PERCENT_DECIMALS
 from verify_lab.strategy.constants import (
+    DISPLAY_BREAKEVEN_WIN_RATE,
     DISPLAY_CHANGE_RATE,
     DISPLAY_DATE,
     DISPLAY_DIRECTION,
@@ -27,11 +29,13 @@ from verify_lab.strategy.constants import (
     DISPLAY_EVENT_ID,
     DISPLAY_EXIT_REASON,
     DISPLAY_HOLD_DAYS,
+    DISPLAY_LOSING_COUNT,
     DISPLAY_MAX,
     DISPLAY_MEAN,
     DISPLAY_MEAN_HOLD,
     DISPLAY_MIN,
     DISPLAY_PARAMETER,
+    DISPLAY_PAYOFF_RATIO,
     DISPLAY_RETURN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_START_YEAR,
@@ -362,6 +366,10 @@ def _summarize(target: Target, block: _Block) -> dict[str, Any]:
     returns = pd.Series(block.returns)
     percent = returns * RATE_TO_PERCENT
 
+    # **산식은 `measure` 가 소유한다.** 여기서 다시 계산하면 판정 계층과 조용히 갈라진다.
+    # 체결 수익률은 이미 방향이 반영된 실현 손익이라 부호를 뒤집지 않는다
+    payoff = payoff_from_returns(block.returns)
+
     return {
         DISPLAY_TICKER: target.dataset.ticker,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
@@ -372,6 +380,9 @@ def _summarize(target: Target, block: _Block) -> dict[str, Any]:
         DISPLAY_TOTAL: round(float(percent.sum()), PERCENT_DECIMALS),
         DISPLAY_MEAN: round(float(percent.mean()), PERCENT_DECIMALS),
         DISPLAY_WIN_RATE: round(float((returns > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_PAYOFF_RATIO: round(payoff.payoff_ratio, PAYOFF_DECIMALS),
+        DISPLAY_BREAKEVEN_WIN_RATE: round(payoff.breakeven_hit_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_LOSING_COUNT: payoff.losing_count,
         DISPLAY_MAX: round(float(percent.max()), PERCENT_DECIMALS),
         DISPLAY_MIN: round(float(percent.min()), PERCENT_DECIMALS),
         DISPLAY_MEAN_HOLD: round(float(pd.Series(block.hold_days).mean()), HOLD_DAYS_DECIMALS),

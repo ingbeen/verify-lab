@@ -6,11 +6,14 @@
 **판정은 두 겹이며 역할이 다르다.**
 
 - **1차 게이트** (적중률 · 방향 기대값) — 볼 목록에 올릴지를 가른다
-- **등급** (기준선 대비 차이 · 우연확률 · 시기 안정성) — 얼마나 믿을 만한지를 알려주되 **떨어뜨리지 않는다**
+- **등급** (기준선 대비 차이 · 우연확률 · 시기 안정성 · 손익비) — 얼마나 믿을 만한지를 알려주되 **떨어뜨리지 않는다**
 
-세 지표를 게이트로 쓰면 코드가 사용자 대신 판단하게 된다(측정의 원칙 1). 그렇다고 적중률
+이 지표들을 게이트로 쓰면 코드가 사용자 대신 판단하게 된다(측정의 원칙 1). 그렇다고 적중률
 하나만 게이트로 두면 **기준선과 사실상 같은 칸까지 통과한다** — 주식은 원래 자주 올라
 오른 비율이 절반을 넘는 칸이 흔하기 때문이다. 그래서 게이트에 방향 기대값을 함께 둔다.
+
+**손익비가 등급인 이유는 따로 있다** — 게이트로 쓰면 채택 매매법이 데이터 갱신만으로 죽고,
+**전승 구간에서는 아예 정의되지 않는다.** 실측 근거는 `MIN_PAYOFF_RATIO` 주석에 있다.
 
 **방향 기대값은 「같은 금액을 반복 투자했을 때 남는 수익률」이다.** 적중률만 보면
 "방향은 맞지만 걸면 손실"인 칸을 거르지 못한다 — 자주 조금 맞고 가끔 크게 틀리는 칸이 실재한다.
@@ -50,10 +53,15 @@ from verify_lab.measure.statistics import (
     COL_LOSS_RATE,
     COL_LOSS_RATE_EXCESS,
     COL_MEAN,
+    COL_NEGATIVE_COUNT,
+    COL_NEGATIVE_MEAN,
+    COL_POSITIVE_COUNT,
+    COL_POSITIVE_MEAN,
     COL_SAMPLE_COUNT,
     COL_UP_RATE_P_VALUE,
     COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
+    payoff_profile,
 )
 from verify_lab.utils.logger import get_logger
 
@@ -86,6 +94,18 @@ MAX_P_VALUE: Final = 0.05
 # 쪼개면 표본이 절반이 되어 흔들림이 커지므로, 같은 선을 요구하면 실체가 있는 칸도 떨어진다
 MIN_PERIOD_HIT_RATE: Final = 0.55
 
+# 손익비의 하한 (배수, 1.0 = 이길 때와 질 때가 같다). **손익분기 적중률 50%,
+# 곧 동전던지기라는 구조적 근거에서 온 값이며 실측을 보고 고른 값이 아니다.**
+#
+# **게이트가 아니라 등급인 이유가 실측에 있다.** 게이트로 쓰면 채택 매매법이 데이터 갱신만으로
+# 죽는다 — 옵션 만기일 DIA 12월이 손익비 **1.034** 로 경계에 붙어 있고 그 값이 **진 거래
+# 5건**으로 만들어졌다. 구간을 쪼개면 분모가 1~2건이 되어 값이 폭주하고(SPY 12월 최근
+# 10년 **16.822**, 진 2건), **전승 구간에서는 아예 정의되지 않는다**(역방향 매매의
+# QQQ K=10 은 7건 전승). 반대로 등급으로는 충분히 갈린다 — KODEX 200 9월은 **0.788**
+# 이고 그 값이 진 7건으로 만들어져 경계값이 아니다.
+# 근거는 `docs/strategy/옵션_만기일_매매_규칙.md` §2.3
+MIN_PAYOFF_RATIO: Final = 1.0
+
 # ============================================================
 # 판정 결과 스키마
 # ============================================================
@@ -94,6 +114,9 @@ COL_DIRECTION = "Direction"
 COL_HIT_RATE = "HitRate"
 COL_EXPECTED_VALUE = "ExpectedValue"
 COL_TOTAL_RETURN = "TotalReturn"
+COL_PAYOFF_RATIO = "PayoffRatio"
+COL_BREAKEVEN_HIT_RATE = "BreakevenHitRate"
+COL_LOSING_COUNT = "LosingCount"
 COL_BASELINE_HIT_RATE = "BaselineHitRate"
 COL_BASELINE_GAP = "BaselineGap"
 COL_P_VALUE = "PValue"
@@ -116,6 +139,7 @@ SCREEN_EXCLUDED: Final = "제외"
 SUPPORT_GAP: Final = "차이"
 SUPPORT_P_VALUE: Final = "우연확률"
 SUPPORT_PERIOD: Final = "시기"
+SUPPORT_PAYOFF: Final = "손익비"
 
 SCREENING_COLUMNS: Final = [
     COL_SAMPLE_COUNT,
@@ -123,6 +147,9 @@ SCREENING_COLUMNS: Final = [
     COL_HIT_RATE,
     COL_EXPECTED_VALUE,
     COL_TOTAL_RETURN,
+    COL_PAYOFF_RATIO,
+    COL_BREAKEVEN_HIT_RATE,
+    COL_LOSING_COUNT,
     COL_BASELINE_HIT_RATE,
     COL_BASELINE_GAP,
     COL_P_VALUE,
@@ -143,6 +170,10 @@ REQUIRED_SUMMARY_COLUMNS: Final = [
     COL_LOSS_RATE,
     COL_WIN_RATE_EXCESS,
     COL_LOSS_RATE_EXCESS,
+    COL_POSITIVE_MEAN,
+    COL_NEGATIVE_MEAN,
+    COL_POSITIVE_COUNT,
+    COL_NEGATIVE_COUNT,
 ]
 
 # 시기 집계표에서 읽는 입력 컬럼. **두 방향 비율이 모두 있어야 한다** —
@@ -156,7 +187,7 @@ def screen_candidates(
     *,
     axis_column: str,
 ) -> pd.DataFrame:
-    """축의 각 칸을 1차 게이트로 가르고 나머지 세 지표로 등급을 매긴다.
+    """축의 각 칸을 1차 게이트로 가르고 나머지 네 지표로 등급을 매긴다.
 
     **방향은 절대 비율이 아니라 기준선과의 거리로 정한다.** 주식은 원래 자주 올라
     오른 비율이 절반을 넘는 칸이 흔하므로, 절대 비율로 정하면 기준선보다 낮은 칸도 「위」가 된다.
@@ -240,6 +271,19 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
 
     screened = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
 
+    # **손익비는 게이트가 아니라 등급이다** (`MIN_PAYOFF_RATIO` 주석의 실측 근거).
+    # 방향을 정한 뒤라야 어느 쪽이 「이길 때」인지 알 수 있으므로 여기서 조립한다
+    positive_count = int(row[COL_POSITIVE_COUNT])
+    negative_count = int(row[COL_NEGATIVE_COUNT])
+    profile = payoff_profile(
+        positive_mean=float(row[COL_POSITIVE_MEAN]),
+        negative_mean=float(row[COL_NEGATIVE_MEAN]),
+        positive_count=positive_count,
+        negative_count=negative_count,
+        sample_count=int(row[COL_SAMPLE_COUNT]),
+        downward=downward,
+    )
+
     # 시기 항목은 **물을 수 있었을 때만** 등급에 넣는다. 표본이 모자라 못 물은 것을
     # 미충족으로 세면 표본이 작다는 이유로 두 번 깎인다
     checks: list[tuple[str, bool]] = [
@@ -248,6 +292,15 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
     ]
     if period_rates:
         checks.append((SUPPORT_PERIOD, min(period_rates) >= MIN_PERIOD_HIT_RATE))
+
+    # 손익비도 **잴 수 있었을 때만** 묻는다. 기준은 표본 수가 아니라 **결정된 거래 수**다 —
+    # 전부 보합인 칸은 표본이 있어도 이긴 적도 진 적도 없어, 표본으로 재면 「한 번도 지지
+    # 않았다」가 되어 **전승 칸과 구별되지 않는다.**
+    # **진 거래가 0건이면 충족이다** — 손익비가 수학적으로 무한대라 어떤 기준도 넘으며,
+    # 숫자로 못 적는다는 이유로 미충족으로 세면 «가장 좋은 칸»이 깎인다
+    if positive_count + negative_count > 0:
+        payoff_met = profile.losing_count == 0 or profile.payoff_ratio >= MIN_PAYOFF_RATIO
+        checks.append((SUPPORT_PAYOFF, payoff_met))
 
     unmet = [name for name, met in checks if not met]
 
@@ -258,6 +311,9 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
         COL_HIT_RATE: hit_rate,
         COL_EXPECTED_VALUE: expected_value,
         COL_TOTAL_RETURN: total_return,
+        COL_PAYOFF_RATIO: profile.payoff_ratio,
+        COL_BREAKEVEN_HIT_RATE: profile.breakeven_hit_rate,
+        COL_LOSING_COUNT: profile.losing_count,
         COL_BASELINE_HIT_RATE: hit_rate - gap,
         COL_BASELINE_GAP: gap,
         COL_P_VALUE: p_value,

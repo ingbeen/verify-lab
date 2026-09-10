@@ -24,8 +24,10 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
-from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.measure.statistics import payoff_from_returns
+from verify_lab.report.constants import DATE_FORMAT, PAYOFF_DECIMALS, PERCENT_DECIMALS
 from verify_lab.strategy.constants import (
+    DISPLAY_BREAKEVEN_WIN_RATE,
     DISPLAY_DIRECTION,
     DISPLAY_ENTRY_DATE,
     DISPLAY_ENTRY_PRICE,
@@ -38,10 +40,12 @@ from verify_lab.strategy.constants import (
     DISPLAY_HOLD_DAYS,
     DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_JUDGEABLE,
+    DISPLAY_LOSING_COUNT,
     DISPLAY_MAX,
     DISPLAY_MEAN,
     DISPLAY_MEAN_HOLD,
     DISPLAY_MIN,
+    DISPLAY_PAYOFF_RATIO,
     DISPLAY_PERIOD,
     DISPLAY_PERIOD_END,
     DISPLAY_PERIOD_START,
@@ -455,6 +459,7 @@ def _period_row(
     count = len(values)
     percent = values * RATE_TO_PERCENT
     empty = count == 0
+    payoff = payoff_from_returns(values)
 
     return {
         DISPLAY_PERIOD: period,
@@ -463,6 +468,13 @@ def _period_row(
         DISPLAY_TOTAL: np.nan if empty else round(float(percent.sum()), PERCENT_DECIMALS),
         DISPLAY_MEAN: np.nan if empty else round(float(percent.mean()), PERCENT_DECIMALS),
         DISPLAY_WIN_RATE: np.nan if empty else round(float((values > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        # **산식은 `measure` 가 소유한다.** 여기서 다시 계산하면 판정 계층과 조용히 갈라진다.
+        # 표본이 있는데 진 거래가 0 건인 것은 «사실»이므로 그때는 손익비만 비고 표본은 0 을 적는다
+        DISPLAY_PAYOFF_RATIO: np.nan if empty else round(payoff.payoff_ratio, PAYOFF_DECIMALS),
+        DISPLAY_BREAKEVEN_WIN_RATE: (
+            np.nan if empty else round(payoff.breakeven_hit_rate * RATE_TO_PERCENT, PERCENT_DECIMALS)
+        ),
+        DISPLAY_LOSING_COUNT: np.nan if empty else payoff.losing_count,
         DISPLAY_MAX: np.nan if empty else round(float(percent.max()), PERCENT_DECIMALS),
         DISPLAY_MIN: np.nan if empty else round(float(percent.min()), PERCENT_DECIMALS),
         # 표본이 하나뿐인 칸에서 표본표준편차는 정의되지 않는다. 0 으로 채우면 "흔들림이 없다"로

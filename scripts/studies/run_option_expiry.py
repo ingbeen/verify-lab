@@ -37,6 +37,7 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
     OUTPUT_LABELS,
+    PAYOFF_OUTPUT_COLUMNS,
     PERCENT_OUTPUT_COLUMNS,
     PROBABILITY_OUTPUT_COLUMNS,
     STUDY_NAME,
@@ -184,6 +185,7 @@ def _save(directory: Path, filename: str, table: pd.DataFrame) -> None:
         OUTPUT_LABELS,
         percent_columns=[column for column in PERCENT_OUTPUT_COLUMNS if column in columns],
         probability_columns=[column for column in PROBABILITY_OUTPUT_COLUMNS if column in columns],
+        payoff_columns=[column for column in PAYOFF_OUTPUT_COLUMNS if column in columns],
     )
     save_table(directory, filename, display)
 

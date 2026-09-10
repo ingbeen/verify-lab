@@ -165,6 +165,17 @@ DISPLAY_MAX: Final = "최고(%)"
 DISPLAY_MIN: Final = "최악(%)"
 DISPLAY_MEAN_HOLD: Final = "평균 보유일"
 
+# 손익비와 그 값을 읽는 데 필요한 것. **「손익비」는 측정 계층과 같은 말을 쓰고**
+# (두 산출물을 나란히 읽어야 한다), 나머지 둘만 이 계층의 어휘를 쓴다 —
+# `strategy/` 는 방향이 확정된 계층이라 「승률」·「질 때」가 무엇인지 정해져 있다
+# (`.claude/rules/docs.md` 용어 대응표의 예외).
+#
+# **질 때 표본은 손익비의 «분모»가 된 건수다.** 이 값이 없으면 5건으로 만든 1.034 와
+# 2건으로 만든 16.822 가 같은 무게로 읽힌다 (측정의 원칙 3)
+DISPLAY_PAYOFF_RATIO: Final = "손익비"
+DISPLAY_BREAKEVEN_WIN_RATE: Final = "손익분기 승률(%)"
+DISPLAY_LOSING_COUNT: Final = "질 때 표본"
+
 # 파라미터 표기. `studies` 와 같은 접두사를 쓴다 — 두 산출물을 나란히 놓고 볼 때 갈라지면 안 된다
 PARAMETER_PREFIX_RANK_CUT: Final = "K"
 
