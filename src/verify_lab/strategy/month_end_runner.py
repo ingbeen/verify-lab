@@ -131,11 +131,14 @@ class _Entries:
         entry_positions: 진입일의 위치 인덱스
         exit_positions: 청산일의 위치 인덱스
         entry_dates: 진입일
+        excluded_count: **그 달의** 제외 건수 — 청산일을 확정하지 못해 빠진 진입 수.
+            대상 전체 합계가 아니라 달별이어야 성적표의 한 칸에 실을 수 있다
     """
 
     entry_positions: list[int]
     exit_positions: list[int]
     entry_dates: pd.DatetimeIndex
+    excluded_count: int
 
 
 def _stop_applicable(dataset: Dataset) -> str:
@@ -211,8 +214,10 @@ def _collect_entries(dataset: Dataset, frame: pd.DataFrame) -> tuple[dict[int, _
     entries = month_entry_dates(trading_days, calendar_day=BASE_ENTRY_DAY)
     schedule = month_exit_schedule(trading_days, entries, exit_offset=BASE_EXIT_OFFSET)
 
-    usable = schedule.frame[schedule.frame[COL_EXCLUDED_REASON] == REASON_NONE]
-    excluded_count = len(schedule.frame) - len(usable)
+    kept = schedule.frame[COL_EXCLUDED_REASON] == REASON_NONE
+    usable = schedule.frame[kept]
+    dropped = schedule.frame[~kept]
+    excluded_count = len(dropped)
 
     by_month: dict[int, _Entries] = {}
     for month in ALL_MONTHS:
@@ -224,6 +229,9 @@ def _collect_entries(dataset: Dataset, frame: pd.DataFrame) -> tuple[dict[int, _
                 int(position) for position in trading_days.get_indexer(pd.DatetimeIndex(rows[COL_EXIT_DATE]))
             ],
             entry_dates=entry_dates,
+            # **달별로 쪼갠다.** 대상 합계를 칸마다 실으면 같은 건수가 216번 반복돼
+            # 「이 칸에서 몇 건이 빠졌나」를 답하지 못한다 (표본 보존)
+            excluded_count=int((dropped[COL_MONTH].dt.month == month).sum()),
         )
 
     logger.debug(f"{dataset.ticker}: 진입 {len(usable):,}건, 제외 {excluded_count:,}건")
@@ -334,7 +342,17 @@ def _run_cell(
     }
 
     # 성적 산식은 `periods` 가 소유한다. 구간 5개와 갭손절 집계가 여기서 나온다
-    for row in period_rows(entries.entry_dates, returns, last_day=last_day, hold_days=hold_days, reasons=reasons):
+    # **제외 건수를 넘긴다.** 전에는 넘기지 않아 `summary.json` 에만 남고 성적표의 제외가
+    # **구조적으로 항상 0** 이었다 — 값이 실제로 0 이어서 드러나지 않았을 뿐이다.
+    # 표본을 줄이는 처리는 몇 건이 왜 빠졌는지 함께 내야 한다 (패키지 절대 원칙 「표본 보존」)
+    for row in period_rows(
+        entries.entry_dates,
+        returns,
+        last_day=last_day,
+        hold_days=hold_days,
+        reasons=reasons,
+        excluded_count=entries.excluded_count,
+    ):
         accumulator.performance.append({**identity, **row})
 
 

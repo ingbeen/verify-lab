@@ -89,7 +89,8 @@ def period_rows(
         event_ids: 신호별 사건 번호. **주면 `사건` 컬럼이 구간마다 따로 세어지고,
             주지 않으면 그 컬럼 자체가 나오지 않는다** — 신호가 연 1회씩인 매매법은
             신호가 곧 사건이라 같은 값이 두 열에 실리고, 빈칸으로 두면 「세지 못했다」로 읽힌다
-        excluded_count: 청산일을 확정하지 못해 빠진 진입 수 (전체 행에만 적는다)
+        excluded_count: 청산일을 확정하지 못해 빠진 진입 수. **전체 행에만 적고
+            나머지 구간 행은 비운다** — 구간별 귀속 규칙이 없으므로 `0` 은 거짓이 된다
 
     Returns:
         구간마다 한 줄씩. 순서는 `PERIODS` 와 같다
@@ -128,7 +129,12 @@ def period_rows(
             values[masks[period]],
             days[masks[period]] if days is not None else None,
             labels[masks[period]] if labels is not None else None,
-            excluded_count if period == PERIOD_ALL else 0,
+            # **제외는 전체 행에만 적고 나머지는 비운다.** 제외된 신호는 보유 구간이 데이터 끝을
+            # 넘어간 것이라 **언제나 가장 최근**인데, 구간 행에 `0` 을 적으면 뒤 절반·최근 N년이
+            # 「제외 0건」이라고 **거짓으로 주장한다.** 어느 구간에 귀속되는지는 귀속 규칙을
+            # 정해야 알 수 있고(절반 경계는 «위치» 로 정의돼 제외 신호에는 적용되지 않는다)
+            # 그것은 별건이므로, 여기서는 「귀속시키지 않았다」를 빈칸으로 남긴다
+            excluded_count if period == PERIOD_ALL else np.nan,
             entry_dates[masks[period]],
             events[masks[period]] if events is not None else None,
         )
@@ -141,7 +147,7 @@ def _period_row(
     values: np.ndarray,
     days: np.ndarray | None,
     labels: np.ndarray | None,
-    excluded_count: int,
+    excluded_count: float,
     entry_dates: pd.DatetimeIndex,
     events: np.ndarray | None,
 ) -> dict[str, Any]:
@@ -162,7 +168,7 @@ def _period_row(
         values: 그 구간의 수익률 (비율)
         days: 그 구간의 보유 거래일 수
         labels: 그 구간의 청산 사유
-        excluded_count: 제외 건수
+        excluded_count: 제외 건수. 전체 구간이 아니면 `NaN` 이다
         entry_dates: 그 구간의 진입일. 기간의 양 끝을 여기서 낸다
         events: 그 구간의 사건 번호. `None` 이면 `사건` 컬럼을 내지 않는다
 

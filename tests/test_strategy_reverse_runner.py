@@ -538,16 +538,35 @@ class TestSamplePreservation:
         counted = int(row[DISPLAY_SIGNAL_COUNT]) + int(row[DISPLAY_EXCLUDED])
         assert counted == int(outputs.meta[KEY_TARGETS][0]["signal_count"])
 
-    def test_전부_체결되면_제외가_0이다(self, outputs: StrategyOutputs) -> None:
+    def test_전부_체결되면_전체_구간의_제외가_0이다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 제외가 없을 때 0 이 실린다. 빈칸으로 두면 "안 쟀다"로 읽힌다.
+        목적: 제외가 없을 때 전체 행에 0 이 실린다. 빈칸으로 두면 "안 쟀다"로 읽힌다.
 
         Given: 모든 신호의 보유 구간이 데이터 안에 있는 시세
         When: 실행하면
-        Then: 모든 행의 제외 건수가 0 이다
+        Then: 전체 구간 행의 제외 건수가 0 이다
         """
         # Given / When / Then
-        assert outputs.summary[DISPLAY_EXCLUDED].tolist() == [0] * len(outputs.summary)
+        assert int(_overall(outputs.summary)[DISPLAY_EXCLUDED]) == 0
+
+    def test_구간_행의_제외는_비어_있다(self, outputs: StrategyOutputs) -> None:
+        """
+        목적: 구간 행이 「제외 0건」이라고 **거짓으로 주장하지 않는지** 고정한다
+
+        제외된 신호는 보유 구간이 데이터 끝을 넘어간 것이라 **언제나 가장 최근**이다.
+        그래서 뒤 절반·최근 N년 행에 `0` 을 적으면 사실과 반대가 될 수 있다.
+        귀속 규칙이 없으므로 「귀속시키지 않았다」를 빈칸으로 남긴다.
+
+        Given: 실행 결과의 성적표
+        When: 전체가 아닌 구간 행을 봤을 때
+        Then: 제외 칸이 비어 있다
+        """
+        # Given
+        others = outputs.summary[outputs.summary[DISPLAY_PERIOD] != PERIOD_ALL]
+
+        # When / Then
+        assert len(others) == len(PERIODS) - 1
+        assert others[DISPLAY_EXCLUDED].isna().all()
 
 
 class TestInputValidation:

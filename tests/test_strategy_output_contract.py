@@ -41,6 +41,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
+from verify_lab.report.constants import DISPLAY_EXCLUDED
 from verify_lab.strategy import month_end_runner, option_expiry_runner
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
@@ -593,6 +594,29 @@ class TestReversePeriods:
         assert summary[DISPLAY_PERIOD].tolist() == list(PERIODS)
         assert (summary.loc[summary[DISPLAY_SIGNAL_COUNT] < 10, DISPLAY_JUDGEABLE] == JUDGEABLE_NO).all()
 
+    def test_구간_행의_제외는_세_매매법_모두_비어_있다(
+        self,
+        reverse_outputs: StrategyOutputs,
+        expiry_outputs: ExpiryOutputs,
+        month_end_outputs: TradingOutputs,
+    ) -> None:
+        """
+        목적: 같은 컬럼이 매매법마다 다른 뜻이 되지 않게 고정한다
+
+        제외된 신호는 보유 구간이 데이터 끝을 넘어간 것이라 **언제나 가장 최근**이다.
+        구간 행에 `0` 을 적으면 뒤 절반·최근 N년이 「제외 0건」이라고 **거짓으로 주장**한다.
+        전에는 월말만 이 컬럼을 아예 받지 못해 **구조적으로 항상 0** 이기도 했다.
+
+        Given: 세 매매법의 성적표
+        When: 전체가 아닌 구간 행의 제외 칸을 봤을 때
+        Then: 셋 다 비어 있다
+        """
+        # Given / When / Then
+        for table in (reverse_outputs.summary, expiry_outputs.grid, month_end_outputs.performance):
+            others = table[table[DISPLAY_PERIOD] != PERIODS[0]]
+            assert not others.empty
+            assert others[DISPLAY_EXCLUDED].isna().all()
+
     def test_표본이_0건인_구간은_지표를_비운다(self, tmp_path: Path) -> None:
         """
         목적: 구현 못하는 칸이 0 이 아니라 빈칸임을 고정한다
@@ -728,9 +752,7 @@ class TestFixedStopTable:
         fixed = month_end_outputs.performance_fixed_stop
 
         # When
-        merged = fixed.merge(
-            month_end_outputs.performance[keys].drop_duplicates(), on=keys, how="left", indicator=True
-        )
+        merged = fixed.merge(month_end_outputs.performance[keys].drop_duplicates(), on=keys, how="left", indicator=True)
 
         # Then
         assert len(merged) == len(fixed), "행이 불었습니다 — 키가 행을 특정하지 못합니다"

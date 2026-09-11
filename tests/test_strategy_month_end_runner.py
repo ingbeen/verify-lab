@@ -31,6 +31,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS_KRW,
 )
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
+from verify_lab.report.constants import DISPLAY_EXCLUDED
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_EXIT_REASON,
@@ -42,6 +43,7 @@ from verify_lab.strategy.constants import (
     EXIT_LIMIT,
     MONTH_END_STOP_LEVELS,
     NO_STOP_LABEL,
+    PERIOD_ALL,
     PERIODS,
     stop_level_value,
 )
@@ -60,7 +62,7 @@ SYNTHETIC_END = "2023-12-31"
 PERCENT_TOLERANCE = 0.1
 
 
-def _write_market(directory: Path, ticker: str) -> Dataset:
+def _write_market(directory: Path, ticker: str, days: pd.DatetimeIndex | None = None) -> Dataset:
     """장중 등락이 있는 합성 ETF 시세를 만든다.
 
     **고가·저가를 종가에서 벌려 둔다** — 장중 손절이 실제로 걸리는지 보려면 일중 범위가 있어야 한다.
@@ -68,11 +70,13 @@ def _write_market(directory: Path, ticker: str) -> Dataset:
     Args:
         directory: 파일을 쓸 폴더
         ticker: 종목 코드
+        days: 거래일 달력. **제외를 만들려면 거래일을 비워야 하므로 받는다** —
+            어느 달의 20일 이전이 전부 휴장이면 그 달은 진입일을 잡을 수 없다
 
     Returns:
         시세 스키마 대상 정의
     """
-    days = pd.bdate_range(SYNTHETIC_START, SYNTHETIC_END)
+    days = pd.bdate_range(SYNTHETIC_START, SYNTHETIC_END) if days is None else days
     closes = [10_000 + (index % 29) * 97 - (index % 13) * 61 for index in range(len(days))]
     highs = [close + 180 for close in closes]
     lows = [close - 180 for close in closes]
@@ -336,6 +340,58 @@ class TestStopLoss:
 
 class TestSamplePreservation:
     """표본이 조용히 사라지지 않는다"""
+
+    def test_제외_건수가_성적표에_실린다(self, tmp_path: Path) -> None:
+        """
+        목적: 제외 건수가 **성적표까지** 오는지 고정한다.
+
+        전에는 `_collect_entries` 가 센 값이 `summary.json` 에만 가고 성적표에는 안 왔다 —
+        성적표의 제외가 **구조적으로 항상 0** 이었고, 실제 값도 0 이어서 드러나지 않았다.
+        표본을 줄이는 처리는 몇 건이 왜 빠졌는지 함께 내야 한다 (절대 원칙 「표본 보존」).
+
+        **달별로 센다.** 대상 합계를 칸마다 실으면 같은 건수가 216번 반복된다.
+
+        Given: 6월 20일 이전이 전부 휴장인 달력 — 그 달은 진입일을 잡을 수 없다
+        When: 격자를 돌린다
+        Then: 6월 전체 행의 제외가 1 이고 다른 달은 0 이다
+        """
+        # Given
+        gap_year, gap_month = 2021, 6
+        days = pd.DatetimeIndex(
+            [
+                day
+                for day in pd.bdate_range(SYNTHETIC_START, SYNTHETIC_END)
+                if not (day.year == gap_year and day.month == gap_month and day.day <= 20)
+            ]
+        )
+        dataset = _write_market(tmp_path, "999911", days)
+
+        # When
+        overall = run_month_end_trading((dataset,)).performance
+        overall = overall[overall[DISPLAY_PERIOD] == PERIOD_ALL]
+
+        # Then
+        counts = overall.groupby(DISPLAY_MONTH)[DISPLAY_EXCLUDED].max()
+        assert counts[gap_month] == 1, f"6월 제외가 1 이 아닙니다: {counts[gap_month]}"
+        assert set(counts.drop(gap_month)) == {0}, f"다른 달에 제외가 섞였습니다: {counts.to_dict()}"
+
+    def test_구간_행의_제외는_비어_있다(self, outputs: TradingOutputs) -> None:
+        """
+        목적: 구간 행이 「제외 0건」이라고 **거짓으로 주장하지 않는지** 고정한다.
+
+        제외된 신호는 **언제나 가장 최근**이므로, 뒤 절반·최근 N년에 `0` 을 적으면
+        사실과 반대가 될 수 있다. 귀속 규칙이 없으니 빈칸으로 남긴다.
+
+        Given: 격자 성적표
+        When: 전체가 아닌 구간 행을 봤을 때
+        Then: 제외 칸이 비어 있다
+        """
+        # Given
+        others = outputs.performance[outputs.performance[DISPLAY_PERIOD] != PERIOD_ALL]
+
+        # When / Then
+        assert not others.empty
+        assert others[DISPLAY_EXCLUDED].isna().all()
 
     def test_trade_count_matches_across_stop_levels(self, outputs: TradingOutputs) -> None:
         """
