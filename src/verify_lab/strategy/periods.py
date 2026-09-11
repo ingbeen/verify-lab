@@ -9,6 +9,11 @@
 
 **표본이 모자란 구간도 행을 남긴다.** 0건이어도 행이 있고 `판정가능` 이 「아니오」다 —
 행이 사라지면 사용자가 그 구간을 못 봤다는 사실 자체를 모른다.
+
+**`사건` 은 번호를 넘긴 매매법만 받는다.** 한 달에 몰린 폭락일을 묶어 세야 하는 매매법
+(역방향)은 구간마다 사건 수가 달라지므로 여기서 센다. 신호가 연 1회씩인 매매법
+(옵션 만기일·월말)은 신호가 곧 사건이라 **컬럼 자체를 내지 않는다** — 빈칸으로 두면
+「세지 못했다」로 읽히고, 같은 값을 두 열에 싣는 것도 대조를 방해한다.
 """
 
 from collections.abc import Sequence
@@ -22,7 +27,8 @@ from verify_lab.measure.statistics import payoff_from_returns
 from verify_lab.report.constants import DATE_FORMAT, PAYOFF_DECIMALS, PERCENT_DECIMALS
 from verify_lab.strategy.constants import (
     DISPLAY_BREAKEVEN_WIN_RATE,
-    DISPLAY_EXCLUDED_COUNT,
+    DISPLAY_EVENT_COUNT,
+    DISPLAY_EXCLUDED,
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_JUDGEABLE,
@@ -60,6 +66,7 @@ def period_rows(
     last_day: pd.Timestamp,
     hold_days: Sequence[int] | None = None,
     reasons: Sequence[str] | None = None,
+    event_ids: Sequence[int] | None = None,
     excluded_count: int = 0,
 ) -> list[dict[str, Any]]:
     """체결 목록을 구간별로 갈라 성적 행들을 만든다.
@@ -79,6 +86,9 @@ def period_rows(
         last_day: 시세의 마지막 거래일. 「최근 N년」의 기준점이다
         hold_days: 신호별 보유 거래일 수. 없으면 평균 보유일을 비운다
         reasons: 신호별 청산 사유. 없으면 손절 건수를 비운다
+        event_ids: 신호별 사건 번호. **주면 `사건` 컬럼이 구간마다 따로 세어지고,
+            주지 않으면 그 컬럼 자체가 나오지 않는다** — 신호가 연 1회씩인 매매법은
+            신호가 곧 사건이라 같은 값이 두 열에 실리고, 빈칸으로 두면 「세지 못했다」로 읽힌다
         excluded_count: 청산일을 확정하지 못해 빠진 진입 수 (전체 행에만 적는다)
 
     Returns:
@@ -90,11 +100,18 @@ def period_rows(
     if len(entry_dates) != len(returns):
         raise ValueError(f"진입일과 수익률의 길이가 다릅니다: 진입일 {len(entry_dates)}개, 수익률 {len(returns)}개")
 
+    # **선택 인자도 나란한 배열이다.** 길이가 어긋나면 아래 마스크 적용에서 numpy 가
+    # 영문 `IndexError` 를 내고 어느 인자가 잘못됐는지 말해 주지 않는다
+    for name, values in (("보유일", hold_days), ("청산 사유", reasons), ("사건 번호", event_ids)):
+        if values is not None and len(values) != len(returns):
+            raise ValueError(f"{name}의 길이가 수익률과 다릅니다: {name} {len(values)}개, 수익률 {len(returns)}개")
+
     total = len(returns)
     half = total // 2
     values = np.asarray(returns, dtype=float)
     days = np.asarray(hold_days, dtype=float) if hold_days is not None else None
     labels = np.asarray(reasons, dtype=object) if reasons is not None else None
+    events = np.asarray(event_ids, dtype=np.int64) if event_ids is not None else None
 
     # 홀수면 뒤 절반이 하나 많다. `studies` 의 시기 2등분과 같은 규칙이라 두 산출물이 어긋나지 않는다
     masks: dict[str, np.ndarray] = {
@@ -113,6 +130,7 @@ def period_rows(
             labels[masks[period]] if labels is not None else None,
             excluded_count if period == PERIOD_ALL else 0,
             entry_dates[masks[period]],
+            events[masks[period]] if events is not None else None,
         )
         for period in PERIODS
     ]
@@ -125,6 +143,7 @@ def _period_row(
     labels: np.ndarray | None,
     excluded_count: int,
     entry_dates: pd.DatetimeIndex,
+    events: np.ndarray | None,
 ) -> dict[str, Any]:
     """구간 하나의 집계를 만든다.
 
@@ -145,6 +164,7 @@ def _period_row(
         labels: 그 구간의 청산 사유
         excluded_count: 제외 건수
         entry_dates: 그 구간의 진입일. 기간의 양 끝을 여기서 낸다
+        events: 그 구간의 사건 번호. `None` 이면 `사건` 컬럼을 내지 않는다
 
     Returns:
         성적표 한 줄
@@ -154,10 +174,10 @@ def _period_row(
     empty = count == 0
     payoff = payoff_from_returns(values)
 
-    return {
+    row: dict[str, Any] = {
         DISPLAY_PERIOD: period,
         DISPLAY_SIGNAL_COUNT: count,
-        DISPLAY_EXCLUDED_COUNT: excluded_count,
+        DISPLAY_EXCLUDED: excluded_count,
         DISPLAY_TOTAL: np.nan if empty else round(float(percent.sum()), PERCENT_DECIMALS),
         DISPLAY_MEAN: np.nan if empty else round(float(percent.mean()), PERCENT_DECIMALS),
         DISPLAY_WIN_RATE: np.nan if empty else round(float((values > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS),
@@ -187,6 +207,14 @@ def _period_row(
         DISPLAY_PERIOD_START: np.nan if empty else entry_dates.min().strftime(DATE_FORMAT),
         DISPLAY_PERIOD_END: np.nan if empty else entry_dates.max().strftime(DATE_FORMAT),
     }
+
+    # **사건 수는 번호를 넘긴 매매법만 낸다.** 같은 사건에서 파생된 신호를 묶어 세는 것이
+    # 측정의 원칙 5 이고, 구간을 쪼개면 그 수도 구간마다 달라야 한다.
+    # 맨 뒤에 붙는 것은 매매법 고유 컬럼이기 때문이다
+    if events is not None:
+        row[DISPLAY_EVENT_COUNT] = np.nan if empty else int(np.unique(events).size)
+
+    return row
 
 
 __all__ = ["period_rows"]

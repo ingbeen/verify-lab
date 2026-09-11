@@ -1,7 +1,8 @@
 """역방향 매매 실행 — 대상과 보유 한도를 순회해 산출물을 조립한다
 
-이 모듈은 **매매 규칙을 계산하지 않는다.** 신호 판정은 `studies`, 체결은 `reverse_trading` 이
-이미 하므로, 하는 일은 그것을 조합해 돌리고 사람이 읽을 형태로 쌓는 것이다.
+이 모듈은 **매매 규칙을 계산하지 않는다.** 신호 판정은 `studies`, 체결은 `strategy/trade_fill.py`,
+구간별 성적은 `strategy/periods.py` 가 이미 하므로, 하는 일은 그것을 조합해 돌리고
+사람이 읽을 형태로 쌓는 것이다.
 
 **보유 한도는 자금을 나누는 축이 아니라 비교 축이다.** 한 포지션이 두 한도를 동시에 가질 수
 없으므로, 한도별 결과는 "어느 쪽을 택할지"의 비교표다. 하나를 고르면 표본에 맞춘 튜닝이 되므로
@@ -17,41 +18,40 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
-from verify_lab.measure.statistics import payoff_from_returns
-from verify_lab.report.constants import DATE_FORMAT, DISPLAY_EXCLUDED, PAYOFF_DECIMALS, PERCENT_DECIMALS
+from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
 from verify_lab.strategy.constants import (
-    DISPLAY_BREAKEVEN_WIN_RATE,
     DISPLAY_CHANGE_RATE,
-    DISPLAY_DATE,
     DISPLAY_DIRECTION,
+    DISPLAY_ENTRY_DATE,
     DISPLAY_ENTRY_PRICE,
-    DISPLAY_EVENT_COUNT,
     DISPLAY_EVENT_ID,
+    DISPLAY_EXIT_DATE,
+    DISPLAY_EXIT_PRICE,
     DISPLAY_EXIT_REASON,
     DISPLAY_HOLD_DAYS,
-    DISPLAY_LOSING_COUNT,
-    DISPLAY_MAX,
-    DISPLAY_MEAN,
-    DISPLAY_MEAN_HOLD,
-    DISPLAY_MIN,
     DISPLAY_PARAMETER,
-    DISPLAY_PAYOFF_RATIO,
     DISPLAY_RETURN,
-    DISPLAY_SIGNAL_COUNT,
     DISPLAY_START_YEAR,
+    DISPLAY_STOP_APPLICABLE,
+    DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
-    DISPLAY_TOTAL,
-    DISPLAY_WIN_RATE,
-    HOLD_DAYS_DECIMALS,
     HOLD_LIMIT,
     PARAMETER_PREFIX_RANK_CUT,
+    STOP_APPLICABLE,
     STOP_LOSS_LEVEL,
     TARGETS,
     Target,
+    stop_level_value,
 )
+from verify_lab.strategy.periods import period_rows
 from verify_lab.strategy.trade_fill import TradeResult, simulate_signal
 from verify_lab.studies.reverse.annotations import assign_event_ids
-from verify_lab.studies.reverse.constants import EVENT_GAP_DAYS, EXTREME_DIRECTION_LABELS, Direction
+from verify_lab.studies.reverse.constants import (
+    DISPLAY_DIRECTION_REVERSE_ALL,
+    EVENT_GAP_DAYS,
+    EXTREME_DIRECTION_LABELS,
+    Direction,
+)
 from verify_lab.studies.reverse.daily_change import daily_change_rate
 from verify_lab.studies.reverse.extreme_move import expanding_rank, find_extreme_move_events
 from verify_lab.utils.logger import get_logger
@@ -59,11 +59,18 @@ from verify_lab.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # 산출물의 식별 컬럼. 두 표 모두 이 순서로 앞에 붙는다 —
-# 조합을 한 파일에 쌓으므로 어느 행이 어떤 설정의 결과인지가 행 자체에 있어야 한다
+# 조합을 한 파일에 쌓으므로 어느 행이 어떤 설정의 결과인지가 행 자체에 있어야 한다.
+#
+# **순서는 세 매매법이 공유하는 계약이다** (`tests/test_strategy_output_contract.py`).
+# `방향` 은 두 표에서 «다른 것»을 가리킨다 — 성적표는 두 방향을 합친 표본이라 `역방향 전체`,
+# 거래내역은 그 신호가 폭등이었나 폭락이었나다. 거는 쪽은 언제나 그 반대다
 IDENTITY_COLUMNS = (
     DISPLAY_TICKER,
     DISPLAY_PARAMETER,
     DISPLAY_START_YEAR,
+    DISPLAY_DIRECTION,
+    DISPLAY_STOP_LEVEL,
+    DISPLAY_STOP_APPLICABLE,
 )
 
 # ============================================================
@@ -90,7 +97,7 @@ KEY_ENTRY = "entry"
 KEY_EXIT = "exit"
 
 KEY_TRADES = "trades"
-KEY_SUMMARY = "summary_by_target"
+KEY_SUMMARY = "summary"
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 신호일 종가다. 15:20 판정 후 종가 단일가매매로 체결하는 것을 전제하며, 익일 시가 집행이 아니다"
@@ -123,14 +130,23 @@ class _Block:
         returns: 신호별 수익률 (비율 원값). **집계는 이 값으로 한다** —
             반올림된 표에서 다시 평균을 내면 이중 반올림으로 합계가 어긋난다
         hold_days: 신호별 보유일 (진입일로부터의 거래일 수)
+        reasons: 신호별 청산 사유. 구간별 손절 건수를 이것으로 센다
+        entry_dates: 신호별 진입일. **구간 분해가 이것으로 행을 나눈다**
+        event_ids: 신호별 사건 번호. 구간마다 사건 수를 따로 센다 (측정의 원칙 5)
         excluded_count: 보유 한도가 데이터 끝을 넘어가 체결을 만들지 못한 신호 수.
             **버린 건수를 세어 보고한다** — 조용히 사라진 표본은 생존편향을 만든다
+        last_day: 시세의 마지막 거래일. 「최근 N년」의 기준점이다 —
+            실행 시각을 쓰면 코드를 안 고쳐도 날짜가 지나면 결과가 바뀌어 재현되지 않는다
     """
 
     trades: pd.DataFrame
     returns: list[float]
     hold_days: list[int]
+    reasons: list[str]
+    entry_dates: list[pd.Timestamp]
+    event_ids: list[int]
     excluded_count: int
+    last_day: pd.Timestamp
 
 
 @dataclass(frozen=True)
@@ -191,7 +207,7 @@ def run_reverse_trading(
             continue
 
         trade_blocks.append(block.trades)
-        summary_rows.append(_summarize(target, block))
+        summary_rows.extend(_summary_rows(target, block, stop_level=stop_level))
 
     trades = pd.concat(trade_blocks, ignore_index=True) if trade_blocks else pd.DataFrame()
     summary = pd.DataFrame(summary_rows)
@@ -200,7 +216,7 @@ def run_reverse_trading(
         KEY_STRATEGY: "reverse_trading",
         KEY_TARGETS: target_records,
         KEY_RULE: {
-            KEY_STOP_LEVEL: round(stop_level * RATE_TO_PERCENT, PERCENT_DECIMALS),
+            KEY_STOP_LEVEL: stop_level_value(stop_level),
             KEY_HOLD_LIMIT: hold_limit,
             KEY_ENTRY: NOTE_ENTRY,
             KEY_EXIT: NOTE_STOP_BASE,
@@ -284,6 +300,9 @@ def _measure(
     rows: list[dict[str, Any]] = []
     returns: list[float] = []
     hold_days: list[int] = []
+    reasons: list[str] = []
+    entry_dates: list[pd.Timestamp] = []
+    event_ids: list[int] = []
     excluded_count = 0
 
     for order, position in enumerate(signals.positions):
@@ -300,16 +319,52 @@ def _measure(
             excluded_count += 1
             continue
 
-        rows.append(_trade_row(target, signals, order, position, result))
+        rows.append(_trade_row(target, signals, order, position, result, stop_level))
         returns.append(result.return_rate)
         hold_days.append(result.hold_days)
+        reasons.append(result.reason)
+        entry_dates.append(pd.Timestamp(frame.iloc[int(position)][COL_DATE]))
+        event_ids.append(int(signals.event_ids[order]))
 
     return _Block(
         trades=pd.DataFrame(rows),
         returns=returns,
         hold_days=hold_days,
+        reasons=reasons,
+        entry_dates=entry_dates,
+        event_ids=event_ids,
         excluded_count=excluded_count,
+        last_day=pd.Timestamp(frame[COL_DATE].iloc[-1]),
     )
+
+
+def _identity(target: Target, *, direction: str, stop_level: float) -> dict[str, Any]:
+    """행을 식별하는 앞 컬럼들을 만든다.
+
+    **손절선을 행 안에 둔다.** 전 행이 같은 값이지만, 없으면 그 표가 −5% 적용 성적인지
+    무손절인지 **산출물만 봐서는 판별되지 않는다** — 실제로 역방향 체결 160건 중 19건이
+    손절로 나갔는데 성적표에 그 사실이 남지 않았다.
+
+    Args:
+        target: 매매 대상
+        direction: 방향 표기. 성적표는 두 방향을 합친 표본이라 `역방향 전체` 이고,
+            거래내역은 그 신호가 폭등이었나 폭락이었나다
+        stop_level: 손절선 (비율)
+
+    Returns:
+        식별 컬럼 dict
+    """
+    return {
+        DISPLAY_TICKER: target.dataset.ticker,
+        DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
+        DISPLAY_START_YEAR: target.start_year,
+        DISPLAY_DIRECTION: direction,
+        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
+        # **언제나 「가능」인 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
+        # 그 로더가 시가·고가·저가를 요구하므로 종가 계열(지수)은 읽는 단계에서 거부된다 —
+        # 그래서 값을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다
+        DISPLAY_STOP_APPLICABLE: STOP_APPLICABLE,
+    }
 
 
 def _trade_row(
@@ -318,8 +373,12 @@ def _trade_row(
     order: int,
     position: int,
     result: TradeResult,
+    stop_level: float,
 ) -> dict[str, Any]:
     """신호 하나의 체결 결과를 표 행으로 바꾼다.
+
+    **청산가는 실제 체결가다.** 손절이 걸린 체결은 한도일 종가가 아니라 손절가(또는 갭이
+    열린 시가)에 나가므로, 한도일 종가를 적으면 사용자가 차트와 대조할 때 어긋난다.
 
     Args:
         target: 매매 대상
@@ -327,66 +386,69 @@ def _trade_row(
         order: 신호 목록 안에서의 순서
         position: 시세에서의 위치 인덱스
         result: 체결 결과
+        stop_level: 손절선 (비율)
 
     Returns:
         표 한 줄
     """
-    row = signals.frame.iloc[position]
+    frame = signals.frame
+    row = frame.iloc[position]
     upward = bool(signals.upward[order])
     direction = Direction.UP if upward else Direction.DOWN
+    entry_price = float(row[COL_CLOSE])
+
+    # 수익률은 방향 부호가 적용된 값이므로, 체결가를 되돌리려면 같은 부호를 다시 곱한다
+    sign = -1.0 if upward else 1.0
+    exit_price = entry_price * (1.0 + sign * result.return_rate)
 
     return {
-        DISPLAY_TICKER: target.dataset.ticker,
-        DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
-        DISPLAY_START_YEAR: target.start_year,
-        DISPLAY_DATE: pd.Timestamp(row[COL_DATE]).strftime(DATE_FORMAT),
-        DISPLAY_DIRECTION: EXTREME_DIRECTION_LABELS[direction],
-        DISPLAY_ENTRY_PRICE: round(float(row[COL_CLOSE]), target.dataset.price_decimals),
+        **_identity(target, direction=EXTREME_DIRECTION_LABELS[direction], stop_level=stop_level),
+        DISPLAY_ENTRY_DATE: pd.Timestamp(row[COL_DATE]).strftime(DATE_FORMAT),
+        DISPLAY_ENTRY_PRICE: round(entry_price, target.dataset.price_decimals),
+        DISPLAY_EXIT_DATE: pd.Timestamp(frame.iloc[position + result.hold_days][COL_DATE]).strftime(DATE_FORMAT),
+        DISPLAY_HOLD_DAYS: result.hold_days,
+        DISPLAY_EXIT_PRICE: round(exit_price, target.dataset.price_decimals),
+        DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_EXIT_REASON: result.reason,
         DISPLAY_CHANGE_RATE: round(float(signals.change_rates[order]) * RATE_TO_PERCENT, PERCENT_DECIMALS),
         DISPLAY_EVENT_ID: int(signals.event_ids[order]),
-        DISPLAY_EXIT_REASON: result.reason,
-        DISPLAY_HOLD_DAYS: result.hold_days,
-        DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
     }
 
 
-def _summarize(target: Target, block: _Block) -> dict[str, Any]:
-    """한 대상의 집계를 만든다.
+def _summary_rows(target: Target, block: _Block, *, stop_level: float) -> list[dict[str, Any]]:
+    """한 대상의 성적을 구간마다 한 줄씩 만든다.
+
+    **산식은 `strategy/periods.py` 가 소유한다.** 구간 5행은 측정의 원칙 17 이 **모든**
+    매매법에 요구하는 축이므로, 여기서 다시 구현하면 같은 원칙이 매매법마다 다른 답을 낸다.
 
     **`신호 + 제외 = 그 대상의 전체 신호 수`** 가 성립한다. 「신호」는 체결을 만든 수이고
     「제외」는 보유 한도가 데이터 끝을 넘어가 버린 수다. 전체 신호 수는 실행 요약에 있다.
 
+    **방향은 `역방향 전체` 하나다.** 이 표본은 폭등 신호와 폭락 신호를 합친 것이라 「위」도
+    「아래」도 아니며, 확정 규칙이 그 합친 것을 쓴다.
+
     Args:
         target: 매매 대상
         block: 그 대상의 체결 내역과 원값
+        stop_level: 손절선 (비율)
 
     Returns:
-        집계 한 줄
+        구간마다 한 줄씩
     """
-    returns = pd.Series(block.returns)
-    percent = returns * RATE_TO_PERCENT
+    identity = _identity(target, direction=DISPLAY_DIRECTION_REVERSE_ALL, stop_level=stop_level)
 
-    # **산식은 `measure` 가 소유한다.** 여기서 다시 계산하면 판정 계층과 조용히 갈라진다.
-    # 체결 수익률은 이미 방향이 반영된 실현 손익이라 부호를 뒤집지 않는다
-    payoff = payoff_from_returns(block.returns)
-
-    return {
-        DISPLAY_TICKER: target.dataset.ticker,
-        DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
-        DISPLAY_START_YEAR: target.start_year,
-        DISPLAY_SIGNAL_COUNT: len(returns),
-        DISPLAY_EXCLUDED: block.excluded_count,
-        DISPLAY_EVENT_COUNT: int(block.trades[DISPLAY_EVENT_ID].nunique()),
-        DISPLAY_TOTAL: round(float(percent.sum()), PERCENT_DECIMALS),
-        DISPLAY_MEAN: round(float(percent.mean()), PERCENT_DECIMALS),
-        DISPLAY_WIN_RATE: round(float((returns > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS),
-        DISPLAY_PAYOFF_RATIO: round(payoff.payoff_ratio, PAYOFF_DECIMALS),
-        DISPLAY_BREAKEVEN_WIN_RATE: round(payoff.breakeven_hit_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
-        DISPLAY_LOSING_COUNT: payoff.losing_count,
-        DISPLAY_MAX: round(float(percent.max()), PERCENT_DECIMALS),
-        DISPLAY_MIN: round(float(percent.min()), PERCENT_DECIMALS),
-        DISPLAY_MEAN_HOLD: round(float(pd.Series(block.hold_days).mean()), HOLD_DAYS_DECIMALS),
-    }
+    return [
+        {**identity, **row}
+        for row in period_rows(
+            pd.DatetimeIndex(block.entry_dates),
+            block.returns,
+            last_day=block.last_day,
+            hold_days=block.hold_days,
+            reasons=block.reasons,
+            event_ids=block.event_ids,
+            excluded_count=block.excluded_count,
+        )
+    ]
 
 
 def _target_record(target: Target, signals: _Signals, excluded_count: int) -> dict[str, Any]:

@@ -50,8 +50,10 @@ from verify_lab.strategy.constants import (
     DISPLAY_TICKER,
     FIXED_STOP_LEVEL,
     MONTH_END_STOP_LEVELS,
+    NO_STOP_LABEL,
     STOP_APPLICABLE,
     STOP_NOT_APPLICABLE,
+    stop_level_value,
 )
 from verify_lab.strategy.periods import period_rows
 from verify_lab.strategy.trade_fill import simulate_scheduled_trade
@@ -70,9 +72,6 @@ logger = get_logger(__name__)
 
 # 월 축의 한글 레이블. 이 파일에서만 쓰므로 여기에 둔다
 DISPLAY_MONTH = "월"
-
-# 손절선 축에서 무손절을 가리키는 값. **비워 두지 않는다** — 빈칸은 「값을 못 구했다」로 읽힌다
-DISPLAY_NO_STOP = "무손절"
 
 # 달력의 열두 달. 신호가 있는 달만 고르지 않는다 — 눈에 띄는 달만 돌리면 그 선택이
 # 손절 결과에도 그대로 실린다
@@ -103,8 +102,10 @@ class TradingOutputs:
     Attributes:
         trades: 체결 원자료. 진입·청산 날짜와 실제 체결가가 들어 있다 (측정의 원칙 8)
         performance: 종목 × 월 × 방향 × 손절선 × 구간의 성적표
-        performance_fixed_stop: 위 표에서 손절선 하나만 골라 그 컬럼을 뺀 것.
-            **대상 넷을 한 장에서 견주기 위한 표**이며 값은 격자에서 그대로 온다
+        performance_fixed_stop: 위 표에서 확정 손절선 행만 골라낸 것. **컬럼 구성은 같다** —
+            ETF 행은 확정값이고 지수 행은 무손절이라 `손절선(%)` 을 빼면 두 행이 다른 규칙으로
+            만들어진 성적임을 알 수 없다. **대상 넷을 한 장에서 견주기 위한 표**이며
+            값은 격자에서 그대로 온다
         summary: 실행 요약
     """
 
@@ -137,21 +138,6 @@ class _Entries:
     entry_dates: pd.DatetimeIndex
 
 
-def stop_level_label(stop_level: float | None) -> str:
-    """손절선을 표시용 문자열로 바꾼다.
-
-    Args:
-        stop_level: 손절선 (비율). `None` 이면 무손절
-
-    Returns:
-        `5.0` 형태의 백분율 문자열, 또는 무손절 표기
-    """
-    if stop_level is None:
-        return DISPLAY_NO_STOP
-
-    return f"{stop_level * RATE_TO_PERCENT:.1f}"
-
-
 def _stop_applicable(dataset: Dataset) -> str:
     """그 대상에 장중 손절을 걸 수 있었는지 표기를 낸다.
 
@@ -176,26 +162,35 @@ def _fixed_stop_table(performance: pd.DataFrame) -> pd.DataFrame:
     **지수는 그 손절선 행이 없으므로 무손절 행을 쓴다.** 걸러내면 지수가 표에서 통째로
     사라지는데, 30년 축을 보려고 넣은 것이라 목적이 없어진다.
 
+    **`손절선(%)` 컬럼을 남긴다.** 전에는 「전 행이 같은 값」이라며 드롭했는데 **이 표에서는
+    그 전제가 애초에 성립하지 않는다** — ETF 행은 −5% 이고 지수 행은 무손절이라 두 행이
+    서로 다른 규칙으로 만들어진 성적이다. 컬럼이 없으면 `손절적용` 으로 그것을 추측해야 하고,
+    「가능」이 −5% 인지 −3% 인지는 알 수 없다(같은 칸이 −3% 면 합계가 13.17%, −5% 면 21.36% 다).
+
+    **그래서 이 표는 `성적표.csv` 와 컬럼이 같고 행만 골라낸 것이 된다.** 그래도 따로 내는
+    이유는 그 행 집합이 **단순 필터로 재현되지 않기** 때문이다 — ETF 도 무손절 행을 갖기에
+    「−5% 또는 무손절」로 걸면 ETF 무손절 행이 섞여 들어온다(실측 720행 대 480행).
+
     Args:
         performance: 손절선 격자 성적표
 
     Returns:
-        손절선 컬럼을 뺀 성적표
+        확정 손절선 행만 고른 성적표. 컬럼 구성은 입력과 같다
 
     Raises:
         ValueError: 고를 행이 하나도 없는 경우 (격자에 그 손절선이 없다는 뜻이다)
     """
-    wanted = stop_level_label(FIXED_STOP_LEVEL)
+    wanted = stop_level_value(FIXED_STOP_LEVEL)
     applicable = performance[DISPLAY_STOP_APPLICABLE] == STOP_APPLICABLE
 
     picked = performance[
         (applicable & (performance[DISPLAY_STOP_LEVEL] == wanted))
-        | (~applicable & (performance[DISPLAY_STOP_LEVEL] == DISPLAY_NO_STOP))
+        | (~applicable & (performance[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL))
     ]
     if picked.empty:
-        raise ValueError(f"손절선 {wanted}% 행을 격자에서 찾지 못했습니다. 손절선 목록에 그 값이 있는지 확인하세요")
+        raise ValueError(f"손절선 {wanted} 행을 격자에서 찾지 못했습니다. 손절선 목록에 그 값이 있는지 확인하세요")
 
-    return picked.drop(columns=[DISPLAY_STOP_LEVEL]).reset_index(drop=True)
+    return picked.reset_index(drop=True)
 
 
 def _collect_entries(dataset: Dataset, frame: pd.DataFrame) -> tuple[dict[int, _Entries], int]:
@@ -274,7 +269,7 @@ def _trade_row(
         DISPLAY_TICKER: dataset.label,
         DISPLAY_MONTH: month,
         DISPLAY_DIRECTION: DIRECTION_DOWN if bet_down else DIRECTION_UP,
-        DISPLAY_STOP_LEVEL: stop_level_label(stop_level),
+        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
         DISPLAY_STOP_APPLICABLE: _stop_applicable(dataset),
         DISPLAY_ENTRY_DATE: pd.Timestamp(frame.iloc[entry_position][COL_DATE]).strftime(DATE_FORMAT),
         DISPLAY_ENTRY_PRICE: round(entry_price, dataset.price_decimals),
@@ -334,7 +329,7 @@ def _run_cell(
         DISPLAY_TICKER: dataset.label,
         DISPLAY_MONTH: month,
         DISPLAY_DIRECTION: DIRECTION_DOWN if bet_down else DIRECTION_UP,
-        DISPLAY_STOP_LEVEL: stop_level_label(stop_level),
+        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
         DISPLAY_STOP_APPLICABLE: _stop_applicable(dataset),
     }
 
@@ -417,8 +412,8 @@ def run_month_end_trading(
     fixed_stop = _fixed_stop_table(performance)
 
     summary: dict[str, Any] = {
-        KEY_STOP_LEVELS: [stop_level_label(level) for level in etf_levels],
-        KEY_FIXED_STOP_LEVEL: stop_level_label(FIXED_STOP_LEVEL),
+        KEY_STOP_LEVELS: [stop_level_value(level) for level in etf_levels],
+        KEY_FIXED_STOP_LEVEL: stop_level_value(FIXED_STOP_LEVEL),
         KEY_COST: COST_NOTE,
         KEY_DATASETS: dataset_summaries,
         KEY_ROW_COUNTS: {
@@ -433,4 +428,4 @@ def run_month_end_trading(
     return TradingOutputs(trades=trades, performance=performance, performance_fixed_stop=fixed_stop, summary=summary)
 
 
-__all__ = ["DISPLAY_MONTH", "DISPLAY_NO_STOP", "TradingOutputs", "run_month_end_trading", "stop_level_label"]
+__all__ = ["DISPLAY_MONTH", "TradingOutputs", "run_month_end_trading"]

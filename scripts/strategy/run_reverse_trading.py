@@ -22,8 +22,11 @@ from verify_lab.strategy.constants import (
     DISPLAY_START_YEAR,
     HOLD_LIMIT,
     STOP_LOSS_LEVEL,
+    SUMMARY_FILENAME,
     TARGETS,
+    TRADES_FILENAME,
     Target,
+    stop_level_value,
 )
 from verify_lab.strategy.reverse_runner import KEY_SUMMARY, KEY_TRADES, StrategyOutputs, run_reverse_trading
 from verify_lab.studies.reverse.constants import TRACK_NAME
@@ -35,10 +38,6 @@ logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_REVERSE_TRADING = "reverse_trading"
-
-# 산출물 파일 이름
-TRADES_FILENAME = "trades.csv"
-SUMMARY_FILENAME = "summary_by_target.csv"
 
 # 산출물 표의 컬럼 이름. **폭은 적지 않는다** — `print_dataframe` 이 내용에서 계산한다
 DISPLAY_FILE = "파일"
@@ -89,7 +88,10 @@ def _print_rule() -> None:
 
 
 def _print_summary(outputs: StrategyOutputs) -> None:
-    """대상별 집계를 표로 보여준다.
+    """대상 × 구간 성적을 표로 보여준다.
+
+    **대상 하나가 구간 다섯 줄이다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`
+    (측정의 원칙 17). 균등 2분할만으로는 신호가 식는 것을 놓친다.
 
     **저장하는 표를 그대로 화면에 낸다.** 열을 빼거나 따로 가공하면 반올림·부호 표기가 갈려
     화면에서 본 행을 CSV 에서 찾지 못한다. 시작연도도 대상마다 다른 값이라 함께 낸다.
@@ -102,7 +104,7 @@ def _print_summary(outputs: StrategyOutputs) -> None:
         outputs: 실행 산출물
     """
     table = outputs.summary.astype({DISPLAY_START_YEAR: str})
-    print_dataframe(table, logger, title="대상별 성적")
+    print_dataframe(table, logger, title="대상 × 구간 성적")
 
 
 @cli_exception_handler
@@ -139,7 +141,7 @@ def main() -> int:
         KEY_META_REVERSE_TRADING,
         {
             "targets": [f"{target.dataset.ticker} K={target.rank_cut}" for target in targets],
-            "stop_loss_level": round(STOP_LOSS_LEVEL * RATE_TO_PERCENT, 2),
+            "stop_loss_level": stop_level_value(STOP_LOSS_LEVEL),
             "hold_limit": HOLD_LIMIT,
             "output": str(directory),
         },

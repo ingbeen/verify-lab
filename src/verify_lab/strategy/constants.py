@@ -7,13 +7,46 @@
 from dataclasses import dataclass
 from typing import Final
 
+from verify_lab.common_constants import RATE_TO_PERCENT
+
 # **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 계층에 요구하는 개념이라
 # 계층마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
 from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
-from verify_lab.report.constants import DISPLAY_JUDGEABLE
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, PERCENT_DECIMALS
 from verify_lab.studies.reverse.constants import DATASETS, Dataset
 
-__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES", "MIN_SAMPLE_PER_CELL"]
+__all__ = [
+    "COL_JUDGEABLE",
+    "DISPLAY_EXCLUDED",
+    "DISPLAY_JUDGEABLE",
+    "JUDGEABLE_NO",
+    "JUDGEABLE_YES",
+    "MIN_SAMPLE_PER_CELL",
+]
+
+# ============================================================
+# 산출물 파일 이름
+# ============================================================
+
+# **매매법이 무엇이든 성적표는 `성적표.csv`, 거래내역은 `거래내역.csv` 다.**
+# 전에는 같은 뜻의 표가 `summary_by_target.csv` · `summary_by_cell.csv` · `performance.csv`
+# 셋이었고, **이름이 매매 스크립트 세 곳에 흩어진 문자열이어서** 그렇게 갈렸다 — 설계가
+# 달라서가 아니라 SoT 가 없어서다. 그래서 CLI 가 아니라 이 계층이 이름을 갖는다
+# (`scripts/CLAUDE.md` 가 CLI 에 도메인 로직을 금지하는 것과 같은 방향이다).
+#
+# **한글인 이유**: CSV 헤더가 이미 전부 한글이라 파일명만 영문일 이유가 없다.
+# `git config core.precomposeunicode` 가 `true` 라 두 PC 사이에서 깨지지 않는다.
+# **`검증/` 폴더 안은 영문 그대로 둔다** — 같은 이름을 붙이면 오히려 다른 것이 같아 보인다
+SUMMARY_FILENAME: Final = "성적표.csv"
+TRADES_FILENAME: Final = "거래내역.csv"
+
+# 손절선 격자. **기본 실행과 파일명을 나눈다** — 컬럼 구성은 같지만 기본은 확정 손절선 하나,
+# 격자는 무손절 + 19개다. 폴더만 보고 어느 쪽인지 알 수 있어야 한다
+STOP_GRID_FILENAME: Final = "손절선_격자.csv"
+
+# 격자에서 확정 손절선 행만 고른 표. **단순 필터로 재현되지 않아 따로 낸다** —
+# ETF 도 무손절 행을 갖기 때문에 「−5% 또는 무손절」로 걸면 ETF 무손절 행이 섞인다
+SUMMARY_FIXED_STOP_FILENAME: Final = "성적표_고정손절.csv"
 
 # ============================================================
 # 손절
@@ -146,7 +179,6 @@ EXIT_LIMIT: Final = "기한청산"
 DISPLAY_TICKER: Final = "종목"
 DISPLAY_PARAMETER: Final = "파라미터"
 DISPLAY_START_YEAR: Final = "시작연도"
-DISPLAY_DATE: Final = "날짜"
 DISPLAY_DIRECTION: Final = "방향"
 DISPLAY_ENTRY_PRICE: Final = "진입가"
 DISPLAY_CHANGE_RATE: Final = "등락률(%)"
@@ -223,6 +255,31 @@ EXPIRY_STOP_LEVELS: Final = tuple(round(0.010 + 0.005 * step, 4) for step in ran
 NO_STOP_LABEL: Final = "무손절"
 
 
+def stop_level_value(stop_level: float | None) -> float | str:
+    """손절선을 산출물에 싣는 값으로 바꾼다.
+
+    **이 함수가 `손절선(%)` 값 형식의 소유자다.** 전에는 매매법마다 따로 만들어 월말은
+    양수 문자열(`"5.0"`), 옵션 만기일은 음수 실수(`-5.0`)를 냈다. 같은 컬럼명에 두 형식이
+    담기면 두 산출물을 한 표에서 읽을 수 없고, 조인도 안 된다.
+
+    **음수 실수로 통일했다.** 컬럼 이름이 `손절선(%)` 이므로 `-5.0` 이 곧 「−5% 손절선」으로
+    읽힌다. 양수 문자열은 +5% 인지 −5% 인지 이름만으로 드러나지 않고, 문자열이라 정렬이
+    사전순이 되어 `"10.0"` 이 `"3.0"` 앞에 왔다.
+
+    **무손절만 문자열이다.** 비워 두면 「값을 못 구했다」로 읽히는데 실제로는 「걸지 않았다」다.
+
+    Args:
+        stop_level: 손절선 (비율, 0.05 = 5%). `None` 이면 무손절
+
+    Returns:
+        음수 백분율 실수, 또는 무손절 표기
+    """
+    if stop_level is None:
+        return NO_STOP_LABEL
+
+    return round(-stop_level * RATE_TO_PERCENT, PERCENT_DECIMALS)
+
+
 @dataclass(frozen=True)
 class ExpiryCell:
     """옵션 만기일 매매의 대상 칸 하나
@@ -276,7 +333,6 @@ DISPLAY_ENTRY_DATE: Final = "진입일"
 DISPLAY_TARGET_DATE: Final = "청산 목표일"
 DISPLAY_EXIT_DATE: Final = "청산일"
 DISPLAY_EXIT_PRICE: Final = "청산가"
-DISPLAY_EXCLUDED_COUNT: Final = "제외"
 DISPLAY_STDEV: Final = "표준편차(%)"
 DISPLAY_GAP_STOP_COUNT: Final = "갭손절"
 DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"

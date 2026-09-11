@@ -30,7 +30,11 @@ from verify_lab.strategy.constants import (
     EXPIRY_STOP_LEVEL,
     EXPIRY_STOP_LEVELS,
     NO_STOP_LABEL,
+    STOP_GRID_FILENAME,
+    SUMMARY_FILENAME,
+    TRADES_FILENAME,
     ExpiryCell,
+    stop_level_value,
 )
 from verify_lab.strategy.option_expiry_runner import ExpiryOutputs, run_option_expiry_trading
 from verify_lab.studies.option_expiry.constants import TRACK_NAME
@@ -42,12 +46,6 @@ logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_OPTION_EXPIRY_TRADING = "option_expiry_trading"
-
-# 산출물 파일 이름. 격자와 확정 성적표는 내용이 다르므로 파일명을 나눈다 —
-# 같은 이름이면 폴더만 보고 어느 쪽인지 알 수 없다
-SUMMARY_FILENAME = "summary_by_cell.csv"
-GRID_FILENAME = "stop_loss_grid.csv"
-TRADES_FILENAME = "trades.csv"
 
 # 산출물 표의 컬럼 이름. **폭은 적지 않는다** — `print_dataframe` 이 내용에서 계산한다
 DISPLAY_FILE = "파일"
@@ -153,7 +151,7 @@ def main() -> int:
 
     # 격자일 때만 무손절을 앞에 붙인다. 손절이 무엇을 막았는지는 그 행과 견줘야 보인다
     stop_levels: list[float | None] = [None, *EXPIRY_STOP_LEVELS] if args.grid else [EXPIRY_STOP_LEVEL]
-    summary_filename = GRID_FILENAME if args.grid else SUMMARY_FILENAME
+    summary_filename = STOP_GRID_FILENAME if args.grid else SUMMARY_FILENAME
 
     _print_scope(cells, grid=args.grid)
     outputs = run_option_expiry_trading(cells, stop_levels)
@@ -166,7 +164,7 @@ def main() -> int:
         directory,
         {
             "cells": [f"{cell.dataset_key} {cell.expiry_month}월" for cell in cells],
-            "stop_levels": [NO_STOP_LABEL if level is None else level for level in stop_levels],
+            "stop_levels": [stop_level_value(level) for level in stop_levels],
             "row_counts": {"summary": len(outputs.grid), "trades": len(outputs.trades)},
         },
     )

@@ -41,11 +41,12 @@ from verify_lab.strategy.constants import (
     EXIT_GAP_STOP,
     EXIT_LIMIT,
     MONTH_END_STOP_LEVELS,
+    NO_STOP_LABEL,
     PERIODS,
+    stop_level_value,
 )
 from verify_lab.strategy.month_end_runner import (
     DISPLAY_MONTH,
-    DISPLAY_NO_STOP,
     TradingOutputs,
     run_month_end_trading,
 )
@@ -181,7 +182,7 @@ class TestGridAxis:
 
         # Then
         assert len(levels) == len(MONTH_END_STOP_LEVELS) + 1
-        assert DISPLAY_NO_STOP in levels
+        assert NO_STOP_LABEL in levels
 
     def test_all_twelve_months_are_present(self, outputs: TradingOutputs) -> None:
         """
@@ -244,7 +245,7 @@ class TestStopLoss:
         Then: 무손절 체결의 청산 사유가 전부 기한청산이다
         """
         # Given / When
-        no_stop = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == DISPLAY_NO_STOP]
+        no_stop = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL]
 
         # Then
         assert not no_stop.empty
@@ -262,8 +263,7 @@ class TestStopLoss:
         Then: 손실이 −5% 를 넘지 않는다
         """
         # Given
-        level_label = f"{5.0:.1f}"
-        sliced = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == level_label]
+        sliced = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == -5.0]
         assert not sliced.empty, "−5% 손절선 체결이 하나도 없습니다"
 
         # When
@@ -321,13 +321,13 @@ class TestStopLoss:
             & (outputs.performance[DISPLAY_DIRECTION] == DIRECTION_DOWN)
         ]
 
-        def _total_stops(level: str) -> pd.Series:
+        def _total_stops(level: float) -> pd.Series:
             sliced = overall[overall[DISPLAY_STOP_LEVEL] == level].set_index(DISPLAY_MONTH)
 
             return sliced[DISPLAY_GAP_STOP_COUNT] + sliced[DISPLAY_INTRADAY_STOP_COUNT]
 
-        tight = _total_stops(f"{3.0:.1f}")
-        wide = _total_stops(f"{10.0:.1f}")
+        tight = _total_stops(-3.0)
+        wide = _total_stops(-10.0)
 
         # When / Then
         assert (wide <= tight).all()
@@ -367,8 +367,8 @@ class TestSamplePreservation:
         from verify_lab.strategy.constants import DISPLAY_ENTRY_DATE
 
         keys = [DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_ENTRY_DATE]
-        no_stop = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == DISPLAY_NO_STOP].set_index(keys)
-        tight = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == f"{3.0:.1f}"].set_index(keys)
+        no_stop = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL].set_index(keys)
+        tight = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == -3.0].set_index(keys)
 
         # When
         merged = tight[[DISPLAY_HOLD_DAYS]].join(no_stop[[DISPLAY_HOLD_DAYS]], lsuffix="_tight", rsuffix="_none")
@@ -436,7 +436,7 @@ class TestIndexDataset:
         levels = set(index_outputs.performance[DISPLAY_STOP_LEVEL])
 
         # Then
-        assert levels == {DISPLAY_NO_STOP}
+        assert levels == {NO_STOP_LABEL}
 
     def test_index_rows_are_marked_as_not_applicable(self, index_outputs: TradingOutputs) -> None:
         """
@@ -538,13 +538,15 @@ class TestFixedStopTable:
 
     def test_fixed_table_has_no_stop_level_column(self, outputs: TradingOutputs) -> None:
         """
-        목적: 고정 성적표에 **손절선 컬럼이 없음**을 고정한다.
+        목적: 고정 성적표에 **손절선 컬럼이 남음**을 고정한다.
 
-        한 손절선으로 고정한 표이므로 그 컬럼은 값이 하나뿐인 필터가 된다.
+        **「값이 하나뿐인 필터」라는 전제가 이 표에서는 성립하지 않는다** — ETF 행은 −5% 이고
+        지수 행은 무손절이라 두 행이 서로 다른 규칙으로 만들어진 성적이다. 컬럼이 없으면
+        `손절적용` 으로 추측해야 하고 「가능」이 −5% 인지 −3% 인지는 알 수 없다.
 
         Given: 합성 ETF 하나
         When: 격자를 돌린다
-        Then: 고정 표에 손절선 컬럼이 없고 손절적용 컬럼은 있다
+        Then: 고정 표의 컬럼 구성이 격자 성적표와 같다
         """
         # Given
         from verify_lab.strategy.constants import DISPLAY_STOP_APPLICABLE
@@ -553,7 +555,8 @@ class TestFixedStopTable:
         fixed = outputs.performance_fixed_stop
 
         # Then
-        assert DISPLAY_STOP_LEVEL not in fixed.columns
+        assert list(fixed.columns) == list(outputs.performance.columns)
+        assert DISPLAY_STOP_LEVEL in fixed.columns
         assert DISPLAY_STOP_APPLICABLE in fixed.columns
 
     def test_fixed_table_matches_the_grid_rows(self, outputs: TradingOutputs) -> None:
@@ -571,7 +574,7 @@ class TestFixedStopTable:
 
         keys = [DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_PERIOD]
         grid = outputs.performance
-        sliced = grid[grid[DISPLAY_STOP_LEVEL] == f"{FIXED_STOP_LEVEL * 100:.1f}"].set_index(keys)
+        sliced = grid[grid[DISPLAY_STOP_LEVEL] == stop_level_value(FIXED_STOP_LEVEL)].set_index(keys)
 
         # When
         fixed = outputs.performance_fixed_stop.set_index(keys)

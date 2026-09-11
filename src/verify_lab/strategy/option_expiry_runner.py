@@ -9,8 +9,8 @@
 `docs/research/옵션_만기일.md` 12B 와 `docs/spec/옵션_만기일_설계.md` 결정 ㊴ 에 있다.
 **값을 옮겨 가며 성적을 보는 노브를 만들지 않는다** — 그것이 과최적화다.
 
-**격자는 지우지 않고 옵션으로 남긴다.** `stop_levels` 에 여러 값을 넘기면 손절선 컬럼이
-붙은 비교표가 나온다. **시세를 재수집하면 「평평한 구간」을 다시 찾아야 하기 때문**이며,
+**격자는 지우지 않고 옵션으로 남긴다.** `stop_levels` 에 여러 값을 넘기면 손절선마다
+행이 늘어난 비교표가 나온다. **시세를 재수집하면 「평평한 구간」을 다시 찾아야 하기 때문**이며,
 그때 무손절(`None`)을 함께 넣어 손절이 무엇을 막았는지 대조한다.
 """
 
@@ -35,6 +35,7 @@ from verify_lab.strategy.constants import (
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_HOLD_DAYS,
     DISPLAY_RETURN,
+    DISPLAY_STOP_APPLICABLE,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TARGET_DATE,
     DISPLAY_TICKER,
@@ -42,8 +43,9 @@ from verify_lab.strategy.constants import (
     EXPIRY_DIRECTION_DOWN,
     EXPIRY_DIRECTION_UP,
     EXPIRY_STOP_LEVEL,
-    NO_STOP_LABEL,
+    STOP_APPLICABLE,
     ExpiryCell,
+    stop_level_value,
 )
 from verify_lab.strategy.periods import period_rows
 from verify_lab.strategy.trade_fill import TradeResult, simulate_scheduled_trade
@@ -68,7 +70,7 @@ class ExpiryOutputs:
     """실행 산출물
 
     Attributes:
-        grid: 칸별 성적표. 손절선을 여러 개 넘겼을 때만 `손절선(%)` 컬럼이 붙는다
+        grid: 칸별 성적표. 칸 × 손절선 × 구간이 한 행이다
         trades: 체결 원자료. 사용자가 차트로 대조하는 자리 (측정의 원칙 8)
     """
 
@@ -120,8 +122,8 @@ def run_option_expiry_trading(
 ) -> ExpiryOutputs:
     """대상 칸마다 손절선을 적용해 성적표와 원자료를 낸다.
 
-    **기본은 확정 손절선 하나다.** 손절선이 하나뿐이면 `손절선(%)` 컬럼을 내지 않는다 —
-    전 행이 같은 값이라 읽는 사람에게 아무것도 알려주지 않기 때문이다.
+    **기본은 확정 손절선 하나다.** 그때도 `손절선(%)` 컬럼은 나온다 — 없으면 그 표가
+    −5% 성적인지 무손절 성적인지 **산출물만 봐서는 판별되지 않는다.**
     격자를 낼 때는 `[None, *EXPIRY_STOP_LEVELS]` 를 넘긴다(무손절 포함).
 
     Args:
@@ -139,9 +141,6 @@ def run_option_expiry_trading(
     if not stop_levels:
         raise ValueError("손절선 목록이 비어 있습니다")
 
-    # 손절선이 하나면 식별 컬럼에서 뺀다. 전 행이 같은 값인 컬럼은 자리만 차지한다
-    with_stop_column = len(stop_levels) > 1
-
     grid_rows: list[dict[str, Any]] = []
     trade_rows: list[dict[str, Any]] = []
 
@@ -150,9 +149,9 @@ def run_option_expiry_trading(
         entries = collect_entries(dataset, cell)
 
         for stop_level in stop_levels:
-            block = _measure(dataset, cell, entries, stop_level, with_stop_column=with_stop_column)
+            block = _measure(dataset, cell, entries, stop_level)
             last_day = pd.Timestamp(entries.frame[COL_DATE].iloc[-1])
-            identity = _identity(dataset, cell, stop_level, with_stop_column=with_stop_column)
+            identity = _identity(dataset, cell, stop_level)
             for row in period_rows(
                 pd.DatetimeIndex(block.entry_dates),
                 block.returns,
@@ -235,8 +234,6 @@ def _measure(
     cell: ExpiryCell,
     entries: Entries,
     stop_level: float | None,
-    *,
-    with_stop_column: bool,
 ) -> _Block:
     """한 칸 × 한 손절선의 체결 내역과 집계용 원값을 만든다.
 
@@ -248,7 +245,6 @@ def _measure(
         cell: 대상 칸
         entries: 진입 목록
         stop_level: 손절선. `None` 이면 무손절
-        with_stop_column: 식별 컬럼에 손절선을 넣을지 여부
 
     Returns:
         체결 내역과 신호별 원값
@@ -267,11 +263,7 @@ def _measure(
             stop_level=stop_level,
         )
 
-        block.trades.append(
-            _trade_row(
-                dataset, cell, entries, order, entry_position, result, stop_level, with_stop_column=with_stop_column
-            )
-        )
+        block.trades.append(_trade_row(dataset, cell, entries, order, entry_position, result, stop_level))
         block.returns.append(result.return_rate)
         block.hold_days.append(result.hold_days)
         block.reasons.append(result.reason)
@@ -288,8 +280,6 @@ def _trade_row(
     entry_position: int,
     result: TradeResult,
     stop_level: float | None,
-    *,
-    with_stop_column: bool,
 ) -> dict[str, Any]:
     """체결 하나를 표 행으로 바꾼다.
 
@@ -304,7 +294,6 @@ def _trade_row(
         entry_position: 시세에서의 진입 위치
         result: 체결 결과
         stop_level: 손절선. `None` 이면 무손절
-        with_stop_column: 식별 컬럼에 손절선을 넣을지 여부
 
     Returns:
         표 한 줄
@@ -318,7 +307,7 @@ def _trade_row(
     exit_price = entry_price * (1.0 + sign * result.return_rate)
 
     return {
-        **_identity(dataset, cell, stop_level, with_stop_column=with_stop_column),
+        **_identity(dataset, cell, stop_level),
         DISPLAY_ENTRY_DATE: pd.Timestamp(frame.iloc[entry_position][COL_DATE]).strftime(DATE_FORMAT),
         DISPLAY_ENTRY_PRICE: round(entry_price, dataset.price_decimals),
         DISPLAY_TARGET_DATE: entries.target_dates[order].strftime(DATE_FORMAT),
@@ -330,34 +319,33 @@ def _trade_row(
     }
 
 
-def _identity(
-    dataset: Dataset, cell: ExpiryCell, stop_level: float | None, *, with_stop_column: bool
-) -> dict[str, Any]:
+def _identity(dataset: Dataset, cell: ExpiryCell, stop_level: float | None) -> dict[str, Any]:
     """행을 식별하는 앞 컬럼들을 만든다.
 
-    **손절선이 하나뿐이면 그 컬럼을 넣지 않는다.** 전 행이 같은 값이라 자리만 차지하며,
-    확정 규칙의 손절선은 `EXPIRY_STOP_LEVEL` 이 SoT다.
+    **손절선이 하나뿐일 때도 그 컬럼을 낸다.** 전에는 전 행이 같은 값이라 빼고 있었는데,
+    그 근거는 **한 파일 안에서만** 성립한다 — 파일을 여는 사람은 그 표가 무손절 성적인지
+    −5% 성적인지 알 수 없고, 같은 매매법의 격자표와 나란히 놓으면 컬럼 구성이 달라져
+    대조가 끊긴다. 세 매매법이 공유하는 계약이며 `tests/test_strategy_output_contract.py`
+    가 고정한다. 확정 규칙의 손절선 값은 `EXPIRY_STOP_LEVEL` 이 SoT다.
 
     Args:
         dataset: 대상 종목
         cell: 대상 칸
         stop_level: 손절선. `None` 이면 무손절
-        with_stop_column: 손절선 컬럼을 넣을지 여부
 
     Returns:
         식별 컬럼 dict
     """
-    identity: dict[str, Any] = {
+    return {
         DISPLAY_TICKER: dataset.ticker,
         DISPLAY_EXPIRY_MONTH: cell.expiry_month,
         DISPLAY_DIRECTION: EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
+        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
+        # **언제나 「가능」인 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
+        # 그 로더가 시가·고가·저가를 요구하므로 종가 계열(지수)은 읽는 단계에서 거부된다 —
+        # 그래서 값을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다
+        DISPLAY_STOP_APPLICABLE: STOP_APPLICABLE,
     }
-    if with_stop_column:
-        identity[DISPLAY_STOP_LEVEL] = (
-            NO_STOP_LABEL if stop_level is None else round(-stop_level * RATE_TO_PERCENT, PERCENT_DECIMALS)
-        )
-
-    return identity
 
 
 # **`period_rows` 를 재노출하지 않는다.** 이 모듈은 `strategy/periods.py` 에서 가져다 쓰는

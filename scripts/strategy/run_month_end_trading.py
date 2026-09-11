@@ -30,6 +30,9 @@ from verify_lab.strategy.constants import (
     DISPLAY_TOTAL,
     DISPLAY_WIN_RATE,
     PERIOD_ALL,
+    SUMMARY_FILENAME,
+    SUMMARY_FIXED_STOP_FILENAME,
+    TRADES_FILENAME,
 )
 from verify_lab.strategy.month_end_runner import DISPLAY_MONTH, run_month_end_trading
 from verify_lab.studies.month_end.constants import DATASETS_KOSDAQ, TRACK_NAME
@@ -128,9 +131,9 @@ def main() -> int:
     outputs = run_month_end_trading(datasets)
 
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
-    save_table(directory, "trades.csv", outputs.trades)
-    save_table(directory, "performance.csv", outputs.performance)
-    save_table(directory, "performance_fixed_stop.csv", outputs.performance_fixed_stop)
+    save_table(directory, TRADES_FILENAME, outputs.trades)
+    save_table(directory, SUMMARY_FILENAME, outputs.performance)
+    save_table(directory, SUMMARY_FIXED_STOP_FILENAME, outputs.performance_fixed_stop)
     save_run_summary(directory, outputs.summary)
 
     # 화면은 **저장한 표에서 발췌**한다 — 따로 가공하면 화면에서 본 숫자를 CSV 에서 찾지 못한다

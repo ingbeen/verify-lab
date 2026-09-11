@@ -4,7 +4,8 @@
 표본이 부풀고 승률이 왜곡되는데, 표는 정상으로 보인다.
 
 핵심 계약은 넷이다.
-- 산출물 축은 **대상**뿐이다. 손절 분할과 보유 한도 축은 없다
+- 산출물 축은 **대상 × 구간**이다. 손절 분할과 보유 한도 축은 없다 —
+  구간 축은 측정의 원칙 17 이 모든 매매법에 요구하는 것이라 남는다
 - 집계는 **신호 단위**다. 신호 하나가 체결 내역 한 행이다
 - 집계는 **원값으로** 한다. 반올림된 표에서 다시 평균을 내면 합계가 어긋난다
 - 신호 판정은 `studies` 가 소유한다. 이 계층은 **어느 날이 신호인가를 다시 정하지 않는다**
@@ -25,21 +26,24 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VOLUME,
     PRICE_DECIMALS,
-    RATE_TO_PERCENT,
 )
 from verify_lab.report.constants import DISPLAY_EXCLUDED
 from verify_lab.strategy.constants import (
-    DISPLAY_DATE,
+    DISPLAY_ENTRY_DATE,
     DISPLAY_MEAN_HOLD,
+    DISPLAY_PERIOD,
     DISPLAY_RETURN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_START_YEAR,
     DISPLAY_TOTAL,
     HOLD_LIMIT,
+    PERIOD_ALL,
+    PERIODS,
     START_YEAR,
     STOP_LOSS_LEVEL,
     TARGETS,
     Target,
+    stop_level_value,
 )
 from verify_lab.strategy.reverse_runner import (
     IDENTITY_COLUMNS,
@@ -160,21 +164,40 @@ def outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs:
     return run_reverse_trading([_target(tmp_path_factory.mktemp("strategy"))])
 
 
+def _overall(summary: pd.DataFrame) -> pd.Series:
+    """성적표에서 전체 구간 행을 고른다.
+
+    **위치(`iloc[0]`)로 집지 않는다.** 성적표가 대상마다 구간 다섯 줄이므로, 구간 순서가
+    바뀌면 위치로 집은 테스트는 **엉뚱한 구간을 조용히 검사한다.**
+
+    Args:
+        summary: 성적표
+
+    Returns:
+        전체 구간 행
+    """
+    rows = summary[summary[DISPLAY_PERIOD] == PERIOD_ALL]
+    assert len(rows) == 1, f"전체 구간 행이 하나가 아닙니다: {len(rows)}행"
+
+    return rows.iloc[0]
+
+
 class TestAxes:
     """산출물 축 계약"""
 
-    def test_집계는_대상마다_한_줄이다(self, outputs: StrategyOutputs) -> None:
+    def test_집계는_대상마다_구간_다섯_줄이다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 산출물 축이 대상 하나뿐인지 고정한다
+        목적: 산출물 축이 대상 × 구간인지 고정한다
 
-        손절 분할과 보유 한도 축을 걷어냈으므로 대상 하나가 집계 한 줄이다.
+        손절 분할과 보유 한도 축은 걷어냈고, 구간 축은 측정의 원칙 17 이 **모든** 매매법에
+        요구하는 것이라 남는다 — 균등 2분할만으로는 신호가 식는 것을 놓친다.
 
         Given: 대상 하나로 돈 실행 결과
         When: 집계 행 수를 봤을 때
-        Then: 1행이다
+        Then: 구간 수만큼이다
         """
         # Given / When / Then
-        assert len(outputs.summary) == 1
+        assert len(outputs.summary) == len(PERIODS)
 
     def test_식별_컬럼이_두_표에_모두_앞에_붙는다(self, outputs: StrategyOutputs) -> None:
         """
@@ -188,16 +211,20 @@ class TestAxes:
         for table in (outputs.trades, outputs.summary):
             assert list(table.columns[: len(IDENTITY_COLUMNS)]) == list(IDENTITY_COLUMNS)
 
-    def test_식별_컬럼은_세_개다(self) -> None:
+    def test_식별_컬럼은_여섯_개다(self) -> None:
         """
-        목적: 보유 한도 축이 사라진 것을 값으로 고정한다
+        목적: 보유 한도 축이 사라진 것과 손절 정보가 더해진 것을 값으로 고정한다
+
+        **`방향` 은 두 표에서 다른 것을 가리킨다** — 성적표는 두 방향을 합친 표본이라
+        `역방향 전체`, 거래내역은 그 신호가 폭등이었나 폭락이었나다.
+        `손절선(%)`·`손절적용` 이 없으면 그 표가 −5% 성적인지 무손절인지 판별되지 않는다.
 
         Given: 식별 컬럼 정의
         When: 개수를 봤을 때
-        Then: 종목·파라미터·시작연도 셋이다
+        Then: 종목·파라미터·시작연도·방향·손절선·손절적용 여섯이다
         """
         # Given / When / Then
-        assert len(IDENTITY_COLUMNS) == 3
+        assert len(IDENTITY_COLUMNS) == 6
 
     def test_체결_내역은_신호마다_한_행이다(self, outputs: StrategyOutputs) -> None:
         """
@@ -211,11 +238,11 @@ class TestAxes:
         Then: 모든 날짜가 한 행이다
         """
         # Given / When
-        counted = outputs.trades.groupby(DISPLAY_DATE).size()
+        counted = outputs.trades.groupby(DISPLAY_ENTRY_DATE).size()
 
         # Then
         assert set(counted) == {1}
-        assert len(outputs.trades) == int(outputs.summary.iloc[0][DISPLAY_SIGNAL_COUNT])
+        assert len(outputs.trades) == int(_overall(outputs.summary)[DISPLAY_SIGNAL_COUNT])
 
 
 class TestAggregation:
@@ -232,7 +259,7 @@ class TestAggregation:
         Then: 집계의 합계와 허용오차 안에서 같다
         """
         # Given
-        row = outputs.summary.iloc[0]
+        row = _overall(outputs.summary)
 
         # When
         counted = float(outputs.trades[DISPLAY_RETURN].sum())
@@ -249,7 +276,7 @@ class TestAggregation:
         Then: 1 이상 한도 이하다
         """
         # Given / When
-        mean_hold = float(outputs.summary.iloc[0][DISPLAY_MEAN_HOLD])
+        mean_hold = float(_overall(outputs.summary)[DISPLAY_MEAN_HOLD])
 
         # Then
         assert 1.0 <= mean_hold <= HOLD_LIMIT
@@ -307,7 +334,7 @@ class TestSignalOwnership:
             results.append(run_reverse_trading([target]).trades)
 
         # When
-        merged = results[1].merge(results[0], on=[DISPLAY_DATE], suffixes=("_cut", "_whole"))
+        merged = results[1].merge(results[0], on=[DISPLAY_ENTRY_DATE], suffixes=("_cut", "_whole"))
 
         # Then
         assert not merged.empty
@@ -371,8 +398,8 @@ class TestTargetsInvariant:
         late = replace(early, start_year=SYNTHETIC_START_YEAR)
 
         # When
-        early_dates = set(run_reverse_trading([early]).trades[DISPLAY_DATE])
-        late_dates = set(run_reverse_trading([late]).trades[DISPLAY_DATE])
+        early_dates = set(run_reverse_trading([early]).trades[DISPLAY_ENTRY_DATE])
+        late_dates = set(run_reverse_trading([late]).trades[DISPLAY_ENTRY_DATE])
 
         # Then — 늦은 쪽이 비어 있으면 진부분집합이 공짜로 성립하므로 함께 고정한다
         assert late_dates
@@ -448,6 +475,9 @@ class TestTargetsInvariant:
         """
         목적: 산출물만 보고 어떤 손절선·한도로 돌았는지 알 수 있게 한다
 
+        **손절선은 성적표와 같은 형식(음수 실수)이다** — 같은 값을 두 자리에서 다르게 쓰면
+        `summary.json` 의 `5.0` 을 +5% 로 읽는다. 형식의 소유자는 `stop_level_value` 하나다.
+
         Given: 실행 결과의 요약
         When: 규칙 항목을 봤을 때
         Then: 손절선(%)과 보유 한도가 남아 있다
@@ -456,7 +486,7 @@ class TestTargetsInvariant:
         rule = outputs.meta[KEY_RULE]
 
         # Then
-        assert rule[KEY_STOP_LEVEL] == pytest.approx(STOP_LOSS_LEVEL * RATE_TO_PERCENT, abs=RATE_TOLERANCE)
+        assert rule[KEY_STOP_LEVEL] == pytest.approx(stop_level_value(STOP_LOSS_LEVEL), abs=RATE_TOLERANCE)
         assert rule[KEY_HOLD_LIMIT] == HOLD_LIMIT
 
 
@@ -489,7 +519,7 @@ class TestSamplePreservation:
         outputs = self._trimmed_outputs(tmp_path)
 
         # Then
-        assert int(outputs.summary.iloc[0][DISPLAY_EXCLUDED]) >= 1
+        assert int(_overall(outputs.summary)[DISPLAY_EXCLUDED]) >= 1
 
     def test_신호_수와_제외_수의_합이_전체_신호_수다(self, tmp_path: Path) -> None:
         """
@@ -504,7 +534,7 @@ class TestSamplePreservation:
         outputs = self._trimmed_outputs(tmp_path)
 
         # Then
-        row = outputs.summary.iloc[0]
+        row = _overall(outputs.summary)
         counted = int(row[DISPLAY_SIGNAL_COUNT]) + int(row[DISPLAY_EXCLUDED])
         assert counted == int(outputs.meta[KEY_TARGETS][0]["signal_count"])
 
