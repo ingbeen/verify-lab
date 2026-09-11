@@ -16,14 +16,14 @@
 「세지 못했다」로 읽히고, 같은 값을 두 열에 싣는 것도 대조를 방해한다.
 """
 
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import RATE_TO_PERCENT
-from verify_lab.measure.statistics import payoff_from_returns
+from verify_lab.measure.statistics import judgeable, payoff_from_returns
 from verify_lab.report.constants import DATE_FORMAT, PAYOFF_DECIMALS, PERCENT_DECIMALS
 from verify_lab.strategy.constants import (
     DISPLAY_BREAKEVEN_WIN_RATE,
@@ -33,6 +33,7 @@ from verify_lab.strategy.constants import (
     DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_JUDGEABLE,
     DISPLAY_LOSING_COUNT,
+    DISPLAY_LOSS_AMOUNT,
     DISPLAY_MAX,
     DISPLAY_MEAN,
     DISPLAY_MEAN_HOLD,
@@ -44,18 +45,29 @@ from verify_lab.strategy.constants import (
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_STDEV,
     DISPLAY_TOTAL,
+    DISPLAY_WIN_AMOUNT,
     DISPLAY_WIN_RATE,
     EXIT_GAP_STOP,
     EXIT_INTRADAY_STOP,
     HOLD_DAYS_DECIMALS,
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
-    MIN_SAMPLE_PER_CELL,
     PERIOD_ALL,
     PERIOD_FIRST_HALF,
     PERIOD_SECOND_HALF,
     PERIODS,
     RECENT_YEARS,
+)
+
+# 건수 컬럼. **결측을 담을 수 있는 정수형**으로 저장해야 `0.0` 이 아니라 `0` 으로 나간다.
+# pandas 의 기본 정수형은 결측을 못 담아 한 행이라도 비면 열 전체가 실수가 된다
+NULLABLE_INTEGER: Final = "Int64"
+
+COUNT_COLUMNS: Final = (
+    DISPLAY_SIGNAL_COUNT,
+    DISPLAY_EXCLUDED,
+    DISPLAY_LOSING_COUNT,
+    DISPLAY_GAP_STOP_COUNT,
+    DISPLAY_INTRADAY_STOP_COUNT,
+    DISPLAY_EVENT_COUNT,
 )
 
 
@@ -193,6 +205,14 @@ def _period_row(
         DISPLAY_BREAKEVEN_WIN_RATE: (
             np.nan if empty else round(payoff.breakeven_hit_rate * RATE_TO_PERCENT, PERCENT_DECIMALS)
         ),
+        # **손익비의 분자와 분모를 그대로 낸다.** `docs/strategy/투자금_결정.md` §1.2 가 이 두
+        # 값의 출처를 성적표로 적어 두었는데 실제로는 없어서, 계산기 시트를 쓰는 사람이
+        # 거래내역에서 직접 계산해야 했다. **`measure` 가 이미 구한 값이라 다시 세지 않는다.**
+        #
+        # **질 때는 부호를 뒤집어 음수로 낸다** — `측정` 계층은 방향을 모르므로 절대값을 주고,
+        # 부호는 방향이 확정된 이 계층이 붙인다. `최악(%)` 이 음수인 것과 같은 관용이다
+        DISPLAY_WIN_AMOUNT: np.nan if empty else round(payoff.winning_mean * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_LOSS_AMOUNT: np.nan if empty else round(-payoff.losing_mean * RATE_TO_PERCENT, PERCENT_DECIMALS),
         DISPLAY_LOSING_COUNT: np.nan if empty else payoff.losing_count,
         DISPLAY_MAX: np.nan if empty else round(float(percent.max()), PERCENT_DECIMALS),
         DISPLAY_MIN: np.nan if empty else round(float(percent.min()), PERCENT_DECIMALS),
@@ -207,8 +227,9 @@ def _period_row(
             np.nan if (empty or labels is None) else int((labels == EXIT_INTRADAY_STOP).sum())
         ),
         DISPLAY_MEAN_HOLD: np.nan if (empty or days is None) else round(float(days.mean()), HOLD_DAYS_DECIMALS),
-        # **미달이어도 행은 남는다.** 이 컬럼이 「판정에 쓰지 말라」를 표에 남기는 자리다
-        DISPLAY_JUDGEABLE: JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO,
+        # **미달이어도 행은 남는다.** 이 컬럼이 「판정에 쓰지 말라」를 표에 남기는 자리다.
+        # 식은 `measure` 가 소유한다 — 하한을 바꿔도 한 곳이 안 따라오면 예외 없이 갈라진다
+        DISPLAY_JUDGEABLE: judgeable(count),
         # **표본이 없으면 비운다.** 임의의 날짜로 채우면 잰 적이 없는 구간이 잰 것처럼 읽힌다
         DISPLAY_PERIOD_START: np.nan if empty else entry_dates.min().strftime(DATE_FORMAT),
         DISPLAY_PERIOD_END: np.nan if empty else entry_dates.max().strftime(DATE_FORMAT),
@@ -223,4 +244,34 @@ def _period_row(
     return row
 
 
-__all__ = ["period_rows"]
+def to_summary_frame(rows: Sequence[Mapping[str, Any]]) -> pd.DataFrame:
+    """구간 행들을 성적표 프레임으로 만든다.
+
+    **건수 컬럼을 결측을 견디는 정수형으로 바꾼다.** 전체 구간에만 값이 있고 나머지는
+    결측인 컬럼(`제외`)이 있어 pandas 가 열을 실수로 만들었고, **세 성적표 전부 `제외` 가
+    `0.0` 으로 저장됐다** — 같은 행의 `신호` 는 `51` 인데 말이다. 표본이 0건인 구간이
+    하나만 생기면 `질 때 표본`·`갭손절`·`장중손절`·`사건` 도 같은 길로 간다.
+
+    **빈칸은 빈칸으로 남는다.** `0` 으로 채우면 뒤 절반·최근 N년이 「제외 0건」이라고
+    거짓으로 주장하게 되고(측정의 원칙 17), 그것이 원래 문제가 뒤집혀 재발하는 것이다.
+
+    **세 매매법이 전부 이 함수를 지난다** — 한 곳에서만 캐스팅해야 매매법마다 갈리지 않는다.
+
+    Args:
+        rows: 식별 컬럼이 앞에 붙은 구간 행들
+
+    Returns:
+        성적표 프레임. 비어 있으면 빈 DataFrame
+    """
+    frame = pd.DataFrame(list(rows))
+    if frame.empty:
+        return frame
+
+    for column in COUNT_COLUMNS:
+        if column in frame.columns:
+            frame[column] = frame[column].astype(NULLABLE_INTEGER)
+
+    return frame
+
+
+__all__ = ["COUNT_COLUMNS", "period_rows", "to_summary_frame"]

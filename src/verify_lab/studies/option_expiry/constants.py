@@ -229,9 +229,6 @@ COL_EXPIRY_MONTH_NUMBER: Final = "expiry_month_number"
 # 평균이 양수인데 절반 넘게 내렸다면 소수의 큰 사건이 평균을 만든 것이라, 평균만 보면 그 칸을 놓친다
 COL_MEAN_RATE_CONFLICT: Final = "mean_rate_conflict"
 
-# 어긋남 판정의 경계 (비율, 0.5 = 50%). "절반을 넘었는가" 하나만 본다 —
-# 경계를 파라미터로 열면 결과를 보고 조정하게 된다
-HALF_RATE: Final = 0.5
 
 # 시기 분할 축. 신호를 **시간순으로 세어 균등하게** 가른다 — 시장 구조가 바뀐 시점으로 나누는
 # 달력 경계 방식은 칸마다 표본이 들쭉날쭉해 쓰지 않는다(`docs/spec/옵션_만기일_설계.md` 결정 ㉖).
@@ -259,9 +256,15 @@ class Dataset:
     주문을 거는 가격이기 때문이며, 두 기준을 나란히 내면 결과를 보고 고를 여지가 생긴다
     (루트 `CLAUDE.md` 측정의 원칙 14).
 
+    **`ticker` 와 `label` 은 다른 것이다.** 코드는 차트·증권앱과 대조할 때 필요하고
+    표시 이름은 산출물이 쓴다. **미국 ETF 는 둘이 같아(`QQQ`) 구별이 드러나지 않지만
+    국내는 갈린다** — 그래서 전에는 `069500` 이 어디에도 남지 않았다.
+
     Attributes:
         key: 실행 인자로 고르는 이름
-        ticker: 종목 표시 이름
+        ticker: 종목코드. **`summary.json` 의 `datasets` 에만 실린다** — 행마다 반복할
+            값이 아니라 데이터셋 단위 속성이다 (`src/verify_lab/CLAUDE.md` 출력 계약)
+        label: 종목 표시 이름. **산출물의 종목 컬럼이 쓰는 값**이다
         rule: 그 시장의 월물 만기 규칙
         file_name: `storage/market/` 안의 원본가 파일 이름
         price_decimals: 종가를 저장할 때의 반올림 자릿수
@@ -272,6 +275,7 @@ class Dataset:
 
     key: str
     ticker: str
+    label: str
     rule: ExpiryRule
     file_name: str
     price_decimals: int
@@ -282,6 +286,7 @@ DATASETS: Final = (
     Dataset(
         key="qqq",
         ticker="QQQ",
+        label="QQQ",
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="QQQ"),
         price_decimals=PRICE_DECIMALS,
@@ -290,6 +295,7 @@ DATASETS: Final = (
     Dataset(
         key="spy",
         ticker="SPY",
+        label="SPY",
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="SPY"),
         price_decimals=PRICE_DECIMALS,
@@ -300,6 +306,7 @@ DATASETS: Final = (
         # 두 번의 확인으로 셀 수 없다 — 세 번째로 검산한다 (결정 ㉒)
         key="dia",
         ticker="DIA",
+        label="DIA",
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="DIA"),
         price_decimals=PRICE_DECIMALS,
@@ -310,7 +317,8 @@ DATASETS: Final = (
         # 존재해 2014년부터인데, **분배락은 만기 4~10거래일 전에 박혀 있어 이 매매의 보유
         # 구간(만기일 이후)과 겹치지 않는다.** 그래서 원본가로 전 기간을 쓴다 (결정 ㉜)
         key="kodex200",
-        ticker="KODEX 200",
+        ticker="069500",
+        label="KODEX 200",
         rule=KR_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="069500"),
         price_decimals=PRICE_DECIMALS_KRW,
@@ -348,8 +356,7 @@ WEEKDAY_LABELS: Final = ("월요일", "화요일", "수요일", "목요일", "�
 # 산출물
 # ============================================================
 
-# 이 매매법의 이름(slug). **측정과 매매가 같은 값을 본다** — 계층은 산출물의 상위 폴더가
-# 말하므로 이름에 계층을 넣지 않는다. 전에는 같은 매매법이 계층마다 다른 이름으로 불렸다
+# 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
 TRACK_NAME: Final = "option_expiry"
 
 # 만기월 축과 구별되는 이름. `COL_EXPIRY_MONTH` 는 "2026-08" 같은 연월 문자열이고

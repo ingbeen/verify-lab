@@ -42,6 +42,7 @@ from verify_lab.studies.month_end.constants import (
     EXECUTION_ROLE_NONE,
     EXECUTION_ROLE_UP,
     EXIT_OFFSETS,
+    MARKET_KOSDAQ,
     RECENT_WINDOWS_YEARS,
     Dataset,
 )
@@ -89,6 +90,7 @@ def _write_market(directory: Path, ticker: str) -> Dataset:
     return Dataset(
         ticker=ticker,
         label=f"합성 ETF {ticker}",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -120,6 +122,7 @@ def _write_index(directory: Path, ticker: str) -> Dataset:
     return Dataset(
         ticker=ticker,
         label=f"합성 지수 {ticker}",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,

@@ -39,17 +39,21 @@ from verify_lab.strategy.constants import (
     PARAMETER_PREFIX_RANK_CUT,
     STOP_APPLICABLE,
     STOP_LOSS_LEVEL,
+    SUMMARY_FILENAME,
     TARGETS,
+    TRADES_FILENAME,
     Target,
     stop_level_value,
 )
-from verify_lab.strategy.periods import period_rows
+from verify_lab.strategy.periods import period_rows, to_summary_frame
+from verify_lab.strategy.run_summary import build_run_summary, dataset_record
 from verify_lab.strategy.trade_fill import TradeResult, simulate_signal
 from verify_lab.studies.reverse.annotations import assign_event_ids
 from verify_lab.studies.reverse.constants import (
     DISPLAY_DIRECTION_REVERSE_ALL,
     EVENT_GAP_DAYS,
     EXTREME_DIRECTION_LABELS,
+    TRACK_NAME,
     Direction,
 )
 from verify_lab.studies.reverse.daily_change import daily_change_rate
@@ -74,19 +78,16 @@ IDENTITY_COLUMNS = (
 )
 
 # ============================================================
-# summary.json 키
+# `summary.json` 의 `rule` 안 — 무엇을 어떤 규칙으로 돌렸나
 # ============================================================
 
-KEY_STRATEGY = "strategy"
+# **최상위 키는 이 모듈이 갖지 않는다** (`strategy/run_summary.py`). 전에는 여기에
+# `KEY_STRATEGY = "strategy"` 가 있었고 그 값이 `"reverse_trading"` 이라 **작업 B 가
+# 없애려던 옛 이름이 데이터 값으로 남아** 있었다 — 폴더는 `reverse` 인데 요약만 달랐다
 KEY_TARGETS = "targets"
-KEY_RULE = "rule"
-KEY_ROW_COUNTS = "row_counts"
-KEY_NOTES = "notes"
-
-KEY_TICKER = "ticker"
+KEY_LABEL = "label"
 KEY_RANK_CUT = "rank_cut"
 KEY_START_YEAR = "start_year"
-KEY_PATH = "path"
 KEY_SIGNAL_COUNT = "signal_count"
 KEY_EVENT_COUNT = "event_count"
 KEY_EXCLUDED_COUNT = "excluded_count"
@@ -95,9 +96,6 @@ KEY_STOP_LEVEL = "stop_loss_level"
 KEY_HOLD_LIMIT = "hold_limit"
 KEY_ENTRY = "entry"
 KEY_EXIT = "exit"
-
-KEY_TRADES = "trades"
-KEY_SUMMARY = "summary"
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 신호일 종가다. 15:20 판정 후 종가 단일가매매로 체결하는 것을 전제하며, 익일 시가 집행이 아니다"
@@ -110,15 +108,18 @@ NOTE_INVERSE = "상승 방향 신호는 원지수 수익률에 -1 을 곱한 값
 class StrategyOutputs:
     """실행 산출물
 
+    **세 매매법이 같은 이름을 쓴다** — 성적표는 `performance`, 실행 요약은 `meta` 처럼
+    매매법마다 다른 이름을 쓰면 스크립트가 매번 다른 속성을 찾아야 한다.
+
     Attributes:
         trades: 신호별 체결 내역 (신호 하나가 한 행)
-        summary: 대상별 집계
-        meta: 실행 파라미터와 핵심 수치
+        performance: 대상 × 구간 성적표
+        summary: 실행 요약 (`strategy/run_summary.py` 의 틀)
     """
 
     trades: pd.DataFrame
-    summary: pd.DataFrame
-    meta: dict[str, Any]
+    performance: pd.DataFrame
+    summary: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -194,43 +195,58 @@ def run_reverse_trading(
     summary_rows: list[dict[str, Any]] = []
     target_records: list[dict[str, Any]] = []
 
+    # **데이터셋 단위로 모은다.** 대상은 종목 × 순위 컷이라 같은 시세를 여러 대상이 쓴다 —
+    # 대상마다 한 줄씩 내면 같은 파일의 기간이 네 번 반복된다
+    dataset_records: dict[str, dict[str, Any]] = {}
+
     for target in targets:
         signals = _find_signals(target)
         block = _measure(target, signals, hold_limit=hold_limit, stop_level=stop_level)
+
+        # **`setdefault` 를 쓰지 않는다.** 기본값을 «먼저» 계산하므로 이미 있는 키에도
+        # `dataset_record` 가 돈다 — 건너뛰려던 일을 그대로 한다
+        if target.dataset.key not in dataset_records:
+            dataset_records[target.dataset.key] = dataset_record(
+                ticker=target.dataset.ticker,
+                label=target.dataset.label,
+                file=target.dataset.path.name,
+                frame=signals.frame,
+            )
 
         # **요약을 먼저 쌓는다.** 아래에서 체결이 없는 대상을 건너뛰므로, 그 뒤에 쌓으면
         # 전부 제외된 대상의 제외 건수가 어디에도 남지 않는다 (표본 보존)
         target_records.append(_target_record(target, signals, block.excluded_count))
 
         if block.trades.empty:
-            logger.warning(f"체결이 하나도 없어 집계에서 뺐습니다 - {target.dataset.ticker} (제외 {block.excluded_count}건)")
+            logger.warning(f"체결이 하나도 없어 집계에서 뺐습니다 - {target.dataset.label} (제외 {block.excluded_count}건)")
             continue
 
         trade_blocks.append(block.trades)
         summary_rows.extend(_summary_rows(target, block, stop_level=stop_level))
 
     trades = pd.concat(trade_blocks, ignore_index=True) if trade_blocks else pd.DataFrame()
-    summary = pd.DataFrame(summary_rows)
+    performance = to_summary_frame(summary_rows)
 
-    meta = {
-        KEY_STRATEGY: "reverse_trading",
-        KEY_TARGETS: target_records,
-        KEY_RULE: {
+    summary = build_run_summary(
+        track=TRACK_NAME,
+        datasets=list(dataset_records.values()),
+        rule={
             KEY_STOP_LEVEL: stop_level_value(stop_level),
             KEY_HOLD_LIMIT: hold_limit,
             KEY_ENTRY: NOTE_ENTRY,
             KEY_EXIT: NOTE_STOP_BASE,
+            KEY_TARGETS: target_records,
         },
-        KEY_ROW_COUNTS: {KEY_TRADES: len(trades), KEY_SUMMARY: len(summary)},
-        KEY_NOTES: [NOTE_ENTRY, NOTE_STOP_BASE, NOTE_HOLD_LIMIT, NOTE_INVERSE],
-    }
+        row_counts={TRADES_FILENAME: len(trades), SUMMARY_FILENAME: len(performance)},
+        notes=[NOTE_ENTRY, NOTE_STOP_BASE, NOTE_HOLD_LIMIT, NOTE_INVERSE],
+    )
 
     logger.debug(
         f"매매 실행 완료: 대상 {len(targets)}종, 손절 -{stop_level * RATE_TO_PERCENT:.0f}%, "
         f"한도 D+{hold_limit}, 체결 {len(trades):,}건"
     )
 
-    return StrategyOutputs(trades=trades, summary=summary, meta=meta)
+    return StrategyOutputs(trades=trades, performance=performance, summary=summary)
 
 
 def _find_signals(target: Target) -> _Signals:
@@ -355,7 +371,7 @@ def _identity(target: Target, *, direction: str, stop_level: float) -> dict[str,
         식별 컬럼 dict
     """
     return {
-        DISPLAY_TICKER: target.dataset.ticker,
+        DISPLAY_TICKER: target.dataset.label,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
         DISPLAY_START_YEAR: target.start_year,
         DISPLAY_DIRECTION: direction,
@@ -467,10 +483,9 @@ def _target_record(target: Target, signals: _Signals, excluded_count: int) -> di
         요약 dict
     """
     return {
-        KEY_TICKER: target.dataset.ticker,
+        KEY_LABEL: target.dataset.label,
         KEY_RANK_CUT: target.rank_cut,
         KEY_START_YEAR: target.start_year,
-        KEY_PATH: str(target.dataset.path),
         KEY_SIGNAL_COUNT: len(signals.positions),
         KEY_EVENT_COUNT: int(pd.Series(signals.event_ids).nunique()),
         KEY_EXCLUDED_COUNT: excluded_count,

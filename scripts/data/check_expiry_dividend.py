@@ -136,7 +136,7 @@ def _measure_cell(cell: ExpiryCell) -> dict[str, Any]:
     hit = series[series.abs() > HIT_THRESHOLD_PERCENT]
 
     return {
-        "종목": dataset.ticker,
+        "종목": dataset.label,
         "만기월": cell.expiry_month,
         "방향": EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
         "진입": len(entries.entry_positions),

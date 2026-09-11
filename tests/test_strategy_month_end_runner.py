@@ -52,7 +52,7 @@ from verify_lab.strategy.month_end_runner import (
     TradingOutputs,
     run_month_end_trading,
 )
-from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP, Dataset
+from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP, MARKET_KOSDAQ, Dataset
 
 # 합성 시세 구간. 12개월이 다 차려면 몇 해가 필요하다
 SYNTHETIC_START = "2018-01-01"
@@ -96,6 +96,7 @@ def _write_market(directory: Path, ticker: str, days: pd.DatetimeIndex | None = 
     return Dataset(
         ticker=ticker,
         label=f"합성 ETF {ticker}",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -130,6 +131,7 @@ def _write_index(directory: Path, ticker: str) -> Dataset:
     return Dataset(
         ticker=ticker,
         label=f"합성 지수 {ticker}",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,
@@ -453,6 +455,7 @@ class TestLookAhead:
         truncated = Dataset(
             ticker="999901",
             label="잘라낸 합성 ETF",
+            market=MARKET_KOSDAQ,
             directory=tmp_path,
             file_template=MARKET_FILE_TEMPLATE,
             price_column=COL_CLOSE,
@@ -577,7 +580,7 @@ class TestDatasetLabel:
         Then: 요약의 데이터셋 항목에 코드와 종목명이 모두 있다
         """
         # Given
-        from verify_lab.strategy.month_end_runner import KEY_DATASETS, KEY_LABEL, KEY_TICKER
+        from verify_lab.strategy.run_summary import KEY_DATASET_LABEL, KEY_DATASET_TICKER, KEY_DATASETS
 
         # When
         entries = outputs.summary[KEY_DATASETS]
@@ -585,8 +588,8 @@ class TestDatasetLabel:
         # Then
         assert entries
         for entry in entries:
-            assert entry[KEY_TICKER]
-            assert entry[KEY_LABEL]
+            assert entry[KEY_DATASET_TICKER]
+            assert entry[KEY_DATASET_LABEL]
 
 
 class TestFixedStopTable:

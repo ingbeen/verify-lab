@@ -85,7 +85,8 @@ def _dataset(rule: object) -> Dataset:
     """실행 계층이 요구하는 최소 대상 정의를 만든다. 파일은 읽지 않는다."""
     return Dataset(
         key="synthetic",
-        ticker="합성",
+        ticker="SYN",
+        label="합성",
         rule=rule,  # pyright: ignore[reportArgumentType]
         file_name="none.csv",
         price_decimals=4,

@@ -42,6 +42,8 @@ from verify_lab.studies.month_end.constants import (
     EXECUTION_ROLE_NONE,
     EXECUTION_ROLE_UP,
     EXECUTION_ROLES,
+    MARKET_KOSDAQ,
+    MARKET_KOSPI,
     Dataset,
 )
 from verify_lab.studies.month_end.runner import StudyOutputs, run_study
@@ -83,6 +85,7 @@ def _write_market(directory: Path, ticker: str, role: str) -> Dataset:
     return Dataset(
         ticker=ticker,
         label=f"합성 ETF {ticker}",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -112,6 +115,7 @@ def _write_index(directory: Path, ticker: str) -> Dataset:
     return Dataset(
         ticker=ticker,
         label=f"합성 지수 {ticker}",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,
@@ -227,6 +231,42 @@ class TestDatasetComposition:
         # Then
         assert len(set(tickers)) == len(tickers), f"티커가 겹칩니다: {tickers}"
         assert len(set(labels)) == len(labels), f"종목명이 겹칩니다: {labels}"
+
+    def test_모든_대상이_시장을_갖는다(self) -> None:
+        """
+        목적: 집행 축 표의 `시장` 이 **조용히 빈칸**으로 나가던 길을 닫는다
+
+        전에는 종목명으로 찾는 사전(`MARKET_BY_LABEL`)을 `.get(label, "")` 로 읽어서,
+        그 사전에 없는 대상은 시장이 빈칸이 됐다. **바로 다음 줄**은 같은 라벨로
+        `executable[label].execution_role` 을 해서 `KeyError` 로 죽었다 — 한 줄 차이로
+        가드 강도가 정반대였다. 시장을 **대상 자신의 속성**으로 옮겨 그 비대칭을 없앴다.
+
+        Given: 전체 대상 목록
+        When: 각 대상의 시장을 봤을 때
+        Then: 전부 알려진 시장 이름이다
+        """
+        # Given / When
+        markets = {dataset.market for dataset in DATASETS}
+
+        # Then
+        assert markets == {MARKET_KOSPI, MARKET_KOSDAQ}, f"모르는 시장이 있습니다: {markets}"
+
+    def test_시장이_목록_배치와_어긋나지_않는다(self) -> None:
+        """
+        목적: 대상마다 손으로 적는 값이 되었으므로 목록 배치와 맞는지 기계로 건다
+
+        전에는 두 목록에서 파생시켜 어긋날 수 없었다. 필드로 옮기면서 그 보장이 사라졌으므로
+        **같은 보장을 테스트가 대신 선다.**
+
+        Given: 시장별 목록
+        When: 각 목록의 대상이 적어 둔 시장을 봤을 때
+        Then: 그 목록의 시장과 같다
+        """
+        # Given / When / Then
+        for dataset in DATASETS_KOSPI:
+            assert dataset.market == MARKET_KOSPI, f"{dataset.label} 이 코스피 목록에 있는데 시장이 다릅니다"
+        for dataset in DATASETS_KOSDAQ:
+            assert dataset.market == MARKET_KOSDAQ, f"{dataset.label} 이 코스닥 목록에 있는데 시장이 다릅니다"
 
 
 class TestExecutionTable:

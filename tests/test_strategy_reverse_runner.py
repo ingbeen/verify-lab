@@ -49,12 +49,12 @@ from verify_lab.strategy.reverse_runner import (
     IDENTITY_COLUMNS,
     KEY_EXCLUDED_COUNT,
     KEY_HOLD_LIMIT,
-    KEY_RULE,
     KEY_STOP_LEVEL,
     KEY_TARGETS,
     StrategyOutputs,
     run_reverse_trading,
 )
+from verify_lab.strategy.run_summary import KEY_RULE
 from verify_lab.studies.reverse.constants import Dataset
 
 # 합성 시세를 만드는 난수 시드. 시드 없는 난수는 금지다
@@ -152,7 +152,9 @@ def _target(
     saved.to_csv(path, index=False)
 
     return Target(
-        dataset=Dataset(key="synthetic", ticker=ticker, price_basis="원본가", path=path, price_decimals=PRICE_DECIMALS),
+        dataset=Dataset(
+            key="synthetic", ticker=ticker, label=ticker, price_basis="원본가", path=path, price_decimals=PRICE_DECIMALS
+        ),
         rank_cut=rank_cut,
         start_year=start_year,
     )
@@ -197,7 +199,7 @@ class TestAxes:
         Then: 구간 수만큼이다
         """
         # Given / When / Then
-        assert len(outputs.summary) == len(PERIODS)
+        assert len(outputs.performance) == len(PERIODS)
 
     def test_식별_컬럼이_두_표에_모두_앞에_붙는다(self, outputs: StrategyOutputs) -> None:
         """
@@ -208,7 +210,7 @@ class TestAxes:
         Then: 식별 컬럼이 정의된 순서 그대로 앞에 있다
         """
         # Given / When / Then
-        for table in (outputs.trades, outputs.summary):
+        for table in (outputs.trades, outputs.performance):
             assert list(table.columns[: len(IDENTITY_COLUMNS)]) == list(IDENTITY_COLUMNS)
 
     def test_식별_컬럼은_여섯_개다(self) -> None:
@@ -242,7 +244,7 @@ class TestAxes:
 
         # Then
         assert set(counted) == {1}
-        assert len(outputs.trades) == int(_overall(outputs.summary)[DISPLAY_SIGNAL_COUNT])
+        assert len(outputs.trades) == int(_overall(outputs.performance)[DISPLAY_SIGNAL_COUNT])
 
 
 class TestAggregation:
@@ -259,7 +261,7 @@ class TestAggregation:
         Then: 집계의 합계와 허용오차 안에서 같다
         """
         # Given
-        row = _overall(outputs.summary)
+        row = _overall(outputs.performance)
 
         # When
         counted = float(outputs.trades[DISPLAY_RETURN].sum())
@@ -276,7 +278,7 @@ class TestAggregation:
         Then: 1 이상 한도 이하다
         """
         # Given / When
-        mean_hold = float(_overall(outputs.summary)[DISPLAY_MEAN_HOLD])
+        mean_hold = float(_overall(outputs.performance)[DISPLAY_MEAN_HOLD])
 
         # Then
         assert 1.0 <= mean_hold <= HOLD_LIMIT
@@ -300,8 +302,8 @@ class TestSignalOwnership:
         wide = run_reverse_trading([_target(tmp_path / "wide", rank_cut=20, ticker="넓은컷")])
 
         # When
-        narrow_count = int(narrow.summary[DISPLAY_SIGNAL_COUNT].iloc[0])
-        wide_count = int(wide.summary[DISPLAY_SIGNAL_COUNT].iloc[0])
+        narrow_count = int(narrow.performance[DISPLAY_SIGNAL_COUNT].iloc[0])
+        wide_count = int(wide.performance[DISPLAY_SIGNAL_COUNT].iloc[0])
 
         # Then
         assert wide_count >= narrow_count
@@ -327,7 +329,12 @@ class TestSignalOwnership:
             saved.to_csv(path, index=False)
             target = Target(
                 dataset=Dataset(
-                    key="synthetic", ticker="절단", price_basis="원본가", path=path, price_decimals=PRICE_DECIMALS
+                    key="synthetic",
+                    ticker="CUT",
+                    label="절단",
+                    price_basis="원본가",
+                    path=path,
+                    price_decimals=PRICE_DECIMALS,
                 ),
                 rank_cut=10,
             )
@@ -356,7 +363,7 @@ class TestTargetsInvariant:
         Then: 두 종목 × 두 컷 네 종이고 시작연도가 전부 같다
         """
         # Given / When
-        triples = {(target.dataset.ticker, target.rank_cut, target.start_year) for target in TARGETS}
+        triples = {(target.dataset.label, target.rank_cut, target.start_year) for target in TARGETS}
 
         # Then
         assert triples == {
@@ -426,8 +433,8 @@ class TestTargetsInvariant:
         result = run_reverse_trading([early, late])
 
         # Then
-        assert set(result.summary[DISPLAY_START_YEAR]) == expected
-        assert {record["start_year"] for record in result.meta[KEY_TARGETS]} == expected
+        assert set(result.performance[DISPLAY_START_YEAR]) == expected
+        assert {record["start_year"] for record in result.summary[KEY_RULE][KEY_TARGETS]} == expected
 
     def test_손절선은_단일_5퍼센트다(self) -> None:
         """
@@ -465,7 +472,7 @@ class TestTargetsInvariant:
         Then: 시작연도와 신호 수가 남아 있다
         """
         # Given / When
-        record = outputs.meta[KEY_TARGETS][0]
+        record = outputs.summary[KEY_RULE][KEY_TARGETS][0]
 
         # Then
         assert record["start_year"] == SYNTHETIC_START_YEAR
@@ -483,7 +490,7 @@ class TestTargetsInvariant:
         Then: 손절선(%)과 보유 한도가 남아 있다
         """
         # Given / When
-        rule = outputs.meta[KEY_RULE]
+        rule = outputs.summary[KEY_RULE]
 
         # Then
         assert rule[KEY_STOP_LEVEL] == pytest.approx(stop_level_value(STOP_LOSS_LEVEL), abs=RATE_TOLERANCE)
@@ -519,7 +526,7 @@ class TestSamplePreservation:
         outputs = self._trimmed_outputs(tmp_path)
 
         # Then
-        assert int(_overall(outputs.summary)[DISPLAY_EXCLUDED]) >= 1
+        assert int(_overall(outputs.performance)[DISPLAY_EXCLUDED]) >= 1
 
     def test_신호_수와_제외_수의_합이_전체_신호_수다(self, tmp_path: Path) -> None:
         """
@@ -534,9 +541,9 @@ class TestSamplePreservation:
         outputs = self._trimmed_outputs(tmp_path)
 
         # Then
-        row = _overall(outputs.summary)
+        row = _overall(outputs.performance)
         counted = int(row[DISPLAY_SIGNAL_COUNT]) + int(row[DISPLAY_EXCLUDED])
-        assert counted == int(outputs.meta[KEY_TARGETS][0]["signal_count"])
+        assert counted == int(outputs.summary[KEY_RULE][KEY_TARGETS][0]["signal_count"])
 
     def test_전부_체결되면_전체_구간의_제외가_0이다(self, outputs: StrategyOutputs) -> None:
         """
@@ -547,7 +554,7 @@ class TestSamplePreservation:
         Then: 전체 구간 행의 제외 건수가 0 이다
         """
         # Given / When / Then
-        assert int(_overall(outputs.summary)[DISPLAY_EXCLUDED]) == 0
+        assert int(_overall(outputs.performance)[DISPLAY_EXCLUDED]) == 0
 
     def test_구간_행의_제외는_비어_있다(self, outputs: StrategyOutputs) -> None:
         """
@@ -562,7 +569,7 @@ class TestSamplePreservation:
         Then: 제외 칸이 비어 있다
         """
         # Given
-        others = outputs.summary[outputs.summary[DISPLAY_PERIOD] != PERIOD_ALL]
+        others = outputs.performance[outputs.performance[DISPLAY_PERIOD] != PERIOD_ALL]
 
         # When / Then
         assert len(others) == len(PERIODS) - 1
@@ -609,5 +616,5 @@ class TestAllSignalsExcluded:
 
         # Then
         assert outputs.trades.empty, "이 시세에서는 체결이 만들어지지 않아야 검사가 성립합니다"
-        recorded = str(outputs.meta)
-        assert KEY_EXCLUDED_COUNT in recorded, f"제외 건수가 실행 정보에 없습니다: {outputs.meta}"
+        recorded = str(outputs.summary)
+        assert KEY_EXCLUDED_COUNT in recorded, f"제외 건수가 실행 정보에 없습니다: {outputs.summary}"

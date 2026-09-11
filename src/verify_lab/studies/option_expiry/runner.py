@@ -27,17 +27,13 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_HORIZON,
     COL_JUDGEABLE,
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
     REASON_NONE,
 )
 from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
 from verify_lab.measure.screening import COL_HIT_RATE, COL_SCREEN, SCREEN_CANDIDATE, screen_candidates
 from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
-    COL_LOSS_RATE,
     COL_LOSS_RATE_EXCESS,
-    COL_MEAN,
     COL_MEAN_EXCESS,
     COL_MEAN_P_VALUE,
     COL_MEDIAN_EXCESS,
@@ -45,12 +41,12 @@ from verify_lab.measure.statistics import (
     COL_SAMPLE_COUNT,
     COL_TEST_NOTE,
     COL_UP_RATE_P_VALUE,
-    COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
-    MIN_SAMPLE_PER_CELL,
     excess,
+    judgeable,
+    mean_rate_conflict,
     permutation_test,
     summarize,
 )
@@ -73,7 +69,6 @@ from verify_lab.studies.option_expiry.constants import (
     DATASETS,
     DISPLAY_TIME_HALF_EARLY,
     DISPLAY_TIME_HALF_LATE,
-    HALF_RATE,
     HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
     WEEKDAY_LABELS,
@@ -195,7 +190,7 @@ def _annotate(df: pd.DataFrame, dataset: Dataset) -> tuple[pd.DataFrame, pd.Data
     annotated[COL_DAILY_RETURN] = annotated[COL_CLOSE].pct_change()
 
     logger.debug(
-        f"{dataset.ticker}: 거래일 {assignment.total_days:,}, 만기 {len(expiries):,}, "
+        f"{dataset.label}: 거래일 {assignment.total_days:,}, 만기 {len(expiries):,}, "
         f"창 안 {assignment.assigned_count:,}, 겹침 {assignment.contested_count:,}, 동률 {assignment.tie_count:,}"
     )
 
@@ -261,7 +256,7 @@ def _run_dataset(
     df = load_market_csv(MARKET_DIR / dataset.file_name)
     expiries, annotated = _annotate(df, dataset)
 
-    accumulator.expiries.append(_identify(expiries, **{COL_TICKER: dataset.ticker}))
+    accumulator.expiries.append(_identify(expiries, **{COL_TICKER: dataset.label}))
 
     inside_window = annotated[COL_OFFSET].notna()
 
@@ -270,13 +265,13 @@ def _run_dataset(
     signals = annotated.loc[inside_window, signal_columns].copy()
     signals[COL_EXPIRY_MONTH] = signals[COL_EXPIRY_DATE].dt.strftime("%Y-%m")
     signals[COL_OFFSET] = signals[COL_OFFSET].astype(int)
-    accumulator.signals.append(_identify(signals, **{COL_TICKER: dataset.ticker}))
+    accumulator.signals.append(_identify(signals, **{COL_TICKER: dataset.label}))
 
     trade_records = _run_weekly_trade(df, dataset, expiries, accumulator, repeats=repeats, seed=seed)
 
     expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
     return {
-        KEY_TICKER: dataset.ticker,
+        KEY_TICKER: dataset.label,
         KEY_FILE: dataset.file_name,
         KEY_ROWS: len(df),
         KEY_PERIOD: f"{df[COL_DATE].iloc[0].date()} ~ {df[COL_DATE].iloc[-1].date()}",
@@ -452,7 +447,7 @@ def _aggregate_by_month(
             on=[COL_BASIS, COL_HORIZON],
         )
     )
-    merged[COL_MEAN_RATE_CONFLICT] = _mean_rate_conflict(merged)
+    merged[COL_MEAN_RATE_CONFLICT] = mean_rate_conflict(merged)
 
     return merged.rename(columns={COL_HORIZON: COL_EXPIRY_MONTH_NUMBER}).drop(columns=[COL_BASIS])
 
@@ -555,27 +550,9 @@ def _half_block(
 
     merged[COL_EXPIRY_MONTH_NUMBER] = month
     merged[COL_TIME_HALF] = label
-    merged[COL_JUDGEABLE] = JUDGEABLE_YES if len(half_signal) >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO
+    merged[COL_JUDGEABLE] = judgeable(len(half_signal))
 
     return merged.drop(columns=[COL_BASIS, COL_HORIZON])
-
-
-def _mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:
-    """평균의 부호와 방향 비율이 어긋나는 칸을 표시한다 (측정의 원칙 13).
-
-    평균이 양수인데 절반 넘게 내렸다면 **소수의 큰 사건이 평균을 만든 것**이고, 그 반대도 같다.
-    평균만 보고 방향을 읽으면 이런 칸에서 정반대로 판단하게 된다.
-
-    Args:
-        frame: 평균과 두 방향 비율이 들어 있는 집계 프레임
-
-    Returns:
-        어긋나는 칸이면 True 인 Series
-    """
-    mean_up_but_fell = (frame[COL_MEAN] > 0) & (frame[COL_LOSS_RATE] > HALF_RATE)
-    mean_down_but_rose = (frame[COL_MEAN] < 0) & (frame[COL_WIN_RATE] > HALF_RATE)
-
-    return mean_up_but_fell | mean_down_but_rose
 
 
 def _run_weekly_trade(
@@ -604,7 +581,7 @@ def _run_weekly_trade(
 
     for exit_weekday in dataset.exit_weekdays:
         exit_label = WEEKDAY_LABELS[exit_weekday]
-        identity = {COL_TICKER: dataset.ticker, COL_EXIT_WEEKDAY: exit_label}
+        identity = {COL_TICKER: dataset.label, COL_EXIT_WEEKDAY: exit_label}
 
         signal, baseline = _weekly_trade_frames(df, dataset, expiries, exit_weekday)
 

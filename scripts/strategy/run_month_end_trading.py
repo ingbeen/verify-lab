@@ -34,8 +34,14 @@ from verify_lab.strategy.constants import (
     SUMMARY_FIXED_STOP_FILENAME,
     TRADES_FILENAME,
 )
-from verify_lab.strategy.month_end_runner import DISPLAY_MONTH, run_month_end_trading
-from verify_lab.studies.month_end.constants import DATASETS_KOSDAQ, TRACK_NAME
+from verify_lab.strategy.month_end_runner import (
+    DISPLAY_MONTH,
+    KEY_FIXED_STOP_LEVEL,
+    KEY_STOP_LEVELS,
+    run_month_end_trading,
+)
+from verify_lab.strategy.run_summary import KEY_COST, KEY_ROW_COUNTS, KEY_RULE
+from verify_lab.studies.month_end.constants import DATASETS_KOSDAQ, TRACK_NAME, Dataset
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -47,10 +53,13 @@ logger = get_logger(__name__)
 # 계층을 가를 상위 폴더가 없고, 같은 매매법의 검증 이력과 키가 겹치면 한쪽이 덮인다
 KEY_META_STRATEGY = "month_end_trading"
 
+# 그 안의 키. 나머지는 요약이 쓰는 이름을 그대로 재사용한다 — 두 벌이 되면 한쪽이 낡는다
+KEY_META_DIRECTORY = "directory"
+KEY_META_TICKERS = "tickers"
+
 # **산출물 폴더 이름을 여기서 만들지 않는다.** slug 는 `studies/month_end/constants.py` 의
-# `TRACK_NAME` 하나가 소유하고 계층은 `create_run_directory` 가 붙인다.
-# 전에는 이 자리에 `"kosdaq_month_end_trading"` 이 박혀 있었고 상수명도 `STUDY_NAME` 이라
-# 매매 산출물인데 검증처럼 읽혔다.
+# `TRACK_NAME` 하나가 소유하고 계층은 `create_run_directory` 가 붙인다 — CLI 에 두면
+# 같은 매매법이 측정 폴더와 매매 폴더에서 다른 이름으로 불린다.
 #
 # **[주의] 이 매매는 아직 코스닥 4대상뿐이다** (`DATASETS_KOSDAQ`). 검증 계층은 코스피까지
 # 8대상으로 늘었지만 매매는 따라가지 않았다. slug 은 매매법당 하나라 두 계층이 `month_end` 를
@@ -92,7 +101,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _selected_datasets(tickers: list[str] | None) -> tuple:
+def _selected_datasets(tickers: list[str] | None) -> tuple[Dataset, ...]:
     """인자로 고른 대상만 남긴다.
 
     **지수도 기본 대상에 든다.** 장중 손절은 못 걸지만 무손절 성적은 낼 수 있고,
@@ -149,15 +158,17 @@ def main() -> int:
 
     logger.debug(f"산출물 저장 위치: {directory}")
 
+    # **요약의 키를 문자열로 되짚지 않는다.** runner 가 키를 바꾸면 실행 시점에야 터진다
+    rule: dict[str, object] = outputs.summary[KEY_RULE]
     save_metadata(
         KEY_META_STRATEGY,
         {
-            "directory": str(directory),
-            "tickers": [dataset.ticker for dataset in datasets],
-            "stop_levels": outputs.summary["stop_levels"],
-            "fixed_stop_level": outputs.summary["fixed_stop_level"],
-            "cost": outputs.summary["cost"],
-            "row_counts": outputs.summary["row_counts"],
+            KEY_META_DIRECTORY: str(directory),
+            KEY_META_TICKERS: [dataset.ticker for dataset in datasets],
+            KEY_STOP_LEVELS: rule[KEY_STOP_LEVELS],
+            KEY_FIXED_STOP_LEVEL: rule[KEY_FIXED_STOP_LEVEL],
+            KEY_COST: outputs.summary[KEY_COST],
+            KEY_ROW_COUNTS: outputs.summary[KEY_ROW_COUNTS],
         },
     )
 

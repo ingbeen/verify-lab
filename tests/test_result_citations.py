@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from verify_lab.common_constants import (
-    DOCS_DIR,
+    BASE_DIR,
     RESULT_LAYER_PROBE,
     RESULT_LAYER_STRATEGY,
     RESULT_LAYER_STUDY,
@@ -399,6 +399,9 @@ def test_real_documents_cite_existing_dirs() -> None:
     **인용한 폴더를 지우는 순간 이 테스트가 실패한다.** 그것이 이 테스트의 존재 이유다.
     없앤 산출물은 인용과 같은 줄에 묘비 낱말(`없음`·`삭제`·`제거`)을 달아 표기한다.
 
+    **`docs/` 가 아니라 저장소 전체를 훑는다.** 루트 `CLAUDE.md` 가 실제로 산출물을 인용하고
+    있어서 `docs/` 만 보면 그 인용을 놓친다 — 그러면 정리 도구가 근거물을 삭제 후보로 낸다.
+
     `tests/CLAUDE.md` §5 의 「`storage/` 실경로 접근 금지」에 대한 좁은 예외다 —
     파일을 열지도 쓰지도 않고 **폴더 이름의 실재만** 본다.
 
@@ -407,10 +410,33 @@ def test_real_documents_cite_existing_dirs() -> None:
     Then: 하나도 없다
     """
     # Given / When
-    missing = missing_citations(DOCS_DIR, RESULTS_DIR)
+    missing = missing_citations(BASE_DIR, RESULTS_DIR)
 
     # Then
     assert missing == [], f"문서가 인용한 산출물 폴더가 없다: {missing}"
+
+
+def test_citation_outside_docs_is_counted(tmp_path: Path) -> None:
+    """
+    목적: **`docs/` 밖의 마크다운이 인용한 폴더도 지킨다**
+
+    루트 `CLAUDE.md` 가 실제로 산출물 두 개를 인용하고 있었다. 스캔 루트가 `docs/` 면
+    그 인용이 보이지 않아 **품질 검증은 통과하고 정리 도구는 삭제 후보로 낸다** —
+    이 모듈이 막겠다고 한 「두 판정이 갈라진다」의 거울상이다.
+
+    Given: 저장소 루트의 `CLAUDE.md` 만 폴더를 인용하는 트리
+    When: 저장소 전체를 훑는다
+    Then: 그 폴더가 인용으로 잡힌다
+    """
+    # Given
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "CLAUDE.md").write_text(f"근거는 `storage/results/매매/{FAKE_DIR_A}/성적표.csv` 에 있습니다.\n", encoding="utf-8")
+
+    # When
+    cited = cited_result_dirs(tmp_path)
+
+    # Then
+    assert cited == {FAKE_DIR_A}
 
 
 def test_real_repository_keeps_seeing_the_old_layout() -> None:

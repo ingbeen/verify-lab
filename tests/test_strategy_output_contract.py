@@ -20,6 +20,7 @@
 (`tests/CLAUDE.md` 「픽스처가 코드와 같은 가정을 하면 그 버그는 영원히 안 잡힙니다」).
 """
 
+import json
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
@@ -42,30 +43,54 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS_KRW,
 )
 from verify_lab.report.constants import DISPLAY_EXCLUDED
-from verify_lab.strategy import month_end_runner, option_expiry_runner
+from verify_lab.strategy import month_end_runner, option_expiry_runner, periods
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
+    DISPLAY_EVENT_COUNT,
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_JUDGEABLE,
+    DISPLAY_LOSS_AMOUNT,
     DISPLAY_PERIOD,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     DISPLAY_TOTAL,
+    DISPLAY_WIN_AMOUNT,
     JUDGEABLE_NO,
     NO_STOP_LABEL,
+    PERIOD_ALL,
+    PERIOD_RECENT_5Y,
     PERIODS,
+    TRADES_FILENAME,
     ExpiryCell,
     Target,
 )
 from verify_lab.strategy.month_end_runner import TradingOutputs, run_month_end_trading
 from verify_lab.strategy.option_expiry_runner import ExpiryOutputs, run_option_expiry_trading
+from verify_lab.strategy.periods import period_rows
 from verify_lab.strategy.reverse_runner import StrategyOutputs, run_reverse_trading
-from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP
+from verify_lab.strategy.run_summary import (
+    COST_NOTE,
+    KEY_COST,
+    KEY_DATASET_FILE,
+    KEY_DATASET_LABEL,
+    KEY_DATASET_PERIOD,
+    KEY_DATASET_ROWS,
+    KEY_DATASET_TICKER,
+    KEY_DATASETS,
+    KEY_NOTES,
+    KEY_ROW_COUNTS,
+    KEY_RULE,
+    KEY_TRACK,
+)
+from verify_lab.studies.month_end.constants import DATASETS as MONTH_END_DATASETS
+from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP, MARKET_KOSDAQ
 from verify_lab.studies.month_end.constants import Dataset as MonthEndDataset
+from verify_lab.studies.option_expiry.constants import DATASETS as EXPIRY_DATASETS
 from verify_lab.studies.option_expiry.constants import FRIDAY, US_MONTHLY_EXPIRY
 from verify_lab.studies.option_expiry.constants import Dataset as ExpiryDataset
+from verify_lab.studies.reverse.constants import DATASETS as REVERSE_DATASETS
 from verify_lab.studies.reverse.constants import DISPLAY_DIRECTION_REVERSE_ALL, EXTREME_DIRECTION_LABELS
 from verify_lab.studies.reverse.constants import Dataset as ReverseDataset
 
@@ -88,6 +113,11 @@ SUMMARY_COMMON_COLUMNS = (
     "승률(%)",
     "손익비",
     "손익분기 승률(%)",
+    # **손익비 바로 뒤에 그 분자·분모를 둔다.** `docs/strategy/투자금_결정.md` §1.2 가
+    # 이 두 값의 출처를 성적표로 적어 두었는데 실제로는 없었다. `이길 때(%)` 는 양수,
+    # `질 때(%)` 는 **음수**다 — `최악(%)` 과 같은 관용이고 그 문서의 예시와도 부호가 맞는다
+    "이길 때(%)",
+    "질 때(%)",
     "질 때 표본",
     "최고(%)",
     "최악(%)",
@@ -231,7 +261,8 @@ def _reverse_target(path: Path, *, rank_cut: int = 10) -> Target:
     return Target(
         dataset=ReverseDataset(
             key="synthetic",
-            ticker="합성 ETF",
+            ticker="SYN",
+            label="합성 ETF",
             price_basis="원본가",
             path=path,
             price_decimals=PRICE_DECIMALS_KRW,
@@ -285,7 +316,8 @@ def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryO
     _write_market(directory, "SYN")
     dataset = ExpiryDataset(
         key="synthetic",
-        ticker="합성 ETF",
+        ticker="SYN",
+        label="합성 ETF",
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="SYN"),
         price_decimals=PRICE_DECIMALS_KRW,
@@ -313,6 +345,7 @@ def month_end_outputs(tmp_path_factory: pytest.TempPathFactory) -> TradingOutput
     etf = MonthEndDataset(
         ticker="SYN",
         label="합성 ETF",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -323,6 +356,7 @@ def month_end_outputs(tmp_path_factory: pytest.TempPathFactory) -> TradingOutput
     index = MonthEndDataset(
         ticker="SYNIDX",
         label="합성 지수",
+        market=MARKET_KOSDAQ,
         directory=directory,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,
@@ -372,10 +406,10 @@ class TestSummaryColumns:
 
         Given: 합성 시세로 돈 역방향 결과
         When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 파라미터 · 시작연도 · 공통 21개 · 사건 순이다
+        Then: 종목 · 파라미터 · 시작연도 · 공통 23개 · 사건 순이다
         """
         # Given / When / Then
-        assert list(reverse_outputs.summary.columns) == _expected_summary(AXIS_REVERSE, TAIL_REVERSE_SUMMARY)
+        assert list(reverse_outputs.performance.columns) == _expected_summary(AXIS_REVERSE, TAIL_REVERSE_SUMMARY)
 
     def test_옵션_만기일_성적표가_공통_컬럼을_순서대로_쓴다(self, expiry_outputs: ExpiryOutputs) -> None:
         """
@@ -383,10 +417,10 @@ class TestSummaryColumns:
 
         Given: 합성 시세로 돈 옵션 만기일 결과
         When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 만기월 · 공통 21개다. `사건` 은 없다
+        Then: 종목 · 만기월 · 공통 23개다. `사건` 은 없다
         """
         # Given / When / Then
-        assert list(expiry_outputs.grid.columns) == _expected_summary(AXIS_OPTION_EXPIRY)
+        assert list(expiry_outputs.performance.columns) == _expected_summary(AXIS_OPTION_EXPIRY)
 
     def test_월말_성적표가_공통_컬럼을_순서대로_쓴다(self, month_end_outputs: TradingOutputs) -> None:
         """
@@ -394,7 +428,7 @@ class TestSummaryColumns:
 
         Given: 합성 시세로 돈 월말 결과
         When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 월 · 공통 21개다
+        Then: 종목 · 월 · 공통 23개다
         """
         # Given / When / Then
         assert list(month_end_outputs.performance.columns) == _expected_summary(AXIS_MONTH_END)
@@ -420,7 +454,7 @@ class TestSummaryColumns:
         # When
         common = [
             [column for column in table.columns if column not in axes]
-            for table in (reverse_outputs.summary, expiry_outputs.grid, month_end_outputs.performance)
+            for table in (reverse_outputs.performance, expiry_outputs.performance, month_end_outputs.performance)
         ]
 
         # Then
@@ -485,7 +519,7 @@ class TestStopLevelFormat:
         Then: −5.0 하나뿐이다
         """
         # Given / When / Then
-        assert self._levels(reverse_outputs.summary) == {-5.0}
+        assert self._levels(reverse_outputs.performance) == {-5.0}
 
     def test_옵션_만기일_손절선은_음수_실수다(self, expiry_outputs: ExpiryOutputs) -> None:
         """
@@ -498,7 +532,7 @@ class TestStopLevelFormat:
         Then: −5.0 하나뿐이다
         """
         # Given / When / Then
-        assert self._levels(expiry_outputs.grid) == {-5.0}
+        assert self._levels(expiry_outputs.performance) == {-5.0}
 
     def test_월말_손절선은_음수_실수와_무손절이다(self, month_end_outputs: TradingOutputs) -> None:
         """
@@ -544,7 +578,7 @@ class TestReverseDirection:
         Then: `역방향 전체` 하나뿐이다
         """
         # Given / When / Then
-        assert set(reverse_outputs.summary[DISPLAY_DIRECTION]) == {DISPLAY_DIRECTION_REVERSE_ALL}
+        assert set(reverse_outputs.performance[DISPLAY_DIRECTION]) == {DISPLAY_DIRECTION_REVERSE_ALL}
 
     def test_거래내역의_방향은_신호_방향_그대로다(self, reverse_outputs: StrategyOutputs) -> None:
         """
@@ -574,7 +608,7 @@ class TestReversePeriods:
         Then: `PERIODS` 순서 그대로 다섯 행이다
         """
         # Given / When / Then
-        assert reverse_outputs.summary[DISPLAY_PERIOD].tolist() == list(PERIODS)
+        assert reverse_outputs.performance[DISPLAY_PERIOD].tolist() == list(PERIODS)
 
     def test_표본이_하한에_못_미쳐도_행이_남는다(self, tmp_path: Path) -> None:
         """
@@ -588,7 +622,7 @@ class TestReversePeriods:
         target = _reverse_target(_write_market(tmp_path / "sparse", "SYN", EARLY_SIGNAL_POSITIONS))
 
         # When
-        summary = run_reverse_trading([target]).summary
+        summary = run_reverse_trading([target]).performance
 
         # Then
         assert summary[DISPLAY_PERIOD].tolist() == list(PERIODS)
@@ -612,7 +646,7 @@ class TestReversePeriods:
         Then: 셋 다 비어 있다
         """
         # Given / When / Then
-        for table in (reverse_outputs.summary, expiry_outputs.grid, month_end_outputs.performance):
+        for table in (reverse_outputs.performance, expiry_outputs.performance, month_end_outputs.performance):
             others = table[table[DISPLAY_PERIOD] != PERIODS[0]]
             assert not others.empty
             assert others[DISPLAY_EXCLUDED].isna().all()
@@ -631,7 +665,7 @@ class TestReversePeriods:
         target = _reverse_target(_write_market(tmp_path / "early", "SYN", EARLY_SIGNAL_POSITIONS))
 
         # When
-        summary = run_reverse_trading([target]).summary
+        summary = run_reverse_trading([target]).performance
         empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
 
         # Then
@@ -655,7 +689,7 @@ class TestEventCount:
         Then: 앞 절반이 전체보다 작다
         """
         # Given
-        summary = reverse_outputs.summary.set_index(DISPLAY_PERIOD)
+        summary = reverse_outputs.performance.set_index(DISPLAY_PERIOD)
 
         # When
         whole = int(summary.loc[PERIODS[0], TAIL_REVERSE_SUMMARY[0]])
@@ -675,7 +709,7 @@ class TestEventCount:
         Then: 없다
         """
         # Given / When / Then
-        for table in (expiry_outputs.grid, month_end_outputs.performance):
+        for table in (expiry_outputs.performance, month_end_outputs.performance):
             assert TAIL_REVERSE_SUMMARY[0] not in table.columns
 
     def test_구간_분할은_periods_가_소유한다(self) -> None:
@@ -801,3 +835,323 @@ class TestFilenames:
         # When / Then
         for script in scripts:
             assert ".csv" not in script.read_text(encoding="utf-8"), f"{script.name} 에 파일명이 박혀 있습니다"
+
+
+class TestPayoffAmountColumns:
+    """`이길 때(%)` · `질 때(%)` — 부호와 결측"""
+
+    def test_이길_때는_양수이고_질_때는_음수다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: 두 열의 부호를 계약으로 고정한다.
+
+        **`최악(%)` 이 음수인 것과 같은 관용**이고 `docs/strategy/투자금_결정.md` §1.2 의
+        예시(`0.0138` · `-0.0133`)와도 부호가 맞는다. 둘 다 절대값으로 내면 표를 읽는 사람이
+        어느 쪽이 손실인지 이름으로만 판단해야 한다.
+
+        Given: 합성 시세로 돈 월말 결과
+        When: 값이 있는 행의 두 열을 봤을 때
+        Then: 이길 때는 0 초과, 질 때는 0 미만이다
+        """
+        # Given
+        summary = month_end_outputs.performance
+        wins = summary[DISPLAY_WIN_AMOUNT].dropna()
+        losses = summary[DISPLAY_LOSS_AMOUNT].dropna()
+        assert not wins.empty and not losses.empty, "두 열에 값이 하나도 없습니다"
+
+        # When / Then
+        assert (wins > 0).all(), "이길 때가 양수가 아닌 행이 있습니다"
+        assert (losses < 0).all(), "질 때가 음수가 아닌 행이 있습니다"
+
+    def test_전승_칸은_질_때만_비고_이길_때는_값이_있다(self) -> None:
+        """
+        목적: 「진 적이 없다」와 「못 쟀다」를 가른다.
+
+        전승 칸은 손익비가 수학적으로 무한대라 숫자로 못 적지만, **이길 때 평균은 존재한다.**
+        둘을 함께 비우면 그 칸의 성적을 읽을 수 없다.
+
+        Given: 전부 이익인 체결 목록
+        When: 구간 행을 만들었을 때
+        Then: 질 때는 비고 이길 때는 값이 있다
+        """
+        # Given
+        dates = pd.DatetimeIndex(["2020-01-02", "2020-02-03", "2020-03-02"])
+
+        # When
+        rows = period_rows(dates, [0.01, 0.02, 0.03], last_day=pd.Timestamp("2020-03-31"))
+        overall = rows[0]
+
+        # Then
+        assert pd.isna(overall[DISPLAY_LOSS_AMOUNT]), "진 거래가 0건인데 질 때에 값이 있습니다"
+        assert overall[DISPLAY_WIN_AMOUNT] == pytest.approx(2.0, abs=1e-9)
+
+    def test_표본이_0건인_구간은_두_열이_모두_빈다(self) -> None:
+        """
+        목적: 표본이 없는 것을 0 으로 채우지 않는다 (측정의 원칙 17).
+
+        0 은 「이익도 손실도 없었다」로 읽히는데 실제로는 「잰 적이 없다」이다.
+
+        Given: 최근 5년에 진입이 하나도 없는 체결 목록
+        When: 구간 행을 만들었을 때
+        Then: 그 구간의 두 열이 비어 있다
+        """
+        # Given — 마지막 거래일보다 10년 넘게 앞선 진입만 둔다
+        dates = pd.DatetimeIndex(["2000-01-03", "2000-02-01"])
+
+        # When
+        rows = period_rows(dates, [0.01, -0.02], last_day=pd.Timestamp("2020-12-30"))
+        recent = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_RECENT_5Y)
+
+        # Then
+        assert recent[DISPLAY_SIGNAL_COUNT] == 0
+        assert pd.isna(recent[DISPLAY_WIN_AMOUNT])
+        assert pd.isna(recent[DISPLAY_LOSS_AMOUNT])
+
+
+class TestIntegerCounts:
+    """건수 컬럼은 정수로 나간다 — 빈칸은 빈칸으로 둔 채"""
+
+    # 건수 컬럼. **`제외` 가 `0.0` 으로 나가고 있었다** — 전체 구간엔 정수, 나머지엔 결측이라
+    # pandas 열이 실수가 됐다. 같은 구조가 나머지 넷에도 있어 0건 구간이 하나만 생기면
+    # 그 열 전체가 `11.0` 로 바뀐다
+    COUNT_COLUMNS = ("신호", "제외", "질 때 표본", "갭손절", "장중손절")
+
+    def test_박아_둔_건수_목록이_프로덕션과_어긋나지_않는다(self) -> None:
+        """
+        목적: 건수 컬럼이 하나 늘었을 때 **검사에서 조용히 빠지는 것**을 막는다
+
+        **목록을 `periods.COUNT_COLUMNS` 로 대체하지 않는다** — 이 파일의 규율은 기대값을
+        손으로 박는 것이고(머리말), 상수를 가져오면 그 상수를 고치는 순간 테스트가 따라와
+        아무것도 고정하지 못한다. **대신 두 벌이 어긋나면 여기서 실패하게 한다.**
+
+        Given: 손으로 박은 목록과 정수화의 소유자가 아는 목록
+        When: 둘을 비교한다
+        Then: `사건`(역방향 전용, 별도 테스트가 본다)을 빼면 같다
+        """
+        # Given
+        owned = set(periods.COUNT_COLUMNS)
+
+        # When / Then
+        assert set(self.COUNT_COLUMNS) | {DISPLAY_EVENT_COUNT} == owned, (
+            f"건수 컬럼이 어긋납니다 — 손으로 박은 목록 {sorted(self.COUNT_COLUMNS)} · " f"프로덕션 {sorted(owned)}"
+        )
+
+    @pytest.mark.parametrize("column", COUNT_COLUMNS)
+    def test_월말_성적표의_건수_컬럼이_정수형이다(self, month_end_outputs: TradingOutputs, column: str) -> None:
+        """
+        목적: 같은 행의 `신호` 는 `51` 인데 `제외` 만 `0.0` 으로 나가던 것을 닫는다
+
+        Given: 합성 시세로 돈 월말 결과
+        When: 건수 컬럼의 dtype 을 봤을 때
+        Then: 결측을 담을 수 있는 정수형이다
+        """
+        # Given / When / Then
+        assert str(month_end_outputs.performance[column].dtype) == "Int64", f"{column} 이 정수형이 아닙니다"
+
+    def test_역방향_사건도_정수형이다(self, reverse_outputs: StrategyOutputs) -> None:
+        """
+        목적: 매매법 고유 건수 컬럼도 같은 규칙을 받는다
+
+        Given: 합성 시세로 돈 역방향 결과
+        When: `사건` 컬럼의 dtype 을 봤을 때
+        Then: 결측을 담을 수 있는 정수형이다
+        """
+        # Given / When / Then
+        assert str(reverse_outputs.performance[DISPLAY_EVENT_COUNT].dtype) == "Int64"
+
+    def test_정수형이어도_빈칸은_빈칸으로_저장된다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: 정수화가 빈칸을 `0` 으로 바꾸지 않는지 확인한다 — 그러면 원래 문제가 뒤집혀 재발한다
+
+        `제외` 는 전체 구간 행에만 적고 나머지 네 구간은 비운다. `0` 을 적으면
+        뒤 절반·최근 N년이 「제외 0건」이라고 거짓으로 주장한다.
+
+        Given: 합성 시세로 돈 월말 결과
+        When: 성적표를 CSV 문자열로 뽑았을 때
+        Then: 전체 아닌 구간의 `제외` 칸이 빈칸이다
+        """
+        # Given
+        summary = month_end_outputs.performance
+        others = summary[summary[DISPLAY_PERIOD] != PERIOD_ALL]
+        assert not others.empty
+
+        # When
+        text = others.head(1).to_csv(index=False)
+
+        # Then
+        assert others[DISPLAY_EXCLUDED].isna().all(), "전체 아닌 구간의 제외가 비어 있지 않습니다"
+        assert ",," in text, "빈칸이 값으로 채워졌습니다"
+
+
+class TestRunSummary:
+    """`summary.json` — 세 매매법이 같은 틀을 쓴다"""
+
+    @pytest.fixture
+    def summaries(
+        self,
+        reverse_outputs: StrategyOutputs,
+        expiry_outputs: ExpiryOutputs,
+        month_end_outputs: TradingOutputs,
+    ) -> dict[str, dict[str, object]]:
+        """세 매매법의 실행 요약."""
+        return {
+            "역방향": reverse_outputs.summary,
+            "옵션 만기일": expiry_outputs.summary,
+            "월말": month_end_outputs.summary,
+        }
+
+    def test_세_요약이_같은_최상위_키를_갖는다(self, summaries: dict[str, dict[str, object]]) -> None:
+        """
+        목적: 만드는 자리·키가 매매법마다 갈리던 것을 닫는다
+
+        전에는 역방향이 `strategy`/`targets`/`rule`/`row_counts`/`notes`,
+        옵션 만기일이 **CLI 에서** `cells`/`stop_levels`/`row_counts`,
+        월말이 `stop_levels`/`fixed_stop_level`/`cost`/`datasets`/`row_counts` 였다.
+
+        Given: 세 매매법의 실행 요약
+        When: 최상위 키를 봤을 때
+        Then: 여섯 키가 전부 있다
+        """
+        # Given
+        expected = {KEY_TRACK, KEY_DATASETS, KEY_RULE, KEY_ROW_COUNTS, KEY_COST, KEY_NOTES}
+
+        # When / Then
+        for name, summary in summaries.items():
+            assert set(summary) == expected, f"{name} 의 요약 키가 다릅니다: {sorted(summary)}"
+
+    def test_대상_범위와_기간이_datasets_에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
+        """
+        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 세 매매법이 실제로 이행한다
+
+        전에는 **월말만** 그 키를 가졌고, 옵션 만기일은 종목코드를 어디에도 남기지 않았다.
+
+        Given: 세 매매법의 실행 요약
+        When: `datasets` 의 한 줄을 봤을 때
+        Then: 코드·이름·파일·기간·행 수가 전부 있다
+        """
+        # Given
+        expected = {KEY_DATASET_TICKER, KEY_DATASET_LABEL, KEY_DATASET_FILE, KEY_DATASET_PERIOD, KEY_DATASET_ROWS}
+
+        # When / Then
+        for name, summary in summaries.items():
+            records = summary[KEY_DATASETS]
+            assert isinstance(records, list) and records, f"{name} 의 datasets 가 비었습니다"
+            for record in records:
+                assert set(record) == expected, f"{name} 의 datasets 한 줄이 다릅니다: {sorted(record)}"
+
+    def test_row_counts_의_키가_파일_이름이다(self, summaries: dict[str, dict[str, object]]) -> None:
+        """
+        목적: `"performance"` 같은 별칭을 없앤다 — 작업 C 이후 그 이름의 파일은 존재하지 않는다
+
+        파일 이름으로 키잉하면 스크립트가 `summary[row_counts][SUMMARY_FILENAME]` 로 읽으므로
+        별칭을 따로 관리할 필요가 없어진다.
+
+        Given: 세 매매법의 실행 요약
+        When: `row_counts` 의 키를 봤을 때
+        Then: 전부 `.csv` 로 끝나고 성적표·거래내역이 들어 있다
+        """
+        # Given / When / Then
+        for name, summary in summaries.items():
+            counts = summary[KEY_ROW_COUNTS]
+            assert isinstance(counts, dict)
+            assert all(key.endswith(".csv") for key in counts), f"{name} 의 row_counts 키가 파일 이름이 아닙니다: {sorted(counts)}"
+            assert TRADES_FILENAME in counts, f"{name} 에 거래내역 행 수가 없습니다"
+
+    def test_비용_표기가_세_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
+        """
+        목적: `.claude/rules/strategy.md` 의 맨몸 성적 표기를 월말만 갖고 있던 것을 닫는다
+
+        빠뜨린 것과 일부러 뺀 것을 구별할 수 없으면 다음 사람이 다시 계산한다.
+
+        Given: 세 매매법의 실행 요약
+        When: `cost` 를 봤을 때
+        Then: 셋 다 같은 문장이다
+        """
+        # Given / When / Then
+        for name, summary in summaries.items():
+            assert summary[KEY_COST] == COST_NOTE, f"{name} 의 비용 표기가 다릅니다"
+
+    def test_요약에_옛_slug_가_값으로_남아_있지_않다(self, summaries: dict[str, dict[str, object]]) -> None:
+        """
+        목적: 작업 B 가 없애려던 이름이 **데이터 값**으로 남아 있던 것을 닫는다
+
+        역방향 요약이 `"strategy": "reverse_trading"` 이라고 적고 있었다 — 폴더는 `reverse` 다.
+
+        Given: 세 매매법의 실행 요약
+        When: 요약 전체를 문자열로 봤을 때
+        Then: 옛 이름이 하나도 없다
+        """
+        # Given
+        stale = ("reverse_trading", "expiry_trading", "index_extreme", "kosdaq_month_end")
+
+        # When / Then
+        for name, summary in summaries.items():
+            text = json.dumps(summary, ensure_ascii=False)
+            for word in stale:
+                assert word not in text, f"{name} 의 요약에 옛 이름 {word} 이 남아 있습니다"
+
+    def test_옵션_만기일_요약을_CLI_가_만들지_않는다(self) -> None:
+        """
+        목적: `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」를 되돌린다
+
+        요약을 CLI 에서 조립하면 그 매매법만 규약이 갈리고, 테스트가 닿지 않는 자리에 남는다.
+
+        Given: 옵션 만기일 실행 스크립트
+        When: 소스에서 요약 키를 찾았을 때
+        Then: 조립부가 없다
+        """
+        # Given
+        script = BASE_DIR / "scripts" / "strategy" / "run_option_expiry_trading.py"
+
+        # When
+        source = script.read_text(encoding="utf-8")
+
+        # Then — **`save_run_summary` 에 사전 리터럴을 넘기지 않는다.** 조립부의 흔적이다
+        assert "save_run_summary(directory, outputs.summary)" in source, "요약을 runner 에서 받지 않습니다"
+        assert "save_run_summary(\n" not in source, "CLI 가 요약을 조립합니다"
+
+
+class TestDatasetFields:
+    """`Dataset` 의 필드 뜻 — 세 모듈에서 같다"""
+
+    def test_세_Dataset_이_코드와_이름을_따로_갖는다(self) -> None:
+        """
+        목적: 필드 이름이 모듈마다 다른 것을 가리키던 상태를 닫는다
+
+        `month_end` 는 `ticker`=코드 · `label`=이름인데 나머지 둘은 **`ticker` 에 이름**이
+        들어 있고 코드가 없었다. 미국 ETF 는 둘이 같아(`QQQ`) 드러나지 않았고,
+        국내에서만 `"ticker": "KODEX 200"` 으로 새어 나왔다.
+
+        Given: 세 매매법의 데이터셋 목록
+        When: 각 데이터셋의 필드를 봤을 때
+        Then: `ticker` 와 `label` 이 둘 다 있고 서로 다른 것을 담는다
+        """
+        # Given
+        groups = {
+            "역방향": REVERSE_DATASETS,
+            "옵션 만기일": EXPIRY_DATASETS,
+            "월말": MONTH_END_DATASETS,
+        }
+
+        # When / Then
+        for name, datasets in groups.items():
+            for dataset in datasets:
+                assert dataset.ticker, f"{name} 의 데이터셋에 종목코드가 없습니다"
+                assert dataset.label, f"{name} 의 데이터셋에 표시 이름이 없습니다"
+
+    def test_국내_종목은_코드와_이름이_다르다(self) -> None:
+        """
+        목적: 「코드가 이름 자리에 들어 있다」가 다시 생기면 잡는다
+
+        미국 ETF 는 코드와 이름이 같아 이 계약을 검사하지 못한다. **국내 종목이 그 자리다.**
+
+        Given: 역방향과 옵션 만기일의 국내 데이터셋
+        When: 코드와 이름을 봤을 때
+        Then: 코드는 숫자이고 이름은 숫자가 아니다
+        """
+        # Given
+        domestic = [dataset for dataset in (*REVERSE_DATASETS, *EXPIRY_DATASETS) if dataset.ticker.isdigit()]
+        assert domestic, "국내 데이터셋을 찾지 못했습니다"
+
+        # When / Then
+        for dataset in domestic:
+            assert not dataset.label.isdigit(), f"{dataset.ticker} 의 표시 이름이 코드입니다"

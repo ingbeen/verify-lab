@@ -14,6 +14,13 @@
 | 칸당 표본 하한 | `measure/constants.py` | 원칙 12가 「10건」을 명시하고 원칙 17이 「원칙 12의 10건」이라며 같은 값임을 선언한다 |
 | 체결 판정식 | `strategy/trade_fill.py` | 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오고, 두 곳에 두면 그 함정을 두 번 관리한다 |
 | 구간별 성적 산식 | `strategy/periods.py` | 구간 5행은 세 매매법에 공통이다 (측정의 원칙 17) |
+| 평균-비율 어긋남 판정과 그 임계값 | `measure/statistics.py` · `measure/constants.py` | 원칙 13이 모든 검증에 요구한다. **실제로 두 검증에 docstring까지 같은 함수가 두 벌 있었다** |
+| 판정가능 «식» | `measure/statistics.py` | 값(하한)만 공통이고 식은 다섯 곳에 있었다 — 하한을 바꿔도 한 곳이 안 따라오면 드러나지 않는다 |
+
+**「무엇이 여기 들어오는가」의 판단 기준은 하나다** — 루트 `CLAUDE.md` 의 「이것이 「측정의
+원칙」에 적혀 있는가」. 적혀 있으면 공통 계층이 소유해야 하고, 적혀 있지 않은 조립 유틸
+(`_identify`·`_concat`)은 검증마다 두는 것이 맞다. 공통 계층에 올리면 `report` 가
+「검증이 쓰는 조립 순서」를 알게 된다.
 
 **매매 계층은 「매매법끼리 서로를 모른다」도 함께 본다.** 예전에는 월말이 옵션 만기일을 거쳐
 역방향을 부르는 사슬이었고, 그래서 사슬의 끝인 월말에는 자기 체결 로직이 하나도 없었다.
@@ -38,7 +45,11 @@ _OWNER = Path(measure_constants.__file__).resolve()
 _DATA_CONSTANTS = "verify_lab/data/constants.py"
 
 # 매매 계층의 공유 로직을 소유한 모듈. 매매법 모듈은 여기서만 가져온다
-_STRATEGY_SHARED = ("trade_fill", "periods", "constants")
+_STRATEGY_SHARED = ("trade_fill", "periods", "constants", "run_summary")
+
+# 평균-비율 어긋남 판정과 판정가능 식을 소유한 파일. `_files_defining` 은 `_OWNER` 하나만
+# 빼므로 이 이름이 결과에 그대로 남는 것이 정상이다
+_MEASURE_STATISTICS = "verify_lab/measure/statistics.py"
 
 
 def _strategy_runner_modules() -> list[Path]:
@@ -207,6 +218,61 @@ class TestSampleThresholdOwnership:
         # Then
         assert isinstance(threshold, int)
         assert threshold >= 1
+
+
+class TestPrincipleThirteenOwnership:
+    """평균-비율 어긋남 판정(원칙 13)과 그 임계값은 공통 계층 하나가 소유한다"""
+
+    def test_어긋남_판정을_검증마다_두지_않는다(self) -> None:
+        """
+        목적: **docstring 까지 바이트 단위로 같은 함수가 두 벌** 있던 상태로 되돌아가지 않게 한다.
+
+        `studies/month_end/runner.py` 와 `studies/option_expiry/runner.py` 가 둘 다
+        `_mean_rate_conflict` 를 갖고 있었고 **자기 docstring 에 「측정의 원칙 13」이라고
+        적어 두었다.** 원칙이 모든 검증에 요구하는 것을 검증마다 구현하면 같은 원칙이 다른 답을 낸다.
+
+        Given: `src/verify_lab` 전체
+        When: 어긋남 판정 함수를 정의하는 파일을 찾는다
+        Then: `measure/statistics.py` 하나뿐이다
+        """
+        # When
+        offenders = _files_defining(r"^\s*def\s+_?mean_rate_conflict\b")
+
+        # Then
+        assert offenders == [_MEASURE_STATISTICS], f"어긋남 판정을 자체 정의한 파일이 있습니다: {offenders}"
+
+    def test_절반_임계값을_검증마다_두지_않는다(self) -> None:
+        """
+        목적: 위 판정의 임계값이 두 `studies/*/constants.py` 에 흩어져 있던 것을 닫는다.
+
+        Given: `src/verify_lab` 전체
+        When: `HALF_RATE` 를 직접 정의하는 파일을 찾는다
+        Then: `measure/constants.py` 말고는 하나도 없다
+        """
+        # When
+        offenders = _files_defining(r"^\s*HALF_RATE(?:\s*:\s*\w+)?\s*=")
+
+        # Then
+        assert offenders == [], f"절반 임계값을 자체 정의한 파일이 있습니다: {offenders}"
+
+    def test_판정가능_식을_손으로_쓰지_않는다(self) -> None:
+        """
+        목적: 하한(값)만 공통이고 **식**은 다섯 곳에 있던 것을 닫는다.
+
+        `JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO` 가
+        `month_end`·`option_expiry`·`leverage_tracking`·`futures_leverage`·`strategy/periods`
+        다섯 곳에 있었다. 하한을 바꿔도 한 곳이 안 따라오면 **예외 없이** 두 산출물의
+        `판정가능` 이 다른 기준으로 찍힌다.
+
+        Given: `src/verify_lab` 전체
+        When: 판정가능 값을 삼항식으로 만드는 파일을 찾는다
+        Then: `measure/statistics.py` 하나뿐이다
+        """
+        # When
+        offenders = _files_defining(r"JUDGEABLE_YES\s+if\b")
+
+        # Then
+        assert offenders == [_MEASURE_STATISTICS], f"판정가능 식을 손으로 쓴 파일이 있습니다: {offenders}"
 
 
 class TestDataConstantsOwnership:

@@ -107,9 +107,15 @@ class Dataset:
     보통의 차트는 배당 미포함이기 때문이며, 근거는
     `docs/spec/역방향_설계.md` "가격 처리" 다.
 
+    **`ticker` 와 `label` 은 다른 것이다.** 코드는 차트·증권앱과 대조할 때 필요하고
+    표시 이름은 산출물이 쓴다. **미국 ETF 는 둘이 같아(`QQQ`) 구별이 드러나지 않지만
+    국내는 갈린다** — 그래서 전에는 `069500` 이 어디에도 남지 않았다.
+
     Attributes:
         key: 실행 인자로 고르는 이름
-        ticker: 종목 표시 이름
+        ticker: 종목코드. **`summary.json` 의 `datasets` 에만 실린다** — 행마다 반복할
+            값이 아니라 데이터셋 단위 속성이다 (`src/verify_lab/CLAUDE.md` 출력 계약)
+        label: 종목 표시 이름. **산출물의 종목 컬럼이 쓰는 값**이다
         price_basis: 가격 기준 표시 이름
         path: 원시 시세 파일 경로
         price_decimals: 종가를 저장할 때의 반올림 자릿수
@@ -117,6 +123,7 @@ class Dataset:
 
     key: str
     ticker: str
+    label: str
     price_basis: str
     path: Path
     price_decimals: int
@@ -126,13 +133,15 @@ DATASETS: Final = (
     Dataset(
         key="qqq",
         ticker="QQQ",
+        label="QQQ",
         price_basis=DISPLAY_PRICE_BASIS_RAW,
         path=MARKET_DIR / MARKET_FILE_TEMPLATE.format(ticker="QQQ"),
         price_decimals=PRICE_DECIMALS,
     ),
     Dataset(
         key="kodex200",
-        ticker="KODEX 200",
+        ticker="069500",
+        label="KODEX 200",
         price_basis=DISPLAY_PRICE_BASIS_RAW,
         path=MARKET_DIR / MARKET_FILE_TEMPLATE.format(ticker="069500"),
         price_decimals=PRICE_DECIMALS_KRW,
@@ -201,9 +210,7 @@ DISPLAY_BASELINE_BELOW_SMA: Final = "조건부 SMA200"
 # 산출물
 # ============================================================
 
-# 이 매매법의 이름(slug). **측정과 매매가 같은 값을 본다** — 계층은 산출물의 상위 폴더가
-# 말하므로 이름에 계층을 넣지 않는다. 전에는 같은 매매법이 계층마다 다른 이름으로 불렸다 —
-# 측정은 `index_extreme`, 매매는 `reverse_trading` 이라 사용자가 두 폴더를 옛것/새것으로 오해했다.
+# 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다.
 #
 # **값이 「재는 사건」이 아니라 「거는 방향」인 것은 사용자 결정이다** (2026-09-10). 이 검증이
 # 재는 것은 역대급 등락이지만 그 신호로 하는 매매가 역방향이고, **둘을 한 이름으로 묶는 쪽**을

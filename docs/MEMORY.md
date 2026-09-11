@@ -55,7 +55,7 @@
 
 회사 **mac** 과 집 **Windows** 두 대에서 작업한다. 집에서는 사내프로젝트(`acme-*`) 프로젝트를 열지 않고, `quant`·`quant-notify` 는 양쪽에서 작업한다. **개인 저장소 셋(`quant`·`quant-notify`·`verify-lab`)은 모두 PUBLIC 이다.**
 
-2026-09-09 에 전역 Claude 설정(`~/.claude/` + `~/.claude.json`)을 두 PC 사이로 옮기는 작업을 시작했다. 상세 절차는 `docs/plans/PLAN_claude_config_sync.md` 에 있다(계획서는 임시 산출물이라 지워질 수 있다).
+2026-09-09 에 전역 Claude 설정(`~/.claude/` + `~/.claude.json`)을 두 PC 사이로 옮기는 작업을 시작했다. **절차의 SoT 는 두 스킬**이다 — `.claude/skills/claude-config-export/SKILL.md`(내보내기)와 `claude-config-import/SKILL.md`(받기). **영구 문서가 계획서를 가리키지 않는다** — 계획서는 주기적으로 지워지므로 그 링크는 반드시 깨진다.
 
 **확정된 결정**
 

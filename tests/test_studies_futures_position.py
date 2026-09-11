@@ -28,6 +28,7 @@ from verify_lab.studies.futures_leverage.position import (
     COL_EFFECTIVE_LEVERAGE,
     COL_EQUITY,
     COL_REBALANCED,
+    daily_interest_rates,
     run_position,
 )
 
@@ -426,6 +427,47 @@ class TestInterest:
         # Then
         assert result.curve[COL_EQUITY].tolist() == pytest.approx([START_EQUITY] * 3, abs=EXACT_TOLERANCE)
         assert result.with_interest is False
+
+    def test_금리가_첫날을_덮지_못하면_거부한다(self) -> None:
+        """
+        목적: **선두 결측을 0% 로 메우던 것**을 막는다.
+
+        `ffill` 은 앞을 못 채운다. 그 뒤의 `fillna(0.0)` 이 **금리 계열이 시작되기 전 구간을
+        통째로 「이자 0%」로** 만들었고 경고도 없었다. 그 구간이 길면 배수 상품의 비용이
+        사라져 성적이 좋아진다 — 보간 금지에 닿는다.
+
+        **현재 데이터에서는 터지지 않는다** (CD91 1995-01-03 · DTB3 1954-01-04 이
+        선물 시작 1996-05-03 을 덮는다). 그래서 회귀를 막는 테스트다.
+
+        Given: 첫 거래일보다 늦게 시작하는 금리 계열
+        When: 거래일별 이자율을 구한다
+        Then: ValueError 가 난다
+        """
+        # Given
+        dates = pd.Series(pd.to_datetime(["2020-01-02", "2020-01-03", "2020-01-06"]))
+        interest = pd.Series([3.65, 3.65], index=pd.to_datetime(["2020-01-03", "2020-01-06"]))
+
+        # When / Then
+        with pytest.raises(ValueError, match="금리"):
+            daily_interest_rates(dates, interest)
+
+    def test_금리가_중간에_비면_직전_값을_끌어_쓴다(self) -> None:
+        """
+        목적: 막는 것이 **선두 결측 하나**임을 고정한다 — 중간 결측까지 막으면 휴일이 낀 해가 전부 죽는다.
+
+        Given: 가운데 날의 금리가 없는 계열 (첫날은 있다)
+        When: 거래일별 이자율을 구한다
+        Then: 예외 없이 직전 값이 쓰인다
+        """
+        # Given
+        dates = pd.Series(pd.to_datetime(["2020-01-02", "2020-01-03"]))
+        interest = pd.Series([3.65], index=pd.to_datetime(["2020-01-02"]))
+
+        # When
+        rates = daily_interest_rates(dates, interest)
+
+        # Then — 첫날은 0 이고 둘째 날은 하루치(연 3.65% → 0.01%)다
+        assert rates.tolist() == pytest.approx([0.0, 0.0001], abs=EXACT_TOLERANCE)
 
 
 class TestInputValidation:

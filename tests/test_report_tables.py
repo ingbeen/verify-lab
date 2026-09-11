@@ -69,6 +69,7 @@ from verify_lab.report.constants import (
     DISPLAY_TEST_NOTE,
     DISPLAY_TOTAL_RETURN,
     DISPLAY_UP_RATE,
+    EMPTY_MARK,
     HORIZON_LABELS,
 )
 from verify_lab.report.tables import (
@@ -927,3 +928,32 @@ class TestPercentileDisplayConsistency:
         assert via_report[DISPLAY_MEAN_PERCENTILE].iloc[0] == pytest.approx(
             via_labels[DISPLAY_MEAN_PERCENTILE].iloc[0], abs=EXACT_TOLERANCE
         )
+
+
+class TestNullableIntegerCells:
+    """결측을 담는 정수형 칸 — 화면 출력이 터지지 않는다"""
+
+    def test_결측_정수_칸이_빈칸으로_찍힌다(self, caplog: pytest.LogCaptureFixture) -> None:
+        """
+        목적: `Int64` 의 `pd.NA` 를 화면에 낼 수 있음을 고정한다 (재현 테스트).
+
+        건수 컬럼을 결측을 담는 정수형으로 바꾸자 **터미널 출력이 터졌다** —
+        `pd.NA == ""` 는 참도 거짓도 아닌 `pd.NA` 를 돌려주고, 그것을 `if` 가 평가하면
+        `TypeError: boolean value of NA is ambiguous` 가 난다.
+        **테스트가 이 경로를 안 밟아서 재실행에서야 드러났다.**
+
+        Given: 결측이 섞인 `Int64` 컬럼을 가진 표
+        When: 화면에 출력한다
+        Then: 예외 없이 찍히고 결측 칸이 표시 문자가 된다
+        """
+        # Given
+        table = pd.DataFrame({"신호": pd.array([51, 25], dtype="Int64"), "제외": pd.array([0, None], dtype="Int64")})
+
+        # When
+        with caplog.at_level(logging.DEBUG):
+            print_dataframe(table, logging.getLogger("test_nullable"))
+
+        # Then
+        rendered = caplog.text
+        assert "51" in rendered
+        assert EMPTY_MARK in rendered

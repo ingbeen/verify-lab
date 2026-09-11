@@ -421,13 +421,19 @@ def _cell_text(value: Any) -> str:
     **정수에는 천 단위 구분자를 붙인다.** 신호 수·행 수처럼 자릿수를 눈으로 세는 값이라
     구분자가 없으면 자리를 잘못 읽는다. 실수는 이미 반올림된 상태로 들어오므로 건드리지 않는다.
 
+    **결측 검사를 빈 문자열 비교보다 «먼저», 그리고 «스칼라일 때만» 한다.** 건수 컬럼은
+    결측을 담을 수 있는 정수형(`Int64`)이라 빈 칸이 `pd.NA` 로 오는데, `pd.NA == ""` 는 참도
+    거짓도 아닌 `pd.NA` 를 돌려주고 그것을 `if` 가 평가하면 **`TypeError` 로 터진다.**
+    반대로 목록·배열에 `pd.isna` 를 걸면 **배열이 돌아와 `ValueError` 로 터진다** —
+    두 조건이 다른 값에서 반대로 걸리므로 순서와 스칼라 검사가 둘 다 계약이다.
+
     Args:
         value: 셀 값
 
     Returns:
         표시 문자열
     """
-    if value is None or value == "" or (isinstance(value, float) and pd.isna(value)):
+    if value is None or (pd.api.types.is_scalar(value) and bool(pd.isna(value))) or value == "":
         return EMPTY_MARK
 
     if pd.api.types.is_integer(value):
@@ -526,6 +532,12 @@ def to_display_columns(
         probability_columns: 확률로 들어와 자릿수만 맞출 컬럼
         payoff_columns: **배수**로 들어와 자릿수만 맞출 컬럼 (손익비).
             백분율도 확률도 아니라 자릿수가 또 다르다 — 2자리면 1.034 와 1.056 이 뭉개진다
+
+    Note:
+        **단위 인자가 셋이다.** `unit_columns` 매핑 하나로 접자는 제안을 검토했고 두지 않았다 —
+        세 검증의 호출부를 모두 손대는 리팩토링인데 **얻는 것이 인자 개수 둘뿐**이고,
+        매핑으로 바꾸면 자릿수 소유자가 호출자로 옮겨 가 검증마다 갈릴 길이 열린다.
+        **네 번째 단위가 나올 때 다시 판단한다.**
 
     Returns:
         헤더가 한글이고 단위가 맞춰진 새 DataFrame. 컬럼 순서는 그대로다

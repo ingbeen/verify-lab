@@ -32,6 +32,9 @@ from verify_lab.measure.constants import (
     COL_FORWARD_RETURN,
     COL_HORIZON,
     COL_SIGNAL_COUNT,
+    HALF_RATE,
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
     MIN_SAMPLE_PER_CELL,
 )
 from verify_lab.measure.forward_return import count_excluded
@@ -212,18 +215,102 @@ def max_non_overlapping(start_positions: Sequence[int], horizon: int) -> int:
     return count
 
 
+def judgeable(sample_count: int) -> str:
+    """그 칸을 판정에 써도 되는지의 표기를 낸다.
+
+    **식이 저장소에 한 벌만 있어야 한다.** 값(`MIN_SAMPLE_PER_CELL`)은 공통 계층이 소유했는데
+    **식은 다섯 곳에 있었다** — 검증 셋과 매매 계층이 각자 삼항식을 썼다. 하한을 바꿔도
+    한 곳이 안 따라오면 **예외 없이** 두 산출물의 `판정가능` 이 다른 기준으로 찍힌다.
+
+    **미달이어도 행은 남긴다** (측정의 원칙 17). 이 값이 「판정에 쓰지 말라」를 표에 남기는 자리다.
+
+    Args:
+        sample_count: 그 칸의 유효 표본 수
+
+    Returns:
+        `예` 또는 `아니오`
+
+    Raises:
+        ValueError: 표본 수가 음수인 경우
+    """
+    if sample_count < 0:
+        raise ValueError(f"표본 수는 0 이상이어야 합니다: {sample_count}")
+
+    return JUDGEABLE_YES if sample_count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO
+
+
+def mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:
+    """평균의 부호와 방향 비율이 어긋나는 칸을 표시한다 (측정의 원칙 13).
+
+    평균이 양수인데 절반 넘게 내렸다면 **소수의 큰 사건이 평균을 만든 것**이고, 그 반대도 같다.
+    평균만 보고 방향을 읽으면 이런 칸에서 정반대로 판단하게 된다 — 실물 사례가 SPY 3월
+    만기다(평균 +0.257% · 중앙값 −0.348% · 내린 비율 64.7%).
+
+    **공통 계층이 소유한다.** 전에는 `studies/month_end/runner.py` 와
+    `studies/option_expiry/runner.py` 에 **docstring 까지 바이트 단위로 같은 함수**가 있었고
+    둘 다 자기 docstring 에 「측정의 원칙 13」이라고 적어 두었다. 원칙이 모든 검증에 요구하는
+    것을 검증마다 구현하면 같은 원칙이 다른 답을 낸다.
+
+    Args:
+        frame: 평균과 **두 방향 비율**이 들어 있는 집계 프레임
+
+    Returns:
+        어긋나는 칸이면 True 인 Series
+
+    Raises:
+        ValueError: 필요한 컬럼이 없는 경우
+    """
+    missing = [column for column in (COL_MEAN, COL_WIN_RATE, COL_LOSS_RATE) if column not in frame.columns]
+    if missing:
+        raise ValueError(f"어긋남 판정에 필요한 컬럼이 없습니다: {missing}")
+
+    mean_up_but_fell = (frame[COL_MEAN] > 0) & (frame[COL_LOSS_RATE] > HALF_RATE)
+    mean_down_but_rose = (frame[COL_MEAN] < 0) & (frame[COL_WIN_RATE] > HALF_RATE)
+
+    return mean_up_but_fell | mean_down_but_rose
+
+
 class PayoffProfile(NamedTuple):
     """손익비와 그 값을 읽는 데 필요한 것.
+
+    **분자와 분모도 함께 낸다.** `docs/strategy/투자금_결정.md` §1.2 가 그 두 값을
+    성적표의 입력으로 적어 두었는데 실제 표에는 없었다. 여기서 이미 구한 값이라
+    내보내기만 하면 되고, 부르는 쪽이 다시 계산하면 **산식이 두 벌**이 된다.
 
     Attributes:
         payoff_ratio: 이길 때 평균 ÷ 질 때 평균. **진 적이 없으면 `NaN`** 이다
         breakeven_hit_rate: 이 적중률을 넘어야 번다 (비율). 손익비가 없으면 `NaN`
         losing_count: 손익비의 **분모가 된 표본 수**
+        winning_mean: 이길 때 평균 (비율, **절대값**). 이긴 적이 없으면 `NaN`
+        losing_mean: 질 때 평균 (비율, **절대값**). 진 적이 없으면 `NaN`.
+            **부호를 붙이는 것은 표시 계층의 몫이다** — 이 계층은 방향을 모른다
     """
 
     payoff_ratio: float
     breakeven_hit_rate: float
     losing_count: int
+    winning_mean: float
+    losing_mean: float
+
+
+def _require_positive_mean(count: int, mean: float, label: str) -> None:
+    """건수가 있는 쪽의 평균이 양수인지 확인한다.
+
+    두 평균 모두 절대값이므로 건수가 있으면 그 평균은 반드시 양수다. **그런데 비어 있어도
+    예외가 나지 않는 길이 있었다** — 손익비가 조용히 `NaN` 이 되고, 판정에서 `NaN >= 1.0` 이
+    거짓이라 **「못 잰 칸」이 「못 넘은 칸」으로** 바뀐다. 이제 `이길 때(%)` 도 산출물에
+    나가므로 같은 값이 **빈칸으로도** 새어 나간다.
+
+    Args:
+        count: 그쪽 건수
+        mean: 그쪽 평균 (절대값)
+        label: 오류 메시지에 쓸 이름 (`이긴`·`진`)
+
+    Raises:
+        RuntimeError: 건수가 있는데 평균이 양수가 아닌 경우 (내부 불변조건 위반)
+    """
+    if count > 0 and not mean > 0:
+        raise RuntimeError(f"내부 불변조건 위반: {label} 거래 {count}건의 평균이 양수가 아닙니다 ({mean})")
 
 
 def payoff_profile(
@@ -283,20 +370,29 @@ def payoff_profile(
     winning_count = negative_count if downward else positive_count
     losing_count = positive_count if downward else negative_count
 
+    # **진 적이 없어도 이길 때 평균은 존재한다.** 둘을 함께 비우면 전승 칸의 성적을 읽을 수 없다.
+    # **그래서 이긴 쪽 불변조건을 이 갈래에서도 건다** — 값을 내보내기 시작한 순간부터
+    # 「건수는 있는데 평균이 없다」가 조용히 `이길 때(%)` 의 빈칸으로 흘러가기 때문이다
     if losing_count == 0:
-        return PayoffProfile(np.nan, np.nan, 0)
+        _require_positive_mean(winning_count, winning_mean, "이긴")
+
+        return PayoffProfile(np.nan, np.nan, 0, winning_mean if winning_count else np.nan, np.nan)
 
     # 두 평균 모두 절대값이므로 건수가 있으면 그 평균은 반드시 양수다. 진 쪽이 0 이면 아래에서
     # 0 으로 나누게 되고, 이긴 쪽이 비어 있으면 손익비가 조용히 `NaN` 이 되어 **잴 수 없었던 칸이
     # 「기준을 못 넘은 칸」으로 바뀐다.** 어느 쪽도 그냥 넘기지 않는다
-    if not losing_mean > 0:
-        raise RuntimeError(f"내부 불변조건 위반: 진 거래 {losing_count}건의 평균이 양수가 아닙니다 ({losing_mean})")
-    if winning_count > 0 and not winning_mean > 0:
-        raise RuntimeError(f"내부 불변조건 위반: 이긴 거래 {winning_count}건의 평균이 양수가 아닙니다 ({winning_mean})")
+    _require_positive_mean(losing_count, losing_mean, "진")
+    _require_positive_mean(winning_count, winning_mean, "이긴")
 
     ratio = 0.0 if winning_count == 0 else winning_mean / losing_mean
 
-    return PayoffProfile(ratio, (decided_count / sample_count) / (1.0 + ratio), losing_count)
+    return PayoffProfile(
+        ratio,
+        (decided_count / sample_count) / (1.0 + ratio),
+        losing_count,
+        winning_mean if winning_count else np.nan,
+        losing_mean,
+    )
 
 
 def payoff_from_returns(returns: npt.ArrayLike) -> PayoffProfile:

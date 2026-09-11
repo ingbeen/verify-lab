@@ -44,10 +44,14 @@ from verify_lab.strategy.constants import (
     EXPIRY_DIRECTION_UP,
     EXPIRY_STOP_LEVEL,
     STOP_APPLICABLE,
+    STOP_GRID_FILENAME,
+    SUMMARY_FILENAME,
+    TRADES_FILENAME,
     ExpiryCell,
     stop_level_value,
 )
-from verify_lab.strategy.periods import period_rows
+from verify_lab.strategy.periods import period_rows, to_summary_frame
+from verify_lab.strategy.run_summary import build_run_summary, dataset_record
 from verify_lab.strategy.trade_fill import TradeResult, simulate_scheduled_trade
 from verify_lab.studies.option_expiry.constants import (
     COL_EXIT_DATE,
@@ -56,6 +60,7 @@ from verify_lab.studies.option_expiry.constants import (
     COL_TARGET_DATE,
     DATASETS,
     FRIDAY,
+    TRACK_NAME,
     Dataset,
 )
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
@@ -64,18 +69,44 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# ============================================================
+# `summary.json` 의 `rule` 안 — 무엇을 어떤 규칙으로 돌렸나
+# ============================================================
+
+# **전에는 요약을 CLI 가 조립했다.** 그래서 이 매매법만 규약이 갈렸고, 대상 범위도
+# 데이터 기간도 비용 표기도 없었다 — `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」다
+KEY_STOP_LEVELS = "stop_levels"
+KEY_CELLS = "cells"
+KEY_LABEL = "label"
+KEY_EXPIRY_MONTH = "expiry_month"
+KEY_DIRECTION = "direction"
+KEY_EXCLUDED_COUNT = "excluded_count"
+
+# 산출물만 보고는 알 수 없는 실행 조건
+NOTE_ENTRY = "진입은 만기일 종가다. 만기일이 휴장이면 직전 거래일로 앞당긴다"
+NOTE_EXIT = "청산은 달력이 지목한 다음주 금요일 종가다. 이익이어도 중간에 팔지 않는다"
+NOTE_STOP_BASE = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
+
 
 @dataclass(frozen=True)
 class ExpiryOutputs:
     """실행 산출물
 
+    **세 매매법이 같은 이름을 쓴다** — 전에는 성적표가 매매법마다 `summary`·`grid`·
+    `performance` 라 스크립트가 매번 다른 속성을 찾아야 했다.
+
     Attributes:
-        grid: 칸별 성적표. 칸 × 손절선 × 구간이 한 행이다
         trades: 체결 원자료. 사용자가 차트로 대조하는 자리 (측정의 원칙 8)
+        performance: 칸별 성적표. 칸 × 손절선 × 구간이 한 행이다
+        performance_filename: 그 성적표를 저장할 이름. **손절선이 여럿이면 격자다** —
+            파일 이름을 CLI 가 고르면 이름이 다시 흩어진다
+        summary: 실행 요약 (`strategy/run_summary.py` 의 틀)
     """
 
-    grid: pd.DataFrame
     trades: pd.DataFrame
+    performance: pd.DataFrame
+    performance_filename: str
+    summary: dict[str, Any]
 
 
 @dataclass
@@ -143,10 +174,34 @@ def run_option_expiry_trading(
 
     grid_rows: list[dict[str, Any]] = []
     trade_rows: list[dict[str, Any]] = []
+    cell_records: list[dict[str, Any]] = []
+
+    # **데이터셋 단위로 모은다.** 칸은 종목 × 만기월 × 방향이라 같은 시세를 여러 칸이 쓴다
+    dataset_records: dict[str, dict[str, Any]] = {}
 
     for cell in cells:
         dataset = _dataset(cell.dataset_key)
         entries = collect_entries(dataset, cell)
+
+        # **`setdefault` 를 쓰지 않는다.** 기본값을 «먼저» 계산하므로 이미 있는 키에도
+        # `dataset_record` 가 돌아 7칸에서 3번을 버린다 — 건너뛰려던 일을 그대로 한다
+        if dataset.key not in dataset_records:
+            dataset_records[dataset.key] = dataset_record(
+                ticker=dataset.ticker,
+                label=dataset.label,
+                file=dataset.file_name,
+                frame=entries.frame,
+            )
+        # **제외 건수를 칸마다 남긴다.** 청산 목표일이 데이터 끝을 넘는 진입이 여기 해당하며,
+        # 조용히 사라지면 표본이 달라진다 (패키지 절대 원칙 「표본 보존」)
+        cell_records.append(
+            {
+                KEY_LABEL: dataset.label,
+                KEY_EXPIRY_MONTH: cell.expiry_month,
+                KEY_DIRECTION: EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
+                KEY_EXCLUDED_COUNT: entries.excluded_count,
+            }
+        )
 
         for stop_level in stop_levels:
             block = _measure(dataset, cell, entries, stop_level)
@@ -165,7 +220,30 @@ def run_option_expiry_trading(
 
     logger.debug(f"만기 매매 산출: 칸 {len(cells)}개, 손절선 {len(stop_levels)}종, " f"성적 {len(grid_rows)}행, 체결 {len(trade_rows)}건")
 
-    return ExpiryOutputs(grid=pd.DataFrame(grid_rows), trades=pd.DataFrame(trade_rows))
+    trades = pd.DataFrame(trade_rows)
+    performance = to_summary_frame(grid_rows)
+
+    # **손절선이 여럿이면 격자다.** 기본 실행은 확정 손절선 하나이고, 둘은 행 구성이 달라
+    # 폴더만 보고 어느 쪽인지 알 수 있어야 한다
+    filename = STOP_GRID_FILENAME if len(stop_levels) > 1 else SUMMARY_FILENAME
+
+    summary = build_run_summary(
+        track=TRACK_NAME,
+        datasets=list(dataset_records.values()),
+        rule={
+            KEY_STOP_LEVELS: [stop_level_value(level) for level in stop_levels],
+            KEY_CELLS: cell_records,
+        },
+        row_counts={TRADES_FILENAME: len(trades), filename: len(performance)},
+        notes=[NOTE_ENTRY, NOTE_EXIT, NOTE_STOP_BASE],
+    )
+
+    return ExpiryOutputs(
+        trades=trades,
+        performance=performance,
+        performance_filename=filename,
+        summary=summary,
+    )
 
 
 def _dataset(key: str) -> Dataset:
@@ -337,7 +415,7 @@ def _identity(dataset: Dataset, cell: ExpiryCell, stop_level: float | None) -> d
         식별 컬럼 dict
     """
     return {
-        DISPLAY_TICKER: dataset.ticker,
+        DISPLAY_TICKER: dataset.label,
         DISPLAY_EXPIRY_MONTH: cell.expiry_month,
         DISPLAY_DIRECTION: EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
         DISPLAY_STOP_LEVEL: stop_level_value(stop_level),

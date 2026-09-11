@@ -32,7 +32,7 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_DATE
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_EXCLUDED_REASON, COL_HORIZON, REASON_OUT_OF_RANGE
-from verify_lab.measure.statistics import max_non_overlapping
+from verify_lab.measure.statistics import judgeable, max_non_overlapping
 from verify_lab.studies.leverage_tracking.constants import (
     BASE_RETURN_BUCKETS,
     COL_ACTUAL,
@@ -53,9 +53,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     DIRECTION_DOWN,
     DIRECTION_FLAT,
     DIRECTION_UP,
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
-    MIN_SAMPLE_PER_CELL,
     PERIOD_CUTOFF,
     PERIOD_HIGH_RATE,
     PERIOD_LOW_RATE,
@@ -253,7 +250,7 @@ def summarize(frame: pd.DataFrame, group_columns: Sequence[str]) -> pd.DataFrame
         row[COL_SAMPLE_COUNT] = len(valid)
         row[COL_EXCLUDED_COUNT] = int(out_of_range.sum())
         row[COL_NON_OVERLAPPING_COUNT] = max_non_overlapping(valid[COL_START_POSITION].tolist(), horizon)
-        row[COL_JUDGEABLE] = JUDGEABLE_YES if len(valid) >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO
+        row[COL_JUDGEABLE] = judgeable(len(valid))
 
         for column in MEAN_MEDIAN_COLUMNS:
             row[f"{column}Mean"] = valid[column].mean() if len(valid) else np.nan

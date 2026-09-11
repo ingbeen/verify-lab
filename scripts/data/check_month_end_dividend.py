@@ -46,7 +46,6 @@ from verify_lab.studies.month_end.constants import (
     COL_EXIT_DATE,
     COL_MONTH,
     DATASETS,
-    MARKET_BY_LABEL,
     Dataset,
 )
 from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_schedule
@@ -128,7 +127,7 @@ def _measure(dataset: Dataset) -> list[dict[str, Any]]:
 
         rows.append(
             {
-                "시장": MARKET_BY_LABEL.get(dataset.label, ""),
+                "시장": dataset.market,
                 "종목": dataset.label,
                 "월": month,
                 "진입": len(cell),

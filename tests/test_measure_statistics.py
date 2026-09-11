@@ -984,6 +984,33 @@ class TestSignedMeans:
             assert column in result.columns
 
 
+class TestPayoffInvariant:
+    """건수가 있는 쪽의 평균이 없으면 «양쪽 갈래 모두» 터진다"""
+
+    def test_전승_칸에서도_이긴_쪽_불변조건이_걸린다(self) -> None:
+        """
+        목적: 전승 갈래가 불변조건 검사를 건너뛰던 것을 막는다.
+
+        진 거래가 0건이면 이른 반환을 하는데, 그 갈래가 **이긴 쪽 검사보다 앞**에 있었다.
+        `이길 때(%)` 를 산출물에 내기 시작하면서 그 구멍으로 **「건수는 3건인데 평균이 없다」가
+        빈칸으로** 새어 나갈 수 있게 됐다 — 빈칸은 「못 쟀다」로 읽힌다.
+
+        Given: 이긴 거래가 3건인데 평균이 결측이고 진 거래가 0건인 입력
+        When: 손익비를 조립한다
+        Then: RuntimeError 가 난다
+        """
+        # Given / When / Then
+        with pytest.raises(RuntimeError, match="이긴 거래"):
+            payoff_profile(
+                positive_mean=np.nan,
+                negative_mean=np.nan,
+                positive_count=3,
+                negative_count=0,
+                sample_count=3,
+                downward=False,
+            )
+
+
 class TestPayoffProfile:
     """손익비 조립의 계약을 고정한다.
 

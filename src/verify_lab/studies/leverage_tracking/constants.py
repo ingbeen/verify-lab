@@ -246,8 +246,7 @@ DISPLAY_TOTAL_DIVERGENCE_P95: Final = "총 괴리 상위5%(%p)"
 # 산출물 파일
 # ============================================================
 
-# 이 매매법의 이름(slug). **측정과 매매가 같은 값을 본다** — 계층은 산출물의 상위 폴더가
-# 말하므로 이름에 계층을 넣지 않는다. 전에는 같은 매매법이 계층마다 다른 이름으로 불렸다
+# 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
 TRACK_NAME: Final = "leverage_tracking"
 
 DIVERGENCE_FILENAME: Final = "divergence.csv"

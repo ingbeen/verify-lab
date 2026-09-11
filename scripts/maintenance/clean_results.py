@@ -3,7 +3,11 @@
 
 `storage/results/` 는 실행할 때마다 폴더가 쌓이지만, **결과 문서가 근거로 인용하는 폴더는
 지우면 안 된다** — 문서에 대조할 수 없는 숫자만 남는다. 어느 폴더가 인용됐는지의 판정은
-`utils/result_citations.py` 하나가 소유하며, 품질 검증도 같은 함수를 쓴다.
+`utils/result_citations.py` 하나가 소유하며, 품질 검증도 같은 함수를 **같은 루트로** 쓴다.
+
+**루트는 `docs/` 가 아니라 저장소 전체다.** 루트 `CLAUDE.md` 가 실제로 산출물을 인용하고
+있어서 `docs/` 만 보면 그 인용이 보이지 않는다 — 그러면 **품질 검증은 통과하고 이 도구는
+근거물을 삭제 후보로 낸다.** 위 모듈이 막겠다고 한 「두 판정이 갈라진다」의 거울상이다.
 
 기본 실행은 **목록만 보여준다.** 지우려면 `--delete` 를 붙인다.
 
@@ -19,7 +23,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from verify_lab.common_constants import BASE_DIR, DOCS_DIR, RESULT_LAYERS, RESULTS_DIR
+from verify_lab.common_constants import BASE_DIR, RESULT_LAYERS, RESULTS_DIR
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger
@@ -185,7 +189,7 @@ def main() -> int:
     """
     args = parse_args()
 
-    cited = cited_result_dirs(DOCS_DIR)
+    cited = cited_result_dirs(BASE_DIR)
     paths = result_dir_paths(RESULTS_DIR)
     existing = set(paths)
     tracked = _tracked_dirs()

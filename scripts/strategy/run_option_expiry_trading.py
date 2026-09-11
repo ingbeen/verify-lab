@@ -30,13 +30,11 @@ from verify_lab.strategy.constants import (
     EXPIRY_STOP_LEVEL,
     EXPIRY_STOP_LEVELS,
     NO_STOP_LABEL,
-    STOP_GRID_FILENAME,
-    SUMMARY_FILENAME,
     TRADES_FILENAME,
     ExpiryCell,
-    stop_level_value,
 )
 from verify_lab.strategy.option_expiry_runner import ExpiryOutputs, run_option_expiry_trading
+from verify_lab.strategy.run_summary import KEY_ROW_COUNTS
 from verify_lab.studies.option_expiry.constants import TRACK_NAME
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
@@ -44,8 +42,11 @@ from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 실행 이력을 쌓는 meta.json 의 최상위 키
+# 실행 이력을 쌓는 meta.json 의 최상위 키와 그 안의 키
 KEY_META_OPTION_EXPIRY_TRADING = "option_expiry_trading"
+KEY_META_CELLS = "cells"
+KEY_META_STOP_LEVEL_COUNT = "stop_level_count"
+KEY_META_OUTPUT = "output"
 
 # 산출물 표의 컬럼 이름. **폭은 적지 않는다** — `print_dataframe` 이 내용에서 계산한다
 DISPLAY_FILE = "파일"
@@ -132,11 +133,11 @@ def _print_summary(outputs: ExpiryOutputs, *, grid: bool) -> None:
         grid: 손절선 격자를 낸 실행인지 여부
     """
     if grid:
-        no_stop = outputs.grid[outputs.grid[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL]
+        no_stop = outputs.performance[outputs.performance[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL]
         print_dataframe(no_stop, logger, title=f"{NO_STOP_LABEL} — 맨몸 성적 (결과 문서 12A.4 와 대조)")
         return
 
-    print_dataframe(outputs.grid, logger, title=f"칸별 성적 (손절 {-EXPIRY_STOP_LEVEL * RATE_TO_PERCENT:.1f}%)")
+    print_dataframe(outputs.performance, logger, title=f"칸별 성적 (손절 {-EXPIRY_STOP_LEVEL * RATE_TO_PERCENT:.1f}%)")
 
 
 @cli_exception_handler
@@ -151,43 +152,33 @@ def main() -> int:
 
     # 격자일 때만 무손절을 앞에 붙인다. 손절이 무엇을 막았는지는 그 행과 견줘야 보인다
     stop_levels: list[float | None] = [None, *EXPIRY_STOP_LEVELS] if args.grid else [EXPIRY_STOP_LEVEL]
-    summary_filename = STOP_GRID_FILENAME if args.grid else SUMMARY_FILENAME
 
     _print_scope(cells, grid=args.grid)
     outputs = run_option_expiry_trading(cells, stop_levels)
     _print_summary(outputs, grid=args.grid)
 
+    # **요약은 runner 가 조립한다.** 전에는 이 자리에서 만들어 이 매매법만 규약이 갈렸고,
+    # 대상 범위도 데이터 기간도 비용 표기도 없었다 (`scripts/CLAUDE.md` CLI 계층 책임)
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
-    save_table(directory, summary_filename, outputs.grid)
+    save_table(directory, outputs.performance_filename, outputs.performance)
     save_table(directory, TRADES_FILENAME, outputs.trades)
-    save_run_summary(
-        directory,
-        {
-            "cells": [f"{cell.dataset_key} {cell.expiry_month}월" for cell in cells],
-            "stop_levels": [stop_level_value(level) for level in stop_levels],
-            "row_counts": {"summary": len(outputs.grid), "trades": len(outputs.trades)},
-        },
-    )
+    save_run_summary(directory, outputs.summary)
 
+    counts: dict[str, int] = outputs.summary[KEY_ROW_COUNTS]
     print_dataframe(
-        pd.DataFrame(
-            [
-                {DISPLAY_FILE: summary_filename, DISPLAY_ROW_COUNT: len(outputs.grid)},
-                {DISPLAY_FILE: TRADES_FILENAME, DISPLAY_ROW_COUNT: len(outputs.trades)},
-            ]
-        ),
+        pd.DataFrame([{DISPLAY_FILE: name, DISPLAY_ROW_COUNT: rows} for name, rows in counts.items()]),
         logger,
         title=f"산출물 (저장 폴더: {directory})",
     )
     save_metadata(
         KEY_META_OPTION_EXPIRY_TRADING,
         {
-            "cells": [f"{cell.dataset_key} {cell.expiry_month}월" for cell in cells],
-            "stop_level_count": len(stop_levels),
-            "output": str(directory),
+            KEY_META_CELLS: [f"{cell.dataset_key} {cell.expiry_month}월" for cell in cells],
+            KEY_META_STOP_LEVEL_COUNT: len(stop_levels),
+            KEY_META_OUTPUT: str(directory),
         },
     )
-    logger.debug(f"성적 {len(outputs.grid):,}행, 체결 {len(outputs.trades):,}건을 산출했습니다")
+    logger.debug(f"성적 {len(outputs.performance):,}행, 체결 {len(outputs.trades):,}건을 산출했습니다")
 
     return 0
 

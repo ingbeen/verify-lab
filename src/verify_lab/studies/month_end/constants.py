@@ -84,8 +84,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE_P_VALUE,
 )
 
-# 이 매매법의 이름(slug). **측정과 매매가 같은 값을 본다** — 계층은 산출물의 상위 폴더가
-# 말하므로 이름에 계층을 넣지 않는다. 전에는 같은 매매법이 계층마다 다른 이름으로 불렸다
+# 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
 TRACK_NAME: Final = "month_end"
 
 
@@ -126,6 +125,9 @@ class Dataset:
     Attributes:
         ticker: 종목 또는 지수 코드. **산출물의 데이터셋 구분자이므로 겹치면 안 된다**
         label: 표시 이름
+        market: 어느 시장인가. **조회표가 아니라 대상 자신이 갖는다** — 전에는 종목명으로
+            찾는 사전이었고, 호출자가 넘긴 대상은 거기 없어 `시장` 이 **조용히 빈칸**이 됐다.
+            바로 옆의 `execution_role` 과 같은 자리에 두면 그 구멍이 구조적으로 사라진다
         directory: 파일이 있는 폴더
         file_template: 파일명 템플릿
         price_column: 가격 컬럼 이름
@@ -136,6 +138,7 @@ class Dataset:
 
     ticker: str
     label: str
+    market: str
     directory: Path
     file_template: str
     price_column: str
@@ -162,6 +165,7 @@ DATASETS_KOSPI: Final = (
     Dataset(
         ticker="069500",
         label="KODEX 200",
+        market=MARKET_KOSPI,
         directory=MARKET_DIR,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -172,6 +176,7 @@ DATASETS_KOSPI: Final = (
     Dataset(
         ticker="114800",
         label="KODEX 인버스",
+        market=MARKET_KOSPI,
         directory=MARKET_DIR,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -182,6 +187,7 @@ DATASETS_KOSPI: Final = (
     Dataset(
         ticker="1028",
         label="코스피200 지수",
+        market=MARKET_KOSPI,
         directory=SERIES_DIR,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,
@@ -192,6 +198,7 @@ DATASETS_KOSPI: Final = (
     Dataset(
         ticker="1001",
         label="코스피 종합지수",
+        market=MARKET_KOSPI,
         directory=SERIES_DIR,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,
@@ -205,6 +212,7 @@ DATASETS_KOSDAQ: Final = (
     Dataset(
         ticker="229200",
         label="KODEX 코스닥150",
+        market=MARKET_KOSDAQ,
         directory=MARKET_DIR,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -215,6 +223,7 @@ DATASETS_KOSDAQ: Final = (
     Dataset(
         ticker="251340",
         label="KODEX 코스닥150선물인버스",
+        market=MARKET_KOSDAQ,
         directory=MARKET_DIR,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
@@ -225,6 +234,7 @@ DATASETS_KOSDAQ: Final = (
     Dataset(
         ticker="2203",
         label="코스닥150 지수",
+        market=MARKET_KOSDAQ,
         directory=SERIES_DIR,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,
@@ -235,6 +245,7 @@ DATASETS_KOSDAQ: Final = (
     Dataset(
         ticker="2001",
         label="코스닥 종합지수",
+        market=MARKET_KOSDAQ,
         directory=SERIES_DIR,
         file_template=INDEX_FILE_TEMPLATE,
         price_column=COL_VALUE,
@@ -246,13 +257,6 @@ DATASETS_KOSDAQ: Final = (
 
 # 인자 없이 실행했을 때 재는 대상 — 두 시장 전부
 DATASETS: Final = DATASETS_KOSPI + DATASETS_KOSDAQ
-
-# 종목명 → 시장. **두 목록에서 파생시킨다** — 대상마다 시장을 손으로 적으면 목록과 어긋나도
-# 예외가 나지 않는다. 구분자가 종목명인 것은 출력 계약과 같다
-MARKET_BY_LABEL: Final = {
-    **{dataset.label: MARKET_KOSPI for dataset in DATASETS_KOSPI},
-    **{dataset.label: MARKET_KOSDAQ for dataset in DATASETS_KOSDAQ},
-}
 
 # ============================================================
 # 격자 축 (`docs/spec/월말_진입_설계.md` §3.3 결정 ③)
@@ -358,8 +362,6 @@ BASELINE_MATCHED_LENGTH: Final = "같은 길이 단순 보유"
 # 기준선 집계를 신호 집계와 나란히 놓을 때 붙이는 접미사
 BASELINE_SUFFIX: Final = "_baseline"
 
-# 방향 비율의 절반. 평균-비율 어긋남 판정의 기준선이다
-HALF_RATE: Final = 0.5
 
 # ============================================================
 # 시기 구분 (측정의 원칙 17)

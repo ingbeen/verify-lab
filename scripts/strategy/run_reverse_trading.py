@@ -28,7 +28,8 @@ from verify_lab.strategy.constants import (
     Target,
     stop_level_value,
 )
-from verify_lab.strategy.reverse_runner import KEY_SUMMARY, KEY_TRADES, StrategyOutputs, run_reverse_trading
+from verify_lab.strategy.reverse_runner import StrategyOutputs, run_reverse_trading
+from verify_lab.strategy.run_summary import KEY_ROW_COUNTS
 from verify_lab.studies.reverse.constants import TRACK_NAME
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
@@ -103,7 +104,7 @@ def _print_summary(outputs: StrategyOutputs) -> None:
     Args:
         outputs: 실행 산출물
     """
-    table = outputs.summary.astype({DISPLAY_START_YEAR: str})
+    table = outputs.performance.astype({DISPLAY_START_YEAR: str})
     print_dataframe(table, logger, title="대상 × 구간 성적")
 
 
@@ -123,30 +124,26 @@ def main() -> int:
 
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
     save_table(directory, TRADES_FILENAME, outputs.trades)
-    save_table(directory, SUMMARY_FILENAME, outputs.summary)
-    save_run_summary(directory, outputs.meta)
+    save_table(directory, SUMMARY_FILENAME, outputs.performance)
+    save_run_summary(directory, outputs.summary)
 
-    counts = outputs.meta["row_counts"]
+    # **행 수의 키가 곧 파일 이름이다.** 별칭을 두지 않으므로 표를 그대로 펼치면 된다
+    counts: dict[str, int] = outputs.summary[KEY_ROW_COUNTS]
     print_dataframe(
-        pd.DataFrame(
-            [
-                {DISPLAY_FILE: TRADES_FILENAME, DISPLAY_ROW_COUNT: counts[KEY_TRADES]},
-                {DISPLAY_FILE: SUMMARY_FILENAME, DISPLAY_ROW_COUNT: counts[KEY_SUMMARY]},
-            ]
-        ),
+        pd.DataFrame([{DISPLAY_FILE: name, DISPLAY_ROW_COUNT: rows} for name, rows in counts.items()]),
         logger,
         title=f"산출물 (저장 폴더: {directory})",
     )
     save_metadata(
         KEY_META_REVERSE_TRADING,
         {
-            "targets": [f"{target.dataset.ticker} K={target.rank_cut}" for target in targets],
+            "targets": [f"{target.dataset.label} K={target.rank_cut}" for target in targets],
             "stop_loss_level": stop_level_value(STOP_LOSS_LEVEL),
             "hold_limit": HOLD_LIMIT,
             "output": str(directory),
         },
     )
-    logger.debug(f"체결 {counts[KEY_TRADES]:,}건, 집계 {counts[KEY_SUMMARY]:,}행을 산출했습니다")
+    logger.debug(f"체결 {counts[TRADES_FILENAME]:,}건, 집계 {counts[SUMMARY_FILENAME]:,}행을 산출했습니다")
 
     return 0
 

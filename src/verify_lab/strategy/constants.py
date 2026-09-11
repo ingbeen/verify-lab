@@ -1,7 +1,9 @@
 """매매 규칙 계층의 상수
 
 규칙의 확정 근거는 `docs/strategy/역방향_매매_규칙.md` §3 이 SoT다.
-**여기 값은 44건의 과거 신호에 맞춰 고른 것**이며, 성적은 과거 재구성이지 예측이 아니다.
+**여기 값은 과거 신호를 보고 고른 것**이며, 성적은 과거 재구성이지 예측이 아니다.
+**표본 수는 시세 기간에 묶여 있으므로 그 문서의 머리말이 기준이다** — 값을 여기 적으면
+재수집할 때마다 두 곳이 갈라진다.
 """
 
 from dataclasses import dataclass
@@ -208,6 +210,19 @@ DISPLAY_PAYOFF_RATIO: Final = "손익비"
 DISPLAY_BREAKEVEN_WIN_RATE: Final = "손익분기 승률(%)"
 DISPLAY_LOSING_COUNT: Final = "질 때 표본"
 
+# 손익비의 **분자와 분모**. `docs/strategy/투자금_결정.md` §1.2 가 이 두 값의 출처를
+# 성적표로 적어 두었는데 실제 표에는 없어서, 계산기 시트를 쓰는 사람이 거래내역에서
+# 직접 계산해야 했다.
+#
+# **`이길 때` 는 양수, `질 때` 는 음수다.** `최악(%)` 이 음수인 것과 같은 관용이고,
+# 그 문서의 예시(`0.0138` · `-0.0133`)와도 부호가 맞는다. 둘 다 절대값으로 내면
+# 표를 읽는 사람이 어느 쪽이 손실인지 이름으로만 판단해야 한다.
+#
+# **`이길 때 표본` 은 두지 않는다.** `질 때 표본` 은 손익비의 «분모»라 넣은 것이고
+# (측정의 원칙 3), 이긴 건수는 `신호 − 질 때 표본 − 보합` 이라 보합 없이는 유도되지 않는다
+DISPLAY_WIN_AMOUNT: Final = "이길 때(%)"
+DISPLAY_LOSS_AMOUNT: Final = "질 때(%)"
+
 # 파라미터 표기. `studies` 와 같은 접두사를 쓴다 — 두 산출물을 나란히 놓고 볼 때 갈라지면 안 된다
 PARAMETER_PREFIX_RANK_CUT: Final = "K"
 
@@ -216,8 +231,7 @@ HOLD_DAYS_DECIMALS: Final = 2
 
 # **매매법 이름(slug)을 이 계층이 정의하지 않는다.** `studies/<slug>/constants.py` 의 `TRACK_NAME`
 # 하나가 소유하고 측정과 매매가 그것을 함께 본다 — 계층은 산출물의 상위 폴더가 말한다.
-# 전에는 여기에 `STRATEGY_NAME = "reverse_trading"` 과 `EXPIRY_STRATEGY_NAME = "expiry_trading"` 이
-# 따로 있어 같은 매매법이 측정 폴더와 매매 폴더에서 다른 이름으로 불렸다
+# 여기에 두면 같은 매매법이 측정 폴더와 매매 폴더에서 다른 이름으로 불린다
 
 
 # ============================================================
@@ -328,9 +342,20 @@ EXPIRY_CELLS: Final = (
 EXPIRY_DIRECTION_DOWN: Final = "아래"
 EXPIRY_DIRECTION_UP: Final = "위"
 
+# **이 매매법만 갖는 두 컬럼**이다. 만기월은 축이고, 청산 목표일은 달력이 지목한 날이라
+# 실제 청산일과 갈릴 수 있다 (손절로 먼저 나가면 다르다)
 DISPLAY_EXPIRY_MONTH: Final = "만기월"
-DISPLAY_ENTRY_DATE: Final = "진입일"
 DISPLAY_TARGET_DATE: Final = "청산 목표일"
+
+
+# ============================================================
+# 표시용 레이블 — 세 매매법이 함께 쓴다
+# ============================================================
+
+# **옵션 만기일 절에 있던 것을 옮겼다.** 그 자리에 있으면 섹션 이름이 사실과 달라
+# 「이 매매법 전용」으로 읽히는데, 셋 다 쓰는 공통 컬럼이다
+# (`src/verify_lab/CLAUDE.md` 「매매 산출물 계약」)
+DISPLAY_ENTRY_DATE: Final = "진입일"
 DISPLAY_EXIT_DATE: Final = "청산일"
 DISPLAY_EXIT_PRICE: Final = "청산가"
 DISPLAY_STDEV: Final = "표준편차(%)"

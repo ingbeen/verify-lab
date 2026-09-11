@@ -287,10 +287,23 @@ def _scheduled_exit(
 
     Returns:
         청산일 종가로 나간 체결 결과
+
+    Raises:
+        ValueError: 진입가나 청산가가 0 이하인 경우
     """
     entry_price = float(frame.iloc[entry_position][price_column])
     exit_price = float(frame.iloc[exit_position][price_column])
     sign = -1.0 if bet_down else 1.0
+
+    # **여기서 막는 이유**: 시세 로더는 「0 이하 가격」을 거부하지만 **계열 로더는 값의 부호를
+    # 보지 않는다** — 마이너스 금리와 0% 금리가 실재하기 때문이며 그 판정은 옳다. 그런데
+    # 월말 매매가 지수 계열을 이 경로로 넘기고 여기서 그 값이 수익률이 된다.
+    #
+    # **둘 다 막는다.** 진입가는 분모라 `ZeroDivisionError` 로 터지지만, **청산가는 조용하다** —
+    # 0 이면 예외 없이 `-100%` 짜리 체결이 만들어져 합계·평균·최악에 그대로 섞인다
+    for label, price in (("진입가", entry_price), ("청산가", exit_price)):
+        if price <= 0:
+            raise ValueError(f"{label}가 0 이하입니다: {price} (컬럼 {price_column}, 진입 {entry_position}, 청산 {exit_position})")
 
     return TradeResult((exit_price / entry_price - 1.0) * sign, EXIT_LIMIT, hold_days)
 

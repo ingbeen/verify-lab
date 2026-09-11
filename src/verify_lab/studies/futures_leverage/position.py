@@ -146,6 +146,10 @@ def daily_interest_rates(dates: pd.Series, interest: pd.Series | None) -> np.nda
     금리는 **판정일 직전에 알 수 있는 값**을 쓴다. 그날 고시된 금리를 그날 이자에 쓰면
     미래를 참조하는 것은 아니지만, 없는 날은 직전 값을 끌어 쓴다.
 
+    **선두 결측은 거부한다.** `ffill` 은 앞을 못 채우므로 금리 계열이 첫 거래일보다 늦게
+    시작하면 그 구간이 통째로 비는데, 전에는 `0.0` 으로 메워 **「이자 0%」가 조용히
+    섞였다.** 구간이 길면 배수 상품의 조달 비용이 사라져 성적이 좋아진다 (보간 금지).
+
     **이 산식은 여기 한 곳에만 있다.** 엔진(`run_position`)과 벡터화 경로
     (`comparison.build_interest_factor`)가 같은 함수를 쓴다 — 같은 값을 두 곳에서 계산하면
     두 곳이 조용히 갈라지고, 그때 어느 쪽이 맞는지 판별할 방법이 없다
@@ -157,11 +161,22 @@ def daily_interest_rates(dates: pd.Series, interest: pd.Series | None) -> np.nda
 
     Returns:
         거래일마다의 이자율 (비율). 첫날은 0 이다
+
+    Raises:
+        ValueError: 금리 계열이 첫 거래일을 덮지 못하는 경우
     """
     if interest is None:
         return np.zeros(len(dates))
 
-    aligned = interest.reindex(dates).ffill().fillna(0.0).to_numpy(dtype=float) / RATE_TO_PERCENT
+    filled = interest.reindex(dates).ffill()
+
+    # **중간 결측은 직전 값으로 채우고 선두 결측만 막는다.** 중간까지 막으면 휴일이 낀 해가
+    # 전부 죽는다 — 실제로 미국 휴일이 그렇다
+    if filled.isna().any():
+        first = dates.iloc[0]
+        raise ValueError(f"금리 계열이 첫 거래일을 덮지 못합니다: 거래일 시작 {first.date()}, 금리 시작 {interest.index.min().date()}")
+
+    aligned = filled.to_numpy(dtype=float) / RATE_TO_PERCENT
     stamps = pd.DatetimeIndex(dates)
     elapsed = np.diff(stamps.to_numpy(dtype="datetime64[D]").astype(int), prepend=0.0)
     elapsed[0] = 0.0

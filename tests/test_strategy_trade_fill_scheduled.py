@@ -435,3 +435,40 @@ class TestValidation:
         # When / Then
         with pytest.raises(ValueError, match="손절선"):
             simulate_scheduled_trade(frame, 0, 1, bet_down=False, stop_level=0.0)
+
+    def test_진입가가_0_이하이면_거부한다(self) -> None:
+        """
+        목적: 무손절 경로에서 0 으로 나누는 것을 막는다
+
+        **시세 로더는 「0 이하 가격」을 거부하지만 계열 로더는 값의 부호를 보지 않는다** —
+        마이너스 금리와 0% 금리가 실재하기 때문이며 그 판정은 옳다. 그런데 월말 매매가
+        지수 계열을 무손절 경로로 넘기고 거기서 진입가가 **분모**가 된다. 그래서 나누는 쪽에서 막는다.
+
+        Given: 진입일의 가격이 0 인 계열
+        When: 무손절 체결을 요청했을 때
+        Then: ValueError 가 난다
+        """
+        # Given
+        frame = pd.DataFrame({COL_DATE: pd.to_datetime(["2020-01-02", "2020-01-03"]), COL_CLOSE: [0.0, 100.0]})
+
+        # When / Then
+        with pytest.raises(ValueError, match="진입가"):
+            simulate_scheduled_trade(frame, 0, 1, bet_down=False, stop_level=None)
+
+    def test_청산가가_0_이하이면_거부한다(self) -> None:
+        """
+        목적: **조용히 −100% 짜리 체결이 만들어지던 것**을 막는다
+
+        진입가는 분모라 0 이면 예외로 터지지만 **청산가는 아니다** — 0 이어도 계산이 되어
+        `-100%` 가 합계·평균·최악에 그대로 섞인다. 두 값이 같은 계열에서 오므로 함께 막는다.
+
+        Given: 청산일의 가격이 0 인 계열
+        When: 무손절 체결을 요청했을 때
+        Then: ValueError 가 난다
+        """
+        # Given
+        frame = pd.DataFrame({COL_DATE: pd.to_datetime(["2020-01-02", "2020-01-03"]), COL_CLOSE: [100.0, 0.0]})
+
+        # When / Then
+        with pytest.raises(ValueError, match="청산가"):
+            simulate_scheduled_trade(frame, 0, 1, bet_down=False, stop_level=None)

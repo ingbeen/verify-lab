@@ -47,13 +47,10 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_HORIZON,
     COL_JUDGEABLE,
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
-    MIN_SAMPLE_PER_CELL,
     REASON_NONE,
 )
 from verify_lab.measure.distribution import dividend_adjustment, measure_distribution_share
-from verify_lab.measure.statistics import max_non_overlapping
+from verify_lab.measure.statistics import judgeable, max_non_overlapping
 from verify_lab.studies.futures_leverage.comparison import (
     build_interest_factor,
     build_window_table,
@@ -219,7 +216,7 @@ def _summarize(values: np.ndarray, horizon: int) -> dict[str, object]:
         COL_MEDIAN_RETURN: float(np.median(values[usable])) if sample_count else np.nan,
         # **불린이 아니라 문자열이다.** 네 계층이 같은 어휘를 써야 산출물을 나란히 읽을 수 있고,
         # `screening` 이 「예」로 거르므로 불린을 담으면 그 표는 전 칸이 조용히 제외된다
-        COL_JUDGEABLE: JUDGEABLE_YES if sample_count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO,
+        COL_JUDGEABLE: judgeable(sample_count),
     }
 
 

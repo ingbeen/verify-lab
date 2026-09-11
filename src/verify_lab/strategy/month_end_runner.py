@@ -53,16 +53,21 @@ from verify_lab.strategy.constants import (
     NO_STOP_LABEL,
     STOP_APPLICABLE,
     STOP_NOT_APPLICABLE,
+    SUMMARY_FILENAME,
+    SUMMARY_FIXED_STOP_FILENAME,
+    TRADES_FILENAME,
     stop_level_value,
 )
-from verify_lab.strategy.periods import period_rows
-from verify_lab.strategy.trade_fill import simulate_scheduled_trade
+from verify_lab.strategy.periods import period_rows, to_summary_frame
+from verify_lab.strategy.run_summary import build_run_summary, dataset_record
+from verify_lab.strategy.trade_fill import TradeResult, simulate_scheduled_trade
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
     COL_EXIT_DATE,
     COL_MONTH,
     DATASETS_KOSDAQ,
+    TRACK_NAME,
     Dataset,
 )
 from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_schedule
@@ -77,22 +82,20 @@ DISPLAY_MONTH = "월"
 # 손절 결과에도 그대로 실린다
 ALL_MONTHS = tuple(range(1, 13))
 
-# `summary.json` 의 키
+# `summary.json` 의 `rule` 안 — 무엇을 어떤 규칙으로 돌렸나.
+# **최상위 키와 비용 표기는 `strategy/run_summary.py` 가 소유한다** — 전에는 이 매매법만
+# 그 둘을 갖고 있었고 나머지 둘에는 없었다
 KEY_STOP_LEVELS = "stop_levels"
 KEY_FIXED_STOP_LEVEL = "fixed_stop_level"
-KEY_DATASETS = "datasets"
-KEY_ROW_COUNTS = "row_counts"
-KEY_TICKER = "ticker"
+KEY_TARGETS = "targets"
 KEY_LABEL = "label"
-KEY_FILE = "file"
-KEY_PERIOD = "period"
 KEY_ENTRY_COUNT = "entry_count"
 KEY_EXCLUDED_COUNT = "excluded_count"
-KEY_COST = "cost"
 
-# 비용을 넣지 않았다는 사실을 산출물에 남긴다. 「빠뜨린 것」과 「일부러 뺀 것」을
-# 구별할 수 없으면 다음 사람이 다시 계산한다
-COST_NOTE = "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)"
+# 산출물만 보고는 알 수 없는 실행 조건
+NOTE_ENTRY = "진입은 그 달 20일(휴장이면 직전 거래일) 종가이고 청산은 말일 종가다 — 검증 #10 과 같은 날에 들어간다"
+NOTE_STOP_BASE = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
+NOTE_INDEX = "지수는 종가만 있어 장중 손절을 잴 수 없다. 무손절 한 줄로만 나오며 「손절적용」 컬럼에 그 사실이 남는다"
 
 
 @dataclass(frozen=True)
@@ -243,7 +246,7 @@ def _trade_row(
     dataset: Dataset,
     frame: pd.DataFrame,
     entry_position: int,
-    result: Any,
+    result: TradeResult,
     *,
     month: int,
     bet_down: bool,
@@ -383,7 +386,8 @@ def run_month_end_trading(
         raise ValueError("손절선 목록이 비어 있습니다")
 
     accumulator = _Accumulator()
-    dataset_summaries: list[dict[str, Any]] = []
+    dataset_records: list[dict[str, Any]] = []
+    target_records: list[dict[str, Any]] = []
 
     # 무손절을 격자의 한 행으로 함께 돈다 — 「손절이 무엇을 막았는가」를 재려면 기준이 있어야 한다
     etf_levels: tuple[float | None, ...] = (*stop_levels, None)
@@ -414,32 +418,37 @@ def run_month_end_trading(
                         last_day=last_day,
                     )
 
-        dataset_summaries.append(
+        dataset_records.append(
+            dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.path.name, frame=frame)
+        )
+        # **제외 건수를 대상마다 남긴다** (패키지 절대 원칙 「표본 보존」)
+        target_records.append(
             {
-                KEY_TICKER: dataset.ticker,
                 KEY_LABEL: dataset.label,
-                KEY_FILE: dataset.path.name,
-                KEY_PERIOD: f"{frame[COL_DATE].iloc[0].date()} ~ {last_day.date()}",
                 KEY_ENTRY_COUNT: sum(len(by_month[month].entry_positions) for month in ALL_MONTHS),
                 KEY_EXCLUDED_COUNT: excluded_count,
             }
         )
 
     trades = pd.DataFrame(accumulator.trades)
-    performance = pd.DataFrame(accumulator.performance)
+    performance = to_summary_frame(accumulator.performance)
     fixed_stop = _fixed_stop_table(performance)
 
-    summary: dict[str, Any] = {
-        KEY_STOP_LEVELS: [stop_level_value(level) for level in etf_levels],
-        KEY_FIXED_STOP_LEVEL: stop_level_value(FIXED_STOP_LEVEL),
-        KEY_COST: COST_NOTE,
-        KEY_DATASETS: dataset_summaries,
-        KEY_ROW_COUNTS: {
-            "trades": len(trades),
-            "performance": len(performance),
-            "performance_fixed_stop": len(fixed_stop),
+    summary = build_run_summary(
+        track=TRACK_NAME,
+        datasets=dataset_records,
+        rule={
+            KEY_STOP_LEVELS: [stop_level_value(level) for level in etf_levels],
+            KEY_FIXED_STOP_LEVEL: stop_level_value(FIXED_STOP_LEVEL),
+            KEY_TARGETS: target_records,
         },
-    }
+        row_counts={
+            TRADES_FILENAME: len(trades),
+            SUMMARY_FILENAME: len(performance),
+            SUMMARY_FIXED_STOP_FILENAME: len(fixed_stop),
+        },
+        notes=[NOTE_ENTRY, NOTE_STOP_BASE, NOTE_INDEX],
+    )
 
     logger.debug(f"손절 격자 완료: 체결 {len(trades):,}행, 성적 {len(performance):,}행, 고정 손절선 {len(fixed_stop):,}행")
 

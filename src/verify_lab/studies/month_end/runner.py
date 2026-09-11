@@ -28,16 +28,12 @@ from verify_lab.measure.constants import (
     COL_HORIZON,
     COL_JUDGEABLE,
     JUDGEABLE_NO,
-    JUDGEABLE_YES,
-    MIN_SAMPLE_PER_CELL,
     REASON_NONE,
 )
 from verify_lab.measure.screening import SCREEN_CANDIDATE, screen_candidates
 from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
-    COL_LOSS_RATE,
     COL_LOSS_RATE_EXCESS,
-    COL_MEAN,
     COL_MEAN_EXCESS,
     COL_MEAN_P_VALUE,
     COL_MEDIAN_EXCESS,
@@ -45,11 +41,12 @@ from verify_lab.measure.statistics import (
     COL_SAMPLE_COUNT,
     COL_TEST_NOTE,
     COL_UP_RATE_P_VALUE,
-    COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
     excess,
+    judgeable,
+    mean_rate_conflict,
     permutation_test,
     summarize,
 )
@@ -88,9 +85,7 @@ from verify_lab.studies.month_end.constants import (
     GRID_CELL_TEMPLATE,
     GRID_EXIT_MONTH_END,
     GRID_EXIT_RELATIVE,
-    HALF_RATE,
     JUDGING_PERIODS,
-    MARKET_BY_LABEL,
     PERCENT_COLUMNS,
     PROBABILITY_COLUMNS,
     RECENT_WINDOWS_YEARS,
@@ -255,24 +250,6 @@ def _frames(
     return signal, baseline
 
 
-def _mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:
-    """평균의 부호와 방향 비율이 어긋나는 칸을 표시한다 (측정의 원칙 13).
-
-    평균이 양수인데 절반 넘게 내렸다면 **소수의 큰 사건이 평균을 만든 것**이고, 그 반대도 같다.
-    평균만 보고 방향을 읽으면 이런 칸에서 정반대로 판단하게 된다.
-
-    Args:
-        frame: 평균과 두 방향 비율이 들어 있는 집계 프레임
-
-    Returns:
-        어긋나는 칸이면 True 인 Series
-    """
-    mean_up_but_fell = (frame[COL_MEAN] > 0) & (frame[COL_LOSS_RATE] > HALF_RATE)
-    mean_down_but_rose = (frame[COL_MEAN] < 0) & (frame[COL_WIN_RATE] > HALF_RATE)
-
-    return mean_up_but_fell | mean_down_but_rose
-
-
 def _aggregate(
     signal: pd.DataFrame,
     baseline: pd.DataFrame,
@@ -333,7 +310,7 @@ def _aggregate(
             on=[COL_BASIS, COL_HORIZON],
         )
     )
-    merged[COL_MEAN_RATE_CONFLICT] = _mean_rate_conflict(merged)
+    merged[COL_MEAN_RATE_CONFLICT] = mean_rate_conflict(merged)
     merged[COL_JUDGEABLE] = _judgeable(merged[COL_SAMPLE_COUNT])
 
     return merged.drop(columns=[COL_BASIS, COL_HORIZON])
@@ -351,7 +328,7 @@ def _judgeable(sample_counts: pd.Series) -> pd.Series:
     Returns:
         「예」/「아니오」 문자열 Series
     """
-    return sample_counts.map(lambda count: JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO)
+    return sample_counts.map(lambda count: judgeable(int(count)))
 
 
 def _identify(frame: pd.DataFrame, **values: Any) -> pd.DataFrame:
@@ -584,7 +561,7 @@ def _aggregate_by_month(
             on=[COL_BASIS, COL_HORIZON],
         )
     )
-    merged[COL_MEAN_RATE_CONFLICT] = _mean_rate_conflict(merged)
+    merged[COL_MEAN_RATE_CONFLICT] = mean_rate_conflict(merged)
     merged[COL_JUDGEABLE] = _judgeable(merged[COL_SAMPLE_COUNT])
 
     return merged.rename(columns={COL_HORIZON: COL_MONTH_NUMBER}).drop(columns=[COL_BASIS])
@@ -815,7 +792,10 @@ def _execution_rows(month_candidates: pd.DataFrame, datasets: tuple[Dataset, ...
 
     selected = month_candidates[month_candidates[COL_TICKER].isin(executable)].copy()
 
-    selected.insert(0, COL_MARKET, selected[COL_TICKER].map(lambda label: MARKET_BY_LABEL.get(label, "")))
+    # **두 줄이 같은 모양이다.** 전에는 시장만 종목명으로 찾는 사전(`MARKET_BY_LABEL`)을 써
+    # `.get(label, "")` 로 **조용히 빈칸**이 됐고, 바로 아래 줄은 같은 라벨로 `KeyError` 를 냈다.
+    # 시장을 대상 자신이 갖게 하니 그 비대칭이 사라졌다
+    selected.insert(0, COL_MARKET, selected[COL_TICKER].map(lambda label: executable[label].market))
     selected.insert(2, COL_EXECUTION_ROLE, selected[COL_TICKER].map(lambda label: executable[label].execution_role))
 
     logger.debug(f"집행 축 표: {len(selected):,}행 (집행 가능 대상 {len(executable)}개)")

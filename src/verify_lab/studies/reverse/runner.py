@@ -279,7 +279,7 @@ def run_study(
                 # 조용히 넘기면 "신호군 수 + 빠진 신호군 수 = 축의 곱" 이 깨진다
                 if not populations:
                     empty_groups.extend(_window_group_records(context, specs, start_year, period))
-                    logger.debug(f"{dataset.ticker} {start_year}년 {period.label}: 창에 거래일이 없습니다")
+                    logger.debug(f"{dataset.label} {start_year}년 {period.label}: 창에 거래일이 없습니다")
                     continue
 
                 # 대칭 모집단은 신호군과 무관하므로 창당 한 번만 만든다
@@ -460,7 +460,7 @@ def _dataset_record(context: _Context) -> dict[str, Any]:
     dates = context.frame[COL_DATE]
 
     return {
-        KEY_TICKER: context.dataset.ticker,
+        KEY_TICKER: context.dataset.label,
         KEY_PRICE_BASIS: context.dataset.price_basis,
         KEY_PATH: str(context.dataset.path),
         KEY_ROW_COUNT: len(context.frame),
@@ -572,7 +572,7 @@ def _population_records(
 
     return [
         {
-            KEY_TICKER: context.dataset.ticker,
+            KEY_TICKER: context.dataset.label,
             KEY_PRICE_BASIS: context.dataset.price_basis,
             KEY_START_YEAR: start_year,
             KEY_PERIOD: period.label,
@@ -603,7 +603,7 @@ def _window_group_records(
     return [
         _empty_group_record(
             {
-                DISPLAY_TICKER: context.dataset.ticker,
+                DISPLAY_TICKER: context.dataset.label,
                 DISPLAY_TEST: spec.test_label,
                 DISPLAY_PARAMETER: spec.parameter_label,
                 DISPLAY_START_YEAR: start_year,
@@ -667,7 +667,7 @@ def _measure_spec(
 
     for direction, signals in selected.items():
         identity = {
-            DISPLAY_TICKER: context.dataset.ticker,
+            DISPLAY_TICKER: context.dataset.label,
             DISPLAY_TEST: spec.test_label,
             DISPLAY_PARAMETER: spec.parameter_label,
             DISPLAY_START_YEAR: start_year,
@@ -783,7 +783,7 @@ def _measure_reverse_all(
         집계·초과분·검정 표의 조각 목록
     """
     identity = {
-        DISPLAY_TICKER: context.dataset.ticker,
+        DISPLAY_TICKER: context.dataset.label,
         DISPLAY_TEST: spec.test_label,
         DISPLAY_PARAMETER: spec.parameter_label,
         DISPLAY_START_YEAR: start_year,

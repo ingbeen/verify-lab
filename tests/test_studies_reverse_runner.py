@@ -203,7 +203,9 @@ def _write_dataset(
     saved[COL_DATE] = pd.to_datetime(saved[COL_DATE]).dt.strftime("%Y-%m-%d")
     saved.to_csv(path, index=False)
 
-    return Dataset(key=key, ticker=ticker, price_basis=price_basis, path=path, price_decimals=price_decimals)
+    return Dataset(
+        key=key, ticker=ticker, label=ticker, price_basis=price_basis, path=path, price_decimals=price_decimals
+    )
 
 
 def _single_axis_run(dataset: Dataset, **overrides: object) -> StudyOutputs:
@@ -1032,7 +1034,7 @@ class TestDatasetsInvariant:
         Then: 데이터셋 수만큼 서로 다른 이름이 있다
         """
         # Given / When
-        tickers = [dataset.ticker for dataset in DATASETS]
+        tickers = [dataset.label for dataset in DATASETS]
 
         # Then
         assert len(set(tickers)) == len(DATASETS)
