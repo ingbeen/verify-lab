@@ -1,10 +1,16 @@
-"""번들을 받는 쪽의 자격증명 복원 계약을 고정한다.
+"""번들을 받는 쪽의 «자격증명 복원» 과 «항목 식별» 계약을 고정한다.
 
 내보내기가 자격증명을 센티널로 가리므로, 받는 쪽은 그 자리를 **이 PC 에 이미 있던 값으로
 되돌려야** 한다. 되돌리지 않으면 번들이 진짜 키를 센티널로 덮어써 MCP 가 죽는다.
 
-판정 대상은 순수 함수 하나다. 파일을 읽지도 쓰지도 않으므로 실경로 `~/.claude.json` 이
-테스트에 걸리지 않는다 (`tests/CLAUDE.md` 「파일 격리」).
+두 번째 계약은 **항목 식별자가 항목을 유일하게 가리킨다**는 것이다. 키가 겹치면 결정
+파일에서 한 항목이 다른 항목을 덮어써, 사용자가 승인한 적 없는 설정이 조용히 만들어진다.
+
+실경로 `~/.claude.json` 과 번들이 테스트에 걸리지 않도록 `Environment` 를 직접 만들어 쓴다
+(`tests/CLAUDE.md` 「파일 격리」). **`classify_settings` 는 순수 함수가 아니다** —
+`missing_hint_tools` 가 PATH 를 뒤지고 `_classify_directory` 는 폴더 실재를 본다.
+그래서 여기서는 **키와 결정만** 고정하고 `reason` 문자열에는 기대를 걸지 않으며,
+설정 픽스처에 `permissions.additionalDirectories` 를 넣지 않는다 — 넣으면 진짜 파일시스템을 본다.
 
 두 스킬은 서로 import 하지 않아 센티널 상수가 갈라질 수 있다. **그 일치도 여기서 고정한다** —
 갈라지면 내보내기가 가린 값을 받는 쪽이 알아보지 못하고 그대로 등록한다.
@@ -218,6 +224,206 @@ def test_restore_partial_sentinel(import_module_under_test: ModuleType) -> None:
     # Then
     assert restored["headers"] == {"API_KEY": "real-key", "X_VERSION": "2"}
     assert missing == []
+
+
+def _environment(module: ModuleType) -> object:
+    """실경로를 건드리지 않는 실측 정보를 만든다.
+
+    `detect_environment()` 는 번들 매니페스트와 결정 파일을 읽으므로 테스트에서 쓰지 않는다.
+
+    Args:
+        module: 받는 쪽 모듈
+
+    Returns:
+        object: 판정 함수에 넘길 `Environment`
+    """
+    return module.Environment(
+        platform="linux",
+        hostname="test-pc",
+        home=Path("/home/tester"),
+        source_home="/Users/source",
+        source_hostname="source-pc",
+    )
+
+
+def _hook_keys(module: ModuleType, settings: dict[str, object]) -> list[str]:
+    """훅 항목의 식별자만 뽑는다.
+
+    Args:
+        module: 받는 쪽 모듈
+        settings: 판정할 설정
+
+    Returns:
+        list[str]: 훅 항목의 키 목록 (판정 순서 유지)
+    """
+    verdicts = module.classify_settings(settings, _environment(module))
+
+    return [verdict.key for verdict in verdicts if "#hooks." in verdict.key]
+
+
+def test_same_matcher_groups_get_distinct_keys(import_module_under_test: ModuleType) -> None:
+    """
+    목적: matcher 까지 같은 그룹이 여럿이어도 키가 겹치지 않음을 고정한다
+
+    한 이벤트에 **matcher 가 같은 그룹이 여럿** 달릴 수 있다. 그룹 안에서만 센 순번을
+    쓰면 서로 다른 훅이 같은 키를 갖고, 결정 파일에서 한쪽이 다른 쪽을 덮어쓴다.
+    그러면 앞 항목은 해시가 영영 맞지 않아 `needs_confirmation` 이 풀리지 않고
+    **`--apply` 가 영구히 중단된다.**
+
+    Given: matcher 가 모두 `*` 인 SessionStart 그룹 둘
+    When: 판정한다
+    Then: 키가 서로 다르다
+    """
+    # Given
+    settings = {
+        "hooks": {
+            "SessionStart": [
+                {"matcher": "*", "hooks": [{"type": "command", "command": "echo first"}]},
+                {"matcher": "*", "hooks": [{"type": "command", "command": "echo second"}]},
+            ]
+        }
+    }
+
+    # When
+    verdicts = import_module_under_test.classify_settings(settings, _environment(import_module_under_test))
+    keys = [verdict.key for verdict in verdicts]
+
+    # Then
+    assert len(keys) == 2
+    assert len(set(keys)) == len(keys)
+
+
+def test_matcher_containing_suffix_still_gets_distinct_keys(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 순번 접미사가 다른 matcher 와 부딪혀도 키가 겹치지 않음을 고정한다 (경계)
+
+    matcher 자체가 `*#2` 라는 문자열일 수 있다. 순번을 «한 번만» 붙이면 그 그룹과
+    부딪혀 **고치려던 충돌이 그대로 되살아난다.**
+
+    Given: matcher 가 `*` · `*` · `*#2` 인 그룹 셋
+    When: 판정한다
+    Then: 키 셋이 모두 다르다
+    """
+    # Given
+    settings = {
+        "hooks": {
+            "SessionStart": [
+                {"matcher": "*", "hooks": [{"command": "a"}]},
+                {"matcher": "*", "hooks": [{"command": "b"}]},
+                {"matcher": "*#2", "hooks": [{"command": "c"}]},
+            ]
+        }
+    }
+
+    # When
+    keys = _hook_keys(import_module_under_test, settings)
+
+    # Then
+    assert len(keys) == 3
+    assert len(set(keys)) == 3
+
+
+def test_same_matcher_groups_keep_independent_decisions(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 겹쳤던 두 훅이 «서로 다른» 결정을 가질 수 있음을 고정한다
+
+    키가 겹치면 `_decision_map` 이 나중 것으로 덮어써 **한 훅의 결정이 다른 훅에
+    적용된다.** 사용자가 「제외」로 정한 훅이 조용히 적용되는 경로이므로,
+    키 유일성과 별개로 «적용» 쪽에서도 고정한다.
+
+    Given: matcher 가 같은 그룹 둘과, 앞은 제외 뒤는 적용이라는 결정
+    When: 설정을 다시 조립한다
+    Then: 적용으로 정한 훅만 남는다
+    """
+    # Given
+    module = import_module_under_test
+    environment = _environment(module)
+    settings = {
+        "hooks": {
+            "PreToolUse": [
+                {"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "echo excluded"}]},
+                {"matcher": "Write|Edit", "hooks": [{"type": "command", "command": "echo applied"}]},
+            ]
+        }
+    }
+    verdicts = module.classify_settings(settings, environment)
+    hook_verdicts = [verdict for verdict in verdicts if "#hooks." in verdict.key]
+    hook_verdicts[0].decision = module.EXCLUDE
+    hook_verdicts[1].decision = module.APPLY
+    plan = module.Plan(environment=environment, verdicts=verdicts)
+
+    # When
+    rebuilt = module.rebuild_settings(settings, plan, environment)
+
+    # Then
+    commands = [hook["command"] for group in rebuilt["hooks"]["PreToolUse"] for hook in group["hooks"]]
+    assert commands == ["echo applied"]
+
+
+def test_distinct_matchers_keep_existing_key_format(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 겹치지 않는 훅의 키 형식이 바뀌지 않음을 고정한다 (회귀)
+
+    키 형식을 통째로 바꾸면 **지난 결정이 전부 무효가 되어** 사용자가 이미 승인한
+    항목까지 다시 물어야 한다. 충돌을 푸는 대가로 그것을 치르지 않는다.
+
+    Given: matcher 가 서로 다른 그룹과 한 그룹 안의 훅 둘
+    When: 판정한다
+    Then: 키가 기존 형식 그대로다
+    """
+    # Given
+    settings = {
+        "hooks": {
+            "PreToolUse": [
+                {"matcher": "Bash", "hooks": [{"command": "first"}, {"command": "second"}]},
+                {"matcher": "Edit|Write", "hooks": [{"command": "third"}]},
+            ]
+        }
+    }
+
+    # When
+    keys = _hook_keys(import_module_under_test, settings)
+
+    # Then
+    assert keys == [
+        "settings.json#hooks.PreToolUse[Bash][0]",
+        "settings.json#hooks.PreToolUse[Bash][1]",
+        "settings.json#hooks.PreToolUse[Edit|Write][0]",
+    ]
+
+
+def test_empty_and_matcherless_groups_do_not_raise(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 훅이 없는 그룹과 matcher 가 없는 그룹에서 예외가 나지 않음을 고정한다 (경계)
+
+    `matcher` 는 생략될 수 있고(`*` 로 본다), 그룹의 `hooks` 가 빌 수도 있다.
+    빈 그룹은 조립 결과에서도 빠져야 한다 — 남기면 의미 없는 항목이 된다.
+
+    Given: 훅이 빈 그룹과 matcher 가 없는 그룹
+    When: 판정하고 다시 조립한다
+    Then: 예외가 없고, 빈 그룹은 남지 않는다
+    """
+    # Given
+    module = import_module_under_test
+    environment = _environment(module)
+    settings = {
+        "hooks": {
+            "Stop": [
+                {"matcher": "*", "hooks": []},
+                {"hooks": [{"command": "echo kept"}]},
+            ]
+        }
+    }
+
+    # When
+    verdicts = module.classify_settings(settings, environment)
+    for verdict in verdicts:
+        verdict.decision = module.APPLY
+    rebuilt = module.rebuild_settings(settings, module.Plan(environment=environment, verdicts=verdicts), environment)
+
+    # Then
+    assert len(rebuilt["hooks"]["Stop"]) == 1
+    assert rebuilt["hooks"]["Stop"][0]["hooks"][0]["command"] == "echo kept"
 
 
 def test_restore_does_not_mutate_input(import_module_under_test: ModuleType) -> None:

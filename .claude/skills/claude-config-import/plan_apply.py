@@ -257,25 +257,63 @@ def _classify_value(key: str, value: object, environment: Environment) -> Verdic
     return Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash)
 
 
-def hook_key(event: str, matcher: str, index: int) -> str:
+def matcher_labels(groups: list[Any]) -> list[str]:
+    """한 이벤트의 그룹마다 서로 겹치지 않는 라벨을 만든다.
+
+    **matcher 만으로는 부족하다.** matcher 가 «같은» 그룹도 한 이벤트에 여럿 달릴 수 있어
+    (실측: mac 번들의 `SessionStart` 두 그룹이 모두 `*`), 그때는 matcher 를 키에 넣어도
+    여전히 충돌한다. 그래서 같은 matcher 가 두 번째로 나올 때부터 순번을 붙인다.
+
+    **첫 그룹은 matcher 를 그대로 둔다.** 형식을 통째로 바꾸면 기존 키가 전부 달라져
+    사용자가 이미 승인한 항목까지 다시 물어야 한다. 재승인 대상을 실제로 겹친 쌍으로만 한정한다.
+
+    **붙인 순번이 다른 matcher 와 부딪히면 더 밀어낸다** — matcher 가 `*#2` 라는 문자열일
+    수도 있어서, 순번을 한 번 붙이는 것만으로는 「겹치지 않는다」가 보장되지 않는다.
+
+    Args:
+        groups: 한 이벤트에 달린 훅 그룹들
+
+    Returns:
+        list[str]: 그룹 순서대로의 라벨. 서로 겹치지 않는다
+    """
+    seen: dict[str, int] = {}
+    labels: list[str] = []
+
+    for group in groups:
+        matcher = str(group.get("matcher", "*"))
+        seen[matcher] = seen.get(matcher, 0) + 1
+        label = matcher if seen[matcher] == 1 else f"{matcher}#{seen[matcher]}"
+
+        while label in labels:
+            seen[matcher] += 1
+            label = f"{matcher}#{seen[matcher]}"
+
+        labels.append(label)
+
+    return labels
+
+
+def hook_key(event: str, matcher_label: str, index: int) -> str:
     """훅의 항목 식별자를 만든다.
 
-    **matcher 를 넣어야 키가 충돌하지 않는다.** 한 이벤트에 matcher 가 다른 그룹이
-    여럿 달리는데(`PreToolUse` 는 4개), 그룹 안에서만 센 순번을 쓰면 서로 다른 훅이
-    같은 키를 갖는다. 그러면 결정 파일에서 한쪽이 다른 쪽을 덮어쓴다.
+    키는 **이벤트 + 그룹 라벨 + 그룹 안 순번** 셋으로 항목 하나를 유일하게 가리킨다.
+    라벨은 `matcher_labels` 가 만든 것이어야 한다 — 날 matcher 를 그대로 넣으면
+    matcher 가 같은 그룹끼리 키가 겹치고, **결정 파일에서 한쪽이 다른 쪽을 덮어쓴다.**
 
     Args:
         event: 훅 이벤트 이름
-        matcher: 그룹의 matcher (없으면 `*`)
+        matcher_label: `matcher_labels` 가 만든 그룹 라벨
         index: 그룹 안에서의 순번
 
     Returns:
         str: 항목 식별자
     """
-    return f"settings.json#hooks.{event}[{matcher}][{index}]"
+    return f"settings.json#hooks.{event}[{matcher_label}][{index}]"
 
 
-def _classify_hook(event: str, matcher: str, index: int, hook: dict[str, Any], environment: Environment) -> Verdict:
+def _classify_hook(
+    event: str, matcher_label: str, index: int, hook: dict[str, Any], environment: Environment
+) -> Verdict:
     """훅 하나를 판정한다.
 
     **훅은 자동으로 판정하지 않고 사람에게 넘긴다.** 셸 명령의 이식성은 문맥을 알아야
@@ -288,7 +326,7 @@ def _classify_hook(event: str, matcher: str, index: int, hook: dict[str, Any], e
 
     Args:
         event: 훅 이벤트 이름
-        matcher: 그룹의 matcher
+        matcher_label: `matcher_labels` 가 만든 그룹 라벨
         index: 그룹 안에서의 순번
         hook: 훅 정의
         environment: 실측 정보
@@ -297,7 +335,7 @@ def _classify_hook(event: str, matcher: str, index: int, hook: dict[str, Any], e
         Verdict: 판정 결과
     """
     command = str(hook.get("command", ""))
-    key = hook_key(event, matcher, index)
+    key = hook_key(event, matcher_label, index)
     missing = missing_hint_tools(command)
 
     hint = f" (이 PC 에 없는 도구: `{'`, `'.join(missing)}`)" if missing else ""
@@ -381,10 +419,9 @@ def classify_settings(settings: dict[str, Any], environment: Environment) -> lis
             verdicts.append(_classify_value(key, entry, environment))
 
     for event, groups in settings.get("hooks", {}).items():
-        for group in groups:
-            matcher = str(group.get("matcher", "*"))
+        for label, group in zip(matcher_labels(groups), groups, strict=True):
             for index, hook in enumerate(group.get("hooks", [])):
-                verdicts.append(_classify_hook(event, matcher, index, hook, environment))
+                verdicts.append(_classify_hook(event, label, index, hook, environment))
 
     for key, value in settings.items():
         if key in ("permissions", "hooks"):
@@ -862,12 +899,11 @@ def rebuild_settings(settings: dict[str, Any], plan: Plan, environment: Environm
     rebuilt_hooks: dict[str, Any] = {}
     for event, groups in settings.get("hooks", {}).items():
         kept_groups: list[Any] = []
-        for group in groups:
-            matcher = str(group.get("matcher", "*"))
+        for label, group in zip(matcher_labels(groups), groups, strict=True):
             kept_hooks: list[Any] = []
 
             for index, hook in enumerate(group.get("hooks", [])):
-                verdict = decisions.get(hook_key(event, matcher, index))
+                verdict = decisions.get(hook_key(event, label, index))
                 if verdict is None or verdict.decision == EXCLUDE:
                     continue
                 new_hook = dict(hook)
