@@ -6,7 +6,7 @@
 > `KRDRVFUKQI` **2015-11-23 ~ 2026-09-03** (18,508행 · 계약 50개) ·
 > ETF·ETN 8종과 금리 `CD91` 은 §3 에 파일별로 적었다
 > **판정 구간**: 짝마다 다르다 — **ETF 상장일과 선물 시세가 겹치는 구간**이며 §3 표에 있다
-> **근거 산출물**: `storage/results/20260906_080353_futures_leverage/` (CSV 13개 + `summary.json`) ·
+> **근거 산출물**: `storage/results/검증/20260906_080353_futures_leverage/` (CSV 13개 + `summary.json`) ·
 > 실행 명령어는 [COMMANDS.md](../COMMANDS.md)
 >
 > **본문 수치를 낸 실행(2026-09-05 21:59)의 폴더는 남아 있지 않다** (2026-09-07 확인). 위 폴더는

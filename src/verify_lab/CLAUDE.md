@@ -182,8 +182,7 @@ def find_events(df: pd.DataFrame) -> pd.Series:
 | 위치 | 내용 | git |
 | --- | --- | --- |
 | `storage/market/` | 수집한 원시 시세 | 동기화 |
-| `storage/results/{검증, 매매, 실측}/<실행시각>_<매매법>/` | 산출물 (CSV, summary.json). **계층이 경로로 드러납니다** | 동기화 (결과 문서가 근거로 인용한다) |
-| `storage/results/<실행시각>_<매매법>/` | 계층 폴더 도입 전의 산출물. **옮기지 않습니다** — 인용한 문서가 깨집니다 | 동기화 |
+| `storage/results/{검증, 매매, 실측}/<실행시각>_<매매법>/` | 산출물 (CSV, summary.json). **계층이 경로로 드러납니다.** 산출물이 사는 자리는 여기 하나입니다 | 동기화 (결과 문서가 근거로 인용한다) |
 | `storage/results/meta.json` | 실행 이력 (최근 5개 순환) | 제외 (실행마다 재작성돼 PC 간 충돌) |
 
 - 경로는 `common_constants.py`의 상수로만 참조합니다. 하드코딩 금지

@@ -22,6 +22,7 @@ from verify_lab.utils.result_citations import (
     cited_result_dirs,
     existing_result_dirs,
     missing_citations,
+    missing_result_paths,
     result_dir_paths,
     unreferenced_dirs,
 )
@@ -48,6 +49,26 @@ def docs_root(tmp_path: Path) -> Path:
         (root / name).mkdir(parents=True)
 
     return root
+
+
+@pytest.fixture
+def repo_root(tmp_path: Path) -> Path:
+    """`storage/results/` 를 갖춘 합성 저장소 루트를 만든다.
+
+    경로 판정은 문서에 적힌 **루트 기준 상대경로**를 풀어야 하므로 문서 루트만으로는 부족하다.
+
+    Args:
+        tmp_path: pytest가 테스트마다 새로 만드는 임시 디렉터리
+
+    Returns:
+        Path: 저장소 루트
+    """
+    # `docs_root` 가 같은 `tmp_path` 에 `docs/` 를 먼저 만들 수 있다. 두 픽스처를 함께 받는
+    # 테스트가 나오면 `exist_ok` 없이는 `FileExistsError` 로 죽는다
+    (tmp_path / "docs").mkdir(exist_ok=True)
+    (tmp_path / "storage" / "results").mkdir(parents=True)
+
+    return tmp_path
 
 
 @pytest.fixture
@@ -439,29 +460,197 @@ def test_citation_outside_docs_is_counted(tmp_path: Path) -> None:
     assert cited == {FAKE_DIR_A}
 
 
-def test_real_repository_keeps_seeing_the_old_layout() -> None:
+def test_real_repository_keeps_artifacts_in_layer_folders() -> None:
     """
-    목적: 계층 폴더를 도입해도 **옛 자리의 산출물이 시야에서 빠지지 않는다** (회귀).
+    목적: 산출물이 **계층 폴더 아래에만** 있다는 것을 고정한다 (회귀).
 
-    기존 산출물은 옮기지 않기로 했다 — 살아있는 문서 여럿이 그 이름을 인용하고 있어
-    옮기면 전부 깨진다. 그래서 두 구조가 공존하며, **그것이 의도다.** 탐색이 새 자리만
-    보게 되면 품질 검증이 근거물을 「없다」고 보고한다.
+    2026-09-11 에 옛 자리의 산출물 16개를 전부 옮겼다. 자리가 둘이면 **같은 매매법이 계층에
+    따라 다른 이름으로 불리는 상태**가 남기 때문이다. 이제 루트 직하에 폴더가 생기는 것은
+    실수뿐이고, **그 실수는 예외를 내지 않아 조용히 남는다** — `create_run_directory` 를
+    거치지 않고 만든 폴더가 그렇다.
 
-    개수를 박지 않는다 — 실행할 때마다 폴더가 늘어 값이 낡는다. 대신 **루트 직하에 실제로
-    있는 것과 탐색 결과를 대조**한다.
+    개수를 박지 않는다 — 실행할 때마다 폴더가 늘어 값이 낡는다.
 
     `tests/CLAUDE.md` §5 의 「폴더의 실재만 보는 검사」 예외에 해당한다.
 
     Given: 저장소의 실제 산출물 경로
-    When: 루트 직하의 폴더 이름을 직접 세고, 탐색 결과와 비교한다
-    Then: 직하의 폴더가 전부 탐색 결과에 들어 있다
+    When: 루트 직하의 폴더 이름을 센다
+    Then: 계층 폴더 셋 말고는 아무것도 없다
     """
     # Given
     layers = {RESULT_LAYER_STUDY, RESULT_LAYER_STRATEGY, RESULT_LAYER_PROBE}
-    at_root = {child.name for child in RESULTS_DIR.iterdir() if child.is_dir() and child.name not in layers}
 
     # When
-    found = existing_result_dirs(RESULTS_DIR)
+    at_root = {child.name for child in RESULTS_DIR.iterdir() if child.is_dir() and child.name not in layers}
 
     # Then
-    assert at_root <= found, f"옛 자리의 산출물이 탐색에서 빠졌습니다: {sorted(at_root - found)}"
+    assert at_root == set(), f"산출물은 계층 폴더 아래에 둡니다. 루트 직하에 있습니다: {sorted(at_root)}"
+
+
+def test_moved_folder_leaves_the_path_dead(repo_root: Path) -> None:
+    """
+    목적: 폴더를 옮기면 **이름은 살아 있고 경로만 죽는다**는 것을 고정한다 (회귀).
+
+    이름을 보는 `missing_citations` 는 이 상태를 통과시킨다 — `RESULT_DIR_NAME` 이
+    `storage/results/` 접두어를 요구하지 않고, 탐색이 여러 자리를 훑기 때문이다.
+    그래서 **문서의 모든 경로가 죽었는데도 품질 검증이 통과**할 수 있다.
+
+    Given: 폴더는 계층 아래에 있는데 문서가 옛 자리의 경로를 적었다
+    When: 이름 판정과 경로 판정을 각각 돌린다
+    Then: 이름 판정은 통과하고 경로 판정만 그 줄을 잡는다
+    """
+    # Given
+    results = repo_root / "storage" / "results"
+    (results / RESULT_LAYER_STUDY / FAKE_DIR_A).mkdir(parents=True)
+    (results / RESULT_LAYER_STUDY / FAKE_DIR_A / "signals.csv").write_text("x", encoding="utf-8")
+    (repo_root / "docs" / "a.md").write_text(
+        f"> **근거 산출물**: `storage/results/{FAKE_DIR_A}/signals.csv`\n", encoding="utf-8"
+    )
+
+    # When
+    by_name = missing_citations(repo_root, results)
+    by_path = missing_result_paths(repo_root, results)
+
+    # Then
+    assert by_name == []
+    assert by_path == [f"docs/a.md: storage/results/{FAKE_DIR_A}/signals.csv"]
+
+
+def test_bare_folder_path_uses_the_real_location(repo_root: Path) -> None:
+    """
+    목적: 접두어 없이 `<폴더>/<파일>` 로 적은 경로도 실재 판정을 받는다.
+
+    문서가 같은 폴더를 두 번째로 가리킬 때 접두어를 생략하는 관용이 있다. 자리를 이름으로
+    되조립하지 않고 **탐색이 낸 실제 경로**에 이어 붙이므로, 폴더가 계층 아래에 있어도 닿는다.
+
+    Given: 계층 아래의 폴더와, 접두어 없이 그 안의 파일을 적은 문서
+    When: 경로 판정을 돌린다
+    Then: 죽은 경로가 없다
+    """
+    # Given
+    results = repo_root / "storage" / "results"
+    (results / RESULT_LAYER_STRATEGY / FAKE_DIR_B).mkdir(parents=True)
+    (results / RESULT_LAYER_STRATEGY / FAKE_DIR_B / "거래내역.csv").write_text("x", encoding="utf-8")
+    (repo_root / "docs" / "a.md").write_text(f"체결은 `{FAKE_DIR_B}/거래내역.csv` 에 있습니다.\n", encoding="utf-8")
+
+    # When
+    missing = missing_result_paths(repo_root, results)
+
+    # Then
+    assert missing == []
+
+
+@pytest.mark.parametrize("word", ["없음", "삭제", "제거"])
+def test_tombstone_path_is_not_required_to_exist(repo_root: Path, word: str) -> None:
+    """
+    목적: 묘비 줄의 경로에는 실재를 요구하지 않는다.
+
+    없어진 산출물을 기록으로 남기는 문장까지 실재를 요구하면 그 사실을 적을 방법이 없어진다.
+    `cited_result_dirs` 와 **같은 어휘**를 쓴다.
+
+    Given: 묘비 낱말과 함께 적힌 죽은 경로
+    When: 경로 판정을 돌린다
+    Then: 잡히지 않는다
+    """
+    # Given
+    results = repo_root / "storage" / "results"
+    (repo_root / "docs" / "a.md").write_text(
+        f"`storage/results/{FAKE_DIR_A}/signals.csv` — **{word}**\n", encoding="utf-8"
+    )
+
+    # When
+    missing = missing_result_paths(repo_root, results)
+
+    # Then
+    assert missing == []
+
+
+def test_non_artifact_file_under_results_is_not_required(repo_root: Path) -> None:
+    """
+    목적: `storage/results/` 아래라도 **산출물 폴더가 아닌 파일**에는 실재를 요구하지 않는다.
+
+    `meta.json` 은 git 제외 대상이라 **아직 한 번도 실행하지 않은 PC 에는 없다.** 그런데
+    `docs/INDEX.md` 와 `src/verify_lab/CLAUDE.md` 가 그 경로를 인라인으로 적는다. 실재를
+    요구하면 **커밋으로는 고칠 수 없는 실패**가 되고, 그 PC 에서는 품질 검증을 통과할 방법이 없다.
+
+    Given: 산출물 폴더 이름이 없는 `storage/results/meta.json` 을 적은 문서 (파일은 없다)
+    When: 경로 판정을 돌린다
+    Then: 잡히지 않는다
+    """
+    # Given
+    results = repo_root / "storage" / "results"
+    (repo_root / "docs" / "a.md").write_text("| `storage/results/meta.json` | 실행 이력 | 제외 |\n", encoding="utf-8")
+
+    # When
+    missing = missing_result_paths(repo_root, results)
+
+    # Then
+    assert missing == []
+
+
+def test_layer_relative_path_is_checked(repo_root: Path) -> None:
+    """
+    목적: 계층부터 적은 `검증/<폴더>/<파일>` 도 실재 판정을 받는다.
+
+    계층 폴더가 생긴 뒤로는 이 형태가 가장 자연스러운 줄임이다. 판정에서 빠지면
+    **그 형태로 적은 줄만 조용히 검사되지 않는다.**
+
+    Given: 계층 아래 폴더는 있는데 문서가 없는 파일을 적었다
+    When: 경로 판정을 돌린다
+    Then: 그 줄을 잡는다
+    """
+    # Given
+    results = repo_root / "storage" / "results"
+    (results / RESULT_LAYER_STUDY / FAKE_DIR_A).mkdir(parents=True)
+    (repo_root / "docs" / "a.md").write_text(f"`{RESULT_LAYER_STUDY}/{FAKE_DIR_A}/없는파일.csv`\n", encoding="utf-8")
+
+    # When
+    missing = missing_result_paths(repo_root, results)
+
+    # Then
+    assert missing == [f"docs/a.md: {RESULT_LAYER_STUDY}/{FAKE_DIR_A}/없는파일.csv"]
+
+
+def test_placeholder_path_is_not_required_to_exist(repo_root: Path) -> None:
+    """
+    목적: 자리표시자를 경로로 보지 않는다.
+
+    `storage/results/{검증, 매매, 실측}/<실행시각>_<매매법>/` 은 「산출물이 생기는 위치」를
+    말하는 **규격**이지 실재하는 경로가 아니다.
+
+    Given: 자리표시자와 묶음 표기가 든 문서
+    When: 경로 판정을 돌린다
+    Then: 잡히지 않는다
+    """
+    # Given
+    results = repo_root / "storage" / "results"
+    (repo_root / "docs" / "a.md").write_text(
+        "| `storage/results/{검증, 매매, 실측}/<실행시각>_<매매법>/` | 산출물 |\n" "| `storage/results/<실행시각>_<매매법>/` | 옛 자리 |\n",
+        encoding="utf-8",
+    )
+
+    # When
+    missing = missing_result_paths(repo_root, results)
+
+    # Then
+    assert missing == []
+
+
+def test_real_documents_point_at_existing_paths() -> None:
+    """
+    목적: 이 저장소의 문서가 적은 산출물 «경로» 가 전부 실재함을 고정한다.
+
+    `test_real_documents_cite_existing_dirs` 는 이름만 본다. 폴더를 옮기거나 개명하면
+    이름은 살아 있고 경로만 죽으므로 그 검사는 통과하는데 **사용자는 근거를 열 수 없다.**
+
+    `tests/CLAUDE.md` §5 의 「폴더의 실재만 보는 검사」 예외에 해당한다.
+
+    Given: 저장소의 실제 문서와 산출물
+    When: 경로 판정을 돌린다
+    Then: 죽은 경로가 없다
+    """
+    # Given / When
+    missing = missing_result_paths(BASE_DIR, RESULTS_DIR)
+
+    # Then
+    assert not missing, "문서가 없는 산출물 경로를 가리킵니다:\n" + "\n".join(f"  - {item}" for item in missing)
