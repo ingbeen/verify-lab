@@ -15,8 +15,8 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.studies.index_extreme.annotations import assign_event_ids, reference_zscore
-from verify_lab.studies.index_extreme.constants import EVENT_GAP_DAYS, ZSCORE_WINDOW
+from verify_lab.studies.reverse.annotations import assign_event_ids, reference_zscore
+from verify_lab.studies.reverse.constants import EVENT_GAP_DAYS, ZSCORE_WINDOW
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12

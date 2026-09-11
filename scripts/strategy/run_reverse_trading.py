@@ -15,18 +15,18 @@ import argparse
 
 import pandas as pd
 
-from verify_lab.common_constants import RATE_TO_PERCENT
+from verify_lab.common_constants import RATE_TO_PERCENT, RESULT_LAYER_STRATEGY
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.strategy.constants import (
     DISPLAY_START_YEAR,
     HOLD_LIMIT,
     STOP_LOSS_LEVEL,
-    STRATEGY_NAME,
     TARGETS,
     Target,
 )
-from verify_lab.strategy.runner import KEY_SUMMARY, KEY_TRADES, StrategyOutputs, run_strategy
+from verify_lab.strategy.reverse_runner import KEY_SUMMARY, KEY_TRADES, StrategyOutputs, run_reverse_trading
+from verify_lab.studies.reverse.constants import TRACK_NAME
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -34,7 +34,7 @@ from verify_lab.utils.meta_manager import save_metadata
 logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
-KEY_META_REVERSE_TRADING = "reverse_trading_strategy"
+KEY_META_REVERSE_TRADING = "reverse_trading"
 
 # 산출물 파일 이름
 TRADES_FILENAME = "trades.csv"
@@ -116,10 +116,10 @@ def main() -> int:
     targets = _selected_targets(args.target)
 
     _print_rule()
-    outputs = run_strategy(targets)
+    outputs = run_reverse_trading(targets)
     _print_summary(outputs)
 
-    directory = create_run_directory(STRATEGY_NAME)
+    directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
     save_table(directory, TRADES_FILENAME, outputs.trades)
     save_table(directory, SUMMARY_FILENAME, outputs.summary)
     save_run_summary(directory, outputs.meta)

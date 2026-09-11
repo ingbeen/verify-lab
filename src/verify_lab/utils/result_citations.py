@@ -9,18 +9,35 @@
 - `unreferenced_dirs()` — 있는데 인용되지 않은 폴더. 정리 도구가 삭제 후보로 뽑는다
 
 **두 판정이 갈라지면 정리 도구가 「지워도 된다」고 한 폴더를 검증이 요구하는 상태가 되므로
-인용의 정의는 이 모듈 하나가 소유한다.**
+인용의 정의는 이 모듈 하나가 소유한다.** 같은 이유로 **「그 폴더가 어디 있는가」도 여기서 낸다**
+(`result_dir_paths()`) — 정리 도구가 이름만 받아 경로를 되조립하면 두 곳의 가정이 갈라진다.
+
+**산출물이 사는 자리는 둘이고 그것이 의도다.** 계층 폴더(`검증`·`매매`·`실측`)를 도입하기 전의
+산출물은 루트 직하에 남아 있다 — 살아있는 문서 여럿이 그 이름을 인용하고 있어 옮기면 전부
+깨진다. 그래서 탐색은 **두 자리를 모두** 본다.
 """
 
 import re
 from pathlib import Path
 from typing import Final
 
-# 산출물 폴더 이름 모양: <YYYYMMDD>_<HHMMSS>_<검증명>.
+from verify_lab.common_constants import RESULT_LAYERS
+
+# 매매법 이름(slug)이 가질 수 있는 모양. **폴더를 만드는 쪽과 인용을 찾는 쪽이 같은 정의를
+# 봐야 한다** — 갈라지면 이 스캐너가 영원히 못 찾는 이름으로 폴더가 생기고, 그 산출물은
+# 문서가 인용해도 「없는 것」으로 취급돼 정리 후보로 올라간다. 예외는 나지 않는다.
+# `report/writer.py` 의 `create_run_directory` 가 이 패턴으로 입력을 거른다
+TRACK_NAME_PATTERN: Final = r"[a-z][a-z_]*"
+
+# 산출물 폴더 이름 모양: <YYYYMMDD>_<HHMMSS>_<매매법>.
 # **`storage/results/` 접두어를 요구하지 않는다** — `docs/spec/` 은 폴더 이름만 적는 자리가 있어
 # 접두어를 요구하면 그 인용을 통째로 놓친다. 넓게 잡는 쪽이 안전하다: 잘못 잡아도
 # 폴더를 더 지키게 될 뿐이지만, 놓치면 근거가 지워진다
-RESULT_DIR_NAME: Final = re.compile(r"\b(\d{8}_\d{6}_[a-z][a-z_]*)\b")
+#
+# **계층 폴더가 한글이어도 이 패턴은 그대로 쓴다.** 한글은 상위 폴더 이름에만 들어가고 산출물
+# 폴더 이름 자체는 계속 ASCII 다. `storage/results/매매/20260911_120000_reverse` 에서도
+# 앞의 `/` 가 경계를 주므로 그대로 잡힌다
+RESULT_DIR_NAME: Final = re.compile(rf"\b(\d{{8}}_\d{{6}}_{TRACK_NAME_PATTERN})\b")
 
 # 인용을 세지 않는 문서 폴더. 이유가 서로 다르므로 한 줄씩 적는다
 EXCLUDED_PARTS: Final = (
@@ -81,6 +98,46 @@ def cited_result_dirs(root: Path) -> set[str]:
     return cited
 
 
+def result_dir_paths(results_dir: Path) -> dict[str, list[Path]]:
+    """디스크에 있는 산출물 폴더를 **이름 → 경로 목록**으로 모은다.
+
+    두 자리를 모두 훑는다 — 루트 직하(계층 폴더 도입 전의 산출물)와 계층 폴더 아래(새 산출물).
+    **계층 폴더 자체는 산출물이 아니다.** 세면 정리 도구가 그것을 「인용되지 않은 폴더」로 뽑아
+    통째로 지운다.
+
+    **경로를 함께 내는 이유**: 인용의 식별자는 폴더 이름 하나지만 지우거나 용량을 재려면 경로가
+    필요하다. 쓰는 쪽이 이름으로 경로를 되조립하면 자리가 한 단계 깊어진 것을 모른 채
+    **존재하지 않는 경로에 `rglob` 을 돌려 예외 없이 0 바이트**를 내게 된다.
+
+    **한 이름이 여러 경로를 가질 수 있고 그것은 오류가 아니다.** 측정과 매매가 같은 slug 를 쓰는
+    것이 이 저장소의 규약이므로(목표 1), 같은 초에 두 계층을 돌리면 `검증/<시각>_reverse` 와
+    `매매/<시각>_reverse` 가 함께 생긴다. 그래서 목록으로 돌려준다 — 여기서 예외를 던지면
+    **인용 판정 전체가 멈춰 품질 검증과 정리 도구가 동시에 죽는다.**
+
+    Args:
+        results_dir: 산출물 폴더의 부모 경로
+
+    Returns:
+        dict[str, list[Path]]: 폴더 이름 → 실재하는 경로들. 부모 경로가 없으면 빈 사전.
+            경로는 루트 직하 먼저, 이어서 계층 폴더 선언 순서다
+    """
+    if not results_dir.is_dir():
+        return {}
+
+    found: dict[str, list[Path]] = {}
+
+    for parent in (results_dir, *(results_dir / layer for layer in RESULT_LAYERS)):
+        if not parent.is_dir():
+            continue
+
+        for child in sorted(parent.iterdir()):
+            if not child.is_dir() or child.name in RESULT_LAYERS:
+                continue
+            found.setdefault(child.name, []).append(child)
+
+    return found
+
+
 def existing_result_dirs(results_dir: Path) -> set[str]:
     """디스크에 있는 산출물 폴더 이름을 모은다.
 
@@ -90,10 +147,7 @@ def existing_result_dirs(results_dir: Path) -> set[str]:
     Returns:
         set[str]: 실재하는 산출물 폴더 이름. 부모 경로가 없으면 빈 집합
     """
-    if not results_dir.is_dir():
-        return set()
-
-    return {child.name for child in results_dir.iterdir() if child.is_dir()}
+    return set(result_dir_paths(results_dir))
 
 
 def missing_citations(root: Path, results_dir: Path) -> list[str]:

@@ -158,7 +158,7 @@ NOTE_TOO_FEW_SAMPLES = "표본 부족으로 검정 불가"
 NOTE_POPULATION_NOT_LARGER = "모집단이 표본보다 크지 않아 검정 불가"
 
 # 유효 표본이 하한에 못 미치는 칸에는 검정을 붙이지 않는다
-# (docs/spec/index_extreme_events.md §6). 백분위도 함께 비운다 —
+# (docs/spec/역방향_설계.md §6). 백분위도 함께 비운다 —
 # 백분위는 사실상 검정 통계량이라 남겨두면 유의성으로 읽힌다.
 # **하한은 `measure/constants.py` 가 소유한다** — 축을 쪼갤 때 쓰는 것과 같은 값이다
 

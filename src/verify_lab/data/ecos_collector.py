@@ -8,7 +8,7 @@
 `urllib` 이 던지는 예외에는 URL 이 통째로 담겨 있어 그대로 올리면 키가 로그에 남는다.
 
 **통계표코드·항목코드는 실측으로 확정한 값이다.** 근거와 조회 가능 구간은
-`docs/spec/usdkrw_grid.md` "데이터 실측 기록" 에 있다. 이 값들은 ECOS 가 개편되면 바뀔 수 있으므로
+`docs/spec/원달러_그리드_설계.md` "데이터 실측 기록" 에 있다. 이 값들은 ECOS 가 개편되면 바뀔 수 있으므로
 기억이 아니라 프로브(`scripts/data/check_ecos.py`)로 다시 확인한다.
 
 이상치 판정은 `loader.validate_series_data()` 를 그대로 재사용한다. 수집기가 자기 판정을
@@ -86,7 +86,7 @@ class EcosSeries:
     unit: str
 
 
-# 수집 대상. **값은 실측으로 확정했다** — 근거는 `docs/spec/usdkrw_grid.md` 참고.
+# 수집 대상. **값은 실측으로 확정했다** — 근거는 `docs/spec/원달러_그리드_설계.md` 참고.
 # 자릿수는 `.claude/rules/python.md` 반올림 규칙표를 따른다 (환율은 가격, CD91 은 백분율이라 둘 다 2자리)
 ECOS_SERIES: Final = (
     EcosSeries(

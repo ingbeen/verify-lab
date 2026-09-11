@@ -183,7 +183,7 @@ class TestContractMultiplierHistory:
         """
         목적: 코스피200 승수가 **2017-03-27 을 경계로** 갈림을 고정한다.
 
-        이 경계는 거래대금으로 역산해 확정한 값이다 (`docs/spec/futures_leverage.md` §5.5).
+        이 경계는 거래대금으로 역산해 확정한 값이다 (`docs/spec/선물_대_레버리지_ETF_설계.md` §5.5).
         경계를 하루 잘못 잡으면 그날의 명목금액이 두 배로 틀린다.
 
         Given: 경계 앞뒤의 날짜

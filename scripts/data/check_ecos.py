@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from verify_lab.common_constants import RESULT_LAYER_PROBE
 from verify_lab.data.ecos_collector import ECOS_SERIES, fetch_item_list, fetch_table_list
 from verify_lab.data.ecos_credentials import load_ecos_api_key
 from verify_lab.report.constants import CSV_ENCODING
@@ -115,7 +116,7 @@ def main() -> int:
     """
     args = parse_args()
     api_key = load_ecos_api_key()
-    output_dir = create_run_directory(PROBE_NAME)
+    output_dir = create_run_directory(PROBE_NAME, layer=RESULT_LAYER_PROBE)
 
     # 1. 통계표 목록. 받는 즉시 저장한다
     tables = fetch_table_list(api_key)

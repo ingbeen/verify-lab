@@ -2,7 +2,7 @@
 """pykrx 수정주가 구간 이어붙이기 실측
 
 `get_market_ohlcv(adjusted=True)` 는 분배락을 조정하지만 **한 번에 3,000행까지만** 돌려준다
-(`docs/spec/index_extreme_events.md` §8 결론 2). 상장일부터 전 기간을 얻으려면 조회를 나눠
+(`docs/spec/역방향_설계.md` §8 결론 2). 상장일부터 전 기간을 얻으려면 조회를 나눠
 이어붙여야 하는데, **나눠 받은 구간들이 같은 가격 축 위에 있는지는 확인된 적이 없다.**
 이 스크립트는 그것 하나를 잰다.
 
@@ -31,8 +31,9 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from verify_lab.common_constants import RESULTS_DIR
+from verify_lab.common_constants import RESULT_LAYER_PROBE
 from verify_lab.data.krx_credentials import load_krx_credentials
+from verify_lab.report.writer import create_run_directory
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger
@@ -61,8 +62,8 @@ KRX_COL_VOLUME = "거래량"
 # 표에 예시로 나열할 최대 행 수
 MAX_EXAMPLE_ROWS = 5
 
-# 산출물 폴더 접미사와 실행 이력 키
-PROBE_DIR_SUFFIX = "pykrx_splice_probe"
+# 산출물 폴더 이름과 실행 이력 키
+PROBE_NAME = "pykrx_splice_probe"
 KEY_META_PYKRX_SPLICE = "pykrx_splice_probe"
 
 SUMMARY_COLUMNS = [("항목", 30, Align.LEFT), ("값", 76, Align.LEFT)]
@@ -136,17 +137,6 @@ def _parse_end_dates(raw: str, final_end: str) -> list[str]:
         raise ValueError(f"조회 종료일은 오름차순이어야 합니다: {end_dates}")
 
     return end_dates
-
-
-def _make_output_dir() -> Path:
-    """실행 시각으로 구분되는 산출물 폴더를 만든다.
-
-    Returns:
-        생성된 폴더 경로
-    """
-    output_dir = RESULTS_DIR / f"{_kst_now().strftime('%Y%m%d_%H%M%S')}_{PROBE_DIR_SUFFIX}"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
 
 
 def _save(df: pd.DataFrame, output_dir: Path, name: str) -> Path:
@@ -408,7 +398,7 @@ def main() -> int:
     #    최상단 import 는 순서를 구조로 보장하지 못한다 — 누군가 줄을 옮기면 조용히 깨진다
     from pykrx import stock
 
-    output_dir = _make_output_dir()
+    output_dir = create_run_directory(PROBE_NAME, layer=RESULT_LAYER_PROBE)
     logger.debug(f"이어붙이기 실측 시작: {ticker}, 시작일 {start_date}, 종료일 {end_dates}")
 
     # 3. 종료일만 바꿔가며 수정주가를 받는다. 받는 즉시 저장해 뒤쪽 호출이 실패해도 원자료가 남게 한다.

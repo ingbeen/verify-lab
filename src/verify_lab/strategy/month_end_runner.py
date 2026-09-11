@@ -1,4 +1,4 @@
-"""코스닥 월말 매매의 손절 격자 실행 — 조립만 한다
+"""월말 매매의 손절 격자 실행 — 조립만 한다
 
 **계산하지 않는다.** 판정식과 성적 산식이 이미 있으므로 그것들을 조합해 돌리고,
 어느 행이 어떤 설정의 결과인지를 붙여 쌓기만 한다.
@@ -6,11 +6,17 @@
 | 빌려 쓰는 것 | 어디서 |
 | --- | --- |
 | 진입일·청산일 정의 | `studies/month_end/schedule.py` — 검증 #10 과 **같은 날에 들어간다** |
-| 손절 판정 (시가 → 장중 → 청산일) | `strategy/expiry_trading.simulate_expiry_trade` |
-| 구간별 성적 산식 | `strategy/expiry_runner.period_rows` |
+| 손절 판정 (시가 → 장중 → 청산일) | `strategy/trade_fill.simulate_scheduled_trade` |
+| 구간별 성적 산식 | `strategy/periods.period_rows` |
+
+**이 매매법에는 고유 체결 로직이 한 줄도 없다.** 규칙이 옵션 만기일과 같아(며칠 들고 정해진 날
+청산 + 손절) 공유 계층을 그대로 부른다. 그래서 `month_end_trading.py` 를 두지 않는다 —
+만들면 내용이 비거나, 계산을 복사해 **같은 매매법의 성적이 산출물마다 갈라진다.**
+빌려 쓰는 두 모듈은 **매매법 이름을 갖지 않는다** — 전에는 둘이 옵션 만기일 파일 안에 있어
+월말이 그쪽을 import 했고, 그러면 옵션 만기일 사정으로 고칠 때 이 매매법 성적이 함께 바뀐다.
 
 **새 판정식을 만들지 않는다.** 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오는데,
-그 함정을 여러 곳에서 관리하게 된다 (`docs/spec/option_expiry.md` 결정 ㉝).
+그 함정을 여러 곳에서 관리하게 된다 (`docs/spec/월말_진입_설계.md` 가 가리키는 결정 ㉝).
 
 **방향을 고르지 않는다** (측정의 원칙 11). 달마다 「아래로 걸었을 때」와 「위로 걸었을 때」를
 나란히 내며, 어느 쪽으로 걸지는 결과를 읽는 쪽이 정한다. 고르는 코드를 두면 그 선택이
@@ -47,8 +53,8 @@ from verify_lab.strategy.constants import (
     STOP_APPLICABLE,
     STOP_NOT_APPLICABLE,
 )
-from verify_lab.strategy.expiry_runner import period_rows
-from verify_lab.strategy.expiry_trading import simulate_expiry_trade
+from verify_lab.strategy.periods import period_rows
+from verify_lab.strategy.trade_fill import simulate_scheduled_trade
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
@@ -308,7 +314,7 @@ def _run_cell(
     reasons: list[str] = []
 
     for entry_position, exit_position in zip(entries.entry_positions, entries.exit_positions, strict=True):
-        result = simulate_expiry_trade(
+        result = simulate_scheduled_trade(
             frame,
             entry_position,
             exit_position,
@@ -332,7 +338,7 @@ def _run_cell(
         DISPLAY_STOP_APPLICABLE: _stop_applicable(dataset),
     }
 
-    # 성적 산식은 `expiry_runner` 가 소유한다. 구간 5개와 갭손절 집계가 여기서 나온다
+    # 성적 산식은 `periods` 가 소유한다. 구간 5개와 갭손절 집계가 여기서 나온다
     for row in period_rows(entries.entry_dates, returns, last_day=last_day, hold_days=hold_days, reasons=reasons):
         accumulator.performance.append({**identity, **row})
 
@@ -370,7 +376,7 @@ def run_month_end_trading(
     etf_levels: tuple[float | None, ...] = (*stop_levels, None)
 
     # **지수는 무손절 한 줄뿐이다.** 장중 손절에는 고가·저가가 필요한데 지수는 종가만 있고
-    # (`docs/spec/month_end.md` §7.6), 종가로 근사하면 실제보다 손절이 덜 걸려
+    # (`docs/spec/월말_진입_설계.md` §7.6), 종가로 근사하면 실제보다 손절이 덜 걸려
     # 성적이 좋아진다. 거부하지 않고 강등하는 것은 **30년 축을 성적표에서 보기 위해서**다
     index_levels: tuple[float | None, ...] = (None,)
 

@@ -10,7 +10,7 @@
 **하나의 창을 고르지 않는다.** 문헌이 말하는 "만기 1주 전"은 정의에 따라 부호가 뒤집히므로,
 offset 을 앞뒤로 전부 산출해 나란히 보고한다.
 
-확정 설계는 `docs/spec/option_expiry.md` 가 SoT 다.
+확정 설계는 `docs/spec/옵션_만기일_설계.md` 가 SoT 다.
 """
 
 from .constants import (
@@ -21,7 +21,7 @@ from .constants import (
     COL_RULE_DATE,
     KR_MONTHLY_EXPIRY,
     MAX_OFFSET,
-    STUDY_NAME,
+    TRACK_NAME,
     US_MONTHLY_EXPIRY,
     ExpiryRule,
 )
@@ -36,7 +36,7 @@ __all__ = [
     "COL_RULE_DATE",
     "KR_MONTHLY_EXPIRY",
     "MAX_OFFSET",
-    "STUDY_NAME",
+    "TRACK_NAME",
     "US_MONTHLY_EXPIRY",
     "ExpiryRule",
     "OffsetAssignment",

@@ -51,7 +51,7 @@ PRODUCT_ETF: Final = "ETF"
 PRODUCT_ETN: Final = "ETN"
 
 # 측정 대상 전부. 종목·상장일·거래대금·기초지수는 2026-09-02 기준 KRX 전수 조회와
-# yfinance 조회로 확정했다. 근거는 `docs/spec/leverage_tracking.md` 에 있다.
+# yfinance 조회로 확정했다. 근거는 `docs/spec/레버리지_ETF_괴리_설계.md` 에 있다.
 #
 # **국내 인버스는 전부 선물지수를 추종한다** — 레버리지만 현물지수다.
 # **코스닥150 −2배는 ETF 가 없어 ETN 을 쓴다.** 국내 법정 상한이 ±2배라 −3배는 존재하지 않는다.
@@ -169,7 +169,7 @@ VOLATILITY_BUCKETS: Final = ("변동성 하위 25%", "변동성 25~50%", "변동
 #
 # **절대 경계(±5% 등)를 쓰지 않는다.** 보유 기간마다 같은 수익률의 뜻이 달라지고 임의
 # 파라미터가 된다(측정의 원칙 1). 미국은 장기 상승이라 3년 구간에서 ±5% 안에 드는 표본이
-# 3~5% 뿐이라 칸이 성립하지도 않는다. 근거는 `docs/spec/leverage_tracking.md`
+# 3~5% 뿐이라 칸이 성립하지도 않는다. 근거는 `docs/spec/레버리지_ETF_괴리_설계.md`
 BASE_RETURN_BUCKETS: Final = ("1배 하위 20%", "1배 20~40%", "1배 40~60%", "1배 60~80%", "1배 상위 20%")
 
 # 시기 구분. 차입·스왑 비용이 금리에 연동되므로 금리 국면으로 자른다.
@@ -246,7 +246,9 @@ DISPLAY_TOTAL_DIVERGENCE_P95: Final = "총 괴리 상위5%(%p)"
 # 산출물 파일
 # ============================================================
 
-STUDY_NAME: Final = "leverage_tracking"
+# 이 매매법의 이름(slug). **측정과 매매가 같은 값을 본다** — 계층은 산출물의 상위 폴더가
+# 말하므로 이름에 계층을 넣지 않는다. 전에는 같은 매매법이 계층마다 다른 이름으로 불렸다
+TRACK_NAME: Final = "leverage_tracking"
 
 DIVERGENCE_FILENAME: Final = "divergence.csv"
 BREAKDOWN_FILENAME: Final = "breakdown.csv"

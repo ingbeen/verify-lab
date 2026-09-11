@@ -17,8 +17,8 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.studies.index_extreme.constants import DEFAULT_RANK_CUT, RANK_CUTS, Direction
-from verify_lab.studies.index_extreme.extreme_move import (
+from verify_lab.studies.reverse.constants import DEFAULT_RANK_CUT, RANK_CUTS, Direction
+from verify_lab.studies.reverse.extreme_move import (
     COL_PLUNGE_RANK,
     COL_SURGE_RANK,
     expanding_rank,

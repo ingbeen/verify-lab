@@ -11,11 +11,18 @@ from pathlib import Path
 
 import pytest
 
-from verify_lab.common_constants import DOCS_DIR, RESULTS_DIR
+from verify_lab.common_constants import (
+    DOCS_DIR,
+    RESULT_LAYER_PROBE,
+    RESULT_LAYER_STRATEGY,
+    RESULT_LAYER_STUDY,
+    RESULTS_DIR,
+)
 from verify_lab.utils.result_citations import (
     cited_result_dirs,
     existing_result_dirs,
     missing_citations,
+    result_dir_paths,
     unreferenced_dirs,
 )
 
@@ -102,7 +109,7 @@ def test_placeholder_is_not_counted(docs_root: Path) -> None:
     """
     목적: 자리표시자를 인용으로 세지 않는다
 
-    `<실행시각>_index_extreme` 은 「산출물이 생기는 위치」를 말하는 자리라
+    `<실행시각>_reverse` 은 「산출물이 생기는 위치」를 말하는 자리라
     실재를 요구하면 안 된다.
 
     Given: 자리표시자만 적힌 문서
@@ -111,7 +118,7 @@ def test_placeholder_is_not_counted(docs_root: Path) -> None:
     """
     # Given
     (docs_root / "research" / "a.md").write_text(
-        "산출물은 `storage/results/<실행시각>_index_extreme/` 에 남습니다.\n", encoding="utf-8"
+        "산출물은 `storage/results/검증/<실행시각>_reverse/` 에 남습니다.\n", encoding="utf-8"
     )
 
     # When
@@ -251,6 +258,120 @@ def test_existing_result_dirs_ignores_files(results_root: Path) -> None:
     assert existing == {FAKE_DIR_A}
 
 
+@pytest.mark.parametrize("layer", [RESULT_LAYER_STUDY, RESULT_LAYER_STRATEGY, RESULT_LAYER_PROBE])
+def test_existing_result_dirs_finds_layer_subfolders(results_root: Path, layer: str) -> None:
+    """
+    목적: 계층 하위 폴더 안의 산출물을 실재로 센다 (새 자리).
+
+    산출물이 `검증`·`매매`·`실측` 아래로 들어가면서 한 단계 깊어졌다. 탐색이 루트 직하만
+    보면 **품질 검증이 살아있는 근거물을 「없다」고 보고한다.**
+
+    Given: 계층 폴더 아래의 산출물 폴더
+    When: 실재하는 폴더를 모은다
+    Then: 계층 이름이 아니라 산출물 폴더 이름이 잡힌다
+    """
+    # Given
+    (results_root / layer / FAKE_DIR_A).mkdir(parents=True)
+
+    # When
+    existing = existing_result_dirs(results_root)
+
+    # Then
+    assert existing == {FAKE_DIR_A}
+
+
+def test_existing_result_dirs_finds_both_layouts(results_root: Path) -> None:
+    """
+    목적: **옛 자리와 새 자리를 동시에** 본다 (회귀).
+
+    기존 산출물은 루트 직하에 남고 새 산출물만 계층 폴더로 들어가므로 **두 구조가 공존한다.**
+    한쪽만 보면 다른 쪽이 시야에서 사라진다.
+
+    Given: 루트 직하 폴더 하나와 계층 폴더 아래 폴더 하나
+    When: 실재하는 폴더를 모은다
+    Then: 둘 다 잡힌다
+    """
+    # Given
+    (results_root / FAKE_DIR_A).mkdir()
+    (results_root / RESULT_LAYER_STRATEGY / FAKE_DIR_B).mkdir(parents=True)
+
+    # When
+    existing = existing_result_dirs(results_root)
+
+    # Then
+    assert existing == {FAKE_DIR_A, FAKE_DIR_B}
+
+
+def test_layer_folder_itself_is_not_a_result_dir(results_root: Path) -> None:
+    """
+    목적: 계층 폴더 자체를 산출물로 세지 않는다 (경계 조건).
+
+    계층 폴더를 산출물로 세면 **정리 도구가 그것을 「인용되지 않은 폴더」로 뽑아 통째로 지운다.**
+
+    Given: 산출물이 하나도 없는 빈 계층 폴더
+    When: 실재하는 폴더를 모은다
+    Then: 빈 집합이다
+    """
+    # Given
+    (results_root / RESULT_LAYER_STUDY).mkdir()
+
+    # When
+    existing = existing_result_dirs(results_root)
+
+    # Then
+    assert existing == set()
+
+
+def test_result_dir_paths_keeps_the_location(results_root: Path) -> None:
+    """
+    목적: 이름만이 아니라 **경로**를 돌려준다 (정리 도구가 쓰는 방향).
+
+    `clean_results.py` 가 이름만 받아 `RESULTS_DIR / name` 으로 되돌려 쓰고 있었다.
+    계층 폴더가 끼면 그 경로는 존재하지 않는데 **`rglob` 이 빈 결과를 내 용량이 `0.0MB`** 로
+    나오고 예외도 나지 않는다. 경로를 잃지 않는 것이 유일한 방어다.
+
+    Given: 두 자리에 각각 있는 산출물 폴더
+    When: 이름 → 경로 대응을 모은다
+    Then: 각 이름이 실재하는 경로를 가리킨다
+    """
+    # Given
+    (results_root / FAKE_DIR_A).mkdir()
+    (results_root / RESULT_LAYER_STRATEGY / FAKE_DIR_B).mkdir(parents=True)
+
+    # When
+    paths = result_dir_paths(results_root)
+
+    # Then
+    assert paths[FAKE_DIR_A] == [results_root / FAKE_DIR_A]
+    assert paths[FAKE_DIR_B] == [results_root / RESULT_LAYER_STRATEGY / FAKE_DIR_B]
+
+
+def test_same_name_in_two_layers_returns_both(results_root: Path) -> None:
+    """
+    목적: 한 이름이 두 계층에 있어도 **예외를 던지지 않고 둘 다 돌려준다** (경계 조건).
+
+    측정과 매매가 같은 slug 를 쓰는 것이 이 저장소의 규약이라(목표 1), 같은 초에 두 계층을
+    돌리면 `검증/<시각>_X` 와 `매매/<시각>_X` 가 함께 생긴다 —
+    `test_report_writer.test_same_track_splits_by_layer` 가 그것을 정상으로 고정한다.
+    **여기서 예외를 던지면 인용 판정 전체가 멈춰 품질 검증과 정리 도구가 동시에 죽는다.**
+
+    Given: 두 계층에 같은 이름의 폴더
+    When: 이름 → 경로 대응을 모은다
+    Then: 그 이름에 경로 둘이 달려 있다
+    """
+    # Given
+    (results_root / RESULT_LAYER_STUDY / FAKE_DIR_A).mkdir(parents=True)
+    (results_root / RESULT_LAYER_STRATEGY / FAKE_DIR_A).mkdir(parents=True)
+
+    # When
+    paths = result_dir_paths(results_root)
+
+    # Then
+    assert sorted(paths[FAKE_DIR_A]) == sorted(
+        [results_root / RESULT_LAYER_STUDY / FAKE_DIR_A, results_root / RESULT_LAYER_STRATEGY / FAKE_DIR_A]
+    )
+
+
 def test_existing_result_dirs_on_missing_parent(tmp_path: Path) -> None:
     """
     목적: 산출물 경로가 아직 없어도 예외 없이 빈 집합을 낸다 (경계 조건)
@@ -290,3 +411,31 @@ def test_real_documents_cite_existing_dirs() -> None:
 
     # Then
     assert missing == [], f"문서가 인용한 산출물 폴더가 없다: {missing}"
+
+
+def test_real_repository_keeps_seeing_the_old_layout() -> None:
+    """
+    목적: 계층 폴더를 도입해도 **옛 자리의 산출물이 시야에서 빠지지 않는다** (회귀).
+
+    기존 산출물은 옮기지 않기로 했다 — 살아있는 문서 여럿이 그 이름을 인용하고 있어
+    옮기면 전부 깨진다. 그래서 두 구조가 공존하며, **그것이 의도다.** 탐색이 새 자리만
+    보게 되면 품질 검증이 근거물을 「없다」고 보고한다.
+
+    개수를 박지 않는다 — 실행할 때마다 폴더가 늘어 값이 낡는다. 대신 **루트 직하에 실제로
+    있는 것과 탐색 결과를 대조**한다.
+
+    `tests/CLAUDE.md` §5 의 「폴더의 실재만 보는 검사」 예외에 해당한다.
+
+    Given: 저장소의 실제 산출물 경로
+    When: 루트 직하의 폴더 이름을 직접 세고, 탐색 결과와 비교한다
+    Then: 직하의 폴더가 전부 탐색 결과에 들어 있다
+    """
+    # Given
+    layers = {RESULT_LAYER_STUDY, RESULT_LAYER_STRATEGY, RESULT_LAYER_PROBE}
+    at_root = {child.name for child in RESULTS_DIR.iterdir() if child.is_dir() and child.name not in layers}
+
+    # When
+    found = existing_result_dirs(RESULTS_DIR)
+
+    # Then
+    assert at_root <= found, f"옛 자리의 산출물이 탐색에서 빠졌습니다: {sorted(at_root - found)}"

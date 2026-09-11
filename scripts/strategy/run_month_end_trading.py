@@ -14,6 +14,7 @@
 
 import argparse
 
+from verify_lab.common_constants import RESULT_LAYER_STRATEGY
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.strategy.constants import (
@@ -31,18 +32,27 @@ from verify_lab.strategy.constants import (
     PERIOD_ALL,
 )
 from verify_lab.strategy.month_end_runner import DISPLAY_MONTH, run_month_end_trading
-from verify_lab.studies.month_end.constants import DATASETS_KOSDAQ
+from verify_lab.studies.month_end.constants import DATASETS_KOSDAQ, TRACK_NAME
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 실행 이력을 쌓는 meta.json 의 최상위 키
-KEY_META_STRATEGY = "kosdaq_month_end_trading"
+# 실행 이력을 쌓는 meta.json 의 최상위 키.
+# **폴더 이름과 달리 계층을 이름에 담는다** — 메타는 한 파일 안의 평평한 사전이라
+# 계층을 가를 상위 폴더가 없고, 같은 매매법의 검증 이력과 키가 겹치면 한쪽이 덮인다
+KEY_META_STRATEGY = "month_end_trading"
 
-# 산출물 폴더 이름
-STUDY_NAME = "kosdaq_month_end_trading"
+# **산출물 폴더 이름을 여기서 만들지 않는다.** slug 는 `studies/month_end/constants.py` 의
+# `TRACK_NAME` 하나가 소유하고 계층은 `create_run_directory` 가 붙인다.
+# 전에는 이 자리에 `"kosdaq_month_end_trading"` 이 박혀 있었고 상수명도 `STUDY_NAME` 이라
+# 매매 산출물인데 검증처럼 읽혔다.
+#
+# **[주의] 이 매매는 아직 코스닥 4대상뿐이다** (`DATASETS_KOSDAQ`). 검증 계층은 코스피까지
+# 8대상으로 늘었지만 매매는 따라가지 않았다. slug 은 매매법당 하나라 두 계층이 `month_end` 를
+# 공유하므로, **폴더 이름만 보고 대상 범위를 추측하면 안 된다** — 범위는 `summary.json` 의
+# `datasets` 가 말한다
 
 # 화면에 낼 컬럼. 전 컬럼을 내면 가로로 넘쳐 읽을 수 없다
 HEADLINE_COLUMNS = [
@@ -117,7 +127,7 @@ def main() -> int:
 
     outputs = run_month_end_trading(datasets)
 
-    directory = create_run_directory(STUDY_NAME)
+    directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
     save_table(directory, "trades.csv", outputs.trades)
     save_table(directory, "performance.csv", outputs.performance)
     save_table(directory, "performance_fixed_stop.csv", outputs.performance_fixed_stop)

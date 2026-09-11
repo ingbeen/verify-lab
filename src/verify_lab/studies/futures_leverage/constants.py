@@ -57,7 +57,7 @@ PRODUCT_ETF: Final = "ETF"
 PRODUCT_ETN: Final = "ETN"
 
 # 대조할 짝 전부. 종목·기초지수는 검증 #8 이 KRX 전수 조회로 확정한 것을 그대로 쓴다
-# (`docs/spec/leverage_tracking.md` §3.1). 두 검증을 나란히 읽으려면 대상이 같아야 한다.
+# (`docs/spec/레버리지_ETF_괴리_설계.md` §3.1). 두 검증을 나란히 읽으려면 대상이 같아야 한다.
 #
 # **인버스 넷은 ETF 자신이 선물지수를 추종한다.** 그래서 「선물 대 ETF」 비교가 인버스에서는
 # 「직접 굴리는 선물 대 포장된 선물」이 되고, 롤 비용이 양쪽에 있어 잔여로 분리되지 않는다.
@@ -82,7 +82,7 @@ PAIRS: Final = (
 # 거래승수 이력. **만료 계약의 승수를 주는 조회가 없어 거래대금으로 역산해 확정했다** —
 # `승수 = 거래대금 ÷ (거래량 × 평균체결가)` 이고 평균체결가가 저가~고가 사이이므로
 # 하루치로 구간이 나온다. 승수가 제도값이라 구간이 후보 하나만 품으면 그날 값이 확정된다.
-# 코스피200 은 7,599일이 확정되고 3일만 애매했다. 근거는 `docs/spec/futures_leverage.md`.
+# 코스피200 은 7,599일이 확정되고 3일만 애매했다. 근거는 `docs/spec/선물_대_레버리지_ETF_설계.md`.
 #
 # **소수 계약 본선에는 들어가지 않는다.** 정수 계약 대조에만 쓰인다
 CONTRACT_MULTIPLIER_HISTORY: Final = {
@@ -278,8 +278,9 @@ WIPEOUTS_FILENAME: Final = "wipeouts.csv"
 LEVERAGE_DRIFT_FILENAME: Final = "leverage_drift.csv"
 INTEGER_CONTRACTS_FILENAME: Final = "integer_contracts.csv"
 
-# 결과 폴더 이름에 쓰는 검증 이름
-STUDY_NAME: Final = "futures_leverage"
+# 이 매매법의 이름(slug). **측정과 매매가 같은 값을 본다** — 계층은 산출물의 상위 폴더가
+# 말하므로 이름에 계층을 넣지 않는다. 전에는 같은 매매법이 계층마다 다른 이름으로 불렸다
+TRACK_NAME: Final = "futures_leverage"
 
 
 # ============================================================

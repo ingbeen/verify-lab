@@ -188,7 +188,7 @@ def _base_return_buckets(divergence: pd.DataFrame) -> pd.Series:
     경로 효과는 크기의 함수라 그 둘이 정반대다.
 
     **경계를 구간별로 매긴다** — 1주와 3년의 수익률을 한 자로 재면 긴 구간이 상위 분위를
-    독점한다. **절대 경계를 쓰지 않는 이유**는 `docs/spec/leverage_tracking.md` 에 있다.
+    독점한다. **절대 경계를 쓰지 않는 이유**는 `docs/spec/레버리지_ETF_괴리_설계.md` 에 있다.
 
     Args:
         divergence: 축을 붙이는 중인 괴리 결과

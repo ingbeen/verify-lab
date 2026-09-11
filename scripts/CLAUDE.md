@@ -44,20 +44,20 @@
 | `kodex_distribution_probe` | `data/check_kodex_distribution.py` | 실측한 종목, 원본가·수정주가 행 수, 수정주가가 덮지 못한 거래일 수, 만기일 수, 분배락 건수와 **만기 창 안 건수**, 창 크기 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
 | `krx_futures_collect` | `data/collect_krx_futures.py` | 수집한 상품·조회 시작일, 저장 경로·행 수·계약 수·기간, **제외 건수 세 종류**(야간·미개시·최근), 스냅숏에서 찾은 계약 수, 시세가 없던 계약 수, 현물가 결측 행 수 |
-| `futures_leverage_study` | `studies/run_futures_leverage.py` | 결과 폴더, 지수 필터, 쌍 수, 표별 산출 행 수, 시작일 원자료 파일 목록, **선물 시세가 없어 건너뛴 쌍과 사유** |
+| `futures_leverage_study` | `studies/run_futures_leverage_study.py` | 결과 폴더, 지수 필터, 쌍 수, 표별 산출 행 수, 시작일 원자료 파일 목록, **선물 시세가 없어 건너뛴 쌍과 사유** |
 | `etn_collect` | `data/collect_etn.py` | 수집한 ETN 종목·ISIN·조회 시작일, 시세 또는 지표가치의 저장 경로·행 수·기간·최근 제외 건수 |
-| `leverage_tracking_study` | `studies/run_leverage_tracking.py` | 결과 폴더, 실행한 지수 필터, 쌍 수와 쌍 목록, 보유 기간 격자, 표별 산출 행 수 |
+| `leverage_tracking_study` | `studies/run_leverage_tracking_study.py` | 결과 폴더, 실행한 지수 필터, 쌍 수와 쌍 목록, 보유 기간 격자, 표별 산출 행 수 |
 | `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
-| `usdkrw_equivalence_study` | `studies/run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
-| `option_expiry_study` | `studies/run_option_expiry.py` | 결과 폴더, 검증한 종목, 만기 창 범위, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 **매매의 진입·제외 건수·보유 거래일수 분포**도 남는다 |
-| `index_extreme_study` | `studies/run_index_extreme.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
-| `reverse_trading_strategy` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 손절선·보유 한도, 결과 폴더 |
-| `expiry_trading_strategy` | `strategy/run_expiry_trading.py` | 대상 칸과 손절선, 성적표·체결 원자료의 행 수, 결과 폴더 |
+| `usdkrw_equivalence_study` | `studies/run_usdkrw_equivalence_study.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
+| `option_expiry_study` | `studies/run_option_expiry_study.py` | 결과 폴더, 검증한 종목, 만기 창 범위, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 **매매의 진입·제외 건수·보유 거래일수 분포**도 남는다 |
+| `reverse_study` | `studies/run_reverse_study.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
+| `reverse_trading` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 손절선·보유 한도, 결과 폴더 |
+| `option_expiry_trading` | `strategy/run_option_expiry_trading.py` | 대상 칸과 손절선, 성적표·체결 원자료의 행 수, 결과 폴더 |
 | `expiry_dividend_probe` | `data/check_expiry_dividend.py` | 칸별로 보유 구간에 배당락이 걸린 건수와 그 규모 |
-| `kosdaq_month_end_trading` | `strategy/run_month_end_trading.py` | 결과 폴더, 매매한 종목, **손절선 목록(무손절 포함)**, **고정 성적표가 쓴 손절선**, **비용 미반영 표기**, 표별 산출 행 수 |
-| `month_end_study` | `studies/run_month_end.py` | 결과 폴더, 측정한 대상, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |
+| `month_end_trading` | `strategy/run_month_end_trading.py` | 결과 폴더, 매매한 종목, **손절선 목록(무손절 포함)**, **고정 성적표가 쓴 손절선**, **비용 미반영 표기**, 표별 산출 행 수 |
+| `month_end_study` | `studies/run_month_end_study.py` | 결과 폴더, 측정한 대상, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |
 
 > **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —
 > 그리드는 채택되지 않아 구현을 지웠고 기록하는 스크립트가 없다.

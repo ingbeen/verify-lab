@@ -61,10 +61,10 @@
 
 | 구분 | 위치 |
 | --- | --- |
-| 확정 설계 | [spec/leverage_tracking.md](../spec/leverage_tracking.md) |
+| 확정 설계 | [spec/레버리지_ETF_괴리_설계.md](../spec/레버리지_ETF_괴리_설계.md) |
 | 도출된 매매 규칙 | **없음** — 이 검증은 상품의 성질을 재며 매매 규칙을 도출하지 않는다 |
 | 측정 정의 | [src/verify_lab/studies/leverage_tracking/](../../src/verify_lab/studies/leverage_tracking/) · 배당 보정분은 공통 계층인 [src/verify_lab/measure/distribution.py](../../src/verify_lab/measure/distribution.py) |
-| 실행 스크립트 | [scripts/studies/run_leverage_tracking.py](../../scripts/studies/run_leverage_tracking.py) |
+| 실행 스크립트 | [scripts/studies/run_leverage_tracking_study.py](../../scripts/studies/run_leverage_tracking_study.py) |
 | 데이터 수집 | [scripts/data/collect_yfinance.py](../../scripts/data/collect_yfinance.py) · [scripts/data/collect_pykrx.py](../../scripts/data/collect_pykrx.py) · [scripts/data/collect_etn.py](../../scripts/data/collect_etn.py) |
 | 테스트 | [tests/test_studies_leverage_divergence.py](../../tests/test_studies_leverage_divergence.py) · [tests/test_studies_leverage_breakdown.py](../../tests/test_studies_leverage_breakdown.py) · [tests/test_studies_leverage_pairing.py](../../tests/test_studies_leverage_pairing.py) · [tests/test_measure_distribution.py](../../tests/test_measure_distribution.py) · [tests/test_studies_leverage_runner.py](../../tests/test_studies_leverage_runner.py) · [tests/test_etn_collector.py](../../tests/test_etn_collector.py) |
 | 실행 명령어 | [COMMANDS.md](../COMMANDS.md) |
@@ -133,7 +133,7 @@
 ## 3. 대상과 근거 소스
 
 측정 대상 27종·22쌍의 선정 근거(거래대금·상장일·기초지수)는
-[spec/leverage_tracking.md](../spec/leverage_tracking.md) §3 에 있다. 핵심만 옮기면 이렇다.
+[spec/레버리지_ETF_괴리_설계.md](../spec/레버리지_ETF_괴리_설계.md) §3 에 있다. 핵심만 옮기면 이렇다.
 
 - **국내 인버스는 전부 선물지수를 추종한다.** 레버리지만 현물지수다
 - **코스닥150 −2배는 ETF 가 없어 ETN 을 쓴다.** 국내 법정 상한이 ±2배라 −3배는 존재하지 않는다
@@ -364,7 +364,7 @@
 보기 때문**이다 — `+1%` 와 `+50%` 가 똑같이 「오름」이라 크기가 지워진다.
 
 구간 1배 수익률을 **오분위**로 나눈다. 경계는 종목 × 보유 기간마다 따로 매긴다
-(설계 근거와 탈락안은 [spec](../spec/leverage_tracking.md) §4 ⑧).
+(설계 근거와 탈락안은 [spec](../spec/레버리지_ETF_괴리_설계.md) §4 ⑧).
 
 #### 1년 보유 — 바닥이 「완만한 상승」에 있다
 

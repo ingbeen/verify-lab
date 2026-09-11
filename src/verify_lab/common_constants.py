@@ -31,6 +31,21 @@ SERIES_DIR: Final = STORAGE_DIR / "series"
 # 검증 산출물. 실행 시각으로 구분해 쌓이며 git 으로 동기화한다 — 결과 문서가 근거로 인용하기 때문이다
 RESULTS_DIR: Final = STORAGE_DIR / "results"
 
+# 산출물의 계층 폴더. **경로가 계층을 말하므로 폴더 이름에 접미사를 붙이지 않는다** —
+# 같은 매매법의 측정과 매매가 `검증/<시각>_reverse` 와 `매매/<시각>_reverse` 로 갈린다.
+#
+# **한글인 이유**: 루트 `CLAUDE.md` 가 실제로 쓰는 말이다(「검증 #1·#7·#10」). 영문 후보였던
+# `measure` 는 `src/verify_lab/measure/` 와 겹쳐 기각했고, `research` 는 `docs/research/`
+# (결과 «문서»)와 뜻이 어긋나 기각했다.
+#
+# **`report`(생성)와 `utils`(탐색)가 함께 쓰므로 공통 계층에 둔다.** `utils` 가 `report` 에서
+# 가져오면 「utils 는 도메인 로직에 의존하지 않는다」는 의존 방향이 뒤집힌다
+RESULT_LAYER_STUDY: Final = "검증"
+RESULT_LAYER_STRATEGY: Final = "매매"
+RESULT_LAYER_PROBE: Final = "실측"
+
+RESULT_LAYERS: Final = (RESULT_LAYER_STUDY, RESULT_LAYER_STRATEGY, RESULT_LAYER_PROBE)
+
 # 실행 이력. 최근 N개만 순환 저장한다 (개수는 `utils/meta_manager.py` 가 소유)
 META_JSON_PATH: Final = RESULTS_DIR / "meta.json"
 
@@ -129,7 +144,7 @@ NAV_FILE_TEMPLATE: Final = "{ticker}_NAV.csv"
 
 # 지수는 시세가 아니라 **종가 하나짜리 계열**로 저장해 `SERIES_DIR` 에 둔다.
 # 살 수 없어 시가 집행이 불가능하므로 OHLCV 를 들고 있을 이유가 없고, 코스닥150 지수는
-# 소급 산출 구간에 시가·고가·저가가 아예 0 이다 (`docs/spec/month_end.md` §7.4)
+# 소급 산출 구간에 시가·고가·저가가 아예 0 이다 (`docs/spec/월말_진입_설계.md` §7.4)
 INDEX_FILE_TEMPLATE: Final = "{ticker}_index.csv"
 
 # ============================================================

@@ -8,5 +8,5 @@
 `measure` 의 forward return 을 쓰지 않고 자체 회귀 통계를 낸다. 대신 `report/writer.py` 의
 산출물 저장은 그대로 재사용한다 — 계산은 다르지만 저장 규칙은 같아야 한다.
 
-확정된 설계와 근거는 `docs/spec/usdkrw_grid.md` 가 SoT다.
+확정된 설계와 근거는 `docs/spec/원달러_그리드_설계.md` 가 SoT다.
 """

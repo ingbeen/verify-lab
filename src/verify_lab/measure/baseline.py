@@ -20,7 +20,7 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE
 from verify_lab.data.loader import validate_market_frame
 
-# 이동평균 창 (거래일). docs/spec/index_extreme_events.md §5 가 확정한 값이다
+# 이동평균 창 (거래일). docs/spec/역방향_설계.md §5 가 확정한 값이다
 DEFAULT_MA_WINDOW = 200
 
 # 이동평균 판정에 필요한 시세 컬럼

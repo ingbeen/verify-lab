@@ -469,7 +469,7 @@ def _integer_contract_table(pair: FuturesPair, series: pd.DataFrame) -> pd.DataF
 
     기준일은 **데이터의 마지막 거래일**이고 가격은 그날의 **원본 정산가**다.
     비율 조정 계열을 쓰면 가격 수준이 실제 체결가가 아니라 명목금액이 어긋난다
-    (`docs/spec/futures_leverage.md` §4 ③).
+    (`docs/spec/선물_대_레버리지_ETF_설계.md` §4 ③).
 
     Args:
         pair: 선물과 배수 상품의 짝

@@ -16,10 +16,11 @@ import pytest
 from freezegun import freeze_time
 
 from verify_lab import common_constants
+from verify_lab.common_constants import RESULT_LAYER_PROBE, RESULT_LAYER_STRATEGY, RESULT_LAYER_STUDY
 from verify_lab.report import writer
 from verify_lab.report.constants import RUN_SUMMARY_FILENAME, SIGNALS_FILENAME
 
-STUDY_NAME = "index_extreme"
+TRACK_NAME = "reverse"
 
 
 @pytest.fixture
@@ -38,48 +39,149 @@ def mock_results_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @freeze_time("2026-08-13 12:30:45", tz_offset=0)
-def test_directory_name_uses_run_time_and_study_name(mock_results_dir: Path) -> None:
+def test_directory_name_uses_run_time_and_track_name(mock_results_dir: Path) -> None:
     """
-    목적: 결과 폴더 이름이 `<실행시각>_<검증명>` 임을 고정한다.
+    목적: 결과 폴더 이름이 `<실행시각>_<매매법>` 임을 고정한다.
+
+    **계층 접미사를 붙이지 않는다.** 계층은 상위 폴더가 말하므로 이름에 또 넣으면 중복이다.
 
     Given: 고정된 실행 시각 (KST 21:30:45)
     When: 결과 폴더를 만든다
-    Then: 이름이 실행 시각과 검증명으로 구성된다
+    Then: 이름이 실행 시각과 매매법 이름으로만 구성된다
     """
     # When
-    directory = writer.create_run_directory(STUDY_NAME)
+    directory = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
 
     # Then
-    assert directory.parent == mock_results_dir
-    assert directory.name == f"20260813_213045_{STUDY_NAME}"
+    assert directory.name == f"20260813_213045_{TRACK_NAME}"
+
+
+@freeze_time("2026-08-13 12:30:45", tz_offset=0)
+@pytest.mark.parametrize("layer", [RESULT_LAYER_STUDY, RESULT_LAYER_STRATEGY, RESULT_LAYER_PROBE])
+def test_layer_becomes_the_parent_folder(mock_results_dir: Path, layer: str) -> None:
+    """
+    목적: 계층이 **경로**로 드러나는 것을 고정한다 (결정 3).
+
+    같은 매매법의 측정과 매매가 같은 이름을 쓰므로, 둘을 가르는 것은 상위 폴더뿐이다.
+    이 계약이 무너지면 두 계층의 산출물이 한 자리에 섞여 폴더 목록만 봐서는 구별되지 않는다.
+
+    Given: 계층 이름
+    When: 결과 폴더를 만든다
+    Then: 산출물 루트 바로 아래 그 계층 폴더가 부모다
+    """
+    # When
+    directory = writer.create_run_directory(TRACK_NAME, layer=layer)
+
+    # Then
+    assert directory.parent == mock_results_dir / layer
+
+
+@freeze_time("2026-08-13 12:30:45", tz_offset=0)
+def test_same_track_splits_by_layer(mock_results_dir: Path) -> None:
+    """
+    목적: **같은 slug 가 두 계층에서 충돌하지 않는다** (목표 1 의 집행).
+
+    매매법 이름을 하나로 통일한 결과 측정과 매매가 같은 문자열을 넘긴다. 계층 폴더가
+    갈라주지 않으면 같은 시각에 돌린 두 실행이 한 폴더를 공유해 산출물이 섞인다.
+
+    Given: 같은 매매법 이름과 서로 다른 두 계층
+    When: 각각 결과 폴더를 만든다
+    Then: 이름은 같고 경로는 다르다
+    """
+    # When
+    study = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
+    strategy = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
+
+    # Then
+    assert study.name == strategy.name
+    assert study != strategy
 
 
 @freeze_time("2026-08-13 12:30:45", tz_offset=0)
 def test_directory_is_created(mock_results_dir: Path) -> None:
     """
-    목적: 폴더가 실제로 만들어진다.
+    목적: 폴더가 실제로 만들어진다 (계층 폴더까지 함께).
 
     Given: 아직 없는 결과 경로
     When: 결과 폴더를 만든다
     Then: 디렉터리가 존재한다
     """
     # When
-    directory = writer.create_run_directory(STUDY_NAME)
+    directory = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
 
     # Then
     assert directory.is_dir()
 
 
-def test_rejects_blank_study_name(mock_results_dir: Path) -> None:
+def test_rejects_blank_track_name(mock_results_dir: Path) -> None:
     """
-    목적: 검증명이 비면 폴더 이름이 시각뿐이라 무엇의 결과인지 알 수 없다.
+    목적: 매매법 이름이 비면 폴더 이름이 시각뿐이라 무엇의 결과인지 알 수 없다.
 
-    Given: 공백 검증명
+    Given: 공백 이름
     When: 결과 폴더를 만든다
     Then: ValueError
     """
-    with pytest.raises(ValueError, match="검증명"):
-        writer.create_run_directory("   ")
+    with pytest.raises(ValueError, match="매매법"):
+        writer.create_run_directory("   ", layer=RESULT_LAYER_STUDY)
+
+
+@pytest.mark.parametrize("bad_name", ["month_end_v2", "QQQ_expiry", "month-end", "월말"])
+def test_rejects_track_name_the_citation_scanner_cannot_find(mock_results_dir: Path, bad_name: str) -> None:
+    """
+    목적: 인용 판정기가 못 찾는 이름으로 폴더를 만들지 못하게 한다 (경계 조건).
+
+    `result_citations` 는 폴더 이름을 `<8자리>_<6자리>_<영소문자와 밑줄>` 로 찾는다. 숫자나
+    대문자가 섞인 slug 로 폴더를 만들면 **폴더는 멀쩡히 생기는데 그 이름은 영원히 인용으로
+    잡히지 않는다** — 결과 문서가 근거로 적어도 `/clean-results` 가 삭제 후보로 내놓는다.
+    계층 이름을 검사하는 것과 **같은 계열의 조용한 실패**라 같은 자리에서 막는다.
+
+    Given: 스캐너 패턴에 맞지 않는 매매법 이름
+    When: 결과 폴더를 만든다
+    Then: ValueError
+    """
+    with pytest.raises(ValueError, match="영소문자"):
+        writer.create_run_directory(bad_name, layer=RESULT_LAYER_STUDY)
+
+
+def test_accepts_every_real_track_name() -> None:
+    """
+    목적: 위 검사가 **실제로 쓰는 이름을 막지 않는다**를 고정한다.
+
+    거부 테스트만 두면 패턴을 지나치게 좁혀도 통과한다. 짝으로 둬서 저장소의 실제 slug 가
+    전부 통과하는지 본다.
+
+    Given: 각 검증 패키지가 선언한 매매법 이름
+    When: 폴더 이름 검사 패턴에 맞춘다
+    Then: 전부 통과한다
+    """
+    # Given
+    from verify_lab.studies.futures_leverage.constants import TRACK_NAME as FUTURES
+    from verify_lab.studies.leverage_tracking.constants import TRACK_NAME as LEVERAGE
+    from verify_lab.studies.month_end.constants import TRACK_NAME as MONTH_END
+    from verify_lab.studies.option_expiry.constants import TRACK_NAME as OPTION_EXPIRY
+    from verify_lab.studies.reverse.constants import TRACK_NAME as REVERSE
+    from verify_lab.studies.usdkrw_equivalence.constants import TRACK_NAME as EQUIVALENCE
+
+    names = [REVERSE, OPTION_EXPIRY, MONTH_END, EQUIVALENCE, LEVERAGE, FUTURES]
+
+    # When / Then
+    unmatched = [name for name in names if not writer.VALID_TRACK_NAME.match(name)]
+    assert unmatched == [], f"실제 매매법 이름이 폴더 이름 검사를 통과하지 못합니다: {unmatched}"
+
+
+def test_rejects_unknown_layer(mock_results_dir: Path) -> None:
+    """
+    목적: 선언되지 않은 계층으로 폴더를 파지 못하게 한다 (경계 조건).
+
+    오타 하나를 통과시키면 **예외 없이 새 상위 폴더가 생긴다.** 그 폴더는 인용 판정기의
+    탐색 대상이 아니므로 산출물이 조용히 시야에서 사라지고, 정리 도구도 보지 못한다.
+
+    Given: 목록에 없는 계층 이름
+    When: 결과 폴더를 만든다
+    Then: ValueError
+    """
+    with pytest.raises(ValueError, match="계층"):
+        writer.create_run_directory(TRACK_NAME, layer="연구")
 
 
 def test_table_is_saved_without_index(tmp_path: Path) -> None:
@@ -139,7 +241,7 @@ def test_run_summary_keeps_parameters(tmp_path: Path) -> None:
     Then: JSON 에 그대로 남는다
     """
     # Given
-    payload = {"study": STUDY_NAME, "seed": 0, "repeats": 1000}
+    payload = {"study": TRACK_NAME, "seed": 0, "repeats": 1000}
 
     # When
     path = writer.save_run_summary(tmp_path, payload)
@@ -159,7 +261,7 @@ def test_run_summary_uses_the_declared_filename(tmp_path: Path) -> None:
     Then: 선언된 파일명으로 저장된다
     """
     # When
-    path = writer.save_run_summary(tmp_path, {"study": STUDY_NAME})
+    path = writer.save_run_summary(tmp_path, {"study": TRACK_NAME})
 
     # Then
     assert path.name == RUN_SUMMARY_FILENAME

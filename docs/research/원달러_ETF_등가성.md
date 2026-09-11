@@ -12,10 +12,10 @@
 
 | 구분 | 경로 |
 | --- | --- |
-| **확정 설계** | [spec/usdkrw_grid.md](../spec/usdkrw_grid.md) — 이 검증 전용 스펙은 없고 그리드 트랙 스펙이 함께 담당합니다 |
+| **확정 설계** | [spec/원달러_그리드_설계.md](../spec/원달러_그리드_설계.md) — 이 검증 전용 스펙은 없고 그리드 트랙 스펙이 함께 담당합니다 |
 | **이 결과를 쓰는 매매 규칙** | `docs/strategy/원달러_그리드.md` — ETF 경로를 쓸 수 있는 근거가 이 문서입니다 (**채택되지 않음**) |
 | **이벤트 정의** | [src/verify_lab/studies/usdkrw_equivalence/](../../src/verify_lab/studies/usdkrw_equivalence/) |
-| **실행 스크립트** | [scripts/studies/run_usdkrw_equivalence.py](../../scripts/studies/run_usdkrw_equivalence.py) |
+| **실행 스크립트** | [scripts/studies/run_usdkrw_equivalence_study.py](../../scripts/studies/run_usdkrw_equivalence_study.py) |
 | **데이터 수집** | [collect_pykrx.py](../../scripts/data/collect_pykrx.py) (ETF·NAV) · [collect_ecos.py](../../scripts/data/collect_ecos.py) (환율·CD91) · [collect_fred.py](../../scripts/data/collect_fred.py) (DTB3) |
 | **테스트** | `tests/test_studies_equivalence_*.py` (5개) |
 | **실행 명령어** | [COMMANDS.md](../COMMANDS.md) "검증 실행" |

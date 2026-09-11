@@ -1,7 +1,7 @@
 """코스닥 월말 매매의 손절 격자 조립을 고정한다.
 
-**판정식은 이미 있다** — `strategy/expiry_trading.simulate_expiry_trade` 가 시가 → 장중 순서와
-갭손절을 담당하고, `strategy/expiry_runner.period_rows` 가 구간별 성적을 낸다.
+**판정식은 이미 있다** — `strategy/trade_fill.simulate_scheduled_trade` 가 시가 → 장중 순서와
+갭손절을 담당하고, `strategy/periods.period_rows` 가 구간별 성적을 낸다.
 이 파일이 검사하는 것은 **그 둘을 조립하는 부분**이다.
 
 고정하는 계약은 일곱이다.
@@ -40,8 +40,8 @@ from verify_lab.strategy.constants import (
     DISPLAY_STOP_LEVEL,
     EXIT_GAP_STOP,
     EXIT_LIMIT,
-    EXPIRY_PERIODS,
     MONTH_END_STOP_LEVELS,
+    PERIODS,
 )
 from verify_lab.strategy.month_end_runner import (
     DISPLAY_MONTH,
@@ -103,7 +103,7 @@ def _write_market(directory: Path, ticker: str) -> Dataset:
 def _write_index(directory: Path, ticker: str) -> Dataset:
     """합성 지수 계열을 만든다.
 
-    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/spec/month_end.md` §7.6),
+    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/spec/월말_진입_설계.md` §7.6),
     그래서 장중 손절을 잴 수 없다.
 
     Args:
@@ -221,13 +221,13 @@ class TestGridAxis:
 
         Given: 합성 ETF 하나
         When: 격자를 돌린다
-        Then: 구간 축이 `EXPIRY_PERIODS` 와 같다
+        Then: 구간 축이 `PERIODS` 와 같다
         """
         # Given / When
         periods = set(outputs.performance[DISPLAY_PERIOD])
 
         # Then
-        assert periods == set(EXPIRY_PERIODS)
+        assert periods == set(PERIODS)
 
 
 class TestStopLoss:

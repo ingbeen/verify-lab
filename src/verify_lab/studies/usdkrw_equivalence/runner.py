@@ -122,7 +122,7 @@ NOTE_ALPHA = "알파의 합격 판정을 붙이지 않았다. 사양서 §16.2 �
 NOTE_RATE = "이자는 직전 거래일의 금리를 달력일 ÷ 365 로 일할한 값이다. 구간이 끝난 뒤 고시된 금리를 쓰면 미래를 참조한다"
 NOTE_LP = "사양서 §16.4 의 LP 호가 스프레드는 일별 데이터로 측정할 수 없어 산출하지 않았다"
 NOTE_COST = "실효 총비용은 분배금을 조정한 NAV 를 노출 배수 기준선에 회귀한 절편이다. 두 보정 중 하나라도 빠지면 값이 크게 틀린다"
-NOTE_TER = "공시 총보수는 판정 기준이 아니라 측정값의 교차확인용이다. 출처와 조회 시점은 docs/spec/usdkrw_grid.md 에 있다"
+NOTE_TER = "공시 총보수는 판정 기준이 아니라 측정값의 교차확인용이다. 출처와 조회 시점은 docs/spec/원달러_그리드_설계.md 에 있다"
 
 
 @dataclass(frozen=True)
@@ -219,7 +219,7 @@ def run_equivalence(
     premium_rows = [_premium_frame(target) for target in ETF_TARGETS]
 
     # 실효 총비용은 **NAV 기준**이라 시장가의 프리미엄 잡음이 섞이지 않는다.
-    # 환율 계열은 확정된 종가를 쓴다 (`docs/spec/usdkrw_grid.md` 결정 C15)
+    # 환율 계열은 확정된 종가를 쓴다 (`docs/spec/원달러_그리드_설계.md` 결정 C15)
     cost_spot = _load_spot(SPOT_CLOSE)
     cost_rows = [_effective_cost_row(target, cost_spot, krw_rate, usd_rate) for target in ETF_TARGETS]
 

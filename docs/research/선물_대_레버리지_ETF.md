@@ -39,14 +39,14 @@
 
 | 구분 | 경로 |
 | --- | --- |
-| 확정 설계 | [spec/futures_leverage.md](../spec/futures_leverage.md) |
+| 확정 설계 | [spec/선물_대_레버리지_ETF_설계.md](../spec/선물_대_레버리지_ETF_설계.md) |
 | 도출된 매매 규칙 | **없음** — 두 상품의 비용 구조 비교이며 진입·청산 규칙을 만들지 않는다 |
 | 이벤트 정의 | **없음** — 신호를 찾는 검증이 아니라 같은 구간을 네 방식으로 굴려 견주는 검증이다 |
 | 연속 계열·롤 | [continuous.py](../../src/verify_lab/studies/futures_leverage/continuous.py) |
 | 포지션 엔진 | [position.py](../../src/verify_lab/studies/futures_leverage/position.py) |
 | 구간 수익률·분해 | [comparison.py](../../src/verify_lab/studies/futures_leverage/comparison.py) |
 | 정수 계약 제약 | [contracts.py](../../src/verify_lab/studies/futures_leverage/contracts.py) |
-| 실행 | [runner.py](../../src/verify_lab/studies/futures_leverage/runner.py) · [run_futures_leverage.py](../../scripts/studies/run_futures_leverage.py) |
+| 실행 | [runner.py](../../src/verify_lab/studies/futures_leverage/runner.py) · [run_futures_leverage_study.py](../../scripts/studies/run_futures_leverage_study.py) |
 | 데이터 수집 | [collect_krx_futures.py](../../scripts/data/collect_krx_futures.py) · [collect_pykrx.py](../../scripts/data/collect_pykrx.py) · [collect_etn.py](../../scripts/data/collect_etn.py) |
 | 배당 보정분 | [distribution.py](../../src/verify_lab/measure/distribution.py) |
 | 테스트 | [test_studies_futures_comparison.py](../../tests/test_studies_futures_comparison.py) · [test_studies_futures_position.py](../../tests/test_studies_futures_position.py) · [test_studies_futures_continuous.py](../../tests/test_studies_futures_continuous.py) · [test_studies_futures_contracts.py](../../tests/test_studies_futures_contracts.py) · [test_krx_futures_collector.py](../../tests/test_krx_futures_collector.py) |
@@ -131,7 +131,7 @@
 ### 3.1 측정 대상 6쌍
 
 종목·기초지수는 검증 #8 이 KRX 전수 조회로 확정한 것을 그대로 쓴다
-([spec/leverage_tracking.md](../spec/leverage_tracking.md) §3.1).
+([spec/레버리지_ETF_괴리_설계.md](../spec/레버리지_ETF_괴리_설계.md) §3.1).
 
 | 지수 | 선물 상품 | 배수 | 짝이 되는 상품 | 기초지수 | 판정 구간 | 1년 표본 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -184,7 +184,7 @@
 | --- | --- |
 | **레버리지 ETF** | 짝이 되는 배수 상품을 그냥 보유. **운용사가 매일 배수를 되돌린다** |
 | **선물 매일** | 매일 노출을 `배수 × 자기자본` 으로 되돌린다. ETF 와 경로가 같아 «비용만의 차이»를 보여준다 |
-| **선물 월 1회** | **진입 후 21거래일마다** 되돌린다. 「매월 1일」이 아니다 (이유는 [spec](../spec/futures_leverage.md) §4 ⑤) |
+| **선물 월 1회** | **진입 후 21거래일마다** 되돌린다. 「매월 1일」이 아니다 (이유는 [spec](../spec/선물_대_레버리지_ETF_설계.md) §4 ⑤) |
 | **선물 그대로** | 진입일에 잡고 **계약 수를 고정**한다. 구간 수익률이 `배수 × 단순 구간수익률` 로 닫힌다 |
 | **롤·베이시스 몫** | `선물 연속계열 − 현물지수`. **양수면 롤 수익**(백워데이션), 음수면 롤 비용(콘탱고). 이름이 부호를 정하지 않는다 |
 | **잔여** | `[선물(매일·이자없음) − ETF] − 배수 × 롤·베이시스 몫`. ETF 총보수·차입·추적오차가 여기 남는다 |

@@ -12,6 +12,13 @@
 | --- | --- | --- |
 | `판정가능` 과 그 값 | `measure/constants.py` | 측정의 원칙 17이 모든 검증에 요구한다 |
 | 칸당 표본 하한 | `measure/constants.py` | 원칙 12가 「10건」을 명시하고 원칙 17이 「원칙 12의 10건」이라며 같은 값임을 선언한다 |
+| 체결 판정식 | `strategy/trade_fill.py` | 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오고, 두 곳에 두면 그 함정을 두 번 관리한다 |
+| 구간별 성적 산식 | `strategy/periods.py` | 구간 5행은 세 매매법에 공통이다 (측정의 원칙 17) |
+
+**매매 계층은 「매매법끼리 서로를 모른다」도 함께 본다.** 예전에는 월말이 옵션 만기일을 거쳐
+역방향을 부르는 사슬이었고, 그래서 사슬의 끝인 월말에는 자기 체결 로직이 하나도 없었다.
+공유 로직을 매매법-중립 모듈로 뺀 뒤에도 **다음 매매법이 남의 runner 에서 가져다 쓰면 사슬이
+다시 생긴다** — 그때 그 함수는 두 매매법의 것이 되고, 한쪽 사정으로 고치면 다른 쪽이 조용히 바뀐다.
 """
 
 import ast
@@ -29,6 +36,61 @@ _OWNER = Path(measure_constants.__file__).resolve()
 # 수집 계층의 공유 상수를 소유한 파일. `_files_defining` 은 소유자를 빼지 않으므로
 # 이 이름이 결과에 그대로 남는 것이 정상이다
 _DATA_CONSTANTS = "verify_lab/data/constants.py"
+
+# 매매 계층의 공유 로직을 소유한 모듈. 매매법 모듈은 여기서만 가져온다
+_STRATEGY_SHARED = ("trade_fill", "periods", "constants")
+
+
+def _strategy_runner_modules() -> list[Path]:
+    """매매법 하나씩에 대응하는 실행 모듈을 찾는다.
+
+    Returns:
+        `strategy/*_runner.py` 목록 (정렬됨)
+    """
+    return sorted((_SOURCE_ROOT / "strategy").glob("*_runner.py"))
+
+
+def _imported_strategy_modules(path: Path) -> set[str]:
+    """그 파일이 `strategy` 안에서 가져오는 모듈 이름을 모은다.
+
+    **네 가지 import 형태를 모두 본다.** 한 형태만 보면 다른 형태로 쓴 코드가 검사를 통과하며,
+    그때 계약은 초록인데 사슬은 되살아난다.
+
+    | 형태 | 예 |
+    | --- | --- |
+    | 절대 `from ... import` | `from verify_lab.strategy.periods import period_rows` |
+    | 패키지에서 모듈을 | `from verify_lab.strategy import periods` |
+    | 모듈 `import` | `import verify_lab.strategy.periods` |
+    | 상대 `from` | `from .periods import period_rows` |
+
+    Args:
+        path: 검사할 소스 파일
+
+    Returns:
+        모듈 이름 집합 (`verify_lab.strategy.` 접두어를 뗀 것)
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    package = "verify_lab.strategy"
+    prefix = f"{package}."
+    found: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level:
+                # 상대 import — `from .periods import x` 는 같은 패키지의 모듈을 가리킨다.
+                # 모듈명이 비면(`from . import x`) 가져온 이름 자체가 모듈이다
+                found.update({alias.name for alias in node.names} if not module else {module.split(".")[0]})
+            elif module == package:
+                found.update(alias.name for alias in node.names)
+            elif module.startswith(prefix):
+                found.add(module[len(prefix) :].split(".")[0])
+        elif isinstance(node, ast.Import):
+            found.update(
+                alias.name[len(prefix) :].split(".")[0] for alias in node.names if alias.name.startswith(prefix)
+            )
+
+    return found
 
 
 def _functions_importing_pykrx(path: Path) -> list[ast.FunctionDef]:
@@ -183,6 +245,65 @@ class TestDataConstantsOwnership:
 
         # Then
         assert offenders == [_DATA_CONSTANTS], f"KRX 날짜 포맷을 자체 정의한 파일이 있습니다: {offenders}"
+
+
+class TestStrategyLayerComposition:
+    """매매 계층은 공유 로직을 중립 모듈에 두고 매매법끼리 서로를 모른다"""
+
+    def test_매매법_모듈이_서로를_가져오지_않는다(self) -> None:
+        """
+        목적: 월말 → 옵션 만기일 → 역방향 사슬로 되돌아가지 않게 한다.
+
+        사슬이 생기면 **공유 함수가 특정 매매법 파일의 소유가 되고**, 그 매매법 사정으로
+        고칠 때 빌려 쓰는 쪽이 조용히 함께 바뀐다. 실제로 그 상태에서 월말은 자기 체결
+        로직이 하나도 없었고, 초안 계획서는 그것을 「체결 모듈이 없다」고 잘못 읽었다.
+
+        Given: `strategy/*_runner.py` 전부
+        When: 각 파일이 `strategy` 안에서 가져오는 모듈을 본다
+        Then: 공유 모듈만 가져오고 다른 매매법의 모듈은 가져오지 않는다
+        """
+        # Given
+        runners = _strategy_runner_modules()
+        assert runners, "매매 실행 모듈을 하나도 찾지 못했습니다"
+
+        # When / Then
+        for path in runners:
+            borrowed = _imported_strategy_modules(path) - set(_STRATEGY_SHARED)
+            assert borrowed == set(), f"{path.name} 가 다른 매매법의 모듈을 가져옵니다: {sorted(borrowed)}"
+
+    def test_매매법마다_실행_모듈이_하나다(self) -> None:
+        """
+        목적: 매매법 이름을 알면 파일 이름을 알 수 있게 고정한다 (목표 1·2).
+
+        **이름에 slug 가 없던 `runner.py` 가 문제의 출발점이었다.** 폴더 목록만 봐서는
+        어느 매매법의 것인지 알 수 없었다.
+
+        Given: `strategy/` 폴더
+        When: 실행 모듈 이름을 본다
+        Then: 확정 이름표의 세 매매법이 각각 하나씩 있다
+        """
+        # When
+        names = {path.name for path in _strategy_runner_modules()}
+
+        # Then
+        assert names == {"reverse_runner.py", "option_expiry_runner.py", "month_end_runner.py"}
+
+    def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
+        """
+        목적: 판정식 단일화(절대 원칙 5)를 기계로 건다.
+
+        월말에 체결 파일을 만들려면 계산을 복사해야 했고, 그러면 **같은 매매법의 손익비가
+        산출물마다 달라지는데 어느 쪽이 맞는지 판별할 방법이 없다.**
+
+        Given: `src/verify_lab` 전체
+        When: 체결 결과 타입을 직접 정의하는 파일을 찾는다
+        Then: `strategy/trade_fill.py` 말고는 하나도 없다
+        """
+        # When
+        offenders = _files_defining(r"^\s*class\s+TradeResult\b")
+
+        # Then
+        assert offenders == ["verify_lab/strategy/trade_fill.py"], f"체결 결과 타입을 자체 정의한 파일이 있습니다: {offenders}"
 
 
 class TestCredentialsBeforeImport:

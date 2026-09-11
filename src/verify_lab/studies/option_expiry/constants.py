@@ -1,6 +1,6 @@
 """검증 #7(옵션 만기일) 이벤트 정의와 실행이 공유하는 상수
 
-파라미터 값은 `docs/spec/option_expiry.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
+파라미터 값은 `docs/spec/옵션_만기일_설계.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
 여러 값을 나란히 산출해 보고하기 위한 목록이므로 하나를 골라 두지 않는다.
 
 표시용 한글 레이블도 여기 둔다. `report` 는 어떤 검증이 자기를 쓰는지 몰라야 하므로
@@ -136,7 +136,7 @@ class ExpiryRule:
 
     만기일은 시세와 무관한 **달력 규칙**이다. 규칙일이 휴장이면 직전 거래일까지 앞당겨지며,
     그 판정에 필요한 거래일 목록은 시세 파일의 날짜 인덱스에서 온다
-    (`docs/spec/option_expiry.md` 결정 ⑤).
+    (`docs/spec/옵션_만기일_설계.md` 결정 ⑤).
 
     Attributes:
         label: 표시 이름
@@ -196,7 +196,7 @@ COL_TICKER: Final = "ticker"
 
 # 목표일을 셀 때 기준이 되는 날. 만기 진입에서는 **규칙일**이며 실제 만기일이 아니다 —
 # 앞당김은 만기 쪽 사정이라 목표 주까지 끌고 가면 한국 추석 달의 보유가 1거래일로 무너진다
-# (`docs/spec/option_expiry.md` 결정 ⑰)
+# (`docs/spec/옵션_만기일_설계.md` 결정 ⑰)
 COL_WEEK_REFERENCE: Final = "week_reference"
 
 # 달력이 지목한 청산일. 그날이 휴장이면 실제 청산일과 달라진다
@@ -215,7 +215,7 @@ COL_EXIT_CLOSE: Final = "exit_close"
 COL_EXIT_WEEKDAY: Final = "exit_weekday"
 
 # 기준선 대비 차이 표에서 어느 기준선과 견줬는지 밝히는 축. 둘은 묻는 질문이 다르다
-# (`docs/spec/option_expiry.md` §3.7)
+# (`docs/spec/옵션_만기일_설계.md` §3.7)
 COL_BASELINE_KIND: Final = "baseline"
 
 # 같은 달 기준선 통계에 붙는 접미사. `_aggregate_by_month` 의 merge suffix 와 **같은 값이어야**
@@ -234,7 +234,7 @@ COL_MEAN_RATE_CONFLICT: Final = "mean_rate_conflict"
 HALF_RATE: Final = 0.5
 
 # 시기 분할 축. 신호를 **시간순으로 세어 균등하게** 가른다 — 시장 구조가 바뀐 시점으로 나누는
-# 달력 경계 방식은 칸마다 표본이 들쭉날쭉해 쓰지 않는다(`docs/spec/option_expiry.md` 결정 ㉖).
+# 달력 경계 방식은 칸마다 표본이 들쭉날쭉해 쓰지 않는다(`docs/spec/옵션_만기일_설계.md` 결정 ㉖).
 # 후보 판정의 시기 항목은 **칸당 표본 하한**을 지켜야 하므로 이 축으로 잰다
 COL_TIME_HALF: Final = "time_half"
 DISPLAY_TIME_HALF_EARLY: Final = "앞 절반"
@@ -242,7 +242,7 @@ DISPLAY_TIME_HALF_LATE: Final = "뒤 절반"
 
 # 묶음 집계에서 쓰는 구간 표지. 보유 거래일 수를 구간 축에 넣으면 **한 매매가 여러 칸으로 쪼개져**
 # 묶음 값이 나오지 않는다. 실제 보유일수로는 도달할 수 없는 음수를 써서 진짜 구간과 섞이지 않게 한다
-# (`docs/spec/option_expiry.md` 결정 ㉑)
+# (`docs/spec/옵션_만기일_설계.md` 결정 ㉑)
 HORIZON_NEXT_WEEK_EXIT: Final = -1
 
 
@@ -267,7 +267,7 @@ class Dataset:
         price_decimals: 종가를 저장할 때의 반올림 자릿수
         exit_weekdays: 달력 기준 청산의 목표 요일. 첫 번째가 본검증이고 나머지는 대조다.
             **한국만 두 벌**인 이유는 만기가 목요일이라 같은 "다음주 금요일"이
-            미국 5거래일 · 한국 6거래일이 되기 때문이다 (`docs/spec/option_expiry.md` 결정 ⑳)
+            미국 5거래일 · 한국 6거래일이 되기 때문이다 (`docs/spec/옵션_만기일_설계.md` 결정 ⑳)
     """
 
     key: str
@@ -348,8 +348,9 @@ WEEKDAY_LABELS: Final = ("월요일", "화요일", "수요일", "목요일", "�
 # 산출물
 # ============================================================
 
-# 결과 폴더 이름 뒤에 붙는 검증명
-STUDY_NAME: Final = "option_expiry"
+# 이 매매법의 이름(slug). **측정과 매매가 같은 값을 본다** — 계층은 산출물의 상위 폴더가
+# 말하므로 이름에 계층을 넣지 않는다. 전에는 같은 매매법이 계층마다 다른 이름으로 불렸다
+TRACK_NAME: Final = "option_expiry"
 
 # 만기월 축과 구별되는 이름. `COL_EXPIRY_MONTH` 는 "2026-08" 같은 연월 문자열이고
 # `COL_EXPIRY_MONTH_NUMBER` 는 1~12 다. 둘 다 "만기월"로 적으면 어느 축인지 알 수 없다

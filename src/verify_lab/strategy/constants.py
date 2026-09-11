@@ -11,7 +11,7 @@ from typing import Final
 # 계층마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
 from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
 from verify_lab.report.constants import DISPLAY_JUDGEABLE
-from verify_lab.studies.index_extreme.constants import DATASETS, Dataset
+from verify_lab.studies.reverse.constants import DATASETS, Dataset
 
 __all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES", "MIN_SAMPLE_PER_CELL"]
 
@@ -44,7 +44,7 @@ MONTH_END_STOP_LEVELS: Final = (0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10)
 #
 # **이 값은 손절선을 확정한다는 뜻이 아니다.** 격자 전부는 그대로 나오며
 # (`.claude/rules/strategy.md` 가 무손절 대조를 요구한다), 이 표는 대상 넷을 한 장에서
-# 견주기 위한 것이다. 확정 여부는 `docs/strategy/코스닥_월말_매매_규칙.md` §1 이 정한다.
+# 견주기 위한 것이다. 확정 여부는 `docs/strategy/월말_진입_매매_규칙.md` §1 이 정한다.
 # **지수는 이 손절선 행이 없으므로 무손절 행이 대신 들어간다** — 걸러내면 30년 축이 표에서 사라진다
 FIXED_STOP_LEVEL: Final = 0.05
 
@@ -182,8 +182,10 @@ PARAMETER_PREFIX_RANK_CUT: Final = "K"
 # 보유일 평균의 반올림 자릿수. 거래일 수라 소수 둘째 자리면 충분하다
 HOLD_DAYS_DECIMALS: Final = 2
 
-# 결과 폴더 이름 뒤에 붙는 이름
-STRATEGY_NAME: Final = "reverse_trading"
+# **매매법 이름(slug)을 이 계층이 정의하지 않는다.** `studies/<slug>/constants.py` 의 `TRACK_NAME`
+# 하나가 소유하고 측정과 매매가 그것을 함께 본다 — 계층은 산출물의 상위 폴더가 말한다.
+# 전에는 여기에 `STRATEGY_NAME = "reverse_trading"` 과 `EXPIRY_STRATEGY_NAME = "expiry_trading"` 이
+# 따로 있어 같은 매매법이 측정 폴더와 매매 폴더에서 다른 이름으로 불렸다
 
 
 # ============================================================
@@ -285,13 +287,10 @@ DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
 DISPLAY_STOP_APPLICABLE: Final = "손절적용"
 
 # **빈칸으로 두지 않는다** — 빈칸은 「값을 못 구했다」로 읽히는데 실제로는 「잴 수 없다」이다.
-# 지수는 종가만 있어(`docs/spec/month_end.md` §7.6) 장중 최악을 알 수 없으므로,
+# 지수는 종가만 있어(`docs/spec/월말_진입_설계.md` §7.6) 장중 최악을 알 수 없으므로,
 # 종가로 근사하면 실제보다 손절이 덜 걸려 성적이 좋아진다
 STOP_APPLICABLE: Final = "가능"
 STOP_NOT_APPLICABLE: Final = "불가(고저가 없음)"
-
-# 결과 폴더 이름 뒤에 붙는 이름
-EXPIRY_STRATEGY_NAME: Final = "expiry_trading"
 
 
 # ============================================================
@@ -310,7 +309,7 @@ PERIOD_SECOND_HALF: Final = "뒤 절반"
 PERIOD_RECENT_10Y: Final = "최근 10년"
 PERIOD_RECENT_5Y: Final = "최근 5년"
 
-EXPIRY_PERIODS: Final = (PERIOD_ALL, PERIOD_FIRST_HALF, PERIOD_SECOND_HALF, PERIOD_RECENT_10Y, PERIOD_RECENT_5Y)
+PERIODS: Final = (PERIOD_ALL, PERIOD_FIRST_HALF, PERIOD_SECOND_HALF, PERIOD_RECENT_10Y, PERIOD_RECENT_5Y)
 
 # 「최근 N년」 구간의 N. 경계는 **데이터 마지막 거래일 기준**이다 (결정 ㊷) —
 # 실행 시각을 쓰면 코드를 안 고쳐도 날짜가 지나면 결과가 바뀌어 재현되지 않는다
