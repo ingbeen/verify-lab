@@ -20,6 +20,7 @@ from verify_lab.common_constants import RATE_TO_PERCENT, RESULT_LAYER_STUDY
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_WIN_RATE
 from verify_lab.report.constants import (
+    CANDIDATES_FILENAME,
     DISPLAY_EXCLUDED,
     DISPLAY_MEAN,
     DISPLAY_MEDIAN,
@@ -74,7 +75,6 @@ FILE_TRADE_EXCESS = "weekly_trade_excess.csv"
 FILE_TRADE_TEST = "weekly_trade_permutation.csv"
 FILE_TRADE_BY_MONTH = "weekly_trade_by_month.csv"
 FILE_TRADE_BY_MONTH_HALVES = "weekly_trade_by_month_halves.csv"
-FILE_CANDIDATES = "candidates.csv"
 
 
 def parse_args() -> argparse.Namespace:
@@ -133,7 +133,7 @@ def _display_headline(outputs: StudyOutputs) -> None:
         table.insert(0, DISPLAY_TICKER, candidates[COL_TICKER].to_numpy())
         print_dataframe(table, logger, title="1차 후보 — 적중률 60% 이상 · 방향 기대값 양수 (적중률 순)")
         # 화면에서 사라진 칸이 어디 있는지 알려주지 않으면 「코드가 대신 판단한다」는 문제가 화면에 남는다
-        logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {FILE_CANDIDATES} 에 만기월 순서로 있습니다")
+        logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {CANDIDATES_FILENAME} 에 만기월 순서로 있습니다")
 
     trade = trade_headline(outputs)
     if trade.empty:
@@ -211,7 +211,7 @@ def main() -> int:
     _save(directory, FILE_TRADE_TEST, outputs.trade_test)
     _save(directory, FILE_TRADE_BY_MONTH, outputs.trade_by_month)
     _save(directory, FILE_TRADE_BY_MONTH_HALVES, outputs.trade_by_month_halves)
-    _save(directory, FILE_CANDIDATES, outputs.candidates)
+    _save(directory, CANDIDATES_FILENAME, outputs.candidates)
 
     _display_headline(outputs)
 

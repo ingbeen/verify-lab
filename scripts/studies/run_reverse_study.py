@@ -20,6 +20,7 @@ from verify_lab.common_constants import RESULT_LAYER_STUDY
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.constants import (
+    CANDIDATES_FILENAME,
     DISPLAY_DOWN_RATE,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
@@ -51,6 +52,7 @@ from verify_lab.studies.reverse.constants import (
     Dataset,
 )
 from verify_lab.studies.reverse.runner import (
+    KEY_CANDIDATES,
     KEY_DATASETS,
     KEY_EMPTY_SIGNAL_GROUPS,
     KEY_END_DATE,
@@ -82,12 +84,15 @@ DISPLAY_ROW_COUNT = "행 수"
 DISPLAY_PERIOD_RANGE = "기간"
 DISPLAY_FILE = "파일"
 
-# 저장할 파일과 요약의 행 수 키. 출력 계약이 확정한 CSV 4개다
+# 저장할 파일과 요약의 행 수 키. 출력 계약이 확정한 CSV 4개에 판정표가 더해져 다섯이다
 OUTPUT_FILES = (
     (SIGNALS_FILENAME, KEY_SIGNALS),
     (STATISTICS_FILENAME, KEY_STATISTICS),
     (EXCESS_FILENAME, KEY_EXCESS),
     (TEST_FILENAME, KEY_TEST_TABLE),
+    # **화면에는 내지 않는다.** 이 검증의 신호군은 파라미터 스윕이라 후보만 뽑아 찍으면
+    # 「고를 목록」이 된다 (측정의 원칙 1). 값은 CSV 에 전 칸 그대로 남는다
+    (CANDIDATES_FILENAME, KEY_CANDIDATES),
 )
 
 # 터미널에 실을 발췌의 축. 전 조합은 CSV 에 있고, 화면은 기본 설정만 훑는 자리다.
@@ -233,6 +238,7 @@ def _table_of(outputs: StudyOutputs, key: str) -> pd.DataFrame:
         KEY_STATISTICS: outputs.statistics,
         KEY_EXCESS: outputs.excess,
         KEY_TEST_TABLE: outputs.test,
+        KEY_CANDIDATES: outputs.candidates,
     }
 
     return tables[key]

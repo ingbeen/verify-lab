@@ -152,11 +152,11 @@ def build_signal_table(frame: pd.DataFrame, signal_details: pd.DataFrame | None 
         basis: sorted(working[working[COL_BASIS] == basis][COL_HORIZON].drop_duplicates().tolist()) for basis in bases
     }
     ordered_labels = [
-        f"{_basis_label(basis)} {_horizon_label(horizon)}" for basis in bases for horizon in horizons_by_basis[basis]
+        f"{_basis_label(basis)} {horizon_label(horizon)}" for basis in bases for horizon in horizons_by_basis[basis]
     ]
 
     working["_label"] = [
-        f"{_basis_label(basis)} {_horizon_label(horizon)}"
+        f"{_basis_label(basis)} {horizon_label(horizon)}"
         for basis, horizon in zip(working[COL_BASIS], working[COL_HORIZON], strict=True)
     ]
     pivoted = (
@@ -202,7 +202,7 @@ def build_statistics_table(summary: pd.DataFrame) -> pd.DataFrame:
 
     return pd.DataFrame(
         {
-            DISPLAY_HORIZON: [_horizon_label(value) for value in ordered[COL_HORIZON]],
+            DISPLAY_HORIZON: [horizon_label(value) for value in ordered[COL_HORIZON]],
             DISPLAY_SIGNAL_COUNT: ordered[COL_SIGNAL_COUNT].to_numpy(),
             DISPLAY_EXCLUDED: ordered[COL_EXCLUDED_COUNT].to_numpy(),
             DISPLAY_SAMPLE_COUNT: ordered[COL_SAMPLE_COUNT].to_numpy(),
@@ -246,7 +246,7 @@ def build_excess_table(excess_by_baseline: Mapping[str, pd.DataFrame]) -> pd.Dat
             pd.DataFrame(
                 {
                     DISPLAY_BASELINE: name,
-                    DISPLAY_HORIZON: [_horizon_label(value) for value in ordered[COL_HORIZON]],
+                    DISPLAY_HORIZON: [horizon_label(value) for value in ordered[COL_HORIZON]],
                     DISPLAY_SIGNAL_SAMPLE: ordered[COL_SIGNAL_SAMPLE_COUNT].to_numpy(),
                     DISPLAY_BASELINE_SAMPLE: ordered[COL_BASELINE_SAMPLE_COUNT].to_numpy(),
                     DISPLAY_MEAN_DIFF: _to_percent(ordered[COL_MEAN_EXCESS]).to_numpy(),
@@ -284,7 +284,7 @@ def build_test_table(test_by_population: Mapping[str, pd.DataFrame]) -> pd.DataF
             pd.DataFrame(
                 {
                     DISPLAY_POPULATION: name,
-                    DISPLAY_HORIZON: [_horizon_label(value) for value in ordered[COL_HORIZON]],
+                    DISPLAY_HORIZON: [horizon_label(value) for value in ordered[COL_HORIZON]],
                     DISPLAY_SAMPLE_COUNT: ordered[COL_SAMPLE_COUNT].to_numpy(),
                     DISPLAY_OBSERVED_MEAN: _to_percent(ordered[COL_OBSERVED_MEAN]).to_numpy(),
                     DISPLAY_OBSERVED_MEDIAN: _to_percent(ordered[COL_OBSERVED_MEDIAN]).to_numpy(),
@@ -362,7 +362,7 @@ def _basis_label(basis: object) -> str:
     return BASIS_LABELS.get(str(basis), str(basis))
 
 
-def _horizon_label(horizon: SupportsInt) -> str:
+def horizon_label(horizon: SupportsInt) -> str:
     """측정 구간을 표시 이름으로 바꾼다.
 
     구간은 정수로 들어온다. pandas 컬럼을 순회하면 numpy 정수가 오므로 `int` 가 아니라

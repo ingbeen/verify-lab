@@ -111,7 +111,7 @@ BASIS_ORDER = {basis.value: index for index, basis in enumerate(ReturnBasis)}
 
 # 측정 구간의 표시 이름. **재는 구간의 목록이 아니라 "거래일 → 이름" 사전이다** —
 # 무엇을 재는지는 `measure.forward_return.DEFAULT_HORIZONS` 가 정한다. 여기 없는 구간은
-# `f"{days}일"` 로 나가므로(`tables._horizon_label`), 그 형태로 충분한 구간은 등록하지 않는다
+# `f"{days}일"` 로 나가므로(`tables.horizon_label`), 그 형태로 충분한 구간은 등록하지 않는다
 HORIZON_LABELS = {
     1: "1일",
     5: "1주",
@@ -149,6 +149,10 @@ SIGNALS_FILENAME = "signals.csv"
 STATISTICS_FILENAME = "statistics.csv"
 EXCESS_FILENAME = "excess.csv"
 TEST_FILENAME = "test.csv"
+
+# 후보 판정표. 축은 검증마다 다르지만(만기월·격자 칸·구간) **파일 이름은 같다** —
+# 흩어진 파일명 문자열이 갈라지는 것을 매매 계층에서 이미 겪었다
+CANDIDATES_FILENAME = "candidates.csv"
 RUN_SUMMARY_FILENAME = "summary.json"
 
 # 한글 헤더가 엑셀에서 깨지지 않도록 BOM 을 붙인다 (기존 산출물 관용과 동일)

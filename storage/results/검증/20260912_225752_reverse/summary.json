@@ -1,0 +1,362 @@
+{
+  "study": "reverse",
+  "datasets": [
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "path": "/home/yblee/workspace/verify-lab/storage/market/QQQ_max.csv",
+      "row_count": 6915,
+      "start_date": "1999-03-10",
+      "end_date": "2026-09-03",
+      "sma_undetermined_count": 199
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "path": "/home/yblee/workspace/verify-lab/storage/market/069500_max.csv",
+      "row_count": 5898,
+      "start_date": "2002-10-14",
+      "end_date": "2026-09-04",
+      "sma_undetermined_count": 199
+    }
+  ],
+  "parameters": {
+    "rank_cuts": [
+      5,
+      10,
+      20
+    ],
+    "start_years": [
+      2003,
+      2005,
+      2008,
+      2011
+    ],
+    "periods": [
+      "전체",
+      "2010년대",
+      "2020년대"
+    ],
+    "horizons": [
+      1,
+      2,
+      3,
+      5,
+      10,
+      21
+    ],
+    "aggregated_basis": "종가",
+    "moving_average_window": 200,
+    "event_gap_days": 30,
+    "zscore_window": 60
+  },
+  "permutation": {
+    "repeats": 1000,
+    "seed": 0
+  },
+  "populations": [
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2003,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 5956
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2003,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 1226
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2005,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 5452
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2005,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 1106
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2008,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 4698
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2008,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 964
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 3941
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 633
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2010년대",
+      "baseline": "단순 보유",
+      "day_count": 2264
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2010년대",
+      "baseline": "조건부 SMA200",
+      "day_count": 301
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2020년대",
+      "baseline": "단순 보유",
+      "day_count": 1677
+    },
+    {
+      "ticker": "QQQ",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2020년대",
+      "baseline": "조건부 SMA200",
+      "day_count": 332
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2003,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 5844
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2003,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 2085
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2005,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 5348
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2005,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 1987
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2008,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 4606
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2008,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 1931
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "전체",
+      "baseline": "단순 보유",
+      "day_count": 3854
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "전체",
+      "baseline": "조건부 SMA200",
+      "day_count": 1631
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2010년대",
+      "baseline": "단순 보유",
+      "day_count": 2215
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2010년대",
+      "baseline": "조건부 SMA200",
+      "day_count": 1029
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2020년대",
+      "baseline": "단순 보유",
+      "day_count": 1639
+    },
+    {
+      "ticker": "KODEX 200",
+      "price_basis": "원본가",
+      "start_year": 2011,
+      "period": "2020년대",
+      "baseline": "조건부 SMA200",
+      "day_count": 602
+    }
+  ],
+  "signal_group_count": 96,
+  "empty_signal_groups": [
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=5",
+      "start_year": 2011,
+      "direction": "폭등",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=5",
+      "start_year": 2011,
+      "direction": "폭락",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=5",
+      "start_year": 2011,
+      "direction": "역방향 전체",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=10",
+      "start_year": 2011,
+      "direction": "폭등",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=10",
+      "start_year": 2011,
+      "direction": "폭락",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=10",
+      "start_year": 2011,
+      "direction": "역방향 전체",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=20",
+      "start_year": 2011,
+      "direction": "폭등",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=20",
+      "start_year": 2011,
+      "direction": "폭락",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "QQQ",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=20",
+      "start_year": 2011,
+      "direction": "역방향 전체",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "KODEX 200",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=5",
+      "start_year": 2011,
+      "direction": "폭등",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "KODEX 200",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=5",
+      "start_year": 2011,
+      "direction": "폭락",
+      "period": "2010년대"
+    },
+    {
+      "ticker": "KODEX 200",
+      "test": "테스트 A(역대급 등락)",
+      "parameter": "K=5",
+      "start_year": 2011,
+      "direction": "역방향 전체",
+      "period": "2010년대"
+    }
+  ],
+  "row_counts": {
+    "signals": 915,
+    "statistics": 576,
+    "excess": 1152,
+    "test": 1152,
+    "candidates": 576
+  },
+  "notes": [
+    "모든 데이터셋을 같은 실행·같은 파라미터로 계산했다. 데이터셋끼리 나란히 놓고 보는 것은 이 전제 위에서만 성립한다",
+    "베이스라인 모집단은 신호군과 같은 기간으로 잘랐다. 이동평균은 전 기간으로 쌓은 뒤 날짜로 걸렀다",
+    "방향 '역방향 전체' 은 두 방향을 한 표본으로 묶되 상승 방향 신호의 수익률에 -1 을 곱해 역방향 진입 기준으로 부호를 맞춘 값이다. 베이스라인은 같은 거래일을 원본과 부호 반전 두 벌로 둔 대칭 모집단이라 표본 수가 두 배이고 평균이 0 이다. 신호일 목록에는 이 방향의 행이 없다 - 방향별 두 블록을 합치면 복원된다"
+  ]
+}

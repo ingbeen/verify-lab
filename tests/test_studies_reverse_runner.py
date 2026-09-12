@@ -30,6 +30,7 @@ from verify_lab.common_constants import (
 )
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS
+from verify_lab.measure.screening import SCREEN_CANDIDATE, SCREEN_EXCLUDED
 from verify_lab.report.constants import (
     DISPLAY_BASELINE,
     DISPLAY_BASELINE_SAMPLE,
@@ -41,6 +42,7 @@ from verify_lab.report.constants import (
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
     DISPLAY_SAMPLE_COUNT,
+    DISPLAY_SCREEN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_UP_RATE,
 )
@@ -1038,6 +1040,104 @@ class TestDatasetsInvariant:
 
         # Then
         assert len(set(tickers)) == len(DATASETS)
+
+
+class TestCandidates:
+    """후보 판정 계약 — 역방향에도 게이트를 붙였다 (2026-09-12)
+
+    **세 매매법 중 이 검증만 판정이 산출물에 없었다.** 그래서 「게이트를 넘는가」를 물을 때마다
+    일회용 계산을 하게 됐고, 재현되지 않았다.
+
+    **축은 구간(보유일)이다.** 신호군 안에서 실제로 고르는 축이고(D+1/D+2/D+3), 매매 규칙이
+    그 선택을 했다. 나머지 여섯은 식별 컬럼으로 남는다.
+
+    [중요] **화면에는 후보 목록을 찍지 않는다.** 신호군이 376개짜리 파라미터 스윕이라, 후보만
+    뽑아 화면에 내면 그 순간 「고를 목록」이 된다 (측정의 원칙 1). CSV 의 판정 열은 이미 보고
+    중인 적중률·평균에서 기계적으로 유도되는 파생값이라 없던 선택 압력을 만들지 않는다.
+    """
+
+    IDENTITY = [
+        DISPLAY_TICKER,
+        DISPLAY_TEST,
+        DISPLAY_PARAMETER,
+        DISPLAY_START_YEAR,
+        DISPLAY_DIRECTION,
+        DISPLAY_PERIOD,
+    ]
+
+    def test_판정표가_식별_컬럼_뒤에_판정_컬럼을_갖는다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 산출물 스키마를 고정한다. 식별 컬럼이 앞에 모여야 표 도구에서 행을 고를 수 있다.
+
+        Given: 실행 결과
+        When: 판정표의 컬럼을 봤을 때
+        Then: 식별 여섯이 앞에 오고 구간 축과 1차 판정이 있다
+        """
+        # Given / When
+        columns = list(wide_outputs.candidates.columns)
+
+        # Then
+        assert columns[:6] == self.IDENTITY
+        assert DISPLAY_HORIZON in columns
+        assert columns[-1] == DISPLAY_SCREEN
+
+    def test_역방향_전체_방향이_판정에_들어_있다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: **확정 대상이 그 축이다.** 실제 매매가 폭등·폭락 구분 없이 역방향으로 들어가므로,
+              이 방향이 빠지면 운용 중인 매매법의 판정이 산출물에 없는 상태가 그대로 남는다.
+
+        Given: 실행 결과
+        When: 판정표의 방향을 봤을 때
+        Then: `역방향 전체` 가 있다
+        """
+        # Given / When / Then
+        assert DISPLAY_DIRECTION_REVERSE_ALL in set(wide_outputs.candidates[DISPLAY_DIRECTION])
+
+    def test_축은_구간이고_신호군마다_구간_수만큼_나온다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 축을 고정한다. 신호군 하나가 구간 수만큼의 행을 갖고 구간이 중복되지 않는다.
+
+        Given: 실행 결과
+        When: 신호군별 행 수와 구간 가짓수를 견줬을 때
+        Then: 둘이 같고 구간 수와도 같다
+        """
+        # Given / When
+        sizes = wide_outputs.candidates.groupby(self.IDENTITY, sort=False)[DISPLAY_HORIZON].nunique()
+        counts = wide_outputs.candidates.groupby(self.IDENTITY, sort=False).size()
+
+        # Then
+        assert (sizes == counts).all(), "한 신호군 안에서 구간이 중복됩니다"
+        assert set(sizes) == {len(DEFAULT_HORIZONS)}
+
+    def test_판정_안_함이_하나도_없다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: **이 검증의 대상은 QQQ·KODEX 200 둘 다 1배 ETF 다.** 지수가 없으므로
+              「판정 안 함」이 나오면 `tradable` 을 잘못 넘긴 것이다.
+
+        Given: 실행 결과
+        When: 1차 판정 값을 봤을 때
+        Then: 후보와 제외뿐이다
+        """
+        # Given / When
+        verdicts = set(wide_outputs.candidates[DISPLAY_SCREEN])
+
+        # Then
+        assert verdicts <= {SCREEN_CANDIDATE, SCREEN_EXCLUDED}, f"판정 안 함이 섞였습니다: {verdicts}"
+
+    def test_판정은_신호군을_늘리지도_줄이지도_않는다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 판정은 **읽기만 한다.** 집계표와 신호군 수가 어긋나면 원본을 건드린 것이다.
+
+        Given: 실행 결과
+        When: 판정표와 집계표의 신호군 수를 견줬을 때
+        Then: 같다
+        """
+        # Given / When
+        judged = wide_outputs.candidates.groupby(self.IDENTITY, sort=False).ngroups
+        measured = wide_outputs.statistics.groupby(self.IDENTITY, sort=False).ngroups
+
+        # Then
+        assert judged == measured
 
 
 class TestReverseAllDirection:

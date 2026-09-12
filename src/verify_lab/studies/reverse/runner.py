@@ -27,8 +27,9 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, below_moving_average
-from verify_lab.measure.constants import COL_BASIS, COL_FORWARD_RETURN
+from verify_lab.measure.constants import COL_BASIS, COL_FORWARD_RETURN, COL_HORIZON
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis, compute_forward_returns
+from verify_lab.measure.screening import screen_candidates
 from verify_lab.measure.statistics import (
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
@@ -36,12 +37,14 @@ from verify_lab.measure.statistics import (
     permutation_test,
     summarize,
 )
-from verify_lab.report.constants import BASIS_LABELS, PERCENT_DECIMALS
+from verify_lab.report.constants import BASIS_LABELS, DISPLAY_HORIZON, PERCENT_DECIMALS
 from verify_lab.report.tables import (
+    build_candidates_table,
     build_excess_table,
     build_signal_table,
     build_statistics_table,
     build_test_table,
+    horizon_label,
 )
 from verify_lab.studies.reverse.annotations import assign_event_ids, reference_zscore
 from verify_lab.studies.reverse.constants import (
@@ -57,6 +60,7 @@ from verify_lab.studies.reverse.constants import (
     DISPLAY_EVENT_COUNT,
     DISPLAY_EVENT_ID,
     DISPLAY_GROUP_SIGNAL_COUNT,
+    DISPLAY_LEAN_SIDE,
     DISPLAY_PARAMETER,
     DISPLAY_PERIOD,
     DISPLAY_RANK,
@@ -143,6 +147,7 @@ KEY_SIGNALS = "signals"
 KEY_STATISTICS = "statistics"
 KEY_EXCESS = "excess"
 KEY_TEST_TABLE = "test"
+KEY_CANDIDATES = "candidates"
 
 # 산출물만 보고는 알 수 없는 실행 조건. 대조의 전제가 무엇이었는지를 남긴다
 NOTE_SAME_PARAMETERS = "모든 데이터셋을 같은 실행·같은 파라미터로 계산했다. 데이터셋끼리 나란히 놓고 보는 것은 이 전제 위에서만 성립한다"
@@ -163,6 +168,7 @@ class StudyOutputs:
         statistics: 신호군 × 칸별 집계
         excess: 베이스라인 3종 대비 초과분
         test: 모집단 3종에 대한 순열 검정
+        candidates: 신호군 × 구간의 후보 판정 (게이트 둘, 단순 보유 기준선)
         summary: 실행 파라미터와 핵심 수치
     """
 
@@ -170,6 +176,7 @@ class StudyOutputs:
     statistics: pd.DataFrame
     excess: pd.DataFrame
     test: pd.DataFrame
+    candidates: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -261,6 +268,7 @@ def run_study(
     statistics_blocks: list[pd.DataFrame] = []
     excess_blocks: list[pd.DataFrame] = []
     test_blocks: list[pd.DataFrame] = []
+    candidates_blocks: list[pd.DataFrame] = []
     dataset_records: list[dict[str, Any]] = []
     population_records: list[dict[str, Any]] = []
     empty_groups: list[dict[str, Any]] = []
@@ -303,11 +311,13 @@ def run_study(
                     statistics_blocks.extend(blocks[1])
                     excess_blocks.extend(blocks[2])
                     test_blocks.extend(blocks[3])
+                    candidates_blocks.extend(blocks[4])
 
     signals = _stack(signal_blocks)
     statistics = _stack(statistics_blocks)
     excess_table = _stack(excess_blocks)
     test_table = _stack(test_blocks)
+    candidates_table = _stack(candidates_blocks)
 
     summary = {
         KEY_STUDY: TRACK_NAME,
@@ -331,6 +341,7 @@ def run_study(
             KEY_STATISTICS: len(statistics),
             KEY_EXCESS: len(excess_table),
             KEY_TEST_TABLE: len(test_table),
+            KEY_CANDIDATES: len(candidates_table),
         },
         KEY_NOTES: [NOTE_SAME_PARAMETERS, NOTE_BASELINE_WINDOW, NOTE_REVERSE_ALL],
     }
@@ -344,6 +355,7 @@ def run_study(
         statistics=statistics,
         excess=excess_table,
         test=test_table,
+        candidates=candidates_table,
         summary=summary,
     )
 
@@ -629,8 +641,8 @@ def _measure_spec(
     repeats: int,
     seed: int,
     empty_groups: list[dict[str, Any]],
-) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
-    """한 이벤트 정의를 방향별로 재고 네 표의 조각을 만든다.
+) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
+    """한 이벤트 정의를 방향별로 재고 다섯 표의 조각을 만든다.
 
     방향은 이벤트 정의가 내는 둘에 더해 **두 방향을 합친 `역방향 전체`** 가 하나 더 있다
     (`_measure_reverse_all` 참고). 사건 번호를 어느 목록에 매기는지는 이벤트 정의가 정한다
@@ -650,7 +662,7 @@ def _measure_spec(
         empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
 
     Returns:
-        신호일·집계·초과분·검정 표의 조각 목록
+        신호일·집계·초과분·검정·판정 표의 조각 목록
     """
     selected = {direction: spec.find(context.frame, context.ranks, direction, start) for direction in Direction}
     if end is not None:
@@ -663,6 +675,7 @@ def _measure_spec(
     statistics_blocks: list[pd.DataFrame] = []
     excess_blocks: list[pd.DataFrame] = []
     test_blocks: list[pd.DataFrame] = []
+    candidates_blocks: list[pd.DataFrame] = []
     normalized_returns: list[pd.DataFrame] = []
 
     for direction, signals in selected.items():
@@ -704,15 +717,8 @@ def _measure_spec(
                 {DISPLAY_EVENT_COUNT: counts[DISPLAY_EVENT_COUNT]},
             )
         )
-        excess_blocks.append(
-            _with_identity(
-                build_excess_table(
-                    {name: excess(signal_summary, population.summary) for name, population in populations.items()}
-                ),
-                identity,
-                counts,
-            )
-        )
+        excess_tables = {name: excess(signal_summary, population.summary) for name, population in populations.items()}
+        excess_blocks.append(_with_identity(build_excess_table(excess_tables), identity, counts))
         test_blocks.append(
             _with_identity(
                 build_test_table(
@@ -725,6 +731,7 @@ def _measure_spec(
                 counts,
             )
         )
+        candidates_blocks.append(_candidates_block(signal_summary, excess_tables, identity, counts))
 
     reverse_blocks = _measure_reverse_all(
         context,
@@ -742,8 +749,9 @@ def _measure_spec(
     statistics_blocks.extend(reverse_blocks[0])
     excess_blocks.extend(reverse_blocks[1])
     test_blocks.extend(reverse_blocks[2])
+    candidates_blocks.extend(reverse_blocks[3])
 
-    return signal_blocks, statistics_blocks, excess_blocks, test_blocks
+    return signal_blocks, statistics_blocks, excess_blocks, test_blocks, candidates_blocks
 
 
 def _measure_reverse_all(
@@ -759,7 +767,7 @@ def _measure_reverse_all(
     repeats: int,
     seed: int,
     empty_groups: list[dict[str, Any]],
-) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
+) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
     """두 방향을 한 표본으로 묶은 `역방향 전체` 신호군을 잰다.
 
     **이벤트 정의가 아니라 집계 단계의 합성이다.** 어느 날이 신호인지는 방향별 경로가 이미
@@ -780,7 +788,7 @@ def _measure_reverse_all(
         empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
 
     Returns:
-        집계·초과분·검정 표의 조각 목록
+        집계·초과분·검정·판정 표의 조각 목록
     """
     identity = {
         DISPLAY_TICKER: context.dataset.label,
@@ -794,7 +802,7 @@ def _measure_reverse_all(
     # 두 방향이 **모두** 0건일 때만 이 신호군도 0건이다. 한쪽만 비면 남은 쪽으로 성립한다
     if not normalized_returns:
         empty_groups.append(_empty_group_record(identity))
-        return [], [], []
+        return [], [], [], []
 
     combined = pd.concat(normalized_returns, ignore_index=True)
     combined_summary = summarize(combined)
@@ -809,13 +817,10 @@ def _measure_reverse_all(
         identity,
         {DISPLAY_EVENT_COUNT: counts[DISPLAY_EVENT_COUNT]},
     )
-    excess_block = _with_identity(
-        build_excess_table(
-            {name: excess(combined_summary, population.summary) for name, population in symmetric_populations.items()}
-        ),
-        identity,
-        counts,
-    )
+    excess_tables = {
+        name: excess(combined_summary, population.summary) for name, population in symmetric_populations.items()
+    }
+    excess_block = _with_identity(build_excess_table(excess_tables), identity, counts)
     test_block = _with_identity(
         build_test_table(
             {
@@ -827,7 +832,11 @@ def _measure_reverse_all(
         counts,
     )
 
-    return [statistics_block], [excess_block], [test_block]
+    # **확정 대상이 이 축이다** — 실제 매매가 폭등·폭락 구분 없이 역방향으로 들어간다.
+    # 기준선도 대칭 모집단이라 「평소보다 나은가」가 같은 부호 규약에서 물어진다
+    judged = _candidates_block(combined_summary, excess_tables, identity, counts)
+
+    return [statistics_block], [excess_block], [test_block], [judged]
 
 
 def _reverse_normalized(returns: pd.DataFrame, direction: Direction) -> pd.DataFrame:
@@ -988,6 +997,57 @@ def _empty_group_record(identity: Mapping[str, Any]) -> dict[str, Any]:
         KEY_DIRECTION: identity[DISPLAY_DIRECTION],
         KEY_PERIOD: identity[DISPLAY_PERIOD],
     }
+
+
+def _candidates_block(
+    signal_summary: pd.DataFrame,
+    excess_tables: Mapping[str, pd.DataFrame],
+    identity: Mapping[str, Any],
+    counts: Mapping[str, Any],
+) -> pd.DataFrame:
+    """신호군 하나의 후보 판정표를 만든다.
+
+    **축은 구간(보유일)이다.** 신호군 안에서 실제로 고르는 축이고(D+1/D+2/D+3), 확정된 매매
+    규칙이 그 선택을 했다. 나머지 여섯(종목·테스트·파라미터·시작연도·방향·시대 구간)은
+    식별 컬럼으로 남아, 다른 두 검증의 「대상별 블록 → 축」과 같은 모양이 된다.
+
+    **기준선은 단순 보유 하나다.** 게이트의 방향 판정이 기준선 대비 차이로 이뤄지는데
+    그 질문은 「평소보다 나은가」이며, 조건부(SMA200)·무작위는 다른 질문에 답한다.
+
+    **`tradable` 은 항상 참이다** — 이 검증의 대상은 QQQ·KODEX 200 둘 다 1배 ETF 이고 지수가 없다.
+
+    Args:
+        signal_summary: 그 신호군의 칸별 집계 (`summarize` 결과)
+        excess_tables: 베이스라인 이름 → 이미 계산된 초과분표. **여기서 다시 계산하지 않는다** —
+            같은 두 프레임으로 `excess` 를 두 번 돌리면 신호군마다 검증·머지가 중복된다
+        identity: 신호군 식별 컬럼
+        counts: 신호 수·사건 수. **판정표도 이것을 싣는다** — 88건이 사건 20개라는 사실이
+            빠지면 표본 독립성을 읽을 수 없다 (측정의 원칙 5)
+
+    Returns:
+        식별 컬럼이 붙은 판정표
+
+    Raises:
+        RuntimeError: 단순 보유 초과분이 없는 경우 (내부 불변조건 위반)
+    """
+    baseline_excess = excess_tables.get(DISPLAY_BASELINE_ALL)
+    if baseline_excess is None:
+        raise RuntimeError("내부 불변조건 위반: 단순 보유 초과분이 없습니다 — " f"기준선 {sorted(excess_tables)} · 신호군 {dict(identity)}")
+
+    merged = signal_summary.merge(baseline_excess, on=[COL_BASIS, COL_HORIZON])
+    judged = screen_candidates(merged, axis_column=COL_HORIZON, tradable=True)
+
+    table = build_candidates_table(judged, axis_column=COL_HORIZON, axis_label=DISPLAY_HORIZON)
+    # **이름을 식별 컬럼의 `방향` 과 가른다.** 같으면 한 표에 헤더가 둘이 되어 조인이 깨진다.
+    # **「거는 방향」으로 부르지 않는 이유**는 지시 대상이 행마다 다르기 때문이다 —
+    # 방향별 행은 «원지수»의 쪽을 말하는데(폭등 신호는 「아래」 = 인버스 진입), `역방향 전체` 행은
+    # 수익률이 이미 역방향 부호로 통일돼 있어 「위」가 «역방향 진입이 이익»을 뜻한다
+    table = table.rename(columns={DISPLAY_DIRECTION: DISPLAY_LEAN_SIDE})
+    # **축 값을 표시 이름으로 바꾼다.** 판정은 정수 구간으로 정렬해야 하므로(문자열이면 "10일"이
+    # "1일"보다 앞선다) 판정이 끝난 뒤에 바꾼다. 산식은 `report` 가 소유한다
+    table[DISPLAY_HORIZON] = [horizon_label(value) for value in judged[COL_HORIZON]]
+
+    return _with_identity(table, identity, counts)
 
 
 def _with_identity(

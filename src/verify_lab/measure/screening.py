@@ -15,6 +15,7 @@
 
 **표본 하한을 걸지 않는다.** 1건짜리 칸도 판정한다. 그런 칸이 과대평가라는 것은 `표본` 컬럼이
 말해 주며, 뺄지는 사용자가 신호를 보고 정한다 (2026-09-12 사용자 결정).
+**다만 0건은 다르다** — 잴 것이 없으므로 판정하지 않고 「판정 안 함」이 된다.
 
 **살 수 없는 대상은 판정하지 않는다** (측정의 원칙 9). 지수는 긴 시계열을 참고하려고 재지만,
 **그 결과로 「우위가 있다」를 주장하면 집행할 수 없는 성적을 근거로 삼게 된다.** 값은 그대로
@@ -83,8 +84,9 @@ DIRECTION_UP: Final = "위"
 DIRECTION_DOWN: Final = "아래"
 
 # 1차 판정. **제외는 「우위가 없다」가 아니라 「이 목록에서는 빼둔다」이다** — 값은 산출물에 그대로 남는다.
-# **「판정 안 함」은 또 다른 사실이다** — 살 수 없는 대상이라 합격도 불합격도 묻지 않았다는 뜻이며,
-# 제외와 한 값으로 합치면 「재봤더니 아니었다」와 「애초에 대상이 아니다」가 구별되지 않는다
+# **「판정 안 함」은 또 다른 사실이다** — 합격도 불합격도 «묻지 않았다»는 뜻이며 이유가 둘이다:
+# ① 살 수 없는 대상(지수) ② 표본이 0건이라 잴 것이 없는 칸.
+# 제외와 한 값으로 합치면 **「재봤더니 아니었다」와 「재본 적이 없다」가 구별되지 않는다**
 SCREEN_CANDIDATE: Final = "후보"
 SCREEN_EXCLUDED: Final = "제외"
 SCREEN_NOT_JUDGED: Final = "판정 안 함"
@@ -169,6 +171,8 @@ def _screen_cell(row: pd.Series, *, axis_column: str, tradable: bool) -> dict[st
     Returns:
         판정표 한 줄
     """
+    sample_count = int(row[COL_SAMPLE_COUNT])
+
     downward = float(row[COL_LOSS_RATE_EXCESS]) > float(row[COL_WIN_RATE_EXCESS])
     hit_rate = float(row[COL_LOSS_RATE] if downward else row[COL_WIN_RATE])
     gap = float(row[COL_LOSS_RATE_EXCESS] if downward else row[COL_WIN_RATE_EXCESS])
@@ -179,12 +183,15 @@ def _screen_cell(row: pd.Series, *, axis_column: str, tradable: bool) -> dict[st
     # 같은 금액을 표본 수만큼 반복 투자했을 때의 단순 합 (측정의 원칙 16). 신호가 드문
     # 매매법은 회당 평균이 구조적으로 작아 크기 감각을 주지 못하므로 둘을 나란히 낸다.
     # **게이트에는 쓰지 않는다** — 표시용이며 판정 기준을 바꾸지 않는다
-    total_return = expected_value * int(row[COL_SAMPLE_COUNT])
+    total_return = expected_value * sample_count
 
     screened = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
 
-    # **「판정 안 함」이 게이트 결과를 덮는다.** 살 수 없는 대상에는 합격도 불합격도 없다
-    if not tradable:
+    # **「판정 안 함」이 게이트 결과를 덮는다.** 묻지 않은 칸에는 합격도 불합격도 없다.
+    # **표본 0건을 함께 거른다** — 그 칸의 적중률·평균은 `NaN` 이고 비교가 전부 거짓이 되어
+    # 가만히 두면 **「제외」로 찍힌다.** 「재봤더니 아니었다」와 「재본 적이 없다」는 다른 사실이다.
+    # **표본 하한은 걸지 않는다** — 1건짜리도 판정하며, 과대평가는 `표본` 컬럼이 말해 준다
+    if not tradable or sample_count == 0:
         verdict = SCREEN_NOT_JUDGED
     else:
         verdict = SCREEN_CANDIDATE if screened else SCREEN_EXCLUDED

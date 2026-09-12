@@ -237,6 +237,31 @@ class TestScreen:
         assert row[COL_SCREEN] == SCREEN_CANDIDATE
         assert int(row[COL_SAMPLE_COUNT]) == 1
 
+    def test_표본이_0건이면_판정하지_않는다(self) -> None:
+        """
+        목적: **「재봤더니 아니었다」와 「재본 적이 없다」를 가른다.** 표본 0건 칸은 적중률·평균이
+              `NaN` 이라 비교가 전부 거짓이 되고, 가만히 두면 **「제외」로 찍힌다.**
+
+        Given: 표본이 0건이고 지표가 결측인 칸
+        When: 살 수 있는 대상으로 판정하면
+        Then: 제외가 아니라 「판정 안 함」이다
+        """
+        # Given
+        summary = _summary(
+            win_rate=float("nan"),
+            loss_rate=float("nan"),
+            win_excess=float("nan"),
+            loss_excess=float("nan"),
+            mean=float("nan"),
+            sample=0,
+        )
+
+        # When
+        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        # Then
+        assert result[COL_SCREEN].iloc[0] == SCREEN_NOT_JUDGED
+
     def test_제외된_칸도_행이_남는다(self) -> None:
         """
         목적: 판정이 칸을 **지우지 않는다.** 산출물에서 사라지면 사용자가 되짚을 수 없다.
