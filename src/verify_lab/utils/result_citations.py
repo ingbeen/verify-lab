@@ -65,7 +65,6 @@ EXCLUDED_PARTS: Final = (
     ".pytest_cache",  # 실행할 때마다 생긴다
     ".ruff_cache",  # 같음
     "reference",  # 읽기 전용으로 들여온 이전 프로젝트의 원본 (`.claude/rules/reference.md`)
-    "claude-config",  # 전역 설정의 사본. 이 저장소의 산출물을 가리키지 않는다
 )
 
 # 묘비 낱말. 인용과 **같은 줄**에 있으면 「일부러 없앤 것」이라 실재를 요구하지 않는다.

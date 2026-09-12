@@ -31,13 +31,12 @@ build-backend = "poetry.core.masonry.api"
 [tool.black]
 line-length = 120
 target-version = ['py312']
-# claude-config/ 는 전역 설정의 «사본» 이다. 포맷하면 백업이 원본과 달라진다
-extend-exclude = "^/(reference|claude-config)/"
+extend-exclude = "^/reference/"
 
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-extend-exclude = ["reference", "claude-config"]
+extend-exclude = ["reference"]
 
 [tool.ruff.lint]
 select = [

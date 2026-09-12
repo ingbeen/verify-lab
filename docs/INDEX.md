@@ -42,8 +42,6 @@
 | [../.claude/rules/context.md](../.claude/rules/context.md) | 사용자 소유 문서 보호, 해석 시 붙잡을 맥락 | `docs/context/**` Read 시점에 자동 |
 | [../.claude/rules/strategy.md](../.claude/rules/strategy.md) | **매매 규칙 계층의 예외 규정** — 이 폴더에서만 손절·기간 설계가 허용되는 이유와 제약 | `docs/strategy/**`·`src/verify_lab/strategy/**`·`scripts/strategy/**` Read 시점에 자동 |
 | [../.claude/skills/clean-results/SKILL.md](../.claude/skills/clean-results/SKILL.md) | **검증 산출물 정리 절차** — 조준 확인 → 목록 → 승인 → 삭제. 인용 판정은 `src/verify_lab/utils/result_citations.py` 가 소유하고 품질 검증이 같은 함수를 씁니다 | `/clean-results` 스킬 호출 |
-| [../.claude/skills/claude-config-export/SKILL.md](../.claude/skills/claude-config-export/SKILL.md) | **전역 Claude 설정 내보내기** — `~/.claude` 와 `~/.claude.json` 에서 옮길 것만 골라 `claude-config/` 에 사본을 만듭니다. **자격증명은 담지 않으며** 그 이유가 문서에 있습니다 | `/claude-config-export` 스킬 호출 |
-| [../.claude/skills/claude-config-import/SKILL.md](../.claude/skills/claude-config-import/SKILL.md) | **받는 PC 에서 적용** — 그대로 적용 / 경로 변환 후 적용 / 승인 후 제외로 나눠 판정하고, 결정을 PC 별로 누적합니다. **훅을 자동 판정하지 않는 이유**가 문서에 있습니다 | `/claude-config-import` 스킬 호출 |
 | `~/.claude/skills/impl-plan/SKILL.md` **(전역)** | 계획서 작성 절차 (SoT) — 저장소 밖이라 링크하지 않습니다 | `/impl-plan` 스킬 호출 |
 | [MEMORY.md](MEMORY.md) | **작업하며 알아낸 것** — 함정·도메인 사실·인계사항·작업 규율·환경 노하우. 하네스 메모리가 이 저장소에서 차단돼 있어(전역 훅) 새 사실은 여기 적습니다 | **항상 자동** (`CLAUDE.md` 가 `@import`) |
 
