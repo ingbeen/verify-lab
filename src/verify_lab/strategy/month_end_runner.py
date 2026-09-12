@@ -60,7 +60,7 @@ from verify_lab.studies.month_end.constants import (
     BASE_EXIT_OFFSET,
     COL_EXIT_DATE,
     COL_MONTH,
-    DATASETS_KOSDAQ,
+    DATASETS,
     TRACK_NAME,
     Dataset,
 )
@@ -85,10 +85,15 @@ KEY_LABEL = "label"
 KEY_ENTRY_COUNT = "entry_count"
 KEY_EXCLUDED_COUNT = "excluded_count"
 
+# 어느 구간을 잰 것인가. **폴더 이름으로는 구별되지 않는다** — 측정과 매매가 slug 하나를
+# 공유하므로 전 기간 실행과 걸러낸 실행이 같은 이름을 갖는다. 여기가 유일한 구분자다
+KEY_FROM_YEAR = "from_year"
+
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 그 달 20일(휴장이면 직전 거래일) 종가이고 청산은 말일 종가다 — 검증 #10 과 같은 날에 들어간다"
 NOTE_STOP_BASE = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
 NOTE_INDEX = "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다"
+NOTE_FROM_YEAR = "시작 연도로 «신호»만 걸렀고 시세는 자르지 않았다 — 「최근 N년」의 기준일은 여전히 시세의 마지막 거래일이다"
 
 
 @dataclass(frozen=True)
@@ -135,15 +140,22 @@ class _Entries:
     excluded_count: int
 
 
-def _collect_entries(dataset: Dataset, frame: pd.DataFrame) -> tuple[dict[int, _Entries], int]:
+def _collect_entries(
+    dataset: Dataset, frame: pd.DataFrame, *, from_year: int | None
+) -> tuple[dict[int, _Entries], int]:
     """검증 #10 과 같은 규칙으로 월별 진입·청산 위치를 만든다.
 
     **진입일 정의를 두 벌 만들지 않는다** — `studies` 의 함수를 그대로 부르므로
     측정과 매매가 같은 날에 들어간다.
 
+    **시작 연도는 «신호»에만 건다.** 시세를 먼저 잘라 넘기면 「최근 N년」의 기준일이
+    함께 움직여 두 실행이 다른 창을 가리키게 되고, **결과는 달라지는데 예외는 나지 않는다**
+    (루트 `CLAUDE.md` — 잘라내는 대상은 언제나 신호 선택이지 시세가 아니다).
+
     Args:
         dataset: 대상 종목
         frame: 날짜 오름차순 시세
+        from_year: 이 연도의 진입부터 센다 (포함). `None` 이면 전 기간
 
     Returns:
         (월 → 진입 목록, 청산일을 확정하지 못해 빠진 진입 수)
@@ -156,6 +168,16 @@ def _collect_entries(dataset: Dataset, frame: pd.DataFrame) -> tuple[dict[int, _
     kept = schedule.frame[COL_EXCLUDED_REASON] == REASON_NONE
     usable = schedule.frame[kept]
     dropped = schedule.frame[~kept]
+
+    # **거르는 기준은 진입일이 아니라 «진입 달» 이다.** 앞당김으로 며칠 당겨져도 그 신호가
+    # 속한 달은 변하지 않으므로, 달력으로 세는 편이 「2000년 이후」라는 말과 정확히 맞는다.
+    #
+    # **제외 목록에도 같은 필터를 건다.** 걸지 않으면 범위 «밖» 의 제외가 성적표에 실려
+    # 「청산일을 확정하지 못했다」와 「아예 묻지 않았다」가 한 숫자로 합쳐진다 (표본 보존)
+    if from_year is not None:
+        usable = usable[usable[COL_MONTH].dt.year >= from_year]
+        dropped = dropped[dropped[COL_MONTH].dt.year >= from_year]
+
     excluded_count = len(dropped)
 
     by_month: dict[int, _Entries] = {}
@@ -301,25 +323,31 @@ def _run_cell(
 
 
 def run_month_end_trading(
-    datasets: tuple[Dataset, ...] = DATASETS_KOSDAQ,
+    datasets: tuple[Dataset, ...] = DATASETS,
     *,
     stop_levels: tuple[float, ...] = MONTH_END_STOP_LEVELS,
+    from_year: int | None = None,
 ) -> TradingOutputs:
-    """코스닥 월말 매매에 손절 격자를 걸어 성적을 낸다.
+    """월말 매매에 손절 격자를 걸어 성적을 낸다.
 
     **12개월 × 두 방향 × (손절선 + 무손절)** 을 전부 돈다. 눈에 띄는 달만 돌리면
     그 선택이 손절 결과에도 그대로 실린다.
 
     Args:
-        datasets: 대상 목록. **지수도 받는다** — 다만 장중 손절에 고가·저가가 필요하므로
-            지수는 한 줄로 강등되고 `손절선(%)` 에 「손절불가」로 적힌다
+        datasets: 대상 목록. 기본값은 **검증 계층과 같은 8대상**이다 — 두 계층의 기본값이
+            갈리면 「인자 없이 돌렸다」가 계층마다 다른 범위를 뜻하고, 산출물 폴더 이름으로는
+            그것이 드러나지 않는다. **지수도 받는다** — 다만 장중 손절에 고가·저가가
+            필요하므로 지수는 한 줄로 강등되고 `손절선(%)` 에 「손절불가」로 적힌다
         stop_levels: 손절선 목록 (비율). 무손절은 자동으로 함께 산출된다
+        from_year: 이 연도의 진입부터 잰다 (포함). `None` 이면 전 기간이다.
+            **성과가 좋아지는 값을 찾는 노브가 아니라 미리 정한 구간을 대조하는 축이며**,
+            쓴 값은 `summary.json` 에 남는다
 
     Returns:
         체결 원자료와 손절선 격자 성적표
 
     Raises:
-        ValueError: 대상 목록이 비었거나 손절선이 비어 있는 경우
+        ValueError: 대상 목록이나 손절선이 비어 있거나, 어떤 대상의 진입이 하나도 없는 경우
     """
     if not datasets:
         raise ValueError("검증 대상이 하나도 없습니다")
@@ -341,8 +369,19 @@ def run_month_end_trading(
     for dataset in datasets:
         frame = load_series_csv(dataset.path) if dataset.is_index else load_market_csv(dataset.path)
         last_day = pd.Timestamp(frame[COL_DATE].iloc[-1])
-        by_month, excluded_count = _collect_entries(dataset, frame)
+        by_month, excluded_count = _collect_entries(dataset, frame, from_year=from_year)
         levels = index_levels if dataset.is_index else etf_levels
+
+        # **진입이 하나도 없으면 조용히 넘어가지 않는다.** 표본 0 인 칸도 행을 남기는 것이
+        # 규칙이라(측정의 원칙 17) 그대로 두면 **0 으로 가득 찬 그럴듯한 성적표**가 나오고,
+        # 사용자는 필터를 잘못 줬거나 시세가 짧다는 것을 알아채지 못한다.
+        #
+        # **원인을 지어내지 않는다** — 필터를 안 걸었는데 「시작 연도 None 이후」라고 적으면
+        # 쓰지도 않은 인자를 가리키게 된다. 필터가 있을 때만 그 사실을 덧붙인다
+        entry_count = sum(len(by_month[month].entry_positions) for month in ALL_MONTHS)
+        if not entry_count:
+            scope = f" (시작 연도 {from_year} 이후)" if from_year is not None else ""
+            raise ValueError(f"{dataset.label}: 진입이 하나도 없습니다{scope}")
 
         for month in ALL_MONTHS:
             entries = by_month[month]
@@ -366,7 +405,7 @@ def run_month_end_trading(
         target_records.append(
             {
                 KEY_LABEL: dataset.label,
-                KEY_ENTRY_COUNT: sum(len(by_month[month].entry_positions) for month in ALL_MONTHS),
+                KEY_ENTRY_COUNT: entry_count,
                 KEY_EXCLUDED_COUNT: excluded_count,
             }
         )
@@ -379,18 +418,25 @@ def run_month_end_trading(
     # 가질 수 없는 값**이라 요약과 CSV 가 어긋난다. 표에서 뽑으면 어긋날 수가 없다
     stop_levels_run = list(dict.fromkeys(performance[DISPLAY_STOP_LEVEL]))
 
+    notes = [NOTE_ENTRY, NOTE_STOP_BASE, NOTE_INDEX]
+    if from_year is not None:
+        notes.append(NOTE_FROM_YEAR)
+
     summary = build_run_summary(
         track=TRACK_NAME,
         datasets=dataset_records,
         rule={
             KEY_STOP_LEVELS: stop_levels_run,
+            # **안 걸렀으면 `None` 을 그대로 남긴다.** 데이터 시작 연도 같은 값으로 채우면
+            # 「걸렀다」와 「안 걸렀다」가 구별되지 않는다
+            KEY_FROM_YEAR: from_year,
             KEY_TARGETS: target_records,
         },
         row_counts={
             TRADES_FILENAME: len(trades),
             SUMMARY_FILENAME: len(performance),
         },
-        notes=[NOTE_ENTRY, NOTE_STOP_BASE, NOTE_INDEX],
+        notes=notes,
     )
 
     logger.debug(f"손절 격자 완료: 체결 {len(trades):,}행, 성적 {len(performance):,}행")
@@ -398,4 +444,4 @@ def run_month_end_trading(
     return TradingOutputs(trades=trades, performance=performance, summary=summary)
 
 
-__all__ = ["DISPLAY_MONTH", "TradingOutputs", "run_month_end_trading"]
+__all__ = ["DISPLAY_MONTH", "KEY_FROM_YEAR", "TradingOutputs", "run_month_end_trading"]

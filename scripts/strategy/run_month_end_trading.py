@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""코스닥 월말 매매의 손절 격자 실행 CLI
+"""월말 매매의 손절 격자 실행 CLI
 
 검증 #10이 낸 「매월 20일 종가 매수 → 그 달 말일 종가 매도」에 손절선을 걸어
 **손절이 무엇을 막았는가**를 수치로 낸다.
 
 **12개월 × 두 방향 × (손절선 8종 + 무손절)** 을 전부 돈다. 눈에 띄는 달만 돌리면
 그 선택이 손절 결과에도 그대로 실린다.
+
+**대상은 검증 계층과 같은 8개다** — 코스피 넷과 코스닥 넷. 전에는 코스닥만 돌았고
+검증이 코스피로 넓어졌을 때 매매가 따라오지 않아, 코스피에만 있는 칸(11월)의
+손절 성적을 볼 수 없었다.
 
 **맨몸 성적이다** — 수수료·슬리피지·세금을 넣지 않는다 (루트 `CLAUDE.md` 2026-09-06 확정).
 
@@ -35,11 +39,12 @@ from verify_lab.strategy.constants import (
 )
 from verify_lab.strategy.month_end_runner import (
     DISPLAY_MONTH,
+    KEY_FROM_YEAR,
     KEY_STOP_LEVELS,
     run_month_end_trading,
 )
 from verify_lab.strategy.run_summary import KEY_COST, KEY_ROW_COUNTS, KEY_RULE
-from verify_lab.studies.month_end.constants import DATASETS_KOSDAQ, TRACK_NAME, Dataset
+from verify_lab.studies.month_end.constants import DATASETS, TRACK_NAME, Dataset
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -59,10 +64,9 @@ KEY_META_TICKERS = "tickers"
 # `TRACK_NAME` 하나가 소유하고 계층은 `create_run_directory` 가 붙인다 — CLI 에 두면
 # 같은 매매법이 측정 폴더와 매매 폴더에서 다른 이름으로 불린다.
 #
-# **[주의] 이 매매는 아직 코스닥 4대상뿐이다** (`DATASETS_KOSDAQ`). 검증 계층은 코스피까지
-# 8대상으로 늘었지만 매매는 따라가지 않았다. slug 은 매매법당 하나라 두 계층이 `month_end` 를
-# 공유하므로, **폴더 이름만 보고 대상 범위를 추측하면 안 된다** — 범위는 `summary.json` 의
-# `datasets` 가 말한다
+# **[주의] 폴더 이름은 대상 범위도 잰 구간도 말하지 않는다.** slug 은 매매법당 하나라
+# 측정·매매가 `month_end` 를 공유하고, 시작 연도를 달리한 두 실행도 같은 이름을 갖는다 —
+# 범위는 `summary.json` 의 `datasets`, 구간은 같은 파일의 `rule.from_year` 가 말한다
 
 # 화면에 낼 컬럼. 전 컬럼을 내면 가로로 넘쳐 읽을 수 없다
 HEADLINE_COLUMNS = [
@@ -79,9 +83,10 @@ HEADLINE_COLUMNS = [
     DISPLAY_INTRADAY_STOP_COUNT,
 ]
 
-# 화면에 낼 달. **산출물에는 12개월이 다 있고** 화면만 좁힌다 — 검증 #10에서
-# 1차 게이트를 통과한 달이라 지금 볼 것이 그쪽이다
-HEADLINE_MONTHS = (4, 6, 9, 12)
+# 화면에 낼 달. **산출물에는 12개월이 다 있고** 화면만 좁힌다.
+# 검증 #10의 1차 게이트(적중률 60% 이상 + 방향 기대값 0 초과)를 **가장 많은 대상에서**
+# 통과한 셋이다 — 9월 7/8 · 5월 6/8 · 12월 6/8. 나머지는 CSV 에서 본다
+HEADLINE_MONTHS = (5, 9, 12)
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,11 +95,19 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
-    parser = argparse.ArgumentParser(description="코스닥 월말 매매(20일 매수 → 말일 매도)에 손절 격자를 걸어 성적을 냅니다.")
+    parser = argparse.ArgumentParser(description="월말 매매(20일 매수 → 말일 매도)에 손절 격자를 걸어 성적을 냅니다.")
     parser.add_argument(
         "--ticker",
         action="append",
-        help="측정할 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: ETF 둘 + 지수 둘). " "지수는 장중 손절을 잴 수 없어 「손절불가」 한 줄로만 나온다",
+        help="측정할 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: 코스피·코스닥 8대상 전부). " "지수는 장중 손절을 잴 수 없어 「손절불가」 한 줄로만 나온다",
+    )
+    parser.add_argument(
+        "--from-year",
+        type=int,
+        default=None,
+        help="이 연도의 진입부터 잰다 (기본값: 전 기간). 「2000년 이전 시장은 다르다」 같은 "
+        "미리 정한 구간을 대조하는 축이며, 성과가 좋아지는 값을 찾는 노브가 아니다. "
+        "쓴 값은 summary.json 에 남는다",
     )
     return parser.parse_args()
 
@@ -103,7 +116,7 @@ def _selected_datasets(tickers: list[str] | None) -> tuple[Dataset, ...]:
     """인자로 고른 대상만 남긴다.
 
     **지수도 기본 대상에 든다.** 장중 손절은 못 걸지만 손절 없는 성적은 낼 수 있고,
-    ETF 11년으로는 볼 수 없는 기간(코스닥 종합 30년)이 거기 있다.
+    ETF 로는 볼 수 없는 기간(코스피 종합 46년 · 코스닥 종합 30년)이 거기 있다.
 
     Args:
         tickers: 종목 또는 지수 코드 목록. `None` 이면 전부
@@ -115,9 +128,9 @@ def _selected_datasets(tickers: list[str] | None) -> tuple[Dataset, ...]:
         ValueError: 알 수 없는 코드를 지목한 경우
     """
     if not tickers:
-        return DATASETS_KOSDAQ
+        return DATASETS
 
-    known = {dataset.ticker: dataset for dataset in DATASETS_KOSDAQ}
+    known = {dataset.ticker: dataset for dataset in DATASETS}
     unknown = [ticker for ticker in tickers if ticker not in known]
     if unknown:
         raise ValueError(f"알 수 없는 대상입니다: {unknown} (가능한 값: {sorted(known)})")
@@ -135,7 +148,7 @@ def main() -> int:
     args = parse_args()
     datasets = _selected_datasets(args.ticker)
 
-    outputs = run_month_end_trading(datasets)
+    outputs = run_month_end_trading(datasets, from_year=args.from_year)
 
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
     save_table(directory, TRADES_FILENAME, outputs.trades)
@@ -163,6 +176,7 @@ def main() -> int:
             KEY_META_DIRECTORY: str(directory),
             KEY_META_TICKERS: [dataset.ticker for dataset in datasets],
             KEY_STOP_LEVELS: rule[KEY_STOP_LEVELS],
+            KEY_FROM_YEAR: rule[KEY_FROM_YEAR],
             KEY_COST: outputs.summary[KEY_COST],
             KEY_ROW_COUNTS: outputs.summary[KEY_ROW_COUNTS],
         },
