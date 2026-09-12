@@ -138,7 +138,7 @@ def main() -> int:
         KEY_META_REVERSE_TRADING,
         {
             "targets": [f"{target.dataset.label} K={target.rank_cut}" for target in targets],
-            "stop_loss_level": stop_level_value(STOP_LOSS_LEVEL),
+            "stop_loss_level": stop_level_value(STOP_LOSS_LEVEL, measurable=True),
             "hold_limit": HOLD_LIMIT,
             "output": str(directory),
         },

@@ -45,16 +45,10 @@ from verify_lab.strategy.constants import (
     DISPLAY_EXIT_REASON,
     DISPLAY_HOLD_DAYS,
     DISPLAY_RETURN,
-    DISPLAY_STOP_APPLICABLE,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
-    FIXED_STOP_LEVEL,
     MONTH_END_STOP_LEVELS,
-    NO_STOP_LABEL,
-    STOP_APPLICABLE,
-    STOP_NOT_APPLICABLE,
     SUMMARY_FILENAME,
-    SUMMARY_FIXED_STOP_FILENAME,
     TRADES_FILENAME,
     stop_level_value,
 )
@@ -86,7 +80,6 @@ ALL_MONTHS = tuple(range(1, 13))
 # **최상위 키와 비용 표기는 `strategy/run_summary.py` 가 소유한다** — 전에는 이 매매법만
 # 그 둘을 갖고 있었고 나머지 둘에는 없었다
 KEY_STOP_LEVELS = "stop_levels"
-KEY_FIXED_STOP_LEVEL = "fixed_stop_level"
 KEY_TARGETS = "targets"
 KEY_LABEL = "label"
 KEY_ENTRY_COUNT = "entry_count"
@@ -95,7 +88,7 @@ KEY_EXCLUDED_COUNT = "excluded_count"
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 그 달 20일(휴장이면 직전 거래일) 종가이고 청산은 말일 종가다 — 검증 #10 과 같은 날에 들어간다"
 NOTE_STOP_BASE = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
-NOTE_INDEX = "지수는 종가만 있어 장중 손절을 잴 수 없다. 무손절 한 줄로만 나오며 「손절적용」 컬럼에 그 사실이 남는다"
+NOTE_INDEX = "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다"
 
 
 @dataclass(frozen=True)
@@ -104,17 +97,15 @@ class TradingOutputs:
 
     Attributes:
         trades: 체결 원자료. 진입·청산 날짜와 실제 체결가가 들어 있다 (측정의 원칙 8)
-        performance: 종목 × 월 × 방향 × 손절선 × 구간의 성적표
-        performance_fixed_stop: 위 표에서 확정 손절선 행만 골라낸 것. **컬럼 구성은 같다** —
-            ETF 행은 확정값이고 지수 행은 무손절이라 `손절선(%)` 을 빼면 두 행이 다른 규칙으로
-            만들어진 성적임을 알 수 없다. **대상 넷을 한 장에서 견주기 위한 표**이며
-            값은 격자에서 그대로 온다
+        performance: 종목 × 월 × 방향 × 손절선 × 구간의 성적표.
+            **손절선 하나만 보려면 `손절선(%)` 을 그 숫자와 `손절불가` 로 거른다** —
+            지수는 숫자 행이 없으므로 그 값을 함께 걸어야 긴 기간 축이 남는다.
+            **이 매매법의 손절선은 아직 확정 전이다** (`docs/strategy/월말_진입_매매_규칙.md` §1)
         summary: 실행 요약
     """
 
     trades: pd.DataFrame
     performance: pd.DataFrame
-    performance_fixed_stop: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -142,61 +133,6 @@ class _Entries:
     exit_positions: list[int]
     entry_dates: pd.DatetimeIndex
     excluded_count: int
-
-
-def _stop_applicable(dataset: Dataset) -> str:
-    """그 대상에 장중 손절을 걸 수 있었는지 표기를 낸다.
-
-    **무손절 값만으로는 「손절을 걸었는데 안 걸렸다」와 구별되지 않는다.**
-    지수는 종가만 있어 장중 최악을 알 수 없고, 그것은 성적의 성질을 바꾸는 사실이므로
-    행 안에 남긴다.
-
-    Args:
-        dataset: 대상 종목 또는 지수
-
-    Returns:
-        「가능」 또는 「불가(고저가 없음)」
-    """
-    return STOP_NOT_APPLICABLE if dataset.is_index else STOP_APPLICABLE
-
-
-def _fixed_stop_table(performance: pd.DataFrame) -> pd.DataFrame:
-    """손절선 하나로 고정한 성적표를 격자에서 **골라낸다.**
-
-    **다시 계산하지 않는다** — 같은 값을 두 곳에서 만들면 조용히 갈라진다.
-
-    **지수는 그 손절선 행이 없으므로 무손절 행을 쓴다.** 걸러내면 지수가 표에서 통째로
-    사라지는데, 30년 축을 보려고 넣은 것이라 목적이 없어진다.
-
-    **`손절선(%)` 컬럼을 남긴다.** 전에는 「전 행이 같은 값」이라며 드롭했는데 **이 표에서는
-    그 전제가 애초에 성립하지 않는다** — ETF 행은 −5% 이고 지수 행은 무손절이라 두 행이
-    서로 다른 규칙으로 만들어진 성적이다. 컬럼이 없으면 `손절적용` 으로 그것을 추측해야 하고,
-    「가능」이 −5% 인지 −3% 인지는 알 수 없다(같은 칸이 −3% 면 합계가 13.17%, −5% 면 21.36% 다).
-
-    **그래서 이 표는 `성적표.csv` 와 컬럼이 같고 행만 골라낸 것이 된다.** 그래도 따로 내는
-    이유는 그 행 집합이 **단순 필터로 재현되지 않기** 때문이다 — ETF 도 무손절 행을 갖기에
-    「−5% 또는 무손절」로 걸면 ETF 무손절 행이 섞여 들어온다(실측 720행 대 480행).
-
-    Args:
-        performance: 손절선 격자 성적표
-
-    Returns:
-        확정 손절선 행만 고른 성적표. 컬럼 구성은 입력과 같다
-
-    Raises:
-        ValueError: 고를 행이 하나도 없는 경우 (격자에 그 손절선이 없다는 뜻이다)
-    """
-    wanted = stop_level_value(FIXED_STOP_LEVEL)
-    applicable = performance[DISPLAY_STOP_APPLICABLE] == STOP_APPLICABLE
-
-    picked = performance[
-        (applicable & (performance[DISPLAY_STOP_LEVEL] == wanted))
-        | (~applicable & (performance[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL))
-    ]
-    if picked.empty:
-        raise ValueError(f"손절선 {wanted} 행을 격자에서 찾지 못했습니다. 손절선 목록에 그 값이 있는지 확인하세요")
-
-    return picked.reset_index(drop=True)
 
 
 def _collect_entries(dataset: Dataset, frame: pd.DataFrame) -> tuple[dict[int, _Entries], int]:
@@ -250,7 +186,7 @@ def _trade_row(
     *,
     month: int,
     bet_down: bool,
-    stop_level: float | None,
+    stop_display: float | str,
 ) -> dict[str, Any]:
     """체결 하나를 표 행으로 바꾼다.
 
@@ -264,7 +200,8 @@ def _trade_row(
         result: 체결 결과
         month: 진입 달
         bet_down: 아래로 걸었는지 여부
-        stop_level: 손절선. `None` 이면 무손절
+        stop_display: 산출물에 실을 손절선 표기. **여기서 만들지 않고 받는다** —
+            두 표가 같은 칸에 다른 값을 실으면 조인이 안 되므로 호출부가 한 번만 만든다
 
     Returns:
         표 한 줄
@@ -280,8 +217,7 @@ def _trade_row(
         DISPLAY_TICKER: dataset.label,
         DISPLAY_MONTH: month,
         DISPLAY_DIRECTION: DIRECTION_DOWN if bet_down else DIRECTION_UP,
-        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
-        DISPLAY_STOP_APPLICABLE: _stop_applicable(dataset),
+        DISPLAY_STOP_LEVEL: stop_display,
         DISPLAY_ENTRY_DATE: pd.Timestamp(frame.iloc[entry_position][COL_DATE]).strftime(DATE_FORMAT),
         DISPLAY_ENTRY_PRICE: round(entry_price, dataset.price_decimals),
         DISPLAY_EXIT_DATE: pd.Timestamp(frame.iloc[exit_position][COL_DATE]).strftime(DATE_FORMAT),
@@ -319,6 +255,10 @@ def _run_cell(
     hold_days: list[int] = []
     reasons: list[str] = []
 
+    # **표기를 한 번만 만든다.** 두 표가 같은 칸에 다른 값을 실으면 조인이 안 된다 —
+    # 지수 여부에서 유도되는 식이라 두 곳에 두면 한쪽만 바뀔 수 있다
+    stop_display = stop_level_value(stop_level, measurable=not dataset.is_index)
+
     for entry_position, exit_position in zip(entries.entry_positions, entries.exit_positions, strict=True):
         result = simulate_scheduled_trade(
             frame,
@@ -330,7 +270,9 @@ def _run_cell(
         )
 
         accumulator.trades.append(
-            _trade_row(dataset, frame, entry_position, result, month=month, bet_down=bet_down, stop_level=stop_level)
+            _trade_row(
+                dataset, frame, entry_position, result, month=month, bet_down=bet_down, stop_display=stop_display
+            )
         )
         returns.append(result.return_rate)
         hold_days.append(result.hold_days)
@@ -340,8 +282,7 @@ def _run_cell(
         DISPLAY_TICKER: dataset.label,
         DISPLAY_MONTH: month,
         DISPLAY_DIRECTION: DIRECTION_DOWN if bet_down else DIRECTION_UP,
-        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
-        DISPLAY_STOP_APPLICABLE: _stop_applicable(dataset),
+        DISPLAY_STOP_LEVEL: stop_display,
     }
 
     # 성적 산식은 `periods` 가 소유한다. 구간 5개와 갭손절 집계가 여기서 나온다
@@ -371,11 +312,11 @@ def run_month_end_trading(
 
     Args:
         datasets: 대상 목록. **지수도 받는다** — 다만 장중 손절에 고가·저가가 필요하므로
-            지수는 무손절 한 줄로 강등되고 「손절적용」 컬럼에 그 사실이 남는다
+            지수는 한 줄로 강등되고 `손절선(%)` 에 「손절불가」로 적힌다
         stop_levels: 손절선 목록 (비율). 무손절은 자동으로 함께 산출된다
 
     Returns:
-        체결 원자료와 성적표 둘 (격자 · 손절선 고정)
+        체결 원자료와 손절선 격자 성적표
 
     Raises:
         ValueError: 대상 목록이 비었거나 손절선이 비어 있는 경우
@@ -392,7 +333,7 @@ def run_month_end_trading(
     # 무손절을 격자의 한 행으로 함께 돈다 — 「손절이 무엇을 막았는가」를 재려면 기준이 있어야 한다
     etf_levels: tuple[float | None, ...] = (*stop_levels, None)
 
-    # **지수는 무손절 한 줄뿐이다.** 장중 손절에는 고가·저가가 필요한데 지수는 종가만 있고
+    # **지수는 한 줄뿐이고 「손절불가」로 적힌다.** 장중 손절에는 고가·저가가 필요한데 지수는 종가만 있고
     # (`docs/spec/월말_진입_설계.md` §7.6), 종가로 근사하면 실제보다 손절이 덜 걸려
     # 성적이 좋아진다. 거부하지 않고 강등하는 것은 **30년 축을 성적표에서 보기 위해서**다
     index_levels: tuple[float | None, ...] = (None,)
@@ -432,27 +373,29 @@ def run_month_end_trading(
 
     trades = pd.DataFrame(accumulator.trades)
     performance = to_summary_frame(accumulator.performance)
-    fixed_stop = _fixed_stop_table(performance)
+
+    # **성적표에 실제로 나온 값을 적는다.** ETF 격자를 그대로 적으면 지수만 고른 실행
+    # (`--ticker 2203`)에서 돌지도 않은 손절선을 적게 되고, 특히 `무손절` 은 **지수 행이
+    # 가질 수 없는 값**이라 요약과 CSV 가 어긋난다. 표에서 뽑으면 어긋날 수가 없다
+    stop_levels_run = list(dict.fromkeys(performance[DISPLAY_STOP_LEVEL]))
 
     summary = build_run_summary(
         track=TRACK_NAME,
         datasets=dataset_records,
         rule={
-            KEY_STOP_LEVELS: [stop_level_value(level) for level in etf_levels],
-            KEY_FIXED_STOP_LEVEL: stop_level_value(FIXED_STOP_LEVEL),
+            KEY_STOP_LEVELS: stop_levels_run,
             KEY_TARGETS: target_records,
         },
         row_counts={
             TRADES_FILENAME: len(trades),
             SUMMARY_FILENAME: len(performance),
-            SUMMARY_FIXED_STOP_FILENAME: len(fixed_stop),
         },
         notes=[NOTE_ENTRY, NOTE_STOP_BASE, NOTE_INDEX],
     )
 
-    logger.debug(f"손절 격자 완료: 체결 {len(trades):,}행, 성적 {len(performance):,}행, 고정 손절선 {len(fixed_stop):,}행")
+    logger.debug(f"손절 격자 완료: 체결 {len(trades):,}행, 성적 {len(performance):,}행")
 
-    return TradingOutputs(trades=trades, performance=performance, performance_fixed_stop=fixed_stop, summary=summary)
+    return TradingOutputs(trades=trades, performance=performance, summary=summary)
 
 
 __all__ = ["DISPLAY_MONTH", "TradingOutputs", "run_month_end_trading"]

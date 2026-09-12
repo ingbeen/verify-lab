@@ -177,8 +177,8 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 ##### 왜 손익비를 게이트에 넣지 않았나 (2026-09-10 개정, 실측 근거)
 
 게이트로 두는 안을 먼저 검토했고 **네 가지 실측으로 기각**했습니다. 값은 전부
-`storage/results/매매/20260911_182130_option_expiry/성적표.csv` 와
-`storage/results/매매/20260911_182129_reverse/성적표.csv` 에 있습니다.
+`storage/results/매매/20260912_102841_option_expiry/성적표.csv` 와
+`storage/results/매매/20260912_102840_reverse/성적표.csv` 에 있습니다.
 
 | 기각 근거 | 실측 |
 | --- | --- |

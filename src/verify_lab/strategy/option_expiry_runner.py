@@ -35,7 +35,6 @@ from verify_lab.strategy.constants import (
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_HOLD_DAYS,
     DISPLAY_RETURN,
-    DISPLAY_STOP_APPLICABLE,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TARGET_DATE,
     DISPLAY_TICKER,
@@ -43,7 +42,6 @@ from verify_lab.strategy.constants import (
     EXPIRY_DIRECTION_DOWN,
     EXPIRY_DIRECTION_UP,
     EXPIRY_STOP_LEVEL,
-    STOP_APPLICABLE,
     STOP_GRID_FILENAME,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -231,7 +229,7 @@ def run_option_expiry_trading(
         track=TRACK_NAME,
         datasets=list(dataset_records.values()),
         rule={
-            KEY_STOP_LEVELS: [stop_level_value(level) for level in stop_levels],
+            KEY_STOP_LEVELS: [stop_level_value(level, measurable=True) for level in stop_levels],
             KEY_CELLS: cell_records,
         },
         row_counts={TRADES_FILENAME: len(trades), filename: len(performance)},
@@ -418,11 +416,10 @@ def _identity(dataset: Dataset, cell: ExpiryCell, stop_level: float | None) -> d
         DISPLAY_TICKER: dataset.label,
         DISPLAY_EXPIRY_MONTH: cell.expiry_month,
         DISPLAY_DIRECTION: EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
-        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
-        # **언제나 「가능」인 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
+        # **언제나 잴 수 있는 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
         # 그 로더가 시가·고가·저가를 요구하므로 종가 계열(지수)은 읽는 단계에서 거부된다 —
-        # 그래서 값을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다
-        DISPLAY_STOP_APPLICABLE: STOP_APPLICABLE,
+        # 그래서 `measurable` 을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다
+        DISPLAY_STOP_LEVEL: stop_level_value(stop_level, measurable=True),
     }
 
 

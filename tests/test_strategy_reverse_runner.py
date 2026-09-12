@@ -213,20 +213,20 @@ class TestAxes:
         for table in (outputs.trades, outputs.performance):
             assert list(table.columns[: len(IDENTITY_COLUMNS)]) == list(IDENTITY_COLUMNS)
 
-    def test_식별_컬럼은_여섯_개다(self) -> None:
+    def test_식별_컬럼은_다섯_개다(self) -> None:
         """
         목적: 보유 한도 축이 사라진 것과 손절 정보가 더해진 것을 값으로 고정한다
 
         **`방향` 은 두 표에서 다른 것을 가리킨다** — 성적표는 두 방향을 합친 표본이라
         `역방향 전체`, 거래내역은 그 신호가 폭등이었나 폭락이었나다.
-        `손절선(%)`·`손절적용` 이 없으면 그 표가 −5% 성적인지 무손절인지 판별되지 않는다.
+        `손절선(%)` 이 없으면 그 표가 −5% 성적인지 무손절인지 판별되지 않는다.
 
         Given: 식별 컬럼 정의
         When: 개수를 봤을 때
-        Then: 종목·파라미터·시작연도·방향·손절선·손절적용 여섯이다
+        Then: 종목·파라미터·시작연도·방향·손절선 다섯이다
         """
         # Given / When / Then
-        assert len(IDENTITY_COLUMNS) == 6
+        assert len(IDENTITY_COLUMNS) == 5
 
     def test_체결_내역은_신호마다_한_행이다(self, outputs: StrategyOutputs) -> None:
         """
@@ -493,7 +493,9 @@ class TestTargetsInvariant:
         rule = outputs.summary[KEY_RULE]
 
         # Then
-        assert rule[KEY_STOP_LEVEL] == pytest.approx(stop_level_value(STOP_LOSS_LEVEL), abs=RATE_TOLERANCE)
+        assert rule[KEY_STOP_LEVEL] == pytest.approx(
+            stop_level_value(STOP_LOSS_LEVEL, measurable=True), abs=RATE_TOLERANCE
+        )
         assert rule[KEY_HOLD_LIMIT] == HOLD_LIMIT
 
 

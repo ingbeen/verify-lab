@@ -31,12 +31,10 @@ from verify_lab.strategy.constants import (
     DISPLAY_WIN_RATE,
     PERIOD_ALL,
     SUMMARY_FILENAME,
-    SUMMARY_FIXED_STOP_FILENAME,
     TRADES_FILENAME,
 )
 from verify_lab.strategy.month_end_runner import (
     DISPLAY_MONTH,
-    KEY_FIXED_STOP_LEVEL,
     KEY_STOP_LEVELS,
     run_month_end_trading,
 )
@@ -96,7 +94,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ticker",
         action="append",
-        help="측정할 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: ETF 둘 + 지수 둘). " "지수는 장중 손절을 잴 수 없어 무손절 성적으로만 나온다",
+        help="측정할 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: ETF 둘 + 지수 둘). " "지수는 장중 손절을 잴 수 없어 「손절불가」 한 줄로만 나온다",
     )
     return parser.parse_args()
 
@@ -104,7 +102,7 @@ def parse_args() -> argparse.Namespace:
 def _selected_datasets(tickers: list[str] | None) -> tuple[Dataset, ...]:
     """인자로 고른 대상만 남긴다.
 
-    **지수도 기본 대상에 든다.** 장중 손절은 못 걸지만 무손절 성적은 낼 수 있고,
+    **지수도 기본 대상에 든다.** 장중 손절은 못 걸지만 손절 없는 성적은 낼 수 있고,
     ETF 11년으로는 볼 수 없는 기간(코스닥 종합 30년)이 거기 있다.
 
     Args:
@@ -142,7 +140,6 @@ def main() -> int:
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
     save_table(directory, TRADES_FILENAME, outputs.trades)
     save_table(directory, SUMMARY_FILENAME, outputs.performance)
-    save_table(directory, SUMMARY_FIXED_STOP_FILENAME, outputs.performance_fixed_stop)
     save_run_summary(directory, outputs.summary)
 
     # 화면은 **저장한 표에서 발췌**한다 — 따로 가공하면 화면에서 본 숫자를 CSV 에서 찾지 못한다
@@ -166,7 +163,6 @@ def main() -> int:
             KEY_META_DIRECTORY: str(directory),
             KEY_META_TICKERS: [dataset.ticker for dataset in datasets],
             KEY_STOP_LEVELS: rule[KEY_STOP_LEVELS],
-            KEY_FIXED_STOP_LEVEL: rule[KEY_FIXED_STOP_LEVEL],
             KEY_COST: outputs.summary[KEY_COST],
             KEY_ROW_COUNTS: outputs.summary[KEY_ROW_COUNTS],
         },

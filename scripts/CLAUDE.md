@@ -56,7 +56,7 @@
 | `reverse_trading` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 손절선·보유 한도, 결과 폴더 |
 | `option_expiry_trading` | `strategy/run_option_expiry_trading.py` | 대상 칸과 손절선, 성적표·체결 원자료의 행 수, 결과 폴더 |
 | `expiry_dividend_probe` | `data/check_expiry_dividend.py` | 칸별로 보유 구간에 배당락이 걸린 건수와 그 규모 |
-| `month_end_trading` | `strategy/run_month_end_trading.py` | 결과 폴더, 매매한 종목, **손절선 목록(무손절 포함)**, **고정 성적표가 쓴 손절선**, **비용 미반영 표기**, 표별 산출 행 수 |
+| `month_end_trading` | `strategy/run_month_end_trading.py` | 결과 폴더, 매매한 종목, **손절선 목록(무손절 포함)**, **비용 미반영 표기**, 표별 산출 행 수 |
 | `month_end_study` | `studies/run_month_end_study.py` | 결과 폴더, 측정한 대상, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |
 
 > **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —

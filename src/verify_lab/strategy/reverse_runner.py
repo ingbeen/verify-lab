@@ -32,12 +32,10 @@ from verify_lab.strategy.constants import (
     DISPLAY_PARAMETER,
     DISPLAY_RETURN,
     DISPLAY_START_YEAR,
-    DISPLAY_STOP_APPLICABLE,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     HOLD_LIMIT,
     PARAMETER_PREFIX_RANK_CUT,
-    STOP_APPLICABLE,
     STOP_LOSS_LEVEL,
     SUMMARY_FILENAME,
     TARGETS,
@@ -74,7 +72,6 @@ IDENTITY_COLUMNS = (
     DISPLAY_START_YEAR,
     DISPLAY_DIRECTION,
     DISPLAY_STOP_LEVEL,
-    DISPLAY_STOP_APPLICABLE,
 )
 
 # ============================================================
@@ -231,7 +228,7 @@ def run_reverse_trading(
         track=TRACK_NAME,
         datasets=list(dataset_records.values()),
         rule={
-            KEY_STOP_LEVEL: stop_level_value(stop_level),
+            KEY_STOP_LEVEL: stop_level_value(stop_level, measurable=True),
             KEY_HOLD_LIMIT: hold_limit,
             KEY_ENTRY: NOTE_ENTRY,
             KEY_EXIT: NOTE_STOP_BASE,
@@ -375,11 +372,10 @@ def _identity(target: Target, *, direction: str, stop_level: float) -> dict[str,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
         DISPLAY_START_YEAR: target.start_year,
         DISPLAY_DIRECTION: direction,
-        DISPLAY_STOP_LEVEL: stop_level_value(stop_level),
-        # **언제나 「가능」인 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
+        # **언제나 잴 수 있는 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
         # 그 로더가 시가·고가·저가를 요구하므로 종가 계열(지수)은 읽는 단계에서 거부된다 —
-        # 그래서 값을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다
-        DISPLAY_STOP_APPLICABLE: STOP_APPLICABLE,
+        # 그래서 `measurable` 을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다
+        DISPLAY_STOP_LEVEL: stop_level_value(stop_level, measurable=True),
     }
 
 

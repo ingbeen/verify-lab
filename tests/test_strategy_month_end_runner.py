@@ -45,7 +45,7 @@ from verify_lab.strategy.constants import (
     NO_STOP_LABEL,
     PERIOD_ALL,
     PERIODS,
-    stop_level_value,
+    STOP_NOT_MEASURABLE_LABEL,
 )
 from verify_lab.strategy.month_end_runner import (
     DISPLAY_MONTH,
@@ -478,60 +478,59 @@ class TestLookAhead:
 
 
 class TestIndexDataset:
-    """지수는 손절을 못 재므로 무손절로 강등된다 (거부하지 않는다)"""
+    """지수는 손절을 못 재므로 「손절불가」 한 줄로 강등된다 (거부하지 않는다)"""
 
-    def test_index_produces_only_the_no_stop_row(self, index_outputs: TradingOutputs) -> None:
+    def test_index_produces_only_the_not_measurable_row(self, index_outputs: TradingOutputs) -> None:
         """
-        목적: 지수에 손절선을 넘겨도 **무손절 한 줄만** 나옴을 고정한다.
+        목적: 지수에 손절선을 넘겨도 **「손절불가」 한 줄만** 나옴을 고정한다.
 
         **조용히 종가로 손절을 재면 안 된다** — 장중 최악을 모르니 실제보다 손절이 덜 걸려
         성적이 좋아지고, 그것이 「손절이 필요 없다」로 읽힌다.
 
         Given: 합성 지수 하나 (손절선 목록을 그대로 넘긴다)
         When: 격자를 돌린다
-        Then: 손절선 축의 값이 무손절 하나뿐이다
+        Then: 손절선 축의 값이 손절불가 하나뿐이다
         """
         # Given / When
         levels = set(index_outputs.performance[DISPLAY_STOP_LEVEL])
 
         # Then
-        assert levels == {NO_STOP_LABEL}
+        assert levels == {STOP_NOT_MEASURABLE_LABEL}
 
-    def test_index_rows_are_marked_as_not_applicable(self, index_outputs: TradingOutputs) -> None:
+    def test_index_rows_never_say_no_stop(self, index_outputs: TradingOutputs) -> None:
         """
-        목적: 지수 행에 **「손절을 잴 수 없었다」가 적힘**을 고정한다.
+        목적: 지수 행이 ETF 의 **대조축과 같은 값을 쓰지 않음**을 고정한다.
 
-        무손절 값만 보면 「손절을 걸었는데 한 번도 안 걸렸다」와 구별되지 않는다.
-        **빈칸으로 두지 않는다** — 빈칸은 「값을 못 구했다」로 읽힌다.
+        `무손절` 은 **걸지 않은** 것이고 `손절불가` 는 **잴 수 없는** 것이다. 한 값이 둘을
+        겸하면 「손절을 걸었는데 한 번도 안 걸렸다」와 구별되지 않고, 그 겸용 때문에
+        한 손절선으로 고정한 행을 한 컬럼으로 고를 수 없었다.
 
         Given: 합성 지수 하나
         When: 격자를 돌린다
-        Then: 두 표의 손절적용 컬럼이 전부 「불가」다
+        Then: 성적표와 거래내역 어디에도 무손절이 없다
         """
-        # Given
-        from verify_lab.strategy.constants import DISPLAY_STOP_APPLICABLE, STOP_NOT_APPLICABLE
-
-        # When / Then
+        # Given / When / Then
         for table in (index_outputs.performance, index_outputs.trades):
-            assert DISPLAY_STOP_APPLICABLE in table.columns
-            assert set(table[DISPLAY_STOP_APPLICABLE]) == {STOP_NOT_APPLICABLE}
+            assert DISPLAY_STOP_LEVEL in table.columns
+            assert NO_STOP_LABEL not in set(table[DISPLAY_STOP_LEVEL])
 
-    def test_etf_rows_are_marked_as_applicable(self, outputs: TradingOutputs) -> None:
+    def test_etf_keeps_the_no_stop_row_as_the_control(self, outputs: TradingOutputs) -> None:
         """
-        목적: ETF 행은 **「가능」**임을 고정한다.
+        목적: ETF 는 **대조축 `무손절` 행을 갖고** 「손절불가」는 쓰지 않음을 고정한다.
 
-        **손절선 값을 이 컬럼에 담지 않는다** — 격자표에는 `손절선(%)` 이 이미 있어 중복이고,
-        손절선을 고정한 표에서만 손절선 뜻이 되면 같은 컬럼명이 파일마다 다른 것을 가리킨다.
+        무손절 대조는 `.claude/rules/strategy.md` 가 요구한다 — 손절의 실질 효용은 수익이
+        아니라 최악 통제라, 대조 없이는 무엇을 막았는지 보이지 않는다.
 
         Given: 합성 ETF 하나
         When: 격자를 돌린다
-        Then: 손절적용 컬럼이 전부 「가능」이다
+        Then: 무손절은 있고 손절불가는 없다
         """
-        # Given
-        from verify_lab.strategy.constants import DISPLAY_STOP_APPLICABLE, STOP_APPLICABLE
+        # Given / When
+        levels = set(outputs.performance[DISPLAY_STOP_LEVEL])
 
-        # When / Then
-        assert set(outputs.performance[DISPLAY_STOP_APPLICABLE]) == {STOP_APPLICABLE}
+        # Then
+        assert NO_STOP_LABEL in levels
+        assert STOP_NOT_MEASURABLE_LABEL not in levels
 
     def test_index_trades_exit_on_the_scheduled_day(self, index_outputs: TradingOutputs) -> None:
         """
@@ -590,81 +589,6 @@ class TestDatasetLabel:
         for entry in entries:
             assert entry[KEY_DATASET_TICKER]
             assert entry[KEY_DATASET_LABEL]
-
-
-class TestFixedStopTable:
-    """손절선을 고정한 성적표"""
-
-    def test_fixed_table_has_no_stop_level_column(self, outputs: TradingOutputs) -> None:
-        """
-        목적: 고정 성적표에 **손절선 컬럼이 남음**을 고정한다.
-
-        **「값이 하나뿐인 필터」라는 전제가 이 표에서는 성립하지 않는다** — ETF 행은 −5% 이고
-        지수 행은 무손절이라 두 행이 서로 다른 규칙으로 만들어진 성적이다. 컬럼이 없으면
-        `손절적용` 으로 추측해야 하고 「가능」이 −5% 인지 −3% 인지는 알 수 없다.
-
-        Given: 합성 ETF 하나
-        When: 격자를 돌린다
-        Then: 고정 표의 컬럼 구성이 격자 성적표와 같다
-        """
-        # Given
-        from verify_lab.strategy.constants import DISPLAY_STOP_APPLICABLE
-
-        # When
-        fixed = outputs.performance_fixed_stop
-
-        # Then
-        assert list(fixed.columns) == list(outputs.performance.columns)
-        assert DISPLAY_STOP_LEVEL in fixed.columns
-        assert DISPLAY_STOP_APPLICABLE in fixed.columns
-
-    def test_fixed_table_matches_the_grid_rows(self, outputs: TradingOutputs) -> None:
-        """
-        목적: 고정 표의 값이 **격자의 해당 손절선 행과 같음**을 고정한다.
-
-        **따로 계산하지 않는다** — 다시 계산하면 두 표가 조용히 갈라진다.
-
-        Given: 합성 ETF 하나
-        When: 격자의 −5% 행과 고정 표를 견준다
-        Then: 합계가 같다
-        """
-        # Given
-        from verify_lab.strategy.constants import DISPLAY_TOTAL, FIXED_STOP_LEVEL
-
-        keys = [DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_PERIOD]
-        grid = outputs.performance
-        sliced = grid[grid[DISPLAY_STOP_LEVEL] == stop_level_value(FIXED_STOP_LEVEL)].set_index(keys)
-
-        # When
-        fixed = outputs.performance_fixed_stop.set_index(keys)
-        merged = fixed[[DISPLAY_TOTAL]].join(sliced[[DISPLAY_TOTAL]], lsuffix="_fixed", rsuffix="_grid")
-
-        # Then
-        assert not merged.empty
-        assert merged[f"{DISPLAY_TOTAL}_fixed"].tolist() == pytest.approx(
-            merged[f"{DISPLAY_TOTAL}_grid"].tolist(), abs=PERCENT_TOLERANCE, nan_ok=True
-        )
-
-    def test_fixed_table_uses_the_no_stop_row_for_indexes(self, index_outputs: TradingOutputs) -> None:
-        """
-        목적: 지수는 고정 표에 **무손절 행**으로 들어감을 고정한다.
-
-        −5% 행이 아예 없으므로 걸러내면 지수가 표에서 사라진다 —
-        **30년 축을 보려고 지수를 넣었는데 그러면 목적이 사라진다.**
-
-        Given: 합성 지수 하나
-        When: 격자를 돌린다
-        Then: 고정 표에 행이 있고 손절적용이 「불가」다
-        """
-        # Given
-        from verify_lab.strategy.constants import DISPLAY_STOP_APPLICABLE, STOP_NOT_APPLICABLE
-
-        # When
-        fixed = index_outputs.performance_fixed_stop
-
-        # Then
-        assert not fixed.empty
-        assert set(fixed[DISPLAY_STOP_APPLICABLE]) == {STOP_NOT_APPLICABLE}
 
 
 def test_empty_dataset_list_raises() -> None:

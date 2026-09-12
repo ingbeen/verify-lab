@@ -9,7 +9,8 @@
 
 - 성적표는 `성적표.csv`, 거래내역은 `거래내역.csv` 이고 **이름은 상수 한 곳에서 온다**
 - 세 성적표가 **같은 공통 컬럼을 같은 순서로** 갖는다. 매매법 고유 컬럼만 뒤에 붙는다
-- `손절선(%)` 값은 **음수 실수**이고 무손절만 문자열이다
+- `손절선(%)` 값은 **음수 실수**이고 문자열은 둘이다 — **`무손절`(걸지 않았다)과 `손절불가`(잴 수 없다)**.
+  두 문자열이 갈려 있어야 **한 컬럼만으로** 한 손절선으로 고정한 행을 고를 수 있다
 - 역방향 성적표의 `방향` 은 **`역방향 전체` 한 값**이다 — 그 행이 폭등·폭락을 합친 성적이다
 - 역방향 성적표도 **구간 5행**이고, 표본이 하한에 못 미쳐도 행이 남는다 (측정의 원칙 17)
 - `사건` 은 **구간별**로 나오고 구간 분할은 `strategy/periods.py` 하나가 소유한다
@@ -62,6 +63,7 @@ from verify_lab.strategy.constants import (
     PERIOD_ALL,
     PERIOD_RECENT_5Y,
     PERIODS,
+    STOP_NOT_MEASURABLE_LABEL,
     TRADES_FILENAME,
     ExpiryCell,
     Target,
@@ -104,7 +106,6 @@ from verify_lab.studies.reverse.constants import Dataset as ReverseDataset
 SUMMARY_COMMON_COLUMNS = (
     "방향",
     "손절선(%)",
-    "손절적용",
     "구간",
     "신호",
     "제외",
@@ -132,7 +133,7 @@ SUMMARY_COMMON_COLUMNS = (
 
 # 거래내역의 공통 컬럼. **`청산 목표일` 이 이 목록 «안»에 끼므로**(옵션 만기일만, 진입가 다음)
 # 두 토막으로 나눈다
-TRADE_COMMON_HEAD = ("방향", "손절선(%)", "손절적용", "진입일", "진입가")
+TRADE_COMMON_HEAD = ("방향", "손절선(%)", "진입일", "진입가")
 TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "청산 사유")
 
 # 매매법 축 — 종목 바로 다음에 온다. **역방향만 두 칸**이다
@@ -336,7 +337,7 @@ def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryO
 def month_end_outputs(tmp_path_factory: pytest.TempPathFactory) -> TradingOutputs:
     """합성 시세와 합성 지수로 돈 월말 매매 결과.
 
-    **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절적용` 과 무손절 표기가 검사된다.
+    **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
     """
     directory = tmp_path_factory.mktemp("month_end")
     _write_market(directory, "SYN")
@@ -510,7 +511,7 @@ class TestStopLevelFormat:
 
     def test_역방향_손절선은_음수_실수다(self, reverse_outputs: StrategyOutputs) -> None:
         """
-        목적: 확정 손절선이 행 안에서 읽히는지 고정한다
+        목적: 그 표에 걸린 손절선이 행 안에서 읽히는지 고정한다
 
         산출물만 보고 −5% 성적인지 무손절인지 판별할 수 없으면 그 표는 근거가 못 된다.
 
@@ -534,23 +535,51 @@ class TestStopLevelFormat:
         # Given / When / Then
         assert self._levels(expiry_outputs.performance) == {-5.0}
 
-    def test_월말_손절선은_음수_실수와_무손절이다(self, month_end_outputs: TradingOutputs) -> None:
+    def test_월말_손절선은_음수_실수와_문자열_둘이다(self, month_end_outputs: TradingOutputs) -> None:
         """
-        목적: 양수 문자열(`"5.0"`)이 남아 있지 않은지 고정한다
+        목적: 양수 문자열(`"5.0"`)이 없고, 두 문자열이 «갈려» 있는지 고정한다
 
-        Given: 합성 시세로 돈 월말 결과
+        `무손절` 과 `손절불가` 는 서로 다른 사실이다 — 앞은 대조축으로 **걸지 않은** 것이고
+        뒤는 고가·저가가 없어 **잴 수 없는** 것이다. 한 값이 둘을 겸하면 필터가 섞인다.
+
+        Given: 합성 시세로 돈 월말 결과 (ETF 와 지수를 함께 넣었다)
         When: 성적표의 손절선 값을 봤을 때
-        Then: 전부 음수 실수이고 무손절만 문자열이다
+        Then: 음수 실수들과 두 문자열이 모두 있다
         """
         # Given
         levels = self._levels(month_end_outputs.performance)
 
         # When
-        numeric = {level for level in levels if level != NO_STOP_LABEL}
+        numeric = {level for level in levels if not isinstance(level, str)}
 
         # Then
         assert NO_STOP_LABEL in levels
+        assert STOP_NOT_MEASURABLE_LABEL in levels
         assert numeric and all(isinstance(level, float) and level < 0 for level in numeric)
+
+    def test_잴_수_없는_대상만_손절불가다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: 두 문자열이 대상에 따라 정확히 갈리는지 고정한다
+
+        섞이면 필터가 조용히 240행을 잃거나 더한다.
+
+        Given: 합성 시세로 돈 월말 결과
+        When: 손절선이 `손절불가` 인 행의 종목을 봤을 때
+        Then: 지수뿐이고, ETF 는 `무손절` 을 갖되 `손절불가` 는 갖지 않는다
+        """
+        # Given
+        table = month_end_outputs.performance
+        index_label = "합성 지수"
+        etf_label = "합성 ETF"
+
+        # When
+        not_measurable = set(table.loc[table[DISPLAY_STOP_LEVEL] == STOP_NOT_MEASURABLE_LABEL, DISPLAY_TICKER])
+        etf_levels = set(table.loc[table[DISPLAY_TICKER] == etf_label, DISPLAY_STOP_LEVEL])
+
+        # Then
+        assert not_measurable == {index_label}
+        assert NO_STOP_LABEL in etf_levels
+        assert STOP_NOT_MEASURABLE_LABEL not in etf_levels
 
     def test_거래내역의_손절선도_같은_형식이다(self, month_end_outputs: TradingOutputs) -> None:
         """
@@ -562,6 +591,43 @@ class TestStopLevelFormat:
         """
         # Given / When / Then
         assert self._levels(month_end_outputs.trades) == self._levels(month_end_outputs.performance)
+
+    def test_형식_변환기가_세_값을_낸다(self) -> None:
+        """
+        목적: `손절선(%)` 값 형식의 **소유자가 하나**임을 함수 단위로 고정한다
+
+        매매법마다 포매터를 두면 조인이 안 된다. 세 갈래는 각각 다른 사실이다 —
+        손절선을 걸었다 / 걸지 않았다(대조축) / 잴 수 없다(고가·저가 없음).
+
+        Given: 매매 계층의 형식 변환기
+        When: 세 경우를 넘겼을 때
+        Then: 음수 실수 · 무손절 · 손절불가가 나온다
+        """
+        # Given
+        from verify_lab.strategy.constants import stop_level_value
+
+        # When / Then
+        assert stop_level_value(0.05, measurable=True) == -5.0
+        assert stop_level_value(None, measurable=True) == NO_STOP_LABEL
+        assert stop_level_value(None, measurable=False) == STOP_NOT_MEASURABLE_LABEL
+
+    def test_잴_수_없는데_손절선이_있으면_내부_불변조건_위반이다(self) -> None:
+        """
+        목적: 있을 수 없는 조합을 **조용히 통과시키지 않음**을 고정한다
+
+        잴 수 없는 대상에는 무손절 한 줄만 도는 것이 규칙이다. 손절선이 함께 오면 호출 측이
+        그 규칙을 깬 것이므로, 기본값을 돌려주면 그 성적이 표에 그대로 실린다.
+
+        Given: 매매 계층의 형식 변환기
+        When: 잴 수 없는데 손절선이 있는 조합을 넘겼을 때
+        Then: `RuntimeError` 를 던진다
+        """
+        # Given
+        from verify_lab.strategy.constants import stop_level_value
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
+            stop_level_value(0.05, measurable=False)
 
 
 class TestReverseDirection:
@@ -733,90 +799,96 @@ class TestEventCount:
             assert "PERIOD_FIRST_HALF" not in source, f"{runner.name} 이 절반 분할을 직접 만듭니다"
 
 
-class TestFixedStopTable:
-    """`성적표_고정손절.csv` — 손절선을 빼지 않는다"""
+class TestSingleColumnStopFilter:
+    """한 손절선으로 고정한 행을 **`손절선(%)` 한 컬럼만으로** 고를 수 있다
 
-    def test_고정손절_표에_손절선이_남는다(self, month_end_outputs: TradingOutputs) -> None:
+    전에는 그 480행을 고르는 데 두 컬럼이 필요해(`손절선` AND `손절적용`) 표를 따로 냈다.
+    엑셀 자동 필터는 **열끼리 AND** 라 그 조건을 한 번에 걸 수 없었기 때문이다.
+    두 문자열을 가른 뒤로는 **한 열 안의 다중선택(OR)** 으로 끝난다.
+    """
+
+    # 월말 규칙 문서 §1 의 권고 손절선(**확정 전**). **프로덕션 상수를 import 하지 않고 손으로 박는다** — 상수를 고치면
+    # 테스트가 따라와 아무것도 고정하지 못한다 (이 모듈 머리말)
+    FIXED_LEVEL = -5.0
+
+    def test_한_컬럼_필터가_네_축의_모든_칸을_한_번씩_준다(self, month_end_outputs: TradingOutputs) -> None:
         """
-        목적: ETF 행과 지수 행이 다른 규칙으로 만들어진 성적임을 표 안에서 드러낸다
-
-        전에는 이 컬럼을 일부러 드롭했다 — 「전 행이 같은 값」이라는 근거였는데
-        이 표에서는 애초에 성립하지 않는다.
+        목적: 지수를 잃지도, ETF 무손절을 더하지도 않는다는 것을 고정한다
 
         Given: 합성 시세로 돈 월말 결과
-        When: 고정손절 표의 컬럼을 봤을 때
-        Then: 격자 성적표와 컬럼이 완전히 같다
-        """
-        # Given / When / Then
-        assert list(month_end_outputs.performance_fixed_stop.columns) == list(month_end_outputs.performance.columns)
-
-    def test_지수_행은_무손절이고_ETF_행은_확정_손절선이다(self, month_end_outputs: TradingOutputs) -> None:
-        """
-        목적: 두 행의 손절선이 실제로 다르다는 것을 값으로 고정한다
-
-        Given: 합성 시세로 돈 월말 결과
-        When: 고정손절 표의 손절선 값을 봤을 때
-        Then: 음수 실수와 무손절이 함께 있다
+        When: `손절선(%)` 이 그 숫자이거나 `손절불가` 인 행만 걸렀을 때
+        Then: (종목 × 월 × 방향 × 구간) 칸마다 정확히 한 행이고 두 대상이 다 있다
         """
         # Given
-        levels = set(month_end_outputs.performance_fixed_stop[DISPLAY_STOP_LEVEL].tolist())
-
-        # When / Then
-        assert NO_STOP_LABEL in levels
-        assert -5.0 in levels
-
-    def test_고정손절_표는_격자에서_골라낸_행이다(self, month_end_outputs: TradingOutputs) -> None:
-        """
-        목적: 다시 계산하지 않았음을 고정한다 — 같은 값을 두 곳에서 만들면 조용히 갈라진다
-
-        Given: 합성 시세로 돈 월말 결과
-        When: 고정손절 표의 행을 격자에서 찾았을 때
-        Then: 전부 격자에 그대로 있다
-        """
-        # Given — **종목을 키에 넣는다.** 빼면 다른 대상의 행으로 만족될 수 있고,
-        # 같은 값을 가진 행이 둘이면 left merge 가 행을 불려도 드러나지 않는다
-        keys = [
-            DISPLAY_TICKER,
-            month_end_runner.DISPLAY_MONTH,
-            DISPLAY_DIRECTION,
-            DISPLAY_STOP_LEVEL,
-            DISPLAY_PERIOD,
-            DISPLAY_TOTAL,
-        ]
-        fixed = month_end_outputs.performance_fixed_stop
+        table = month_end_outputs.performance
+        cells = [DISPLAY_TICKER, month_end_runner.DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_PERIOD]
 
         # When
-        merged = fixed.merge(month_end_outputs.performance[keys].drop_duplicates(), on=keys, how="left", indicator=True)
+        picked = table[table[DISPLAY_STOP_LEVEL].isin([self.FIXED_LEVEL, STOP_NOT_MEASURABLE_LABEL])]
 
         # Then
-        assert len(merged) == len(fixed), "행이 불었습니다 — 키가 행을 특정하지 못합니다"
-        assert (merged["_merge"] == "both").all()
+        assert not picked.duplicated(subset=cells).any(), "한 칸이 두 행으로 나왔습니다"
+        assert len(picked) == len(table.drop_duplicates(subset=cells)), "칸 하나가 빠졌습니다"
+        assert set(picked[DISPLAY_TICKER]) == set(table[DISPLAY_TICKER]), "대상 하나가 필터에서 사라졌습니다"
+
+    def test_무손절을_같이_걸면_ETF_행이_섞인다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: **왜 두 문자열을 갈랐는지**를 실패 모드로 고정한다
+
+        `무손절` 은 ETF 의 대조축 행이라 그 손절선 행과 함께 걸리면 대상이 두 번 실린다.
+        에러가 나지 않으므로 표를 보는 사람은 알아채지 못한다.
+
+        Given: 합성 시세로 돈 월말 결과
+        When: `무손절` 까지 포함해 걸렀을 때
+        Then: 칸이 중복돼 위 필터보다 행이 많다
+        """
+        # Given
+        table = month_end_outputs.performance
+        cells = [DISPLAY_TICKER, month_end_runner.DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_PERIOD]
+
+        # When
+        naive = table[table[DISPLAY_STOP_LEVEL].isin([self.FIXED_LEVEL, STOP_NOT_MEASURABLE_LABEL, NO_STOP_LABEL])]
+
+        # Then
+        assert naive.duplicated(subset=cells).any()
+        assert len(naive) > len(table.drop_duplicates(subset=cells))
+
+    def test_숫자값만_걸면_지수가_통째로_사라진다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: 반대쪽 실패 모드를 고정한다 — 지수를 잃으면 긴 기간 축이 없어진다
+
+        Given: 합성 시세로 돈 월말 결과
+        When: 숫자 손절선 값만으로 걸렀을 때
+        Then: 지수 행이 하나도 없다
+        """
+        # Given
+        table = month_end_outputs.performance
+
+        # When
+        numeric_only = table[table[DISPLAY_STOP_LEVEL] == self.FIXED_LEVEL]
+
+        # Then
+        assert set(numeric_only[DISPLAY_TICKER]) == {"합성 ETF"}
 
 
 class TestFilenames:
     """파일 이름은 상수 한 곳에서 온다"""
 
-    def test_네_파일_이름이_상수로_정의돼_있다(self) -> None:
+    def test_세_파일_이름이_상수로_정의돼_있다(self) -> None:
         """
         목적: 이름이 코드 여러 곳에 흩어진 문자열이던 상태를 닫는다
 
         Given: 매매 계층의 상수 모듈
         When: 파일명 상수를 읽었을 때
-        Then: 네 이름이 한글로 정의돼 있다
+        Then: 세 이름이 한글로 정의돼 있다
         """
         # Given
-        from verify_lab.strategy.constants import (
-            STOP_GRID_FILENAME,
-            SUMMARY_FILENAME,
-            SUMMARY_FIXED_STOP_FILENAME,
-            TRADES_FILENAME,
-        )
+        from verify_lab.strategy.constants import STOP_GRID_FILENAME, SUMMARY_FILENAME, TRADES_FILENAME
 
         # When / Then
         assert SUMMARY_FILENAME == "성적표.csv"
         assert TRADES_FILENAME == "거래내역.csv"
         assert STOP_GRID_FILENAME == "손절선_격자.csv"
-        assert SUMMARY_FIXED_STOP_FILENAME == "성적표_고정손절.csv"
 
     def test_매매_스크립트에_csv_문자열이_없다(self) -> None:
         """
