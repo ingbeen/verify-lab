@@ -14,14 +14,20 @@
 
 두 스킬은 서로 import 하지 않아 센티널 상수가 갈라질 수 있다. **그 일치도 여기서 고정한다** —
 갈라지면 내보내기가 가린 값을 받는 쪽이 알아보지 못하고 그대로 등록한다.
+
+세 번째 계약은 **덮어쓰기 백업**이다. 번들 파일은 통째로 복사되므로 받는 쪽 버전이 사라지는데,
+번들은 «보내는 쪽» 버전만 복원할 수 있다. 내용이 달라지는 파일만 떠 두고 그 목록을 미리
+보여주는 것까지가 계약이며, 그 사본이 다음 번들에 실리지 않는 것도 여기서 고정한다.
 """
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import pytest
+from freezegun import freeze_time
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -49,6 +55,9 @@ def _load_script(path: Path, module_name: str) -> ModuleType:
         pytest.fail(f"모듈 스펙을 만들 수 없습니다: {path}")
 
     module = importlib.util.module_from_spec(spec)
+    # **`sys.modules` 에 등록해야 시간 고정이 걸린다.** freezegun 은 거기 올라온 모듈을 훑어
+    # `datetime` 참조를 갈아끼우는데, 등록하지 않으면 찾지 못해 **정지 없이 진짜 시각이 쓰인다**
+    sys.modules[module_name] = module
     spec.loader.exec_module(module)
 
     return module
@@ -68,7 +77,7 @@ def import_module_under_test() -> ModuleType:
 def export_module() -> ModuleType:
     """내보내는 쪽 스크립트를 로드한다.
 
-    센티널 상수가 양쪽에서 같은지 대조하는 데만 쓴다.
+    센티널 상수 대조와, 백업 폴더가 번들에서 제외되는지 확인하는 데 쓴다.
 
     Returns:
         ModuleType: 치환 함수를 담은 모듈
@@ -814,3 +823,260 @@ def test_remembered_hook_approval_still_wins(import_module_under_test: ModuleTyp
     # Then
     assert verdicts[0].decision == module.APPLY
     assert verdicts[0].needs_confirmation is False
+
+
+def _isolated_paths(module: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[Path, Path]:
+    """번들과 «받는 쪽 홈» 을 모두 `tmp_path` 로 옮긴다.
+
+    적용은 실제로 파일을 쓰므로, 넷을 모두 옮기지 않으면 테스트가 사용자 홈을 건드린다
+    (`tests/CLAUDE.md` 「파일 격리」).
+
+    Args:
+        module: 받는 쪽 모듈
+        monkeypatch: 모듈 상수를 갈아끼울 픽스처
+        tmp_path: 격리된 임시 폴더
+
+    Returns:
+        tuple[Path, Path]: (번들의 home 폴더, 받는 쪽 `.claude` 폴더)
+    """
+    bundle_home = tmp_path / "bundle" / "home"
+    claude_home = tmp_path / "home" / ".claude"
+    bundle_home.mkdir(parents=True)
+    claude_home.mkdir(parents=True)
+
+    monkeypatch.setattr(module, "BUNDLE_HOME_DIR", bundle_home)
+    monkeypatch.setattr(module, "BUNDLE_CLAUDE_JSON_PATH", tmp_path / "bundle" / "claude_json.json")
+    monkeypatch.setattr(module, "TARGET_CLAUDE_HOME", claude_home)
+    monkeypatch.setattr(module, "TARGET_CLAUDE_JSON", tmp_path / "home" / ".claude.json")
+
+    return bundle_home, claude_home
+
+
+def _file_plan(module: ModuleType, environment: object) -> object:
+    """번들 파일만 판정한 계획을 만든다.
+
+    Args:
+        module: 받는 쪽 모듈
+        environment: 판정에 쓸 실측 정보
+
+    Returns:
+        object: 파일 판정만 담은 `Plan`
+    """
+    plan = module.Plan(environment=environment, verdicts=module.classify_files(environment))
+    plan.changed = module.changed_files(plan, environment)
+
+    return plan
+
+
+def _backup_files(claude_home: Path) -> list[Path]:
+    """백업 폴더에 실제로 생긴 파일 목록.
+
+    Args:
+        claude_home: 받는 쪽 `.claude` 폴더
+
+    Returns:
+        list[Path]: 백업된 파일들
+    """
+    backups = claude_home / "backups"
+
+    return sorted(path for path in backups.rglob("*") if path.is_file()) if backups.is_dir() else []
+
+
+@freeze_time("2026-09-12 12:00:00")
+def test_overwrite_backs_up_previous_content_at_documented_path(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 내용이 달라지는 파일이 «문서에 적힌 자리» 에 백업됨을 고정한다
+
+    임포트는 번들 파일을 통째로 복사하는데, 번들은 «보내는 쪽» 버전을 복원할 뿐이고
+    파괴되는 것은 «받는 쪽» 버전이다. 그것을 붙잡는 것이 없으면 되돌릴 수 없다.
+
+    **자리까지 고정하는 이유**는 `SKILL.md` 5 단계가 `backups/import-*` 를 찾아
+    「이번에 무엇이 덮였나」를 사용자에게 말해주기 때문이다. 폴더 이름이 바뀌면 그 절차가
+    **아무것도 못 찾고 「덮어쓴 파일 없음」이라고 거짓 보고**한다.
+
+    Given: 받는 쪽과 내용이 다른 번들 파일 둘 (하나는 하위 폴더)
+    When: 적용한다
+    Then: `backups/import-<타임스탬프>/<상대경로>` 에 옛 내용이 남고 목적지는 새 내용이 된다
+    """
+    # Given
+    module = import_module_under_test
+    bundle_home, claude_home = _isolated_paths(module, monkeypatch, tmp_path)
+    (bundle_home / "CLAUDE.md").write_text("새 내용", encoding="utf-8")
+    (claude_home / "CLAUDE.md").write_text("이 PC 에서 고친 내용", encoding="utf-8")
+    (bundle_home / "hooks").mkdir()
+    (claude_home / "hooks").mkdir()
+    (bundle_home / "hooks" / "guard.py").write_text("new", encoding="utf-8")
+    (claude_home / "hooks" / "guard.py").write_text("old", encoding="utf-8")
+
+    # When
+    module.apply_plan(_file_plan(module, _environment(module)))
+
+    # Then
+    stamp_dir = claude_home / "backups" / "import-20260912-120000"
+    assert [path.relative_to(stamp_dir).as_posix() for path in _backup_files(claude_home)] == [
+        "CLAUDE.md",
+        "hooks/guard.py",
+    ]
+    assert (stamp_dir / "CLAUDE.md").read_text(encoding="utf-8") == "이 PC 에서 고친 내용"
+    assert (stamp_dir / "hooks" / "guard.py").read_text(encoding="utf-8") == "old"
+    assert (claude_home / "CLAUDE.md").read_text(encoding="utf-8") == "새 내용"
+    assert (claude_home / "hooks" / "guard.py").read_text(encoding="utf-8") == "new"
+
+
+def test_identical_file_is_not_backed_up(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 내용이 같으면 백업을 만들지 않음을 고정한다
+
+    번들 파일은 대부분 바이트가 같다(3 회차 실측: 35개 중 32개). 전부 뜨면 회차마다
+    쌓여 **정작 바뀐 것을 못 찾는다.** 백업의 목적은 보관이 아니라 복구다.
+
+    Given: 번들과 받는 쪽의 내용이 같은 파일
+    When: 적용한다
+    Then: 백업이 하나도 생기지 않는다
+    """
+    # Given
+    module = import_module_under_test
+    bundle_home, claude_home = _isolated_paths(module, monkeypatch, tmp_path)
+    (bundle_home / "CLAUDE.md").write_text("같은 내용", encoding="utf-8")
+    (claude_home / "CLAUDE.md").write_text("같은 내용", encoding="utf-8")
+
+    # When
+    module.apply_plan(_file_plan(module, _environment(module)))
+
+    # Then
+    assert _backup_files(claude_home) == []
+    assert (claude_home / "CLAUDE.md").read_text(encoding="utf-8") == "같은 내용"
+
+
+def test_new_file_is_not_backed_up(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 받는 쪽에 없던 파일은 백업 대상이 아님을 고정한다 (경계)
+
+    잃을 것이 없는 자리에 빈 백업을 만들면, 백업 목록이 「이번에 무엇이 덮였나」를
+    더 이상 말해주지 못한다.
+
+    Given: 번들에만 있는 파일
+    When: 적용한다
+    Then: 백업이 생기지 않고 파일은 새로 놓인다
+    """
+    # Given
+    module = import_module_under_test
+    bundle_home, claude_home = _isolated_paths(module, monkeypatch, tmp_path)
+    (bundle_home / "hooks").mkdir()
+    (bundle_home / "hooks" / "new_hook.py").write_text("print()", encoding="utf-8")
+
+    # When
+    module.apply_plan(_file_plan(module, _environment(module)))
+
+    # Then
+    assert _backup_files(claude_home) == []
+    assert (claude_home / "hooks" / "new_hook.py").is_file()
+
+
+def test_transformed_file_compares_after_substitution(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 변환 대상 파일은 «치환한 결과» 와 비교함을 고정한다 (경계)
+
+    원문과 비교하면 경로가 박힌 파일은 **매 회차 「바뀐 것」으로 잡혀** 백업이 쌓이고,
+    목록이 신호를 잃는다.
+
+    Given: 출처 경로가 든 번들 파일과, 이미 치환된 내용을 가진 받는 쪽 파일
+    When: 적용한다
+    Then: 백업이 생기지 않는다
+    """
+    # Given
+    module = import_module_under_test
+    bundle_home, claude_home = _isolated_paths(module, monkeypatch, tmp_path)
+    (bundle_home / "registry.json").write_text('{"path": "/Users/source/x.sql"}', encoding="utf-8")
+    (claude_home / "registry.json").write_text('{"path": "/home/tester/x.sql"}', encoding="utf-8")
+
+    # When
+    module.apply_plan(_file_plan(module, _environment(module)))
+
+    # Then
+    assert _backup_files(claude_home) == []
+    assert (claude_home / "registry.json").read_text(encoding="utf-8") == '{"path": "/home/tester/x.sql"}'
+
+
+def test_plan_report_names_files_to_overwrite(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 덮어쓸 파일이 판정표에 «이름» 으로 나옴을 고정한다
+
+    「그대로 적용」 파일은 개수에만 들어가 판정표 어디에도 나오지 않았다. 그래서
+    전역 `CLAUDE.md` 가 덮이는 것을 **적용 전에 알 방법이 없었다.**
+
+    Given: 받는 쪽과 내용이 다른 번들 파일
+    When: 판정표를 만든다
+    Then: 그 파일 이름이 본문에 있다
+    """
+    # Given
+    module = import_module_under_test
+    bundle_home, claude_home = _isolated_paths(module, monkeypatch, tmp_path)
+    (bundle_home / "CLAUDE.md").write_text("새 내용", encoding="utf-8")
+    (claude_home / "CLAUDE.md").write_text("옛 내용", encoding="utf-8")
+
+    # When
+    rendered = module.render_plan(_file_plan(module, _environment(module)))
+
+    # Then
+    assert "내용이 바뀌는 파일" in rendered
+    assert "home/CLAUDE.md" in rendered
+
+
+def test_export_excludes_backup_directory(export_module: ModuleType) -> None:
+    """
+    목적: 새 백업 폴더가 번들에 실리지 않음을 고정한다
+
+    실리면 받는 쪽이 **남의 PC 의 옛 파일을 되받는다.** 지금은 `backups` 가 내보내기의
+    제외 조각에 들어 있어 막히는데, 그 전제가 조용히 깨지면 이 기능이 해가 된다.
+
+    Given: 백업 폴더 아래의 경로
+    When: 내보내기 판정을 부른다
+    Then: 담지 않는다
+    """
+    # Then
+    assert export_module.should_include(Path("backups/import-20260912-125400/CLAUDE.md")) is False
+    assert export_module.should_include(Path("backups/import-20260912-125400/hooks/plan_gate.py")) is False
+
+
+def test_excluded_file_is_neither_backed_up_nor_written(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 제외한 파일은 백업도 적용도 되지 않음을 고정한다 (경계)
+
+    백업 폴더의 목록이 곧 「이번에 무엇이 덮였나」다. 손대지 않은 파일이 거기 섞이면
+    **사용자는 있지도 않은 변경을 찾아 백업본과 현재 파일을 견주게 된다.**
+
+    Given: 받는 쪽과 내용이 다르지만 「제외」로 정해진 번들 파일
+    When: 적용한다
+    Then: 백업이 없고 목적지도 그대로다
+    """
+    # Given
+    module = import_module_under_test
+    bundle_home, claude_home = _isolated_paths(module, monkeypatch, tmp_path)
+    (bundle_home / "CLAUDE.md").write_text("번들 내용", encoding="utf-8")
+    (claude_home / "CLAUDE.md").write_text("이 PC 내용", encoding="utf-8")
+    environment = _environment(module)
+    verdicts = module.classify_files(environment)
+    for verdict in verdicts:
+        verdict.decision = module.EXCLUDE
+    plan = module.Plan(environment=environment, verdicts=verdicts)
+    plan.changed = module.changed_files(plan, environment)
+
+    # When
+    module.apply_plan(plan)
+
+    # Then
+    assert _backup_files(claude_home) == []
+    assert (claude_home / "CLAUDE.md").read_text(encoding="utf-8") == "이 PC 내용"

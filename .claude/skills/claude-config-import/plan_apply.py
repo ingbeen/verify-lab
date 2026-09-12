@@ -133,10 +133,16 @@ class Verdict:
 
 @dataclass
 class Plan:
-    """이 PC 에 대한 적용 계획."""
+    """이 PC 에 대한 적용 계획.
+
+    `changed` 는 **적용하면 내용이 달라지는 파일** 이다. 판정 단계에서 한 번 재고 여기 담아,
+    보여주는 쪽과 적용하는 쪽이 **같은 목록**을 본다 — 각자 재면 파일을 두 번 읽을 뿐 아니라
+    보여준 것과 백업한 것이 갈릴 수 있다.
+    """
 
     environment: Environment
     verdicts: list[Verdict] = field(default_factory=list)
+    changed: list[tuple[Path, Path]] = field(default_factory=list)
 
     def by_decision(self, decision: str) -> list[Verdict]:
         """분류별 항목을 돌려준다.
@@ -703,7 +709,15 @@ def classify_files(environment: Environment) -> list[Verdict]:
             verdicts.append(Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash))
             continue
 
-        text = raw.decode("utf-8", errors="replace")
+        # **엄격하게 디코드한다.** 느슨하게 읽으면 깨진 바이트가 대체문자로 바뀐 «다른» 내용을
+        # 보고 치환 대상으로 고르게 되고, 그 뒤 쓰기는 엄격 디코드라 터진다. 못 읽는 파일은
+        # 손대지 않고 바이트 그대로 복사하는 것이 옳다
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            verdicts.append(Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash))
+            continue
+
         transformed, occurrences = transform_text_counted(text, environment)
         if transformed != text:
             verdicts.append(
@@ -802,6 +816,7 @@ def build_plan() -> Plan:
         )
 
     apply_previous_decisions(plan, load_decisions(environment))
+    plan.changed = changed_files(plan, environment)
 
     return plan
 
@@ -852,6 +867,14 @@ def render_plan(plan: Plan) -> str:
         lines.extend(["", f"--- 그대로 적용하되 알아둘 것 {len(noted)}건 ---"])
         for verdict in noted:
             lines.append(f"  {verdict.key} — {verdict.reason}")
+
+    # 「그대로 적용」 파일은 위 어느 절에도 나오지 않아, **전역 `CLAUDE.md` 가 덮이는 것을
+    # 적용 전에 알 방법이 없었다.** 분류가 아니라 «목적지와 다른가» 로 골라 따로 보여준다.
+    # 다른 절과 같은 식별자(`home/` 접두)로 적어 한 파일이 두 이름으로 보이지 않게 한다
+    if plan.changed:
+        lines.extend(["", f"--- 내용이 바뀌는 파일 {len(plan.changed)}건 (적용 시 백업됩니다) ---"])
+        for relative, _target in plan.changed:
+            lines.append(f"  home/{relative.as_posix()}")
 
     return "\n".join(lines)
 
@@ -993,16 +1016,21 @@ def rebuild_settings(settings: dict[str, Any], plan: Plan, environment: Environm
     return result
 
 
-def backup_targets() -> list[Path]:
-    """덮어쓸 파일을 먼저 백업한다.
+def backup_targets(stamp: str) -> list[Path]:
+    """다시 만들어지는 두 설정 파일을 먼저 백업한다.
 
     **되돌릴 수 없는 덮어쓰기를 만들지 않는다.** 받는 PC 에 그 PC 고유의 설정이
     있을 수 있고, 적용 후에야 그것을 알아채는 경우가 있다.
 
+    **자리를 옮기지 않는다** — `SKILL.md` 5 단계의 대조 절차가 `settings.json.bak-*` 를
+    글롭으로 찾는다. 복사되는 번들 파일은 `backup_overwritten` 이 따로 맡는다.
+
+    Args:
+        stamp: 한 번의 적용을 가리키는 타임스탬프
+
     Returns:
         list[Path]: 만든 백업 파일
     """
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     made: list[Path] = []
 
     for path in (TARGET_CLAUDE_HOME / "settings.json", TARGET_CLAUDE_JSON):
@@ -1010,6 +1038,99 @@ def backup_targets() -> list[Path]:
             continue
         backup = path.with_name(f"{path.name}.bak-{stamp}")
         shutil.copy2(path, backup)
+        made.append(backup)
+
+    return made
+
+
+def _file_content(source: Path, decision: str, environment: Environment) -> bytes:
+    """번들 파일이 목적지에 놓일 때의 «내용».
+
+    판정 단계와 적용 단계가 이 함수 하나를 보게 해서, 「무엇이 덮이는가」와
+    「무엇을 쓰는가」가 갈라질 자리를 없앤다.
+
+    Args:
+        source: 번들의 파일
+        decision: 그 파일의 판정
+        environment: 실측 정보
+
+    Returns:
+        bytes: 목적지에 놓일 내용
+
+    Raises:
+        OSError: 파일을 읽을 수 없는 경우
+        UnicodeDecodeError: 치환 대상인데 UTF-8 이 아닌 경우. `classify_files` 가 엄격 디코드에
+            실패한 파일을 치환 대상으로 고르지 않으므로 여기까지 오지 않는다
+    """
+    if decision == TRANSFORM:
+        return transform_text(source.read_text(encoding="utf-8"), environment).encode("utf-8")
+
+    return source.read_bytes()
+
+
+def changed_files(plan: Plan, environment: Environment) -> list[tuple[Path, Path]]:
+    """적용하면 내용이 «달라지는» 파일만 고른다.
+
+    **「덮어쓰는 파일」이 아니라 「내용이 바뀌는 파일」이다.** 제외되지 않은 번들 파일은 모두
+    물리적으로 덮이지만 대부분은 바이트가 같아 잃는 것이 없다(3 회차 실측: 35개 중 32개).
+    같은 것까지 담으면 회차마다 쌓여 **정작 바뀐 것을 못 찾는다.**
+
+    **비교는 치환한 뒤에 한다.** 원문과 견주면 경로가 박힌 파일이 매번 「바뀐 것」으로 잡힌다.
+
+    목적지에 파일이 없으면 고르지 않는다 — 잃을 것이 없는 자리다.
+
+    Args:
+        plan: 판정 결과
+        environment: 실측 정보
+
+    Returns:
+        list[tuple[Path, Path]]: (상대경로, 목적지)
+
+    Raises:
+        OSError: 번들이나 목적지 파일을 읽을 수 없는 경우
+    """
+    changed: list[tuple[Path, Path]] = []
+
+    for verdict in plan.verdicts:
+        if not verdict.key.startswith("home/") or verdict.decision == EXCLUDE:
+            continue
+
+        relative = Path(verdict.key[len("home/") :])
+        target = TARGET_CLAUDE_HOME / relative
+        if not target.is_file():
+            continue
+
+        if target.read_bytes() != _file_content(BUNDLE_HOME_DIR / relative, verdict.decision, environment):
+            changed.append((relative, target))
+
+    return changed
+
+
+def backup_overwritten(changed: list[tuple[Path, Path]], stamp: str) -> list[Path]:
+    """내용이 바뀌는 파일의 «현재» 내용을 백업한다.
+
+    자리는 `~/.claude/backups/import-<타임스탬프>/<상대경로>` 다. **`backups` 는 내보내기의
+    제외 조각이라 이 사본이 다음 번들에 실리지 않는다** — 실리면 받는 쪽이 남의 PC 옛 파일을
+    되받는다. `tests/test_claude_config_import.py` 가 그 전제를 고정한다.
+
+    폴더는 없으면 만든다. 받는 PC 에 `backups/` 자체가 없을 수 있다.
+
+    Args:
+        changed: `changed_files` 가 고른 것
+        stamp: 한 번의 적용을 가리키는 타임스탬프
+
+    Returns:
+        list[Path]: 만든 백업 파일
+
+    Raises:
+        OSError: 백업 폴더를 만들 수 없거나 원본을 읽을 수 없는 경우
+    """
+    made: list[Path] = []
+
+    for relative, target in changed:
+        backup = TARGET_CLAUDE_HOME / "backups" / f"import-{stamp}" / relative
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, backup)
         made.append(backup)
 
     return made
@@ -1100,7 +1221,11 @@ def apply_plan(plan: Plan) -> list[str]:
         list[str]: 수행한 작업 요약
     """
     environment = plan.environment
-    performed = [f"백업: {path}" for path in backup_targets()]
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    performed = [f"백업: {path}" for path in backup_targets(stamp)]
+
+    for path in backup_overwritten(plan.changed, stamp):
+        performed.append(f"백업: {path}")
 
     copied = 0
     for verdict in plan.verdicts:
@@ -1113,12 +1238,12 @@ def apply_plan(plan: Plan) -> list[str]:
         target.parent.mkdir(parents=True, exist_ok=True)
 
         if verdict.decision == TRANSFORM:
-            target.write_text(transform_text(source.read_text(encoding="utf-8"), environment), encoding="utf-8")
+            target.write_bytes(_file_content(source, verdict.decision, environment))
         else:
             shutil.copy2(source, target)
         copied += 1
 
-    performed.append(f"파일 {copied}개 적용")
+    performed.append(f"파일 {copied}개 적용 (그중 내용이 바뀐 것 {len(plan.changed)}개)")
 
     bundle_settings_path = BUNDLE_HOME_DIR / "settings.json"
     if bundle_settings_path.is_file():
