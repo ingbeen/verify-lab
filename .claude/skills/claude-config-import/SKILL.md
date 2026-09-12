@@ -214,10 +214,10 @@ MCP 서버의 API 키는 파일이 아니라 `~/.claude.json` 안에 **값**으�
 
 | 빠지는 것 | 왜 |
 | --- | --- |
-| 자격증명 (`keys/**` · `*.env` · `*.pem` · `*.key`) | 이 저장소가 PUBLIC 이다 |
-| MCP 서버의 자격증명 «값» (`headers`·`env` 의 비경로 값) | 센티널로 가려 담는다. 위 절이 처리를 정한다 |
+| 자격증명 (`keys/**` · 이름 조각이 `env`·`pem`·`key`·`credentials` 와 같은 파일 · `id_rsa`·`.netrc` 같은 고전 이름) | 이 저장소가 PUBLIC 이다. 이름은 `.`·`-`·`_` 로 쪼개므로 **`.env` 도트파일 · `acme-prd.env.local` 다중 확장자 · `.env-prod` 구분자 형태가 모두 포함**되고 대소문자를 가리지 않는다. **`*.example` 견본도 봐주지 않는다** — 값이 채워진 채 배포되는 일이 흔하다. `.md`·`.py`·`.rst` 는 탈출구지만 **합성어에 표식이 섞였을 뿐인 경우만** 구제하므로 `api-key-format.md` 는 담기고 `server.pem.md`·`env.py` 는 막힌다. 판정의 SoT 는 내보내기의 `_is_credential` 이다 |
+| MCP 서버의 자격증명 «값» (`headers`·`env` 의 비경로 값 · `url` 의 query 값·`user:password@`·fragment) | 센티널로 가려 담는다. 위 절이 처리를 정한다. **url 은 센티널이 문자열 «안에» 박히므로** 복원이 포함 여부로 보고 **이 PC 의 url 을 통째로** 되돌린다 — 완전일치로 보던 때는 이 자리를 지나쳐 작동 중인 url 이 덮였다. **url 의 경로 구간은 애초에 가려지지 않는다**(구조로 판별 불가) |
 | 세션 상태와 이력 (`projects/` · `sessions/` · `history.jsonl` · `file-history/`) | 다른 PC 의 이력이 섞이면 되돌릴 수 없다 |
-| 감사 로그 (`db/*.jsonl`) | 그 PC 에서만 뜻이 있다 |
+| 실행 기록·상태 파일 (이름 조각이 `jsonl`·`log`·`lock`) | 그 PC 에서만 뜻이 있고, 매번 달라져 보내는 쪽의 `git diff` 검토를 무력화한다. 도트파일(`.log`)·대문자(`toast.LOG`)·로테이트(`toast.log.1`)를 모두 포함하며, 조각 «전체 일치» 라 `changelog.md` 는 담긴다. 판정의 SoT 는 `claude-config-export` 의 `RUNTIME_RECORD_TOKENS` 다 |
 | 플랫폼 venv (`**/venv/**`) | 바이너리라 받는 쪽에서 쓸 수 없다. 필요하면 재생성한다 |
 | 플러그인 (`plugins/**`) | 공식 마켓플레이스 사본이며 받는 쪽에서 자동으로 다시 설치된다 |
 | 캐시와 자동 백업 (`cache/` · `backups/` · `*.bak-*`) | 옮길 값이 아니다 |

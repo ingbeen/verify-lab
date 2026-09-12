@@ -51,7 +51,22 @@ INCLUDED_PATHS = (
     Path("tools/pptx/build_v14.py"),
     Path("db/acmeq.py"),
     Path("db/scripts.allow.json"),
-    Path("db/acme-prd.env.example"),
+    # 로그 제외는 조각 «전체 일치» 다. 이름에 log 가 들어갔을 뿐인 문서는 계속 담긴다
+    Path("hooks/changelog.md"),
+    # 자격증명 판정이 «죽이면 안 되는» 것들. 이쪽 실패가 유출보다 조용하다 —
+    # 설정 하나가 소리 없이 안 넘어가면 받는 PC 에서 원인 모를 동작 차이로 남는다.
+    #
+    # 셋 다 «문서·모듈 확장자 탈출구» 가 지킨다. 그 장치가 없으면 자격증명 표식을
+    # 구분자까지 넓힐 수 없다 — `key-rotation-guide.md` 가 `key` 조각을 갖기 때문이다.
+    # 탈출구는 «구분자» 로 쪼갠 조각에만 걸린다 — 점 조각이 표식이면 `env.py` 처럼 막힌다
+    Path("db/api-key-format.md"),
+    Path("db/key-rotation-guide.md"),
+    Path("tools/api_key_helper.py"),
+    # 런타임 기록 판정에도 같은 탈출구가 있다 — 없으면 이 둘이 조용히 사라진다
+    Path("commands/log.md"),
+    Path("hooks/lock.py"),
+    # `lock` 을 조각 판정에 넣으면 이것이 조용히 사라진다. 막을 것은 도트파일 `.lock` 하나뿐이다
+    Path("tools/xlsx/poetry.lock"),
 )
 
 # 번들에서 걸러져야 하는 경로. 사유를 함께 적어 실패 메시지가 「왜」를 말하게 한다
@@ -76,6 +91,17 @@ EXCLUDED_PATHS = (
     (Path("settings.json.bak-20260908"), "수동 백업본"),
     (Path("db/audit.jsonl"), "감사 로그"),
     (Path("db/api-audit.jsonl"), "감사 로그"),
+    # 런타임 로그. 허용 폴더 «어디에» 있든 확장자로 걸러야 한다 —
+    # 허용목록이 폴더째 담으므로 새 도구가 로그를 만들 때마다 반복된다
+    (Path("hooks/toast.log"), "알림 훅의 런타임 로그"),
+    (Path("db/query.log"), "런타임 로그"),
+    (Path("tools/msg/convert.log"), "런타임 로그"),
+    # 자격증명과 «같은 규율» 로 판정한다 — `.suffix` 로 재던 때는 아래가 전부 빠져나갔다
+    (Path("hooks/.log"), "도트파일 로그 (`.suffix` 가 빈 문자열이다)"),
+    (Path("hooks/toast.LOG"), "대문자 로그"),
+    (Path("db/audit.JSONL"), "대문자 감사 로그"),
+    (Path("hooks/toast.log.1"), "로테이트된 로그"),
+    (Path("hooks/.LOCK"), "대문자 상태 파일"),
     (Path("plugins/plugin-catalog-cache.json"), "플러그인 카탈로그 캐시"),
     (Path("plugins/marketplaces/claude-plugins-official/README.md"), "공식 마켓플레이스 사본 6.4MB"),
     (Path("plugins/known_marketplaces.json"), "받는 쪽에서 자동 재설치되고 절대경로를 담고 있다"),
@@ -87,6 +113,68 @@ CREDENTIAL_PATHS = (
     Path("keys/sheets-mcp-oauth.json"),
     Path("keys/sheets-mcp-token.json"),
     Path("keys/whatever-comes-later.json"),
+    # 도트파일 — `Path('.env').suffix` 가 «빈 문자열» 이라 확장자 판정이 한 번도 발동하지 않았다.
+    # 파이썬은 앞의 점을 확장자 구분자가 아니라 이름의 일부로 본다 [실측] 2026-09-12
+    Path("db/.env"),
+    Path("tools/x/.env"),
+    Path("db/.env.local"),
+    # 다중 확장자 — `.suffix` 는 «마지막» 것만 준다 (`acme-prd.env.local` -> `.local`)
+    Path("db/acme-prd.env.local"),
+    Path("db/key.pem.bak"),
+    Path("db/server.key.old"),
+    # 점으로 시작하지 않는 형태. `CREDENTIAL_NAMES` 가 `.credentials.json` 만 알고 있었다
+    Path("db/credentials.json"),
+    # 대소문자 — mac·윈도우는 파일시스템이 구별하지 않아 `.ENV` 와 `.env` 가 같은 파일이다
+    Path("db/.ENV"),
+    Path("db/PRIVATE.KEY"),
+    Path("db/acme.Env.local"),
+    # 표식이 «첫» 토큰인 형태. `key.json` 은 GCP 서비스계정 키의 표준 파일명이다
+    Path("db/key.json"),
+    Path("db/env.json"),
+    Path("db/key"),
+    # 표식 토큰이 아예 없는 고전 이름
+    Path("db/id_rsa"),
+    Path("db/.netrc"),
+    Path("db/.pgpass"),
+    Path("db/.npmrc"),
+    # 견본 표식을 붙인 우회. 예외가 «규칙» 이던 때는 이 셋이 전부 빠져나갔다 —
+    # 이름 뒤에 `.sample` 만 붙이면 자격증명 판정이 통째로 꺼졌다. 지금은 견본 예외가 없다
+    Path("db/real-secret.key.sample"),
+    Path("db/credentials.json.example"),
+    Path("db/.env.template"),
+    # 견본이라도 담지 않는다. 실물 `acme-prd.env.example` 에 운영 DB 의 host·port·name 이
+    # 채워져 있었다 — 「견본이면 비어 있다」는 전제가 틀렸다
+    Path("db/acme-prd.env.example"),
+    # 구분자로 이어진 형태. `.` 으로만 쪼개던 때는 전부 빠져나갔다
+    Path("db/.env-prod"),
+    Path("db/.env_old"),
+    Path("db/env_local"),
+    Path("db/id_rsa_backup"),
+    Path("db/credentials-prod.json"),
+    Path("db/.npmrc-backup"),
+    # 고전 이름이 «뒤» 에 붙은 형태. 접두로만 맞추던 때는 전부 빠져나갔다
+    Path("db/prod.netrc"),
+    Path("db/backup.id_rsa"),
+    Path("db/old-id_rsa"),
+    # 문서·모듈 확장자를 씌운 우회. `.sh` 는 `export API_KEY=...` 의 표준 그릇이고
+    # `.txt` 는 토큰을 붙여넣어 두는 자리다 — 둘 다 탈출구에서 뺐다
+    Path("db/.env.txt"),
+    Path("db/credentials.txt"),
+    Path("db/api-key.txt"),
+    Path("db/aws.key.sh"),
+    Path("db/env.sh"),
+    # 점 조각이 표식이면 문서 확장자여도 막는다
+    Path("db/server.pem.md"),
+    Path("tools/env.py"),
+    # 폴더명 대소문자. mac 은 파일시스템이 구별하지 않아 `Keys/` 와 `keys/` 가 같은 폴더다
+    Path("tools/Keys/oauth.json"),
+    # 자격증명을 «폴더로 묶은» 형태. 이름 판정은 파일명만 보므로 폴더가 따로 막아야 한다
+    Path("db/credentials/prod.json"),
+    Path("tools/secrets/api.json"),
+    # 이 PC 의 실제 자격증명이 쓰는 이름. 지금은 `keys/` 가 막지만 허용 폴더 밖에 쓰이면
+    # 이름 판정 말고는 막을 것이 없다
+    Path("tools/msg/token.json"),
+    Path("db/client-secret.json"),
 )
 
 # 번들의 `claude_json.json` 경로. 파일 판정과 달리 «값» 을 검사해야 하는 유일한 자리다
@@ -112,13 +200,16 @@ SAMPLE_CLAUDE_JSON: dict[str, Any] = {
             },
         },
         "bare": {"type": "http", "url": "https://example.com/mcp"},
+        # 토큰을 url 에 싣는 형태. `headers`·`env` 만 훑던 때는 이 자리가 통째로 샜다
+        "query-token": {"type": "http", "url": "https://mcp.vendor.com/mcp?api_key=SECRET&mode=fast"},
+        "userinfo-token": {"type": "http", "url": "https://someone:token-value@host.example.com/mcp"},
     },
     "projects": {
         "/Users/someone/Workspace/repo": {
             "mcpServers": {
                 "internal": {
                     "type": "http",
-                    "url": "https://internal.example.com/mcp",
+                    "url": "https://internal.example.com/mcp?token=project-secret",
                     "headers": {"X_INTERNAL_TOKEN": "internal-secret-value"},
                 }
             }
@@ -127,7 +218,8 @@ SAMPLE_CLAUDE_JSON: dict[str, Any] = {
 }
 
 # 자격증명 형태를 잡는 그물의 «두 번째 겹».
-# 치환은 `headers`·`env` 만 덮으므로 `command`·`args` 같은 자리는 이 스캔이 맡는다.
+# 치환은 `headers`·`env` 와 `url` 의 query·userinfo·fragment 를 덮는다.
+# `command`·`args` 와 **url 의 경로 구간**은 그쪽이 가리지 못하므로 이 스캔이 맡는다.
 # **금지목록이라 새 형식은 놓칠 수 있다** — 치환의 대체가 아니라 보완이다
 SECRET_VALUE_PATTERNS = (
     ("Context7", re.compile(r"ctx7sk-")),
@@ -476,6 +568,100 @@ def test_redact_replaces_plain_header_value(export_module: ModuleType) -> None:
     assert redacted["mcpServers"]["context7"]["headers"]["CONTEXT7_API_KEY"] == export_module.REDACTED_SENTINEL
 
 
+def test_redact_replaces_url_query_value(export_module: ModuleType) -> None:
+    """
+    목적: url 에 실린 자격증명이 번들에 남지 않음을 고정한다
+
+    HTTP 형 MCP 서버는 토큰을 url 에 싣는 방식이 흔한데, 치환이 `headers`·`env` 두 블록만
+    훑어 이 자리가 통째로 샜다. 헤더에서 Context7 키가 샜던 것과 **같은 계층**의 구멍이다.
+
+    Given: query 에 토큰을 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 값만 센티널로 바뀌고 **키와 접속 정보는 남는다** — 받는 쪽이 서버에 접속해야 한다
+    """
+    # When
+    redacted, _replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    url = redacted["mcpServers"]["query-token"]["url"]
+    assert url.startswith("https://mcp.vendor.com/mcp?")
+    assert "SECRET" not in url
+    assert "fast" not in url
+    assert url.count(export_module.REDACTED_SENTINEL) == 2
+    assert "api_key=" in url and "mode=" in url
+
+
+def test_redact_replaces_url_userinfo(export_module: ModuleType) -> None:
+    """
+    목적: url 의 `user:password@` 구간이 가려짐을 고정한다
+
+    Given: userinfo 에 토큰을 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 호스트는 남고 userinfo 만 센티널이 된다
+    """
+    # When
+    redacted, _replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    url = redacted["mcpServers"]["userinfo-token"]["url"]
+    assert "token-value" not in url
+    assert "someone" not in url
+    assert url.endswith("@host.example.com/mcp")
+
+
+def test_redact_keeps_url_without_secret(export_module: ModuleType) -> None:
+    """
+    목적: 비밀이 없는 url 은 **손대지 않음**을 고정한다
+
+    가릴 것이 없는데 모양이 달라지면 받는 쪽 결정의 해시가 어긋나 불필요하게 다시 물어진다.
+
+    Given: query 도 userinfo 도 없는 서버 정의
+    When: 자격증명을 치환한다
+    Then: url 이 원본 그대로다
+    """
+    # When
+    redacted, replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    assert redacted["mcpServers"]["context7"]["url"] == "https://mcp.context7.com/mcp"
+    assert redacted["mcpServers"]["bare"]["url"] == "https://example.com/mcp"
+    assert "mcpServers.context7.url" not in replaced
+
+
+def test_redact_covers_url_in_project_scope(export_module: ModuleType) -> None:
+    """
+    목적: 프로젝트 스코프 서버의 url 에도 치환이 걸림을 고정한다
+
+    Given: 프로젝트 스코프에 url 토큰을 담은 서버
+    When: 자격증명을 치환한다
+    Then: 값이 센티널로 바뀌고 가린 목록에 그 경로가 실린다
+    """
+    # When
+    redacted, replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    project = redacted["projects"]["/Users/someone/Workspace/repo"]["mcpServers"]["internal"]
+    assert "project-secret" not in project["url"]
+    assert "projects[/Users/someone/Workspace/repo].mcpServers.internal.url" in replaced
+
+
+def test_redact_does_not_mutate_input_url(export_module: ModuleType) -> None:
+    """
+    목적: 치환이 입력을 제자리에서 고치지 않음을 고정한다 (기존 계약과 같다)
+
+    Given: url 에 토큰을 담은 서버 정의
+    When: 자격증명을 치환한다
+    Then: 원본 딕셔너리의 url 이 그대로다
+    """
+    # When
+    export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
+
+    # Then
+    assert (
+        SAMPLE_CLAUDE_JSON["mcpServers"]["query-token"]["url"] == "https://mcp.vendor.com/mcp?api_key=SECRET&mode=fast"
+    )
+
+
 def test_redact_keeps_absolute_path_value(export_module: ModuleType) -> None:
     """
     목적: 경로 값은 살아남음을 고정한다
@@ -542,9 +728,9 @@ def test_redact_reports_replaced_keys(export_module: ModuleType) -> None:
     허용목록 방식이라 자격증명이 아닌 설정값까지 가릴 수 있다. **목록이 나와야
     사용자가 오탐을 알아챈다.**
 
-    Given: 두 자리에 평문 값을 담은 설정
+    Given: 헤더·url 여러 자리에 평문 값을 담은 설정
     When: 자격증명을 치환한다
-    Then: 치환한 키 경로가 모두 보고된다
+    Then: 치환한 키 경로가 모두 보고된다 — 비밀이 없는 url 은 목록에 없다
     """
     # When
     _redacted, replaced = export_module.redact_credentials(SAMPLE_CLAUDE_JSON)
@@ -552,7 +738,10 @@ def test_redact_reports_replaced_keys(export_module: ModuleType) -> None:
     # Then
     assert sorted(replaced) == [
         "mcpServers.context7.headers.CONTEXT7_API_KEY",
+        "mcpServers.query-token.url",
+        "mcpServers.userinfo-token.url",
         "projects[/Users/someone/Workspace/repo].mcpServers.internal.headers.X_INTERNAL_TOKEN",
+        "projects[/Users/someone/Workspace/repo].mcpServers.internal.url",
     ]
 
 

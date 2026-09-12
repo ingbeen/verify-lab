@@ -463,6 +463,11 @@ def _sentinel_fields(definition: dict[str, Any]) -> list[str]:
 
         fields.extend(f"{block_name}.{key}" for key, value in block.items() if value == REDACTED_SENTINEL)
 
+    # url 은 센티널이 문자열 «안에» 박혀 오므로 포함 여부로 본다 (`restore_redacted` 와 같은 판정)
+    url = definition.get("url")
+    if isinstance(url, str) and REDACTED_SENTINEL in url:
+        fields.append("url")
+
     return fields
 
 
@@ -509,6 +514,19 @@ def restore_redacted(
                 continue
 
             missing.append(f"{block_name}.{key}")
+
+    # `url` 은 센티널이 «문자열 안에» 박혀 온다(query 값·userinfo·fragment 만 가려진다).
+    # 그래서 완전일치로는 못 잡고, 되돌릴 때도 조각을 꿰맞추지 않고 **이 PC 의 url 을 통째로**
+    # 쓴다 — 어느 조각이 가려졌는지와 무관하게 그쪽이 이 PC 의 진실이다.
+    #
+    # 이걸 빠뜨리면 번들의 센티널 url 이 **작동 중인 url 을 덮어써 서버가 조용히 죽는다.**
+    url = restored.get("url")
+    if isinstance(url, str) and REDACTED_SENTINEL in url:
+        kept_url = existing_definition.get("url")
+        if isinstance(kept_url, str) and REDACTED_SENTINEL not in kept_url:
+            restored["url"] = kept_url
+        else:
+            missing.append("url")
 
     return restored, missing
 

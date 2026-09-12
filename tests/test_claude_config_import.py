@@ -114,6 +114,76 @@ def test_restore_keeps_existing_value(import_module_under_test: ModuleType) -> N
     assert missing == []
 
 
+def test_restore_keeps_existing_url(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 가려진 url 이 이 PC 의 작동 중인 url 을 덮지 않음을 고정한다
+
+    **url 은 센티널이 문자열 «안에» 박혀 온다** — query 값·userinfo·fragment 만 가려지기
+    때문이다. 그래서 완전일치로 보던 복원 로직이 이 자리를 통째로 지나쳤고, 번들의 센티널
+    url 이 작동 중인 url 을 덮어써 **서버가 조용히 죽는 상태**가 됐다.
+
+    Given: query 값이 가려진 번들 url 과 진짜 url 을 담은 기존 정의
+    When: 복원한다
+    Then: 기존 url 이 통째로 남고 채울 것이 없다
+    """
+    # Given
+    sentinel = import_module_under_test.REDACTED_SENTINEL
+    bundle = {"type": "http", "url": f"https://vendor/mcp?api_key={sentinel}"}
+    existing = {"type": "http", "url": "https://vendor/mcp?api_key=real-token-on-this-pc"}
+
+    # When
+    restored, missing = import_module_under_test.restore_redacted(bundle, existing)
+
+    # Then
+    assert restored["url"] == "https://vendor/mcp?api_key=real-token-on-this-pc"
+    assert missing == []
+
+
+def test_restore_reports_missing_url(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 되돌릴 url 이 없으면 **채워야 할 항목으로 알려줌**을 고정한다
+
+    센티널을 남기는 것은 의도다(서버를 통째로 빼지 않는다). 다만 알려주지 않으면
+    사용자는 서버가 왜 죽었는지 알 방법이 없다.
+
+    Given: 가려진 번들 url 과 그 서버가 없는 이 PC
+    When: 복원한다
+    Then: 센티널이 남고 `url` 이 채울 항목으로 보고된다
+    """
+    # Given
+    sentinel = import_module_under_test.REDACTED_SENTINEL
+    bundle = {"type": "http", "url": f"https://vendor/mcp?api_key={sentinel}"}
+
+    # When
+    restored, missing = import_module_under_test.restore_redacted(bundle, {})
+
+    # Then
+    assert sentinel in restored["url"]
+    assert missing == ["url"]
+
+
+def test_restore_keeps_bundle_url_without_sentinel(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 센티널이 없는 url 은 번들 값이 이김을 고정한다 (기존 계약과 같다)
+
+    보내는 쪽이 주소를 바꿨을 수 있으므로, 가릴 것이 없던 url 은 번들을 따른다.
+
+    Given: 센티널 없는 번들 url 과 다른 기존 url
+    When: 복원한다
+    Then: 번들 url 이 남는다
+    """
+    # Given
+    bundle = {"type": "http", "url": "https://new-host/mcp"}
+    existing = {"type": "http", "url": "https://old-host/mcp"}
+
+    # When
+    restored, missing = import_module_under_test.restore_redacted(bundle, existing)
+
+    # Then
+    assert restored["url"] == "https://new-host/mcp"
+    assert missing == []
+
+
 def test_restore_reports_missing_value(import_module_under_test: ModuleType) -> None:
     """
     목적: 되돌릴 값이 없으면 그 사실이 보고됨을 고정한다

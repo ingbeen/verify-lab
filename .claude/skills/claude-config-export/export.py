@@ -26,6 +26,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 # 저장소 루트. 이 파일은 <루트>/.claude/skills/claude-config-export/export.py 에 있다
@@ -87,19 +88,77 @@ SITE_PACKAGES_GLOBS = ("lib/python*/site-packages", "Lib/site-packages")
 # `python -m venv` 는 넣는다) 목록에 실으면 **두 PC 의 패키지가 만든 방식 때문에 달라 보인다**
 VENV_BOOTSTRAP_PACKAGES = frozenset({"pip", "setuptools", "wheel", "pkg-resources"})
 
-# 감사로그·세션 이력이 쓰는 확장자
-DENY_SUFFIXES = frozenset({".jsonl"})
+# 실행하며 쌓이는 기록과 상태 파일의 표식 — 감사로그·세션 이력(`jsonl`) · 런타임 로그(`log`) ·
+# 잠금(`lock`). 이름을 `.` 으로 쪼갠 조각과 맞춘다.
+#
+# 조각으로 막는 이유는 허용목록이 폴더를 «통째로» 담기 때문이다. `hooks/` 에 훅을 하나 더
+# 만들면 그 훅이 남기는 로그까지 따라오므로, 파일 이름으로 막으면 다음 도구에서 또 샌다.
+# 실제로 `hooks/toast.log` 가 그렇게 담겼다 [실측] 2026-09-12.
+#
+# **`.suffix` 로 재던 때는 절반만 막혔다** — 도트파일(`hooks/.log`)에서 빈 문자열이 되고,
+# 대문자(`toast.LOG` · `audit.JSONL`)와 로테이트(`toast.log.1`)를 놓쳤다. `_is_credential` 이
+# 겪은 것과 같은 결함이라 같은 규율로 통일했다.
+#
+# 담으면 두 가지가 깨진다 — 받는 PC 에서 뜻이 없고, **매번 달라져 `git diff` 검토를 무력화한다.**
+# 설정이 한 글자도 안 바뀐 내보내기에서도 이 파일이 바뀌어, SKILL.md 「실행 후」 1단계가
+# 무엇이 실제로 바뀌었는지 가려내지 못하게 된다.
+#
+# 자격증명과 달리 `-`·`_` 로는 쪼개지 않는다 — 넓혀야 할 사례가 확인되지 않았고,
+# `package-lock.json` 처럼 정상 파일이 걸릴 여지만 는다.
+RUNTIME_RECORD_TOKENS = frozenset({"jsonl", "log"})
 
-# 상태 파일
+# 상태 파일. **`lock` 을 위 조각 판정에 넣지 않는다** — 그러면 `poetry.lock`·`uv.lock` 처럼
+# «옮겨야 하는» 의존성 고정 파일이 조용히 사라진다. 막을 것은 도트파일 하나뿐이라 이름으로 맞춘다
 DENY_NAMES = frozenset({".lock"})
 
 # 손으로 만든 백업본 (`CLAUDE.md.bak-20260909` 등)
 BACKUP_NAME_PATTERN = re.compile(r"\.bak-")
 
-# 자격증명 — 유출이 되돌려지지 않으므로 허용목록보다 먼저 판정한다
-CREDENTIAL_SEGMENTS = frozenset({"keys"})
-CREDENTIAL_SUFFIXES = frozenset({".env", ".pem", ".key"})
-CREDENTIAL_NAMES = frozenset({".credentials.json"})
+# 자격증명 — 유출이 되돌려지지 않으므로 허용목록보다 먼저 판정한다.
+# **폴더 이름도 본다** — 파일 판정은 이름만 보므로 `db/credentials/prod.json` 처럼 폴더로 묶으면
+# 같은 것이 통째로 빠져나간다. 판정은 내려 맞춘 경로 조각으로 한다
+CREDENTIAL_SEGMENTS = frozenset({"keys", "credentials", "secrets"})
+
+# 자격증명 표식. 확장자가 아니라 **이름을 구분자로 쪼갠 조각**과 맞춘다 — 이유는 `_is_credential` 에 있다
+# `token`·`secret` 이 들어 있는 이유: **이 PC 의 실제 자격증명이 그 이름을 쓴다**
+# (`keys/sheets-mcp-token.json`). 지금은 `keys/` 폴더가 막지만, 도구가 같은 파일을 허용 폴더
+# 밖에 쓰면(`tools/msg/token.json`) 이름 판정 말고는 막을 것이 없다
+CREDENTIAL_NAME_TOKENS = frozenset({"env", "pem", "key", "credentials", "token", "secret"})
+
+# 이름을 쪼개는 구분자. `.` 만으로는 `.env-prod` · `env_local` 을 놓친다
+NAME_SEPARATORS = re.compile(r"[.\-_]")
+
+# 사람이 읽는 문서와 모듈의 확장자. **«구분자» 로 쪼갠 조각에만 적용되는 탈출구다.**
+#
+# 이 탈출구가 없으면 구분자 분리를 쓸 수 없다 — `key-rotation-guide.md` 와
+# `api_key_helper.py` 가 `key` 조각을 갖게 되어 죽는다.
+#
+# [중요] **`sh`·`txt` 를 넣지 않는다.** 한때 넣었다가 `aws.key.sh` · `credentials.txt` ·
+# `api-key.txt` 가 통째로 빠져나갔다 [실측] 2026-09-12. `.sh` 는 `export API_KEY=...` 의 표준
+# 그릇이고 `.txt` 는 토큰을 붙여넣어 두는 흔한 자리라 **자격증명 그릇이지 문서가 아니다.**
+#
+# [중요] **점으로 쪼갠 조각에는 적용되지 않는다.** `server.pem.md` 처럼 표식이 온전한 점
+# 조각이면 확장자와 무관하게 막는다 — 탈출구는 「합성어에 표식이 섞였을 뿐」인 경우만 구제한다.
+DOCUMENT_SUFFIXES = frozenset({"md", "py", "rst"})
+
+# 표식 조각이 없는 고전 자격증명 파일명. 전부 소문자로, **앞의 점 없이** 적는다 —
+# 아래 패턴이 구분자 경계로 맞추므로 `.netrc` 도 `prod.netrc` 도 같은 항목이 잡는다
+CREDENTIAL_NAMES = (
+    "credentials.json",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "netrc",
+    "pgpass",
+    "npmrc",
+)
+
+# 고전 이름을 «구분자 경계» 로 찾는다. 접두로만 맞추던 때는 `prod.netrc` · `backup.id_rsa` ·
+# `old-id_rsa` 가 전부 빠져나갔다 [실측] 2026-09-12 — 자격증명은 앞에 무엇이 붙어도 자격증명이다
+CREDENTIAL_NAME_PATTERN = re.compile(
+    r"(?:^|[.\-_])(?:" + "|".join(re.escape(name) for name in CREDENTIAL_NAMES) + r")(?:$|[.\-_])"
+)
 
 # --- `~/.claude.json` 에서 옮길 키 -----------------------------------------
 # 이 파일은 66KB 지만 대부분 캐시·통계다. MCP 등록과 프로젝트별 권한만 옮긴다
@@ -130,11 +189,27 @@ WINDOWS_ABSOLUTE_PATH_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 
 # 받는 쪽이 "왜 없지"를 되묻지 않도록 README 와 매니페스트에 남기는 목록
 EXCLUSION_NOTICE = (
-    "자격증명 (`keys/**` · `*.env` · `*.pem` · `*.key`) — 이 저장소가 PUBLIC 이라 담지 않는다. "
+    "자격증명 — 이 저장소가 PUBLIC 이라 담지 않는다. `keys/**` 전체, 이름을 `.`·`-`·`_` 로 쪼갠 조각 "
+    "중 하나가 `env`·`pem`·`key`·`credentials` 와 «같은» 파일(`.env` 도트파일 · `acme-prd.env.local` "
+    "다중 확장자 · `.env-prod` 구분자 형태를 포함하며 대소문자를 가리지 않는다), 그리고 "
+    "`credentials.json`·`id_rsa`·`.netrc` 같은 고전 이름이다. "
+    "**`.md`·`.py`·`.rst` 는 탈출구라** `api-key-format.md`·`api_key_helper.py` 처럼 합성어에 "
+    "표식이 섞였을 뿐인 문서·모듈은 그대로 담긴다(점 조각이 온전한 표식이면 확장자와 무관하게 막힌다). "
+    "**견본이라고 봐주지 않는다** — `*.example` 도 표식이 있으면 막힌다(견본에 값이 채워진 채 "
+    "배포되는 일이 흔하다). "
     "Google OAuth 토큰은 동의화면이 「테스트」 상태라 7일마다 만료돼 옮겨도 재인증이 필요하다",
-    "MCP 서버의 자격증명 «값» (`headers`·`env` 의 비경로 값) — 센티널로 가려 담는다. " "받는 쪽은 그 PC 에 이미 있던 값을 유지하고, 없으면 채울 항목으로 알려준다",
+    "MCP 서버의 자격증명 «값» (`headers`·`env` 의 비경로 값, 그리고 `url` 의 query 값·"
+    "`user:password@`·fragment) — 센티널로 가려 담는다. 받는 쪽은 그 PC 에 이미 있던 값을 "
+    "유지하고, 없으면 채울 항목으로 알려준다. "
+    "**url 은 부분만 가려진다** — scheme·host·path 와 query 키는 남아 있고, "
+    "**경로(path) 구간의 값은 가리지 못한다**(어느 구간이 키인지 구조로 판별할 수 없다). "
+    "경로에 키를 넣는 서버를 등록했다면 사람이 번들을 확인해야 한다",
     "세션 상태와 이력 (`projects/` · `sessions/` · `history.jsonl` · `file-history/` 등) — 다른 PC 의 이력이 섞이면 되돌릴 수 없다",
-    "감사 로그 (`db/*.jsonl`) — 그 PC 에서만 뜻이 있다",
+    "실행 기록 — 이름을 `.` 으로 쪼갠 조각이 `jsonl`(감사로그)·`log`(런타임 로그)인 파일과 "
+    "`.lock` 상태 파일. 대소문자를 가리지 않고 `toast.log.1` 처럼 로테이트된 것도 포함하되, "
+    "`.md`·`.py`·`.rst` 는 구제한다(`commands/log.md` 같은 문서). "
+    "그 PC 에서만 뜻이 있고, 매번 달라져 번들의 `git diff` 로 「이번에 무엇이 바뀌었나」를 "
+    "가릴 수 없게 만든다. **`poetry.lock` 처럼 옮겨야 하는 고정 파일은 담는다**",
     "플랫폼 venv (`**/venv/**`) — 바이너리라 받는 쪽에서 쓸 수 없다. 필요하면 재생성한다",
     "**venv 만 든 폴더는 폴더째 사라진다** — 담을 것이 0개가 되기 때문이며 실물 사례가 `tools/xlsx/` 다. "
     "무엇을 재생성해야 하는지는 이 매니페스트의 `excluded_venvs` 가 경로와 패키지까지 적어 둔다",
@@ -146,18 +221,58 @@ EXCLUSION_NOTICE = (
 def _is_credential(relative_path: Path) -> bool:
     """자격증명으로 취급할 경로인지 판정한다.
 
+    이름은 확장자가 아니라 **`.` 으로 쪼갠 토큰**으로 본다. `Path.suffix` 는 마지막 확장자
+    하나만 주고, **도트파일에서는 아예 빈 문자열이 된다** — 파이썬이 앞의 점을 확장자
+    구분자가 아니라 이름의 일부로 보기 때문이다. 그래서 확장자로 판정하면 `.env` 라는
+    **가장 흔한 자격증명 파일명이 한 번도 안 걸리고**, `acme-prd.env.local` 처럼 뒤에 한
+    조각이 더 붙어도 샌다. [실측] 2026-09-12 — `Path('.env').suffix` 는 `''`,
+    `Path('.env.local').suffixes` 는 `['.local']` 이라 `.suffixes` 로 바꿔도 못 잡는다.
+
+    **첫 토큰도 센다.** 한때 `env.py` 같은 모듈명을 살리려고 뺐으나, 그러면 `key.json`
+    (GCP 서비스계정 키의 표준 파일명) · `env.json` · `key` 가 통째로 샌다. 실제 번들 37개 중
+    첫 토큰이 표식인 파일은 **0개**라 지킬 것이 없었고, 가정의 파일을 살리려다 실재하는
+    구멍을 연 셈이었다 `[실측] 2026-09-12`.
+
+    **이름은 내려 맞춘다.** mac·윈도우는 대소문자를 구별하지 않는 파일시스템이라
+    `.ENV` 와 `.env` 가 같은 파일인데, 그대로 비교하면 한쪽만 막힌다.
+
+    조각은 `.` 뿐 아니라 **`-`·`_` 로도 쪼갠다.** `.` 만으로는 `.env-prod` · `env_local` ·
+    `id_rsa_backup` 이 전부 빠져나간다.
+
+    **견본 예외를 두지 않는다.** 한때 「마지막 조각이 `example`·`sample`·`template` 이면
+    통과」라는 규칙이었는데 **그것이 우회로였다** — 이름 뒤에 그 조각만 붙이면 판정이 통째로
+    꺼진다. 경로 목록으로 바꿔 봤으나 담을 값어치가 있는 파일이 애초에 없었다. 실물
+    `acme-prd.env.example` 에는 운영 DB 의 host·port·name 이 채워져 있었다 —
+    **「견본이면 비어 있다」는 전제가 틀렸다** `[실측] 2026-09-12`.
+
+    조각 «전체 일치» 이고 **문서·코드 확장자는 탈출구**(`DOCUMENT_SUFFIXES`)라
+    `api-key-format.md` · `key-rotation-guide.md` · `env.py` 는 살아남는다 —
+    **정상 파일을 죽이는 쪽이 유출보다 조용한 실패라** 이 경계를 함께 지킨다.
+
     Args:
         relative_path: `~/.claude` 기준 상대경로
 
     Returns:
         bool: 자격증명이면 True
     """
-    if CREDENTIAL_SEGMENTS & set(relative_path.parts):
-        return True
-    if relative_path.suffix in CREDENTIAL_SUFFIXES:
+    if CREDENTIAL_SEGMENTS & {part.lower() for part in relative_path.parts[:-1]}:
         return True
 
-    return relative_path.name in CREDENTIAL_NAMES
+    lowered = relative_path.name.lower()
+    if CREDENTIAL_NAME_PATTERN.search(lowered):
+        return True
+
+    # 점으로 쪼갠 조각이 표식이면 **확장자와 무관하게** 막는다. 여기에 탈출구를 두었더니
+    # `.env.txt` · `aws.key.sh` · `server.pem.md` 가 빠져나갔다 [실측] 2026-09-12
+    dotted = lowered.split(".")
+    if CREDENTIAL_NAME_TOKENS & set(dotted):
+        return True
+
+    # 구분자까지 쪼갠 조각은 합성어를 건드리므로 문서·모듈 확장자를 구제한다
+    if dotted[-1] in DOCUMENT_SUFFIXES:
+        return False
+
+    return bool(CREDENTIAL_NAME_TOKENS & {piece for piece in NAME_SEPARATORS.split(lowered) if piece})
 
 
 def should_include(relative_path: Path) -> bool:
@@ -181,11 +296,15 @@ def should_include(relative_path: Path) -> bool:
 
     if _is_credential(relative_path):
         return False
-    if DENY_SEGMENTS & set(parts):
+    if DENY_SEGMENTS & {part.lower() for part in parts}:
         return False
-    if relative_path.suffix in DENY_SUFFIXES:
+
+    # 문서·모듈 확장자는 구제한다 — `commands/log.md`(슬래시 커맨드)·`hooks/lock.py` 가
+    # 조용히 사라지던 것을 막는다 [실측] 2026-09-12. 안 보낸 것은 받는 쪽에서 «묻지도 않고» 없어진다
+    record_tokens = relative_path.name.lower().split(".")
+    if RUNTIME_RECORD_TOKENS & set(record_tokens) and record_tokens[-1] not in DOCUMENT_SUFFIXES:
         return False
-    if relative_path.name in DENY_NAMES:
+    if relative_path.name.lower() in DENY_NAMES:
         return False
     if BACKUP_NAME_PATTERN.search(relative_path.name):
         return False
@@ -375,6 +494,53 @@ def _is_absolute_path(value: str) -> bool:
     return bool(WINDOWS_ABSOLUTE_PATH_PATTERN.match(value))
 
 
+def _redact_url(url: str) -> str | None:
+    """url 에 실린 자격증명만 센티널로 바꾼다. 가릴 것이 없으면 None 을 돌려준다.
+
+    **접속에 필요한 것은 남긴다** — scheme·host·path 와 query 의 «키» 는 그대로 두고
+    query 의 «값» 과 `user:password@` 구간만 바꾼다. url 전체를 가리면 받는 쪽에서 서버가
+    뜨지 않는다(`command`·`args` 를 가리지 않는 것과 같은 이유다).
+
+    값을 이름으로 고르지 않는 것은 이 모듈의 규율이다 — 구글시트의 `TOKEN_PATH` 가 걸려
+    **살려야 할 경로가 죽은** 전례가 있고, 새 서버가 다른 이름을 쓰면 조용히 샌다.
+
+    [주의] **경로(path) 구간은 가리지 않는다.** 어느 구간이 키인지 «구조로 판별할 수 없고»
+    통째로 가리면 서버가 뜨지 않는다. query·userinfo·fragment 는 규격이 「값을 싣는 자리」로
+    정해 둔 곳이라 기계로 가릴 수 있지만 경로는 그렇지 않다. 경로에 키를 넣는 API 가 실제로
+    있으므로(ECOS 가 그렇다 — `src/verify_lab/CLAUDE.md`) **그런 서버를 등록할 때는 사람이
+    번들을 확인해야 한다.** 두 번째 겹인 번들 전체 패턴 스캔이 알려진 키 형식만 잡는다.
+
+    Args:
+        url: MCP 서버 정의의 `url` 값
+
+    Returns:
+        str | None: 가린 url. 가릴 것이 없으면 None (모양을 바꾸지 않기 위해)
+    """
+    parts = urlsplit(url)
+    netloc = parts.netloc
+    pairs = parse_qsl(parts.query, keep_blank_values=True) if parts.query else []
+
+    # 경로 값은 남긴다 — `_redact_server` 와 같은 규율이다. 자격증명이 아니라 자격증명이
+    # 놓인 곳이고, 가리면 받는 쪽의 경로 치환이 되돌릴 것을 잃는다
+    redact_pairs = [(key, value) for key, value in pairs if not _is_absolute_path(value)]
+
+    if "@" not in netloc and not redact_pairs and not parts.fragment:
+        return None
+
+    if "@" in netloc:
+        netloc = f"{REDACTED_SENTINEL}@{netloc.rsplit('@', 1)[1]}"
+
+    query = parts.query
+    if redact_pairs:
+        query = urlencode([(key, REDACTED_SENTINEL if not _is_absolute_path(value) else value) for key, value in pairs])
+
+    # 조각(fragment)은 통째로 가린다. OAuth 가 `#access_token=` 으로 토큰을 싣는 자리이고,
+    # **MCP 서버 접속에는 쓰이지 않으므로** 지워도 받는 쪽이 잃을 것이 없다
+    fragment = REDACTED_SENTINEL if parts.fragment else ""
+
+    return urlunsplit((parts.scheme, netloc, parts.path, query, fragment))
+
+
 def _redact_server(definition: dict[str, Any]) -> list[str]:
     """서버 정의 하나의 자격증명 값을 제자리에서 가린다.
 
@@ -397,6 +563,13 @@ def _redact_server(definition: dict[str, Any]) -> list[str]:
 
             block[key] = REDACTED_SENTINEL
             redacted_fields.append(f"{block_name}.{key}")
+
+    url = definition.get("url")
+    if isinstance(url, str):
+        redacted_url = _redact_url(url)
+        if redacted_url is not None:
+            definition["url"] = redacted_url
+            redacted_fields.append("url")
 
     return redacted_fields
 
@@ -666,6 +839,10 @@ def export_bundle(claude_home: Path, redacted_claude_json: dict[str, Any]) -> di
 
     forbidden = find_forbidden_entries(BUNDLE_HOME_DIR)
     if forbidden:
+        # **지운 뒤에 던진다.** 점검이 걸린 파일은 이미 복사돼 있어, 그대로 두면
+        # 「내보내기가 중단됐다」로 보이는 상태에서 **`git add` 를 기다리는 자격증명이
+        # 저장소 안에 놓인다.** 무엇이 걸렸는지는 메시지가 경로로 말한다
+        shutil.rmtree(BUNDLE_HOME_DIR, ignore_errors=True)
         raise RuntimeError(f"내부 불변조건 위반: 담기면 안 되는 항목이 번들에 있습니다 — {forbidden}")
 
     DECISIONS_DIR.mkdir(parents=True, exist_ok=True)
