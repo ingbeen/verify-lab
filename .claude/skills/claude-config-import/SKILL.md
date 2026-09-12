@@ -227,7 +227,7 @@ MCP 서버의 API 키는 파일이 아니라 `~/.claude.json` 안에 **값**으�
 
 | 파일 | 이 PC 에서 |
 | --- | --- |
-| `keys/sheets-mcp-token.json` | 동의화면이 「테스트」 상태라 7일마다 만료된다. **재인증하면 생긴다** |
+| `keys/sheets-mcp-token.json` | **재인증하면 생긴다.** 절차는 저장소 루트의 `PROMPT_sheets_production.md` 가 SoT다 — WSL 은 브라우저가 없어 그냥은 안 된다 |
 | `keys/sheets-mcp-oauth.json` | Google Cloud Console 에서 받은 **클라이언트 시크릿**이다. **재인증으로는 생기지 않는다** — 따로 옮기거나 Console 에서 다시 내려받는다 |
 
 **「재인증하면 되겠지」로 넘기면 두 번째 파일에서 막힌다.** 지라(atlassian)처럼 브라우저
