@@ -19,6 +19,7 @@
 import importlib.util
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -296,13 +297,17 @@ def test_restore_partial_sentinel(import_module_under_test: ModuleType) -> None:
     assert missing == []
 
 
-def _environment(module: ModuleType) -> object:
+def _environment(
+    module: ModuleType, extra_path_map: dict[str, str] | None = None, source_home: str = "/Users/source"
+) -> object:
     """실경로를 건드리지 않는 실측 정보를 만든다.
 
     `detect_environment()` 는 번들 매니페스트와 결정 파일을 읽으므로 테스트에서 쓰지 않는다.
 
     Args:
         module: 받는 쪽 모듈
+        extra_path_map: 결정 파일이 주는 추가 치환 쌍. 출처 홈 «밖» 경로를 재현하는 데 쓴다
+        source_home: 출처 PC 의 홈. 빈 문자열이면 치환 쌍이 아예 없는 상태가 된다
 
     Returns:
         object: 판정 함수에 넘길 `Environment`
@@ -311,8 +316,9 @@ def _environment(module: ModuleType) -> object:
         platform="linux",
         hostname="test-pc",
         home=Path("/home/tester"),
-        source_home="/Users/source",
+        source_home=source_home,
         source_hostname="source-pc",
+        extra_path_map=dict(extra_path_map) if extra_path_map else {},
     )
 
 
@@ -517,3 +523,294 @@ def test_restore_does_not_mutate_input(import_module_under_test: ModuleType) -> 
 
     # Then
     assert bundle["headers"]["API_KEY"] == sentinel
+
+
+def _permission_verdict(module: ModuleType, environment: object, section: str, entry: str) -> Any:
+    """권한 규칙 한 건의 판정을 꺼낸다.
+
+    키를 못 찾으면 **키 형식이 바뀐 것**이므로 그 사실을 말하고 실패한다. 벗은 `next()` 는
+    `StopIteration` 을 내 헬퍼를 범인으로 가리키고, 실제로 깨진 계약을 감춘다.
+
+    Args:
+        module: 받는 쪽 모듈
+        environment: 판정에 쓸 실측 정보
+        section: `allow` · `deny` · `ask` 중 하나
+        entry: 권한 규칙 문자열
+
+    Returns:
+        Any: 그 규칙의 `Verdict`
+    """
+    settings = {"permissions": {section: [entry]}}
+    verdicts = module.classify_settings(settings, environment)
+    matched = [verdict for verdict in verdicts if verdict.key.endswith(f"::{entry}")]
+
+    assert len(matched) == 1, f"권한 규칙의 키를 찾지 못했습니다: {[verdict.key for verdict in verdicts]}"
+
+    return matched[0]
+
+
+def test_extra_path_map_reaches_permission_rule(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 출처 홈 «밖» 경로를 가리키는 권한 규칙도 치환 대상으로 판정됨을 고정한다
+
+    치환 규칙은 출처 홈 하나가 아니라 `path_map` 전체다. 판정이 출처 홈만 보면
+    **홈 밖 경로는 「그대로 적용」으로 통과해 죽은 경로가 그대로 쓰인다.**
+    `ask` 가드가 그렇게 되면 **보호가 조용히 사라진다** — 에러도 경고도 없다.
+
+    Given: 출처 홈 밖 경로를 이 PC 경로로 잇는 치환 쌍과, 그 경로를 가리키는 `ask` 규칙
+    When: 판정한다
+    Then: 「변환 후 적용」이고 치환 결과가 이 PC 경로다
+    """
+    # Given
+    module = import_module_under_test
+    environment = _environment(module, {"/mnt/win/Downloads": "/home/tester/Downloads"})
+
+    # When
+    verdict = _permission_verdict(module, environment, "ask", "Read(//mnt/win/Downloads/*.env)")
+
+    # Then
+    assert verdict.decision == module.TRANSFORM
+    assert verdict.detail == "Read(//home/tester/Downloads/*.env)"
+
+
+def test_rebuild_applies_extra_path_map_to_permission_rule(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 다시 조립한 설정에 이 PC 경로가 들어감을 고정한다
+
+    판정만 맞고 조립이 원문을 쓰면 사용자에게 보이는 결과는 그대로 죽은 경로다.
+    **사용자가 실제로 치르는 계약은 이쪽이다.**
+
+    Given: 홈 밖 경로를 가리키는 `ask` 규칙과 그 치환 쌍
+    When: 판정한 뒤 설정을 다시 조립한다
+    Then: 규칙 문자열이 이 PC 경로로 바뀌어 있다
+    """
+    # Given
+    module = import_module_under_test
+    environment = _environment(module, {"/mnt/win/Downloads": "/home/tester/Downloads"})
+    settings = {"permissions": {"ask": ["Read(//mnt/win/Downloads/*.pem)"]}}
+    verdicts = module.classify_settings(settings, environment)
+
+    # When
+    rebuilt = module.rebuild_settings(settings, module.Plan(environment=environment, verdicts=verdicts), environment)
+
+    # Then
+    assert rebuilt["permissions"]["ask"] == ["Read(//home/tester/Downloads/*.pem)"]
+
+
+def test_extra_path_map_reaches_bundle_file(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 번들 파일 내용의 홈 밖 경로도 치환 대상으로 판정됨을 고정한다
+
+    같은 결함이 파일 판정에도 있다. 파일 안의 경로가 안 바뀌면 **그 파일을 읽는 도구가
+    없는 경로를 가리킨다** — 등록된 SQL 목록처럼 경로가 곧 식별자인 파일이 그렇다.
+
+    Given: 홈 밖 경로만 든 번들 파일과 그 치환 쌍
+    When: 파일을 판정한다
+    Then: 「변환 후 적용」이다
+    """
+    # Given
+    module = import_module_under_test
+    monkeypatch.setattr(module, "BUNDLE_HOME_DIR", tmp_path)
+    (tmp_path / "registry.json").write_text('{"path": "/mnt/win/Downloads/query.sql"}', encoding="utf-8")
+    environment = _environment(module, {"/mnt/win/Downloads": "/home/tester/Downloads"})
+
+    # When
+    verdicts = module.classify_files(environment)
+
+    # Then
+    assert [verdict.decision for verdict in verdicts] == [module.TRANSFORM]
+
+
+def test_longest_path_map_pair_wins(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 한 쌍이 다른 쌍을 품을 때 긴 쪽이 이김을 고정한다 (경계)
+
+    짧은 홈 경로를 먼저 바꾸면 그 안에 든 긴 경로가 이미 바뀌어 **뒤 규칙이 걸리지 않는다.**
+    작업 폴더 이름이 PC 마다 다른 경우가 정확히 이 형태다.
+
+    Given: 출처 홈과 그 아래 작업 폴더를 각각 잇는 쌍 둘
+    When: 작업 폴더를 가리키는 규칙을 판정한다
+    Then: 긴 쌍의 대상 경로가 쓰인다
+    """
+    # Given
+    module = import_module_under_test
+    environment = _environment(module, {"/Users/source/Workspace": "/home/tester/work"})
+
+    # When
+    verdict = _permission_verdict(module, environment, "allow", "Read(//Users/source/Workspace/**)")
+
+    # Then
+    assert verdict.detail == "Read(//home/tester/work/**)"
+
+
+def test_overlapping_pairs_are_not_double_counted(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 치환 횟수를 쌍마다 따로 세지 않음을 고정한다 (경계)
+
+    한 쌍이 다른 쌍을 품으면 **같은 자리가 두 번 세어진다.** 횟수는 사람이
+    「무엇이 바뀌는가」를 좁히는 재료라, 부풀면 없는 변경을 찾게 만든다.
+
+    Given: 서로를 품는 쌍 둘과, 그중 한 자리만 등장하는 파일
+    When: 파일을 판정한다
+    Then: 사유에 적힌 횟수가 1곳이다
+    """
+    # Given
+    module = import_module_under_test
+    monkeypatch.setattr(module, "BUNDLE_HOME_DIR", tmp_path)
+    (tmp_path / "note.md").write_text("경로는 /Users/source/Workspace/repo 하나뿐이다", encoding="utf-8")
+    environment = _environment(module, {"/Users/source/Workspace": "/home/tester/work"})
+
+    # When
+    verdicts = module.classify_files(environment)
+
+    # Then
+    assert verdicts[0].reason == "경로 1곳을 바꿉니다"
+
+
+def test_entry_without_mapped_path_stays_apply(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 치환할 것이 없는 항목은 「그대로 적용」으로 남음을 고정한다 (경계)
+
+    조건을 넓히다가 **분류가 통째로 「변환 후 적용」으로 쏠리면** 판정표가 쓸모없어진다.
+    사용자는 그 표로 무엇이 손대지는지 가린다.
+
+    Given: 어느 치환 쌍과도 겹치지 않는 권한 규칙
+    When: 판정한다
+    Then: 「그대로 적용」이다
+    """
+    # Given
+    module = import_module_under_test
+    environment = _environment(module, {"/mnt/win/Downloads": "/home/tester/Downloads"})
+
+    # When
+    verdict = _permission_verdict(module, environment, "allow", "Bash(git status)")
+
+    # Then
+    assert verdict.decision == module.APPLY
+
+
+def test_empty_path_map_does_not_raise(
+    import_module_under_test: ModuleType, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """
+    목적: 치환 쌍이 아예 없어도 예외 없이 「그대로 적용」됨을 고정한다 (경계)
+
+    매니페스트에 출처 홈이 없을 수 있다. 그때 치환 쌍은 빈 dict 이며,
+    **판정이 멈추지 않고 원문을 그대로 쓰는 것이 정책이다.**
+
+    Given: 출처 홈이 빈 실측 정보와, 경로가 든 규칙·파일
+    When: 설정과 파일을 판정한다
+    Then: 예외 없이 둘 다 「그대로 적용」이다
+    """
+    # Given
+    module = import_module_under_test
+    monkeypatch.setattr(module, "BUNDLE_HOME_DIR", tmp_path)
+    (tmp_path / "note.md").write_text("/Users/source/Workspace/repo", encoding="utf-8")
+    environment = _environment(module, source_home="")
+
+    # When
+    verdict = _permission_verdict(module, environment, "allow", "Read(//Users/source/Workspace/**)")
+    file_verdicts = module.classify_files(environment)
+
+    # Then
+    assert verdict.decision == module.APPLY
+    assert [file_verdict.decision for file_verdict in file_verdicts] == [module.APPLY]
+
+
+def _decisions(module: ModuleType, key: str, decision: str, value: object) -> dict[str, Any]:
+    """항목 하나에 대한 지난 결정을 만든다.
+
+    Args:
+        module: 받는 쪽 모듈
+        key: 항목 식별자
+        decision: 저장돼 있던 결정
+        value: 그 항목의 값 (해시를 맞추는 데 쓴다)
+
+    Returns:
+        dict[str, Any]: `apply_previous_decisions` 가 받는 구조
+    """
+    return {"items": {key: {"decision": decision, "reason": "지난 회차", "source_hash": module._hash_value(value)}}}
+
+
+def test_remembered_include_does_not_freeze_path_form(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 기억된 「넣는다」가 새 경로 판정을 덮지 않음을 고정한다
+
+    해시는 항목 «값» 만 담고 `path_map` 은 담지 않는다. 그래서 쌍을 나중에 더해도 해시는
+    그대로이고, 기억된 형태까지 되살리면 **옛 `apply` 가 이겨 죽은 경로가 그대로 쓰인다.**
+    3 회차에서 권한 규칙 18건이 그 경로로 죽었고 손으로 결정을 지워야 했다.
+
+    Given: 쌍이 없던 때 `apply` 로 저장된 결정과, 쌍이 생긴 지금의 `transform` 판정
+    When: 지난 결정을 반영한다
+    Then: 이번 판정의 `transform` 이 유지된다
+    """
+    # Given
+    module = import_module_under_test
+    entry = "Read(//mnt/win/Downloads/*.env)"
+    environment = _environment(module, {"/mnt/win/Downloads": "/home/tester/Downloads"})
+    settings = {"permissions": {"ask": [entry]}}
+    verdicts = module.classify_settings(settings, environment)
+    plan = module.Plan(environment=environment, verdicts=verdicts)
+
+    # When
+    module.apply_previous_decisions(plan, _decisions(module, verdicts[0].key, module.APPLY, entry))
+
+    # Then
+    assert verdicts[0].decision == module.TRANSFORM
+
+
+def test_remembered_exclude_still_wins(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 사용자가 「뺀다」로 정한 항목은 그대로 빠짐을 고정한다
+
+    형태(`apply`/`transform`)는 파생값이지만 **제외는 사용자 결정이다.** 형태를 새로
+    판정한다는 이유로 제외까지 흔들면 승인한 적 없는 항목이 되살아난다.
+
+    Given: `exclude` 로 저장된 결정과, 이번에 `transform` 으로 판정된 같은 항목
+    When: 지난 결정을 반영한다
+    Then: `exclude` 가 유지된다
+    """
+    # Given
+    module = import_module_under_test
+    entry = "Read(//mnt/win/Downloads/*.key)"
+    environment = _environment(module, {"/mnt/win/Downloads": "/home/tester/Downloads"})
+    settings = {"permissions": {"ask": [entry]}}
+    verdicts = module.classify_settings(settings, environment)
+    plan = module.Plan(environment=environment, verdicts=verdicts)
+
+    # When
+    module.apply_previous_decisions(plan, _decisions(module, verdicts[0].key, module.EXCLUDE, entry))
+
+    # Then
+    assert verdicts[0].decision == module.EXCLUDE
+
+
+def test_remembered_hook_approval_still_wins(import_module_under_test: ModuleType) -> None:
+    """
+    목적: 승인한 훅이 계속 적용됨을 고정한다 (회귀)
+
+    훅은 **언제나 `EXCLUDE` 로 판정되고** 사용자의 승인에만 기댄다. 형태를 새로 판정하는
+    규칙이 훅까지 삼키면 **승인한 훅이 매 회차 사라진다.**
+
+    Given: `apply` 로 승인된 훅과, 이번에도 `EXCLUDE` 로 나온 같은 훅
+    When: 지난 결정을 반영한다
+    Then: `apply` 가 유지되고 다시 묻지 않는다
+    """
+    # Given
+    module = import_module_under_test
+    hook = {"type": "command", "command": "python3 $HOME/.claude/hooks/guard.py"}
+    environment = _environment(module)
+    settings = {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [hook]}]}}
+    verdicts = module.classify_settings(settings, environment)
+    plan = module.Plan(environment=environment, verdicts=verdicts)
+
+    # When
+    module.apply_previous_decisions(plan, _decisions(module, verdicts[0].key, module.APPLY, hook))
+
+    # Then
+    assert verdicts[0].decision == module.APPLY
+    assert verdicts[0].needs_confirmation is False

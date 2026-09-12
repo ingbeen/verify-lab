@@ -49,6 +49,10 @@ DECISION_LABELS = {
     EXCLUDE: "제외 (승인 필요)",
 }
 
+# 「넣을까 뺄까」만 사용자 결정이다. `APPLY` 와 `TRANSFORM` 은 둘 다 「넣는다」이며,
+# 그중 어느 «형태» 인지는 경로에서 파생된다 — 결정 파일이 그 형태를 되살리면 안 된다
+INCLUDE_DECISIONS = frozenset({APPLY, TRANSFORM})
+
 # 경로가 들어갈 수 있어 치환 대상이 되는 텍스트 파일
 TEXT_SUFFIXES = frozenset({".md", ".py", ".json", ".toml", ".txt", ".sh"})
 
@@ -190,11 +194,35 @@ def detect_environment() -> Environment:
     return environment
 
 
-def transform_text(text: str, environment: Environment) -> str:
-    """출처 PC 의 홈 경로를 이 PC 의 홈 경로로 바꾼다.
+def transform_text_counted(text: str, environment: Environment) -> tuple[str, int]:
+    """출처 PC 의 경로를 이 PC 의 경로로 바꾸고, 바꾼 자리 수를 함께 돌려준다.
 
     경로 구분자는 `/` 를 유지한다. Claude Code 설정은 Windows 에서도 `/` 를 쓰며,
     `\\` 로 바꾸면 JSON 안에서 이스케이프가 필요해져 규칙이 깨진다.
+
+    **횟수는 진행 중인 문자열에서 센다.** 쌍마다 원문을 따로 세면 한 쌍이 다른 쌍을 품을 때
+    (`/home/me/work` 와 `/home/me`) 같은 자리가 두 번 세어진다. 횟수는 사용자가 「무엇이
+    바뀌는가」를 좁히는 재료라, 부풀면 없는 변경을 찾게 만든다.
+
+    Args:
+        text: 원본 문자열
+        environment: 실측 정보
+
+    Returns:
+        tuple[str, int]: (치환된 문자열, 바꾼 자리 수)
+    """
+    result = text
+    replaced = 0
+
+    for source, target in environment.path_map.items():
+        replaced += result.count(source)
+        result = result.replace(source, target)
+
+    return result, replaced
+
+
+def transform_text(text: str, environment: Environment) -> str:
+    """출처 PC 의 경로를 이 PC 의 경로로 바꾼다.
 
     Args:
         text: 원본 문자열
@@ -203,11 +231,9 @@ def transform_text(text: str, environment: Environment) -> str:
     Returns:
         str: 치환된 문자열
     """
-    result = text
-    for source, target in environment.path_map.items():
-        result = result.replace(source, target)
+    transformed, _replaced = transform_text_counted(text, environment)
 
-    return result
+    return transformed
 
 
 def missing_hint_tools(command: str) -> list[str]:
@@ -233,6 +259,11 @@ def _classify_value(key: str, value: object, environment: Environment) -> Verdic
     설치하면 그대로 살아난다. 빼면 오히려 그때 승인창이 뜬다.
     실행 여부를 따지는 것은 «훅» 뿐이다 — 훅은 없는 명령을 부르면 매번 실패한다.
 
+    **치환할지는 「치환이 실제로 무언가를 바꾸는가」로 정한다.** 출처 홈이 문자열에 있는지로
+    정하면 **출처 PC 의 홈 «밖» 경로가 통과한다** — 결정 파일의 `path_map` 에 쌍을 넣어도
+    이 조건에 걸리지 않아 죽은 경로가 그대로 쓰인다. `ask` 가드가 그렇게 되면 보호가
+    조용히 사라진다. 조건을 치환 함수와 같은 것을 보게 두면 둘이 어긋날 자리가 없다.
+
     Args:
         key: 항목 식별자
         value: 항목 값
@@ -243,13 +274,13 @@ def _classify_value(key: str, value: object, environment: Environment) -> Verdic
     """
     source_hash = _hash_value(value)
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    transformed = transform_text(text, environment)
 
-    if environment.source_home and environment.source_home in text:
-        transformed = transform_text(text, environment)
+    if transformed != text:
         return Verdict(
             key=key,
             decision=TRANSFORM,
-            reason="출처 PC 의 홈 경로를 이 PC 경로로 바꿉니다",
+            reason="출처 PC 의 경로를 이 PC 경로로 바꿉니다",
             source_hash=source_hash,
             detail=transformed,
         )
@@ -668,18 +699,18 @@ def classify_files(environment: Environment) -> list[Verdict]:
         source_hash = hashlib.sha256(raw).hexdigest()
         key = f"home/{relative.as_posix()}"
 
-        if path.suffix not in TEXT_SUFFIXES or not environment.source_home:
+        if path.suffix not in TEXT_SUFFIXES or not environment.path_map:
             verdicts.append(Verdict(key=key, decision=APPLY, reason="", source_hash=source_hash))
             continue
 
         text = raw.decode("utf-8", errors="replace")
-        if environment.source_home in text:
-            occurrences = text.count(environment.source_home)
+        transformed, occurrences = transform_text_counted(text, environment)
+        if transformed != text:
             verdicts.append(
                 Verdict(
                     key=key,
                     decision=TRANSFORM,
-                    reason=f"출처 홈 경로 {occurrences}곳을 바꿉니다",
+                    reason=f"경로 {occurrences}곳을 바꿉니다",
                     source_hash=source_hash,
                 )
             )
@@ -712,6 +743,12 @@ def apply_previous_decisions(plan: Plan, decisions: dict[str, Any]) -> None:
     **해시가 같을 때만** 재사용한다. 내용이 바뀐 항목에 옛 결정을 적용하면 사용자가
     승인한 적 없는 상태가 조용히 만들어진다.
 
+    **되살리는 것은 「넣을까 뺄까」뿐이다.** 해시는 항목 «값» 만 담고 `path_map` 은 담지
+    않으므로, 쌍을 나중에 더해도 해시는 그대로다. 그때 기억된 «형태» 까지 되살리면
+    **새 쌍이 생겼는데도 옛 `APPLY` 가 이겨 죽은 경로가 그대로 쓰인다** — 실제로 3 회차에서
+    권한 규칙 18건이 그 경로로 죽었고, 손으로 결정을 지워야 했다.
+    그래서 양쪽이 다 「넣는다」면 형태는 **이번 판정** 을 쓴다.
+
     Args:
         plan: 이번 판정
         decisions: 저장된 결정
@@ -728,9 +765,14 @@ def apply_previous_decisions(plan: Plan, decisions: dict[str, Any]) -> None:
                 verdict.reason = f"{verdict.reason} (지난 결정이 있으나 내용이 바뀌어 다시 묻습니다)"
             continue
 
-        verdict.decision = str(remembered["decision"])
-        verdict.reason = str(remembered.get("reason", ""))
+        remembered_decision = str(remembered["decision"])
         verdict.needs_confirmation = False
+
+        if remembered_decision in INCLUDE_DECISIONS and verdict.decision in INCLUDE_DECISIONS:
+            continue
+
+        verdict.decision = remembered_decision
+        verdict.reason = str(remembered.get("reason", ""))
 
 
 def build_plan() -> Plan:
