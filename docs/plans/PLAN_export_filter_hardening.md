@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🔄 In Progress
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-09-12 10:24
-**마지막 업데이트**: 2026-09-12 10:24
+**마지막 업데이트**: 2026-09-12 11:52
 **관련 범위**: 하네스 (`.claude/skills/claude-config-export/`, `.claude/skills/clean-results/`), 테스트
 **관련 문서**: `.claude/skills/claude-config-export/SKILL.md`, `.claude/skills/claude-config-import/SKILL.md`, `tests/CLAUDE.md`, 루트 `CLAUDE.md`
 
@@ -42,10 +42,10 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: **견본 예외를 없앤다** — `acme-prd.env.example` 을 더 이상 내보내지 않는다
-- [ ] 목표 2: 자격증명 판정이 **구분자(하이픈·밑줄)** 로 이어진 이름도 막게 한다
-- [ ] 목표 3: 로그·상태 파일 판정을 자격증명과 **같은 규율**로 통일한다 (대소문자·도트파일·로테이트)
-- [ ] 목표 4: `clean-results` 스킬의 `disable-model-invocation: true` 를 되살린다
+- [x] 목표 1: **견본 예외를 없앤다** — `acme-prd.env.example` 을 더 이상 내보내지 않는다
+- [x] 목표 2: 자격증명 판정이 **구분자(하이픈·밑줄)** 로 이어진 이름도 막게 한다
+- [x] 목표 3: 로그·상태 파일 판정을 자격증명과 **같은 규율**로 통일한다 (대소문자·도트파일·로테이트)
+- [x] 목표 4: `clean-results` 스킬의 `disable-model-invocation: true` 를 되살린다
 
 ## 2) 비목표(Non-Goals)
 
@@ -114,21 +114,22 @@ clean 이었고 이 변경은 이 세션의 작업이 아니다. 지금 `.claude
 
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/impl-plan` 스킬)
 
-- [ ] 구분자로 이어진 자격증명 6종이 전부 막힌다
-- [ ] 로그·상태 파일 5종(도트파일·대문자·로테이트)이 전부 막힌다
-- [ ] **`db/acme-prd.env.example` 이 더 이상 담기지 않는다** — 번들 **36개**
-- [ ] 그 외 **36개 구성이 직전 번들과 같다** — 정상 파일이 새로 막히지 않았다
-- [ ] `db/api-key-format.md` · `db/key-rotation-guide.md` · `tools/env.py` · `hooks/changelog.md` 가 계속 담긴다
-- [ ] 견본 예외 기제가 **코드에서 사라졌다** (죽은 코드를 남기지 않는다)
-- [ ] `clean-results/SKILL.md` 의 `disable-model-invocation: true` 가 되살아났다
-- [ ] 양쪽 `SKILL.md` 와 `EXCLUSION_NOTICE` 가 **실제 판정과 일치**한다
-- [ ] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
-- [ ] `poetry run python validate_project.py` 통과 (failed=0, skipped=0; passed/failed/skipped 수 기록)
-- [ ] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
-- [ ] 필요한 문서 업데이트 — `docs/COMMANDS.md` 변경 없음 / 양쪽 `SKILL.md` 갱신
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
+- [x] 구분자로 이어진 자격증명 6종이 전부 막힌다
+- [x] 로그·상태 파일 5종(도트파일·대문자·로테이트)이 전부 막힌다
+- [x] **`db/acme-prd.env.example` 이 더 이상 담기지 않는다** — 번들 **36개**
+- [x] 그 외 **36개 구성이 직전 번들과 같다** — 정상 파일이 새로 막히지 않았다
+- [x] `db/api-key-format.md` · `db/key-rotation-guide.md` · ~~`tools/env.py`~~ · `hooks/changelog.md` 가 계속 담긴다
+      (**`tools/env.py` 는 리뷰 후 막는 쪽으로 돌렸다** — 점 조각이 온전한 표식이면 확장자와 무관하게 막는 것이 맞다. 대신 `tools/api_key_helper.py` 가 탈출구의 감시자가 됐다. 아래 「리뷰가 이 계획의 «첫 구현» 에서 찾은 구멍 넷」 참고)
+- [x] 견본 예외 기제가 **코드에서 사라졌다** (죽은 코드를 남기지 않는다)
+- [x] `clean-results/SKILL.md` 의 `disable-model-invocation: true` 가 되살아났다
+- [x] 양쪽 `SKILL.md` 와 `EXCLUSION_NOTICE` 가 **실제 판정과 일치**한다
+- [x] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
+- [x] `poetry run python validate_project.py` 통과 (failed=0, skipped=0; passed/failed/skipped 수 기록)
+- [x] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
+- [x] 필요한 문서 업데이트 — `docs/COMMANDS.md` 변경 없음 / 양쪽 `SKILL.md` 갱신
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
       (확장자 탈출구의 근거와 견본 예외를 없앤 이유를 `SKILL.md` 로 이관)
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -159,11 +160,12 @@ clean 이었고 이 변경은 이 세션의 작업이 아니다. 지금 `.claude
 
 **작업 내용**:
 
-- [ ] `CREDENTIAL_PATHS` 에 구분자 6종을 넣는다 (`db/.env-prod` · `db/.env_old` · `db/env_local` · `db/id_rsa_backup` · `db/credentials-prod.json` · `db/.npmrc-backup`)
-- [ ] `CREDENTIAL_PATHS` 에서 `db/acme-prd.env.example` 을 **막히는 쪽으로 옮긴다** — `INCLUDED_PATHS` 에서 뺀다
-- [ ] `EXCLUDED_PATHS` 에 로그·상태 5종을 넣는다 (`hooks/.log` · `hooks/toast.LOG` · `hooks/toast.log.1` · `db/audit.JSONL` · `hooks/.LOCK`)
-- [ ] **회귀 방지**: `INCLUDED_PATHS` 에 `db/key-rotation-guide.md` · `tools/env.py` 를 넣는다 — 확장자 탈출구의 감시자다
-- [ ] 이 시점에서 새 테스트가 **실패**하는 것을 확인한다 (레드)
+- [x] `CREDENTIAL_PATHS` 에 구분자 6종을 넣는다 (`db/.env-prod` · `db/.env_old` · `db/env_local` · `db/id_rsa_backup` · `db/credentials-prod.json` · `db/.npmrc-backup`)
+- [x] `CREDENTIAL_PATHS` 에서 `db/acme-prd.env.example` 을 **막히는 쪽으로 옮긴다** — `INCLUDED_PATHS` 에서 뺀다
+- [x] `EXCLUDED_PATHS` 에 로그·상태 5종을 넣는다 (`hooks/.log` · `hooks/toast.LOG` · `hooks/toast.log.1` · `db/audit.JSONL` · `hooks/.LOCK`)
+- [x] **회귀 방지**: `INCLUDED_PATHS` 에 `db/key-rotation-guide.md` · ~~`tools/env.py`~~ 를 넣는다 — 확장자 탈출구의 감시자다
+      (**`env.py` 는 리뷰 후 `tools/api_key_helper.py` 로 교체됐다** — 아래 「첫 구현에서 찾은 구멍」 참고)
+- [x] 이 시점에서 새 테스트가 **실패**하는 것을 확인한다 (레드)
 
 ---
 
@@ -171,13 +173,13 @@ clean 이었고 이 변경은 이 세션의 작업이 아니다. 지금 `.claude
 
 **작업 내용**:
 
-- [ ] 자격증명 표식을 **`.`·`-`·`_` 로 쪼갠 조각** 전체와 맞춘다
-- [ ] **문서·코드 확장자 탈출구**를 둔다 (`md`·`py`·`sh`·`txt`·`rst`) — 사람이 읽는 문서와 실행 코드는 자격증명이 아니다. 이것이 구분자 분리를 안전하게 만드는 장치다
-- [ ] 이름 목록을 **구분자 경계까지** 맞춘다 (`id_rsa_backup` · `.npmrc-backup`)
-- [ ] `credentials` 를 표식에 더한다 (`credentials-prod.json`)
-- [ ] **견본 예외 기제를 지운다** — `CREDENTIAL_TEMPLATE_ALLOWLIST` 와 그 검사. 담을 것이 없어졌으므로 죽은 코드를 남기지 않는다. 왜 예외를 두지 않는지는 `SKILL.md` 가 근거와 함께 갖는다
-- [ ] 로그·상태 판정을 **같은 조각 방식**으로 바꾼다 (`log`·`jsonl`·`lock`). `.` 만으로 쪼갠다 — 자격증명과 달리 넓힐 필요가 확인되지 않았다
-- [ ] Phase 0 의 테스트가 통과하는지 확인한다 (그린)
+- [x] 자격증명 표식을 **`.`·`-`·`_` 로 쪼갠 조각** 전체와 맞춘다
+- [x] **문서·코드 확장자 탈출구**를 둔다 (`md`·`py`·`sh`·`txt`·`rst`) — 사람이 읽는 문서와 실행 코드는 자격증명이 아니다. 이것이 구분자 분리를 안전하게 만드는 장치다
+- [x] 이름 목록을 **구분자 경계까지** 맞춘다 (`id_rsa_backup` · `.npmrc-backup`)
+- [x] `credentials` 를 표식에 더한다 (`credentials-prod.json`)
+- [x] **견본 예외 기제를 지운다** — `CREDENTIAL_TEMPLATE_ALLOWLIST` 와 그 검사. 담을 것이 없어졌으므로 죽은 코드를 남기지 않는다. 왜 예외를 두지 않는지는 `SKILL.md` 가 근거와 함께 갖는다
+- [x] 로그·상태 판정을 **같은 조각 방식**으로 바꾼다 (`log`·`jsonl`·`lock`). `.` 만으로 쪼갠다 — 자격증명과 달리 넓힐 필요가 확인되지 않았다
+- [x] Phase 0 의 테스트가 통과하는지 확인한다 (그린)
 
 ---
 
@@ -187,8 +189,8 @@ clean 이었고 이 변경은 이 세션의 작업이 아니다. 지금 `.claude
 
 **작업 내용**:
 
-- [ ] `.claude/skills/clean-results/SKILL.md` frontmatter 에 `disable-model-invocation: true` 를 되살린다
-- [ ] 그 플래그가 붙은 스킬이 다시 존재하는지 확인한다
+- [x] `.claude/skills/clean-results/SKILL.md` frontmatter 에 `disable-model-invocation: true` 를 되살린다
+- [x] 그 플래그가 붙은 스킬이 다시 존재하는지 확인한다
 
 ---
 
@@ -196,22 +198,22 @@ clean 이었고 이 변경은 이 세션의 작업이 아니다. 지금 `.claude
 
 **작업 내용**
 
-- [ ] `--dry-run` 으로 **36개**이고 빠진 것이 `db/acme-prd.env.example` 하나인지 확인한다
-- [ ] 번들을 다시 만들고 직전 번들과 **기계로 대조**한다
-- [ ] `EXCLUSION_NOTICE` 를 실제 판정과 맞춘다 — 확장자 탈출구와 견본 예외 없음을 적는다
-- [ ] 양쪽 `SKILL.md` 갱신 — **왜 견본 예외를 두지 않는지**(규칙은 우회로가 됐고 목록은 담을 것이 없었다)와 **확장자 탈출구의 근거**
-- [ ] `docs/COMMANDS.md` — **변경 없음**
-- [ ] 자동 포맷 적용 (`poetry run black .`)
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] `--dry-run` 으로 **36개**이고 빠진 것이 `db/acme-prd.env.example` 하나인지 확인한다
+- [x] 번들을 다시 만들고 직전 번들과 **기계로 대조**한다
+- [x] `EXCLUSION_NOTICE` 를 실제 판정과 맞춘다 — 확장자 탈출구와 견본 예외 없음을 적는다
+- [x] 양쪽 `SKILL.md` 갱신 — **왜 견본 예외를 두지 않는지**(규칙은 우회로가 됐고 목록은 담을 것이 없었다)와 **확장자 탈출구의 근거**
+- [x] `docs/COMMANDS.md` — **변경 없음**
+- [x] 자동 포맷 적용 (`poetry run black .`)
+- [x] 변경 기능 및 전체 플로우 최종 검증
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
 
 **Validation**:
 
 > 순서를 지킨다 — 리뷰에서 고치면 코드가 바뀌므로 품질 검증이 마지막 관문이어야 한다.
 
-- [ ] `/code-review xhigh` (발견 N건 · 조치 기록)
-- [ ] `poetry run python validate_project.py` (passed=N, failed=0, skipped=0)
+- [x] `/code-review xhigh` (발견 **11건** · 조치: **내 첫 구현의 구멍 5건 전부 수정**(확장자 탈출구의 위치와 `sh`·`txt` · 고전 이름 접두 · 폴더명 대소문자 · 런타임 규칙의 탈출구 누락) · **6건은 내 변경이 아니라 보고만**)
+- [x] `poetry run python validate_project.py` (passed=**1260**, failed=**0**, skipped=**0**)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 

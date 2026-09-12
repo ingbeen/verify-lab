@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🔄 In Progress
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-09-12 11:08
-**마지막 업데이트**: 2026-09-12 11:08
+**마지막 업데이트**: 2026-09-12 11:52
 **관련 범위**: 하네스 (`.claude/skills/claude-config-export/`), 테스트
 **관련 문서**: `.claude/skills/claude-config-export/SKILL.md`, `.claude/skills/claude-config-import/SKILL.md`, `tests/CLAUDE.md`, 루트 `CLAUDE.md`
 
@@ -42,9 +42,9 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: MCP 서버 정의의 **`url` 에 실린 자격증명**(query 값·userinfo)을 센티널로 가린다
-- [ ] 목표 2: 가려도 **받는 쪽에서 서버가 뜨게** 한다 — 접속에 필요한 scheme·host·path 는 남긴다
-- [ ] 목표 3: 금지항목 점검이 발동할 때 **저장소에 파일을 남기지 않게** 한다
+- [x] 목표 1: MCP 서버 정의의 **`url` 에 실린 자격증명**(query 값·userinfo)을 센티널로 가린다
+- [x] 목표 2: 가려도 **받는 쪽에서 서버가 뜨게** 한다 — 접속에 필요한 scheme·host·path 는 남긴다
+- [x] 목표 3: 금지항목 점검이 발동할 때 **저장소에 파일을 남기지 않게** 한다
 
 ## 2) 비목표(Non-Goals)
 
@@ -103,21 +103,21 @@ HTTP 형 MCP 서버는 토큰을 url 에 싣는 방식이 흔하다.
 
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/impl-plan` 스킬)
 
-- [ ] `url` 의 query 값과 userinfo 가 센티널로 가려진다
-- [ ] **scheme·host·path·query 키는 남는다** — 받는 쪽이 서버에 접속할 수 있다
-- [ ] 비밀이 없는 url(`https://mcp.context7.com/mcp`)은 **건드리지 않는다**
-- [ ] 가린 항목이 실행 출력과 `replaced` 목록에 나온다 (`mcpServers.<이름>.url` 형태)
-- [ ] 프로젝트 스코프 서버에도 적용된다
-- [ ] 입력을 제자리에서 고치지 않는다 (기존 `_redact_server` 계약과 같다)
-- [ ] 금지항목 점검이 발동하면 **번들 폴더를 지우고** 예외를 던진다
-- [ ] 번들을 다시 만들어 **36개 구성이 그대로**이고 `claude_json.json` 이 바뀌지 않음을 확인했다
-- [ ] 양쪽 `SKILL.md` 가 **실제 가림 범위**와 일치한다
-- [ ] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
-- [ ] `poetry run python validate_project.py` 통과 (failed=0, skipped=0; passed/failed/skipped 수 기록)
-- [ ] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
-- [ ] 필요한 문서 업데이트 — `docs/COMMANDS.md` 변경 없음 / 양쪽 `SKILL.md` 갱신
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] `url` 의 query 값과 userinfo 가 센티널로 가려진다
+- [x] **scheme·host·path·query 키는 남는다** — 받는 쪽이 서버에 접속할 수 있다
+- [x] 비밀이 없는 url(`https://mcp.context7.com/mcp`)은 **건드리지 않는다**
+- [x] 가린 항목이 실행 출력과 `replaced` 목록에 나온다 (`mcpServers.<이름>.url` 형태)
+- [x] 프로젝트 스코프 서버에도 적용된다
+- [x] 입력을 제자리에서 고치지 않는다 (기존 `_redact_server` 계약과 같다)
+- [x] 금지항목 점검이 발동하면 **번들 폴더를 지우고** 예외를 던진다
+- [x] 번들을 다시 만들어 **36개 구성이 그대로**이고 `claude_json.json` 이 바뀌지 않음을 확인했다
+- [x] 양쪽 `SKILL.md` 가 **실제 가림 범위**와 일치한다
+- [x] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
+- [x] `poetry run python validate_project.py` 통과 (failed=0, skipped=0; passed/failed/skipped 수 기록)
+- [x] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
+- [x] 필요한 문서 업데이트 — `docs/COMMANDS.md` 변경 없음 / 양쪽 `SKILL.md` 갱신
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -141,12 +141,12 @@ HTTP 형 MCP 서버는 토큰을 url 에 싣는 방식이 흔하다.
 
 **작업 내용**:
 
-- [ ] query 에 실린 토큰이 가려지는지 고정한다 (`?api_key=SECRET` → 키는 남고 값만 센티널)
-- [ ] userinfo 가 가려지는지 고정한다 (`https://user:token@host/mcp`)
-- [ ] **비밀 없는 url 은 그대로**인지 고정한다 (`https://mcp.context7.com/mcp`)
-- [ ] 프로젝트 스코프 서버에도 걸리는지 고정한다
-- [ ] 입력을 제자리에서 고치지 않는지 고정한다
-- [ ] 이 시점에서 새 테스트가 **실패**하는 것을 확인한다 (레드)
+- [x] query 에 실린 토큰이 가려지는지 고정한다 (`?api_key=SECRET` → 키는 남고 값만 센티널)
+- [x] userinfo 가 가려지는지 고정한다 (`https://user:token@host/mcp`)
+- [x] **비밀 없는 url 은 그대로**인지 고정한다 (`https://mcp.context7.com/mcp`)
+- [x] 프로젝트 스코프 서버에도 걸리는지 고정한다
+- [x] 입력을 제자리에서 고치지 않는지 고정한다
+- [x] 이 시점에서 새 테스트가 **실패**하는 것을 확인한다 (레드)
 
 ---
 
@@ -154,10 +154,10 @@ HTTP 형 MCP 서버는 토큰을 url 에 싣는 방식이 흔하다.
 
 **작업 내용**:
 
-- [ ] `_redact_url` 을 만든다 — `urlsplit` 으로 쪼개 query 값과 userinfo 만 센티널로 바꾸고 다시 합친다
-- [ ] `_redact_server` 가 그것을 부르고 `url` 을 가린 필드 목록에 넣는다
-- [ ] 금지항목 점검 실패 시 `BUNDLE_HOME_DIR` 를 지운 뒤 예외를 던진다
-- [ ] Phase 0 의 테스트가 통과하는지 확인한다 (그린)
+- [x] `_redact_url` 을 만든다 — `urlsplit` 으로 쪼개 query 값과 userinfo 만 센티널로 바꾸고 다시 합친다
+- [x] `_redact_server` 가 그것을 부르고 `url` 을 가린 필드 목록에 넣는다
+- [x] 금지항목 점검 실패 시 `BUNDLE_HOME_DIR` 를 지운 뒤 예외를 던진다
+- [x] Phase 0 의 테스트가 통과하는지 확인한다 (그린)
 
 ---
 
@@ -165,20 +165,20 @@ HTTP 형 MCP 서버는 토큰을 url 에 싣는 방식이 흔하다.
 
 **작업 내용**
 
-- [ ] 번들을 다시 만들고 `claude_json.json` 과 항목 36개가 **그대로**인지 기계로 확인한다
-- [ ] 양쪽 `SKILL.md` 의 자격증명 «값» 절에 url 을 더한다 — **무엇을 남기고 무엇을 가리는지**
-- [ ] `docs/COMMANDS.md` — **변경 없음**
-- [ ] 자동 포맷 적용 (`poetry run black .`)
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] 번들을 다시 만들고 `claude_json.json` 과 항목 36개가 **그대로**인지 기계로 확인한다
+- [x] 양쪽 `SKILL.md` 의 자격증명 «값» 절에 url 을 더한다 — **무엇을 남기고 무엇을 가리는지**
+- [x] `docs/COMMANDS.md` — **변경 없음**
+- [x] 자동 포맷 적용 (`poetry run black .`)
+- [x] 변경 기능 및 전체 플로우 최종 검증
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
 
 **Validation**:
 
 > 순서를 지킨다 — 리뷰에서 고치면 코드가 바뀌므로 품질 검증이 마지막 관문이어야 한다.
 
-- [ ] `/code-review xhigh` (발견 N건 · 조치 기록)
-- [ ] `poetry run python validate_project.py` (passed=N, failed=0, skipped=0)
+- [x] `/code-review xhigh` (발견 **15건** · 조치: **내 변경 관련 9건 중 6건 수정**(받는 쪽 미복원·fragment·경로 값·`token`/`secret`·폴더 표식·`lock` 회귀) · **3건은 구조 변경이라 별건으로 기록** · **6건은 내 변경이 아니라 보고만**)
+- [x] `poetry run python validate_project.py` (passed=**1260**, failed=**0**, skipped=**0**)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 
