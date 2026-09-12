@@ -30,22 +30,14 @@ from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
 from verify_lab.measure.screening import (
     COL_BASELINE_GAP,
     COL_BASELINE_HIT_RATE,
-    COL_BREAKEVEN_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
-    COL_LOSING_COUNT,
-    COL_P_VALUE,
-    COL_PAYOFF_RATIO,
-    COL_PERIOD_COUNT,
-    COL_PERIOD_MIN_HIT_RATE,
     COL_SCREEN,
-    COL_SUPPORT_COUNT,
-    COL_SUPPORT_TOTAL,
     COL_TOTAL_RETURN,
-    COL_UNMET_SUPPORT,
     DIRECTION_DOWN,
     SCREEN_CANDIDATE,
+    SCREEN_NOT_JUDGED,
 )
 from verify_lab.measure.statistics import (
     COL_MEAN_PERCENTILE,
@@ -55,17 +47,20 @@ from verify_lab.measure.statistics import (
     summarize,
 )
 from verify_lab.report.constants import (
+    DISPLAY_BASELINE_GAP,
+    DISPLAY_BASELINE_HIT_RATE,
     DISPLAY_BASIS,
+    DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_EXCLUDED,
     DISPLAY_EXPECTED_VALUE,
+    DISPLAY_HIT_RATE,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
     DISPLAY_MEAN_PERCENTILE,
-    DISPLAY_PERIOD_MIN_HIT_RATE,
     DISPLAY_SAMPLE_COUNT,
-    DISPLAY_SUPPORT,
+    DISPLAY_SCREEN,
     DISPLAY_TEST_NOTE,
     DISPLAY_TOTAL_RETURN,
     DISPLAY_UP_RATE,
@@ -636,8 +631,8 @@ class TestCandidatesTable:
     AXIS_COLUMN = "expiry_month_number"
 
     @staticmethod
-    def _candidates(*, support_count: int, support_total: int, period_min: float) -> pd.DataFrame:
-        """판정표 한 줄을 만든다."""
+    def _candidates(*, screen: str = SCREEN_CANDIDATE) -> pd.DataFrame:
+        """판정표 한 줄을 만든다. 값은 QQQ 9월 실측이다."""
         return pd.DataFrame(
             {
                 TestCandidatesTable.AXIS_COLUMN: [9],
@@ -646,56 +641,76 @@ class TestCandidatesTable:
                 COL_HIT_RATE: [0.6667],
                 COL_EXPECTED_VALUE: [0.010578],
                 COL_TOTAL_RETURN: [0.010578 * 27],
-                COL_PAYOFF_RATIO: [1.307],
-                COL_BREAKEVEN_HIT_RATE: [0.4334],
-                COL_LOSING_COUNT: [9],
                 COL_BASELINE_HIT_RATE: [0.4522],
                 COL_BASELINE_GAP: [0.2145],
-                COL_P_VALUE: [0.013],
-                COL_PERIOD_COUNT: [2 if support_total == 4 else 0],
-                COL_PERIOD_MIN_HIT_RATE: [period_min],
-                COL_SCREEN: [SCREEN_CANDIDATE],
-                COL_SUPPORT_COUNT: [support_count],
-                COL_SUPPORT_TOTAL: [support_total],
-                COL_UNMET_SUPPORT: [""],
+                COL_SCREEN: [screen],
             }
         )
 
-    def test_등급이_분모와_함께_표시된다(self) -> None:
+    def test_판정에_쓰이지_않는_열을_두지_않는다(self) -> None:
         """
-        목적: **분모를 떼지 않는다.** 시기를 못 잰 칸은 `3/3` 이 되는데 이는 `4/4` 와
-              같은 뜻이 아니며, 분모를 지우면 표본이 작은 칸이 만점처럼 보인다.
+        목적: **등급이 사라진 뒤 남은 열은 전부 판정에 쓰이거나 판정을 읽는 데 필요한 것이다.**
+              쓰이지 않는 열을 두면 다음 사람이 그것으로 칸을 고르게 된다.
 
-        Given: 시기를 재서 4항목을 물은 칸
+        Given: 후보 한 칸
         When: 표시용으로 바꾸면
-        Then: 등급이 "4/4" 이다
+        Then: 컬럼이 계약대로 여덟 개다
         """
         # Given
-        candidates = self._candidates(support_count=4, support_total=4, period_min=0.6428)
+        candidates = self._candidates()
 
         # When
         table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
-        assert table[DISPLAY_SUPPORT].iloc[0] == "4/4"
+        assert list(table.columns) == [
+            "만기월",
+            DISPLAY_SAMPLE_COUNT,
+            DISPLAY_DIRECTION,
+            DISPLAY_HIT_RATE,
+            DISPLAY_EXPECTED_VALUE,
+            DISPLAY_TOTAL_RETURN,
+            DISPLAY_BASELINE_HIT_RATE,
+            DISPLAY_BASELINE_GAP,
+            DISPLAY_SCREEN,
+        ]
 
-    def test_시기를_못_잰_칸은_분모가_3이다(self) -> None:
+    def test_기준선과_그_차이가_함께_실린다(self) -> None:
         """
-        목적: 물을 수 있었던 항목 수가 표시에 그대로 드러난다.
+        목적: **기준선은 판정에 쓰이지 않지만 판정을 읽는 데 필요하다.** 같은 적중률이
+              방향에 따라 뜻이 정반대이고, 기준선과 사실상 같은 칸도 게이트를 통과한다.
 
-        Given: 시기 분할이 없어 3항목만 물은 칸
+        Given: 적중률 66.67% · 기준선 45.22% 인 칸
         When: 표시용으로 바꾸면
-        Then: 등급이 "3/3" 이고 가장 약한 시기가 **0 으로 채워지지 않는다**
+        Then: 둘과 그 차이가 백분율로 함께 실린다
         """
         # Given
-        candidates = self._candidates(support_count=3, support_total=3, period_min=float("nan"))
+        candidates = self._candidates()
 
         # When
         table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
-        assert table[DISPLAY_SUPPORT].iloc[0] == "3/3"
-        assert pd.isna(table[DISPLAY_PERIOD_MIN_HIT_RATE].iloc[0])
+        assert float(table[DISPLAY_HIT_RATE].iloc[0]) == pytest.approx(66.67, abs=0.005)
+        assert float(table[DISPLAY_BASELINE_HIT_RATE].iloc[0]) == pytest.approx(45.22, abs=0.005)
+        assert float(table[DISPLAY_BASELINE_GAP].iloc[0]) == pytest.approx(21.45, abs=0.005)
+
+    def test_판정_안_함이_그대로_실린다(self) -> None:
+        """
+        목적: 살 수 없는 대상의 「판정 안 함」이 표시 계층에서 후보·제외로 뭉개지지 않는다.
+
+        Given: 1차 판정이 「판정 안 함」인 칸
+        When: 표시용으로 바꾸면
+        Then: 그 값이 그대로 있다
+        """
+        # Given
+        candidates = self._candidates(screen=SCREEN_NOT_JUDGED)
+
+        # When
+        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+
+        # Then
+        assert table[DISPLAY_SCREEN].iloc[0] == SCREEN_NOT_JUDGED
 
     def test_방향_기대값이_백분율로_실린다(self) -> None:
         """
@@ -706,7 +721,7 @@ class TestCandidatesTable:
         Then: 1.06 (%) 이다
         """
         # Given
-        candidates = self._candidates(support_count=4, support_total=4, period_min=0.6428)
+        candidates = self._candidates()
 
         # When
         table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
@@ -723,7 +738,7 @@ class TestCandidatesTable:
         Then: ValueError
         """
         # Given
-        candidates = self._candidates(support_count=4, support_total=4, period_min=0.6428)
+        candidates = self._candidates()
 
         # When / Then
         with pytest.raises(ValueError, match="축 컬럼"):
@@ -868,7 +883,7 @@ class TestCandidatesTotalReturn:
         Then: 합산 수익률이 회당 × 표본 값으로 실리고 표본 수도 함께 있다
         """
         # Given
-        candidates = TestCandidatesTable._candidates(support_count=4, support_total=4, period_min=0.6428)
+        candidates = TestCandidatesTable._candidates()
 
         # When
         table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
@@ -887,7 +902,7 @@ class TestCandidatesTotalReturn:
         Then: 「방향 기대값(%)」 바로 다음 컬럼이 「합산 수익률(%)」이다
         """
         # Given
-        candidates = TestCandidatesTable._candidates(support_count=4, support_total=4, period_min=0.6428)
+        candidates = TestCandidatesTable._candidates()
 
         # When
         columns = list(build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월").columns)

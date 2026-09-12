@@ -458,7 +458,6 @@ def _summary_rows(target: Target, block: _Block, *, stop_level: float) -> list[d
             hold_days=block.hold_days,
             reasons=block.reasons,
             event_ids=block.event_ids,
-            excluded_count=block.excluded_count,
         )
     ]
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""검증 #10 실행 CLI — 월 하순 진입 (20일 매수 → 말일 매도), 코스피·코스닥 8대상
+"""검증 #10 실행 CLI — 월 하순 진입 (20일 매수 → 말일 매도), 코스피·코스닥
 
 사용자가 전해 들은 매매법을 잰다. **하나의 칸을 고르지 않고** 진입 달력일 11칸 ×
 청산 상대 거래일 7칸을 전부 산출해 나란히 보고한다 — 20일만 튀는지 이웃도 같은지가
@@ -12,7 +12,9 @@
 import argparse
 
 from verify_lab.common_constants import RESULT_LAYER_STUDY
+from verify_lab.measure.screening import SCREEN_NOT_JUDGED
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
+from verify_lab.report.constants import DISPLAY_SCREEN
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.month_end.constants import DATASETS, TRACK_NAME
@@ -55,9 +57,8 @@ CANDIDATE_COLUMNS = [
     "적중률(%)",
     "방향 기대값(%)",
     "합산 수익률(%)",
+    "기준선(%)",
     "기준선 대비 차이(%p)",
-    "우연확률",
-    "뒷받침",
 ]
 
 
@@ -71,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ticker",
         action="append",
-        help="측정할 대상 코드. 여러 번 줄 수 있다 (기본값: 확정된 4개 전부)",
+        help="측정할 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: 코스피·코스닥 8대상 전부). 인버스가 드는 것은 execution.csv 가 「아래」를 인버스 실물로 재기 때문이다",
     )
     parser.add_argument(
         "--repeats",
@@ -90,6 +91,9 @@ def parse_args() -> argparse.Namespace:
 
 def _selected_datasets(tickers: list[str] | None) -> tuple:
     """인자로 고른 대상만 남긴다.
+
+    **검증은 인버스도 기본 대상이다.** `execution.csv` 가 「아래」 방향을 인버스 실물로 재고,
+    그 표가 분배락 과대평가를 잡아내는 자리이기 때문이다 (`docs/spec/월말_진입_설계.md` §7.16).
 
     Args:
         tickers: 대상 코드 목록. `None` 이면 전부
@@ -135,14 +139,20 @@ def main() -> int:
     if not headline.empty:
         print_dataframe(headline[HEADLINE_COLUMNS], logger, title="원 매매법 칸 — 20일 매수 → 말일 매도")
 
-    candidates = candidates_headline(tables["grid_candidates"])
+    grid_candidates = tables["grid_candidates"]
+    candidates = candidates_headline(grid_candidates)
+    # **분모는 «판정한» 칸이다.** 지수는 살 수 없어 판정하지 않으므로(「판정 안 함」)
+    # 전체 행 수를 분모로 쓰면 통과 비율이 실제보다 작아 보인다 — 월말 기본 실행에서
+    # 격자 462칸 중 308칸이 지수다
+    judged = int((grid_candidates[DISPLAY_SCREEN] != SCREEN_NOT_JUDGED).sum())
+    unjudged = len(grid_candidates) - judged
     if candidates.empty:
-        logger.debug("1차 게이트를 넘은 격자 칸이 없습니다")
+        logger.debug(f"게이트를 넘은 격자 칸이 없습니다 (판정한 칸 {judged})")
     else:
         print_dataframe(
             candidates[CANDIDATE_COLUMNS],
             logger,
-            title=f"1차 게이트를 넘은 격자 칸 — {len(candidates)}칸 (전체 {len(tables['grid_candidates'])}칸)",
+            title=(f"게이트를 넘은 격자 칸 — {len(candidates)}칸 " f"(판정한 {judged}칸 · 판정 안 함 {unjudged}칸)"),
         )
 
     logger.debug(f"산출물 저장 위치: {directory}")

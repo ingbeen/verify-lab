@@ -7,7 +7,7 @@
 
 - 격자 칸 수는 진입 달력일 × 청산 상대 거래일이다
 - 월별 분해와 원자료는 **원 매매법 칸에서만** 나온다 (축을 동시에 쪼개지 않는다)
-- 후보 판정의 시기 항목은 **균등 분할만** 읽는다 (관찰용 최근 구간은 판정에 쓰지 않는다)
+- 후보 판정은 **전체 구간 하나만** 본다 (구간은 산출물에 관찰용으로만 남는다)
 - 저장 표의 헤더가 전부 한글이다 (영문 토큰이 사용자에게 나가지 않는다)
 - 지수와 ETF 는 스키마가 달라도 같은 격자를 낸다
 """
@@ -30,6 +30,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
+from verify_lab.measure.screening import SCREENING_COLUMNS
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
@@ -278,22 +279,25 @@ class TestPeriodSplit:
         }
         assert set(outputs.periods["period"]) == expected
 
-    def test_recent_windows_do_not_enter_the_screening(self, etf_outputs: StudyOutputs) -> None:
+    def test_no_period_enters_the_screening(self, etf_outputs: StudyOutputs) -> None:
         """
-        목적: **관찰용 최근 구간이 후보 판정의 시기 항목에 들어가지 않음**을 고정한다.
+        목적: **어떤 구간도 판정에 들어가지 않음**을 고정한다 (2026-09-12 개편).
 
-        최근 구간으로 판정하면 결과를 보고 구간을 고르는 것과 구별되지 않는다.
-        판정에 쓰인 구간 수는 균등 분할 중 표본 하한을 넘은 것뿐이므로 **2를 넘을 수 없다.**
+        게이트는 전체 구간 하나만 본다. 쪼개면 칸당 표본이 5~6건까지 줄어 한 건이 20%p 를
+        움직이므로, 그 값으로 칸을 떨어뜨리면 멀쩡한 매매법이 우연으로 죽는다.
+        **구간은 산출물에 관찰용으로만 남고**(위 테스트), 판정표에는 흔적이 없어야 한다.
 
         Given: 합성 ETF 하나
         When: 검증을 돌린다
-        Then: 판정표의 시기 구간 수가 2 이하다
+        Then: 판정표 컬럼이 `SCREENING_COLUMNS` 계약 그대로이고 시기 관련 열이 없다
         """
         # Given / When
         outputs = etf_outputs
 
         # Then
-        assert outputs.grid_candidates["PeriodCount"].max() <= len({DISPLAY_PERIOD_EARLY, DISPLAY_PERIOD_LATE})
+        assert set(SCREENING_COLUMNS) <= set(outputs.grid_candidates.columns)
+        leftovers = [column for column in outputs.grid_candidates.columns if "Period" in column]
+        assert leftovers == []
 
 
 class TestDisplayTables:
@@ -383,6 +387,57 @@ class TestDatasetIdentity:
 
         # Then
         assert len(set(tickers)) == len(DATASETS), f"종목코드가 겹칩니다: {tickers}"
+
+    def test_inverse_is_in_the_study_default_but_not_the_trading_default(self) -> None:
+        """
+        목적: **인버스가 검증에는 들고 매매에는 안 드는 것**을 고정한다 (2026-09-12).
+
+        **검증에 드는 이유**: `execution.csv` 가 「아래」 방향을 **인버스 실물로 재는 표**이고,
+        1배 ETF 의 하락률로 재면 분배락 하락이 이익으로 잡히는데 인버스는 그만큼 오르지 않는다
+        (4월 +18.63% 대 +10.44%). **매매에서 빼는 이유**는 아래.
+
+        「아래」 방향을 1배의 부호를 뒤집어 재는 것과 인버스 실물로 재는 것의 차이가
+        6월 1.94 대 1.95 · 9월 2.97 대 3.05 · 12월 2.99 대 3.01 로 잡음이고, 실제 집행은
+        2배 인버스라 1배 실물도 집행 상품이 아니다. **그래도 지우지 않는 이유**는
+        어긋나는 칸이 곧 분배락이 걸린 칸이라(4월 +18.63% 대 +10.44%) 확정 전 교차검증에 쓰기 때문이다.
+
+        Given: 검증 기본값과 매매 기본값
+        When: 인버스가 어디에 있는지 본다
+        Then: 검증에는 있고 매매에는 없다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import (
+            DATASETS,
+            DATASETS_TRADING,
+            EXECUTION_ROLE_DOWN,
+        )
+
+        # When
+        in_study = {dataset.ticker for dataset in DATASETS if dataset.execution_role == EXECUTION_ROLE_DOWN}
+        in_trading = {dataset.ticker for dataset in DATASETS_TRADING if dataset.execution_role == EXECUTION_ROLE_DOWN}
+
+        # Then
+        assert in_study, "검증 기본 대상에 인버스가 없습니다 — `execution.csv` 가 「아래」를 못 잽니다"
+        assert in_trading == set(), f"매매 기본 대상에 인버스가 남아 있습니다: {in_trading}"
+        assert set(DATASETS_TRADING) < set(DATASETS)
+
+    def test_index_stays_in_the_default_targets(self) -> None:
+        """
+        목적: **지수는 두 계층 어디에서도 빼지 않는다.** 게이트 판정은 안 받지만
+              ETF 로는 볼 수 없는 기간이 거기 있다 (코스피 종합 46년 · 코스닥 종합 30년).
+
+        Given: 검증 기본 대상 목록
+        When: 지수를 센다
+        Then: 시장마다 둘씩 남아 있다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import DATASETS
+
+        # When
+        indices = [dataset.ticker for dataset in DATASETS if dataset.is_index]
+
+        # Then
+        assert len(indices) == 4, f"지수가 기본 대상에서 빠졌습니다: {indices}"
 
     def test_saved_tables_carry_the_label_not_the_code(self, etf_outputs: StudyOutputs) -> None:
         """

@@ -14,12 +14,11 @@ from verify_lab.common_constants import RATE_TO_PERCENT
 # **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 계층에 요구하는 개념이라
 # 계층마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
 from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
-from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, PERCENT_DECIMALS
+from verify_lab.report.constants import DISPLAY_JUDGEABLE, PERCENT_DECIMALS
 from verify_lab.studies.reverse.constants import DATASETS, Dataset
 
 __all__ = [
     "COL_JUDGEABLE",
-    "DISPLAY_EXCLUDED",
     "DISPLAY_JUDGEABLE",
     "JUDGEABLE_NO",
     "JUDGEABLE_YES",
@@ -325,21 +324,21 @@ class ExpiryCell:
     bet_down: bool
 
 
-# `docs/research/옵션_만기일.md` 0장에서 **1차 게이트를 넘은 칸**이다. 전부 금요일 청산이며,
-# 앞 일곱은 등급 3/3 이고 **QQQ 12월은 등급 0/3 이지만 게이트를 넘었으므로 함께 둔다.**
+# `docs/research/옵션_만기일.md` 0장에서 **게이트를 넘은 칸**이다. 전부 금요일 청산이다.
 #
-# **등급으로 칸을 빼지 않는다.** 루트 `CLAUDE.md` 「후보 판정 기준」이
-# **"등급은 얼마나 믿을 만한지 알려주되 떨어뜨리지 않는다"** 로 정해져 있다. 등급으로 빼면
-# 60칸에서 통계량이 좋은 칸만 고르는 **사후 선택**이 된다 (결정 ㊳).
+# **통계량으로 칸을 빼지 않는다.** 게이트를 넘었으면 함께 두며, 통계량으로 빼면
+# 60칸에서 좋아 보이는 칸만 고르는 **사후 선택**이 된다 (결정 ㊳).
+# (전에는 이 자리에 「등급」 표기가 있었는데 **2026-09-12 에 등급 자체가 없어졌다** — 결정 ㊹.)
 #
 # **미국 9월 세 칸은 같은 날 같은 방향이라 독립된 세 번의 기회가 아니다.** QQQ·SPY·DIA 는
 # 같은 시장의 지수 ETF로 상관이 매우 높아 사실상 한 번의 베팅이며, 산출물을 읽을 때
 # 세 번의 확인으로 세면 안 된다 (결과 문서 §12A.6). **다만 12월에는 QQQ↔DIA 상관이 0.418 로
 # 9월(0.769)보다 훨씬 낮다** — 12월 세 칸은 9월만큼 같이 움직이지 않는다.
 #
-# **DIA 6월은 뺐다** (2026-09-03, 결정 ㊸). 성적이 낮아서가 아니라 **시기 축이 무너져서**다 —
-# 앞 절반 +1.117%(적중 92.9%) → 뒤 절반 **−0.167%**(60.0%) 이고 최근 6년 중 4년이 손실이다.
-# `.claude/rules/strategy.md` 의 「시기를 쪼개도 유지되는가」를 판정용 2분할에서 이미 통과하지 못한다
+# **DIA 6월은 아직 이 목록에 없다.** 2026-09-03 에 시기 축으로 뺐는데(결정 ㊸)
+# **그 축이 2026-09-12 에 판정에서 사라져 다시 후보가 됐다**(결정 ㊺ — 표본 29 · 적중률 75.86% ·
+# 회당 +0.44%). 뒤 절반 −0.167% · 최근 5년 −1.832% 는 그대로 사실이지만 **관찰용**이며,
+# **넣을지는 사용자가 정한다** — 코드가 대신 판단하지 않으므로 결정 전까지 목록 밖에 둔다
 EXPIRY_CELLS: Final = (
     ExpiryCell(dataset_key="dia", expiry_month=12, bet_down=False),
     ExpiryCell(dataset_key="kodex200", expiry_month=9, bet_down=False),
@@ -347,8 +346,8 @@ EXPIRY_CELLS: Final = (
     ExpiryCell(dataset_key="dia", expiry_month=9, bet_down=True),
     ExpiryCell(dataset_key="spy", expiry_month=12, bet_down=False),
     ExpiryCell(dataset_key="qqq", expiry_month=9, bet_down=True),
-    # 등급 0/3 (우연확률 0.5265 · 기준선 대비 +6.33%p). **통계적 근거가 있어서 넣는 것이
-    # 아니라, 뺄 근거가 사후 선택뿐이라 안 빼는 것이다.** 같은 27건으로 맞춰도 적중률이
+    # 기준선 대비 +6.33%p 로 얇다. **통계적 근거가 있어서 넣는 것이 아니라,
+    # 뺄 근거가 사후 선택뿐이라 안 빼는 것이다.** 같은 27건으로 맞춰도 적중률이
     # 62.96% 로 DIA(81.48%)·SPY(70.37%)보다 낮아 표본 기간 탓이 아니다
     ExpiryCell(dataset_key="qqq", expiry_month=12, bet_down=False),
 )

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """검증 #7 실행 — 만기일 매수 → 다음주 청산 매매와 만기월별 후보 판정
 
-만기월(1~12)로 쪼개 방향 비율을 재고, 각 칸을 **1차 게이트와 등급**으로 판정한다.
-게이트를 넘지 못한 칸도 `candidates.csv` 에 사유와 함께 남는다 — 화면에서만 빠진다.
+만기월(1~12)로 쪼개 방향 비율을 재고, 각 칸을 **게이트 둘**(적중률 60% 이상 ·
+방향 기대값 0 초과)로 판정한다. **등급은 없다** (2026-09-12 개편).
+게이트를 넘지 못한 칸도 `candidates.csv` 에 값 그대로 남는다 — 화면에서만 빠진다.
 
 가격 기준은 **원본가 하나**다. 사용자가 증권앱·차트에서 보는 가격이 곧 신호를 판정하고
 주문을 거는 가격이기 때문이다 (루트 `CLAUDE.md` 측정의 원칙 14).
@@ -37,7 +38,6 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
     OUTPUT_LABELS,
-    PAYOFF_OUTPUT_COLUMNS,
     PERCENT_OUTPUT_COLUMNS,
     PROBABILITY_OUTPUT_COLUMNS,
     TRACK_NAME,
@@ -185,7 +185,6 @@ def _save(directory: Path, filename: str, table: pd.DataFrame) -> None:
         OUTPUT_LABELS,
         percent_columns=[column for column in PERCENT_OUTPUT_COLUMNS if column in columns],
         probability_columns=[column for column in PROBABILITY_OUTPUT_COLUMNS if column in columns],
-        payoff_columns=[column for column in PAYOFF_OUTPUT_COLUMNS if column in columns],
     )
     save_table(directory, filename, display)
 

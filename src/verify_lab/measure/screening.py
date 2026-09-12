@@ -3,20 +3,22 @@
 루트 `CLAUDE.md` 「후보 판정 기준」을 코드로 옮긴 것이다. 규격만 문서에 두면 판정이 매번
 일회용 스크립트로 이루어져 재현되지 않고 산출물에도 남지 않는다.
 
-**판정은 두 겹이며 역할이 다르다.**
+**판정은 게이트 하나뿐이다** — 적중률과 방향 기대값. 이것 말고는 아무것도 떨어뜨리지 않는다.
 
-- **1차 게이트** (적중률 · 방향 기대값) — 볼 목록에 올릴지를 가른다
-- **등급** (기준선 대비 차이 · 우연확률 · 시기 안정성 · 손익비) — 얼마나 믿을 만한지를 알려주되 **떨어뜨리지 않는다**
-
-이 지표들을 게이트로 쓰면 코드가 사용자 대신 판단하게 된다(측정의 원칙 1). 그렇다고 적중률
-하나만 게이트로 두면 **기준선과 사실상 같은 칸까지 통과한다** — 주식은 원래 자주 올라
-오른 비율이 절반을 넘는 칸이 흔하기 때문이다. 그래서 게이트에 방향 기대값을 함께 둔다.
-
-**손익비가 등급인 이유는 따로 있다** — 게이트로 쓰면 채택 매매법이 데이터 갱신만으로 죽고,
-**전승 구간에서는 아예 정의되지 않는다.** 실측 근거는 `MIN_PAYOFF_RATIO` 주석에 있다.
+전에는 게이트 위에 「등급」(기준선 대비 차이·우연확률·시기 안정성·손익비)을 두어 「충족/물음」을
+셌고, 매매 계층이 **같은 것을 다른 기준으로 또 물었다**(등급의 시기는 55%, 구간 게이트는 60%).
+**2026-09-12 에 전부 걷어냈다** — 판단은 사용자가 하고, 이 모듈은 볼 목록만 만든다.
+그 결과 판정이 느슨해져 후보가 늘어나는 것은 **의도한 대가**다.
 
 **방향 기대값은 「같은 금액을 반복 투자했을 때 남는 수익률」이다.** 적중률만 보면
 "방향은 맞지만 걸면 손실"인 칸을 거르지 못한다 — 자주 조금 맞고 가끔 크게 틀리는 칸이 실재한다.
+
+**표본 하한을 걸지 않는다.** 1건짜리 칸도 판정한다. 그런 칸이 과대평가라는 것은 `표본` 컬럼이
+말해 주며, 뺄지는 사용자가 신호를 보고 정한다 (2026-09-12 사용자 결정).
+
+**살 수 없는 대상은 판정하지 않는다** (측정의 원칙 9). 지수는 긴 시계열을 참고하려고 재지만,
+**그 결과로 「우위가 있다」를 주장하면 집행할 수 없는 성적을 근거로 삼게 된다.** 값은 그대로
+내고 `1차 판정` 만 「판정 안 함」이 된다 — 판정을 막는 것이지 값을 지우는 것이 아니다.
 
 **회당 기대값과 함께 합산 수익률을 낸다** (루트 `CLAUDE.md` 측정의 원칙 16). 신호가 드물거나
 보유가 며칠짜리인 매매법은 회당 평균이 구조적으로 작게 나와 크기 감각을 주지 못하고, 왕복
@@ -31,15 +33,9 @@
 **방향을 가리지 않는다** (측정의 원칙 11). 오른 비율이 기준선보다 낮은 칸은 탈락이 아니라
 **아래로 거는 후보**다. 판정은 기준선에서 얼마나 멀어졌는가(크기)로 하고, 부호는 방향을 알려줄 뿐이다.
 
-**시기를 쪼갤 수 없으면 등급의 분모가 줄 뿐이다** (측정의 원칙 12). 표본이 모자라 물을 수
-없었던 항목을 미충족으로 세면, 표본이 작다는 이유로 두 번 깎인다.
-
-**그래서 시기표의 `판정가능` 이 「예」인 행만 읽는다.** 측정의 원칙 17 은 표본이 모자란 구간도
-행을 남기라고 요구하는데, 그 행을 그대로 등급에 넣으면 «못 물은 것»이 «못 넘은 것»으로 바뀐다.
-산출물을 온전히 남기는 것과 판정을 흔들지 않는 것이 이 필터로 함께 성립한다.
-
-**전체 축과 시기 축이 같은 컬럼을 읽는다.** 방향이 「아래」면 두 축 모두 내린 비율을 그대로
-쓴다 — 한쪽만 `1 − 오른 비율` 로 만들면 **보합이 「내림」으로 새어** 시기 항목이 관대해진다.
+**그래서 기준선은 지웠다가 다시 넣을 수 있는 표시값이 아니라 방향을 정하는 재료다.**
+절대 비율로 방향을 정하면 주식이 원래 자주 오르는 탓에 기준선보다 «낮은» 칸까지 「위」가 된다 —
+옵션 만기일 60칸으로 재면 두 방식에서 **12칸의 방향이 갈리고 1칸의 판정이 뒤집힌다.**
 두 방향 비율은 여집합이 아니며, 그 정의는 `statistics.summarize` 가 소유한다.
 """
 
@@ -47,28 +43,20 @@ from typing import Final
 
 import pandas as pd
 
-from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_YES
 from verify_lab.measure.statistics import (
-    COL_DOWN_RATE_P_VALUE,
     COL_LOSS_RATE,
     COL_LOSS_RATE_EXCESS,
     COL_MEAN,
-    COL_NEGATIVE_COUNT,
-    COL_NEGATIVE_MEAN,
-    COL_POSITIVE_COUNT,
-    COL_POSITIVE_MEAN,
     COL_SAMPLE_COUNT,
-    COL_UP_RATE_P_VALUE,
     COL_WIN_RATE,
     COL_WIN_RATE_EXCESS,
-    payoff_profile,
 )
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 # ============================================================
-# 1차 게이트 (루트 CLAUDE.md 「후보 판정 기준」이 SoT)
+# 게이트 (루트 CLAUDE.md 「후보 판정 기준」이 SoT)
 # ============================================================
 
 # 방향 적중률의 하한 (비율, 0.60 = 60%). 크기가 커도 적중률이 낮으면 집행할 수 없다
@@ -79,39 +67,6 @@ MIN_HIT_RATE: Final = 0.60
 MIN_EXPECTED_VALUE: Final = 0.0
 
 # ============================================================
-# 등급 — 떨어뜨리지 않고 얼마나 믿을 만한지만 알려준다
-# ============================================================
-
-# 기준선 대비 차이의 하한 (비율, 0.10 = 10%p). **방향 무관 절대값이다.**
-# 같은 적중률 60% 가 오르는 쪽에서는 기준선(55~59%) 대비 +2~5%p 에 불과하고
-# 내리는 쪽에서는 기준선(41~45%) 대비 +15~19%p 다
-MIN_BASELINE_GAP: Final = 0.10
-
-# 우연확률의 상한. 관습적인 선이며 자연법칙이 아니다 — 0.049 와 0.051 은 사실상 같다
-MAX_P_VALUE: Final = 0.05
-
-# 시기별 적중률의 하한 (비율, 0.55 = 55%). 전체 하한보다 낮다 —
-# 쪼개면 표본이 절반이 되어 흔들림이 커지므로, 같은 선을 요구하면 실체가 있는 칸도 떨어진다
-MIN_PERIOD_HIT_RATE: Final = 0.55
-
-# 손익비의 하한 (배수, 1.0 = 이길 때와 질 때가 같다). **손익분기 적중률 50%,
-# 곧 동전던지기라는 구조적 근거에서 온 값이며 실측을 보고 고른 값이 아니다.**
-#
-# **게이트가 아니라 등급인 이유가 실측에 있다.** 게이트로 쓰면 채택 매매법이 데이터 갱신만으로
-# 죽는다 — 옵션 만기일 DIA 12월이 손익비 **1.034** 로 경계에 붙어 있고 그 값이 **진 거래
-# 5건**으로 만들어졌다. 구간을 쪼개면 분모가 1~2건이 되어 값이 폭주하고(SPY 12월 최근
-# 10년 **16.822**, 진 2건), **전승 구간에서는 아예 정의되지 않는다**(역방향 매매의
-# QQQ K=10 은 7건 전승). 반대로 등급으로는 충분히 갈린다 — KODEX 200 9월은 **0.788**
-# 이고 그 값이 진 7건으로 만들어져 경계값이 아니다.
-# 근거는 `docs/strategy/옵션_만기일_매매_규칙.md` §2.3
-#
-# **최소 표본 가드를 두지 않는다** (검토했고 뺐다). 시기 항목에는 10건 하한이 있는데
-# 손익비에는 없어 비대칭으로 보이지만, **그 하한 값의 근거가 없다** — 실측에서 질 때 표본이
-# 5~10건이라 10건을 요구하면 대부분이 빠지고, 값을 실측을 보고 고르면 측정의 원칙 1 을 어긴다.
-# **`질 때 표본` 열이 그 정보를 사용자에게 그대로 준다**는 것이 이 설계의 선택이다
-MIN_PAYOFF_RATIO: Final = 1.0
-
-# ============================================================
 # 판정 결과 스키마
 # ============================================================
 
@@ -119,32 +74,20 @@ COL_DIRECTION = "Direction"
 COL_HIT_RATE = "HitRate"
 COL_EXPECTED_VALUE = "ExpectedValue"
 COL_TOTAL_RETURN = "TotalReturn"
-COL_PAYOFF_RATIO = "PayoffRatio"
-COL_BREAKEVEN_HIT_RATE = "BreakevenHitRate"
-COL_LOSING_COUNT = "LosingCount"
 COL_BASELINE_HIT_RATE = "BaselineHitRate"
 COL_BASELINE_GAP = "BaselineGap"
-COL_P_VALUE = "PValue"
-COL_PERIOD_MIN_HIT_RATE = "PeriodMinHitRate"
-COL_PERIOD_COUNT = "PeriodCount"
 COL_SCREEN = "Screen"
-COL_SUPPORT_COUNT = "SupportCount"
-COL_SUPPORT_TOTAL = "SupportTotal"
-COL_UNMET_SUPPORT = "UnmetSupport"
 
 # 방향. 신호가 기준선에서 어느 쪽으로 멀어졌는가
 DIRECTION_UP: Final = "위"
 DIRECTION_DOWN: Final = "아래"
 
-# 1차 판정. **제외는 「우위가 없다」가 아니라 「이 목록에서는 빼둔다」이다** — 값은 산출물에 그대로 남는다
+# 1차 판정. **제외는 「우위가 없다」가 아니라 「이 목록에서는 빼둔다」이다** — 값은 산출물에 그대로 남는다.
+# **「판정 안 함」은 또 다른 사실이다** — 살 수 없는 대상이라 합격도 불합격도 묻지 않았다는 뜻이며,
+# 제외와 한 값으로 합치면 「재봤더니 아니었다」와 「애초에 대상이 아니다」가 구별되지 않는다
 SCREEN_CANDIDATE: Final = "후보"
 SCREEN_EXCLUDED: Final = "제외"
-
-# 등급 항목의 이름. 무엇이 부족한지가 남지 않으면 기준을 조정했을 때 무엇이 달라지는지 알 수 없다
-SUPPORT_GAP: Final = "차이"
-SUPPORT_P_VALUE: Final = "우연확률"
-SUPPORT_PERIOD: Final = "시기"
-SUPPORT_PAYOFF: Final = "손익비"
+SCREEN_NOT_JUDGED: Final = "판정 안 함"
 
 SCREENING_COLUMNS: Final = [
     COL_SAMPLE_COUNT,
@@ -152,18 +95,9 @@ SCREENING_COLUMNS: Final = [
     COL_HIT_RATE,
     COL_EXPECTED_VALUE,
     COL_TOTAL_RETURN,
-    COL_PAYOFF_RATIO,
-    COL_BREAKEVEN_HIT_RATE,
-    COL_LOSING_COUNT,
     COL_BASELINE_HIT_RATE,
     COL_BASELINE_GAP,
-    COL_P_VALUE,
-    COL_PERIOD_COUNT,
-    COL_PERIOD_MIN_HIT_RATE,
     COL_SCREEN,
-    COL_SUPPORT_COUNT,
-    COL_SUPPORT_TOTAL,
-    COL_UNMET_SUPPORT,
 ]
 
 # 집계표에서 읽는 입력 컬럼. 신호와 기준선의 두 방향 비율에 더해 **평균이 반드시 있어야 한다** —
@@ -175,24 +109,16 @@ REQUIRED_SUMMARY_COLUMNS: Final = [
     COL_LOSS_RATE,
     COL_WIN_RATE_EXCESS,
     COL_LOSS_RATE_EXCESS,
-    COL_POSITIVE_MEAN,
-    COL_NEGATIVE_MEAN,
-    COL_POSITIVE_COUNT,
-    COL_NEGATIVE_COUNT,
 ]
-
-# 시기 집계표에서 읽는 입력 컬럼. **두 방향 비율이 모두 있어야 한다** —
-# 시기 항목도 전체 축과 같은 컬럼을 읽기 때문이며, 하나만 받아 나머지를 만들면 보합이 샌다
-REQUIRED_PERIOD_COLUMNS: Final = [COL_WIN_RATE, COL_LOSS_RATE]
 
 
 def screen_candidates(
     summary: pd.DataFrame,
-    periods: pd.DataFrame,
     *,
     axis_column: str,
+    tradable: bool,
 ) -> pd.DataFrame:
-    """축의 각 칸을 1차 게이트로 가르고 나머지 네 지표로 등급을 매긴다.
+    """축의 각 칸을 게이트로 가른다.
 
     **방향은 절대 비율이 아니라 기준선과의 거리로 정한다.** 주식은 원래 자주 올라
     오른 비율이 절반을 넘는 칸이 흔하므로, 절대 비율로 정하면 기준선보다 낮은 칸도 「위」가 된다.
@@ -200,10 +126,13 @@ def screen_candidates(
     **제외된 칸도 행이 그대로 남는다.** 산출물에서 사라지면 사용자가 되짚을 수 없다.
 
     Args:
-        summary: 축별 집계표. `REQUIRED_SUMMARY_COLUMNS` 와 두 방향의 우연확률이 있어야 한다
-        periods: 축 × 시기 집계표. 비어 있거나 **`판정가능` 이 「예」인 행이 없으면**
-            그 칸의 등급 분모가 준다
+        summary: 축별 집계표. `REQUIRED_SUMMARY_COLUMNS` 가 있어야 한다
         axis_column: 축 컬럼 이름. 만기월·요일 등 무엇이든 받는다
+        tradable: 살 수 있는 대상인가. `False` 면 값만 내고 판정하지 않는다 —
+            지수가 그 경우이며 `1차 판정` 이 전부 「판정 안 함」이 된다.
+            **기본값을 두지 않는다** — 기본이 「살 수 있다」면 지수를 받는 호출처가 인자를
+            빠뜨렸을 때 **틀린 판정이 조용히 나간다**. `strategy.constants.stop_level_value`
+            의 `measurable` 과 같은 이유다
 
     Returns:
         축 컬럼 뒤에 `SCREENING_COLUMNS` 가 붙은 판정표. **축 오름차순**이며 정렬은 하지 않는다
@@ -211,38 +140,31 @@ def screen_candidates(
     Raises:
         ValueError: 필요한 컬럼이 없는 경우
     """
-    required = [axis_column, *REQUIRED_SUMMARY_COLUMNS, COL_UP_RATE_P_VALUE, COL_DOWN_RATE_P_VALUE]
+    required = [axis_column, *REQUIRED_SUMMARY_COLUMNS]
     missing = [column for column in required if column not in summary.columns]
     if missing:
         raise ValueError(f"집계표에 필수 컬럼이 없습니다: {missing}")
 
-    # 시기표도 같은 강도로 본다. 컬럼이 없는 채로 넘기면 판정이 죽거나 시기 항목이 조용히 빠진다
-    if not periods.empty:
-        missing_periods = [
-            column for column in (axis_column, *REQUIRED_PERIOD_COLUMNS) if column not in periods.columns
-        ]
-        if missing_periods:
-            raise ValueError(f"시기 집계표에 필수 컬럼이 없습니다: {missing_periods}")
-
     rows = [
-        _screen_cell(cell.iloc[0], periods, axis_column=axis_column)
+        _screen_cell(cell.iloc[0], axis_column=axis_column, tradable=tradable)
         for _, cell in summary.groupby(axis_column, sort=True)
     ]
     result = pd.DataFrame(rows, columns=[axis_column, *SCREENING_COLUMNS])
 
     candidates = int((result[COL_SCREEN] == SCREEN_CANDIDATE).sum())
-    logger.debug(f"후보 판정 완료: {len(result)}칸 중 후보 {candidates}")
+    judged = "판정함" if tradable else "판정 안 함"
+    logger.debug(f"후보 판정 완료: {len(result)}칸 중 후보 {candidates} ({judged})")
 
     return result
 
 
-def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> dict[str, object]:
+def _screen_cell(row: pd.Series, *, axis_column: str, tradable: bool) -> dict[str, object]:
     """한 칸을 판정한다.
 
     Args:
         row: 집계표의 한 줄
-        periods: 축 × 시기 집계표 전체
         axis_column: 축 컬럼 이름
+        tradable: 살 수 있는 대상인가
 
     Returns:
         판정표 한 줄
@@ -250,7 +172,6 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
     downward = float(row[COL_LOSS_RATE_EXCESS]) > float(row[COL_WIN_RATE_EXCESS])
     hit_rate = float(row[COL_LOSS_RATE] if downward else row[COL_WIN_RATE])
     gap = float(row[COL_LOSS_RATE_EXCESS] if downward else row[COL_WIN_RATE_EXCESS])
-    p_value = float(row[COL_DOWN_RATE_P_VALUE if downward else COL_UP_RATE_P_VALUE])
 
     # 아래로 거는 신호는 주가가 내릴 때 버는 것이므로 평균의 부호를 뒤집는다
     expected_value = -float(row[COL_MEAN]) if downward else float(row[COL_MEAN])
@@ -260,57 +181,13 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
     # **게이트에는 쓰지 않는다** — 표시용이며 판정 기준을 바꾸지 않는다
     total_return = expected_value * int(row[COL_SAMPLE_COUNT])
 
-    cell_periods = periods[periods[axis_column] == row[axis_column]] if not periods.empty else periods
-
-    # **판정할 수 없는 구간은 등급에 넣지 않는다.** 측정의 원칙 17 에 따라 표본이 모자란 구간도
-    # 산출물에는 행이 남는데, 그 행을 그대로 읽으면 «못 물은 것»이 «못 넘은 것»으로 바뀌어
-    # 표본이 작다는 이유로 두 번 깎인다. 컬럼이 없는 표(아직 이 축을 내지 않는 검증)는 그대로 둔다
-    if not cell_periods.empty and COL_JUDGEABLE in cell_periods.columns:
-        cell_periods = cell_periods[cell_periods[COL_JUDGEABLE] == JUDGEABLE_YES]
-
-    # 시기 항목도 전체 축과 **같은 컬럼**을 읽는다. `1 − 오른 비율` 로 내린 비율을 만들면
-    # **보합이 통째로 「내림」으로 새어** 값이 부풀고 등급이 관대해진다 — 두 비율은 여집합이 아니다
-    # (`statistics.summarize` 의 방향 비율 정의)
-    rate_column = COL_LOSS_RATE if downward else COL_WIN_RATE
-    period_rates = [float(value) for value in cell_periods[rate_column]] if not cell_periods.empty else []
-
     screened = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
 
-    # **손익비는 게이트가 아니라 등급이다** (`MIN_PAYOFF_RATIO` 주석의 실측 근거).
-    # 방향을 정한 뒤라야 어느 쪽이 「이길 때」인지 알 수 있으므로 여기서 조립한다
-    # **`int()` 에 결측 방어를 두지 않는다.** 필수 컬럼 검사는 존재만 보고 dtype 은 안 보지만,
-    # `summarize` 를 거치면 두 건수가 정수로 보장되고 **현재 호출처는 전부 그 경로다.**
-    # 방어를 넣으면 「결측이 올 수 있다」는 잘못된 신호를 남긴다
-    positive_count = int(row[COL_POSITIVE_COUNT])
-    negative_count = int(row[COL_NEGATIVE_COUNT])
-    profile = payoff_profile(
-        positive_mean=float(row[COL_POSITIVE_MEAN]),
-        negative_mean=float(row[COL_NEGATIVE_MEAN]),
-        positive_count=positive_count,
-        negative_count=negative_count,
-        sample_count=int(row[COL_SAMPLE_COUNT]),
-        downward=downward,
-    )
-
-    # 시기 항목은 **물을 수 있었을 때만** 등급에 넣는다. 표본이 모자라 못 물은 것을
-    # 미충족으로 세면 표본이 작다는 이유로 두 번 깎인다
-    checks: list[tuple[str, bool]] = [
-        (SUPPORT_GAP, abs(gap) >= MIN_BASELINE_GAP),
-        (SUPPORT_P_VALUE, p_value < MAX_P_VALUE),
-    ]
-    if period_rates:
-        checks.append((SUPPORT_PERIOD, min(period_rates) >= MIN_PERIOD_HIT_RATE))
-
-    # 손익비도 **잴 수 있었을 때만** 묻는다. 기준은 표본 수가 아니라 **결정된 거래 수**다 —
-    # 전부 보합인 칸은 표본이 있어도 이긴 적도 진 적도 없어, 표본으로 재면 「한 번도 지지
-    # 않았다」가 되어 **전승 칸과 구별되지 않는다.**
-    # **진 거래가 0건이면 충족이다** — 손익비가 수학적으로 무한대라 어떤 기준도 넘으며,
-    # 숫자로 못 적는다는 이유로 미충족으로 세면 «가장 좋은 칸»이 깎인다
-    if positive_count + negative_count > 0:
-        payoff_met = profile.losing_count == 0 or profile.payoff_ratio >= MIN_PAYOFF_RATIO
-        checks.append((SUPPORT_PAYOFF, payoff_met))
-
-    unmet = [name for name, met in checks if not met]
+    # **「판정 안 함」이 게이트 결과를 덮는다.** 살 수 없는 대상에는 합격도 불합격도 없다
+    if not tradable:
+        verdict = SCREEN_NOT_JUDGED
+    else:
+        verdict = SCREEN_CANDIDATE if screened else SCREEN_EXCLUDED
 
     return {
         axis_column: row[axis_column],
@@ -319,16 +196,7 @@ def _screen_cell(row: pd.Series, periods: pd.DataFrame, *, axis_column: str) -> 
         COL_HIT_RATE: hit_rate,
         COL_EXPECTED_VALUE: expected_value,
         COL_TOTAL_RETURN: total_return,
-        COL_PAYOFF_RATIO: profile.payoff_ratio,
-        COL_BREAKEVEN_HIT_RATE: profile.breakeven_hit_rate,
-        COL_LOSING_COUNT: profile.losing_count,
         COL_BASELINE_HIT_RATE: hit_rate - gap,
         COL_BASELINE_GAP: gap,
-        COL_P_VALUE: p_value,
-        COL_PERIOD_COUNT: len(period_rates),
-        COL_PERIOD_MIN_HIT_RATE: min(period_rates) if period_rates else float("nan"),
-        COL_SCREEN: SCREEN_CANDIDATE if screened else SCREEN_EXCLUDED,
-        COL_SUPPORT_COUNT: len(checks) - len(unmet),
-        COL_SUPPORT_TOTAL: len(checks),
-        COL_UNMET_SUPPORT: " · ".join(unmet),
+        COL_SCREEN: verdict,
     }

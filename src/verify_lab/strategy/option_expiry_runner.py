@@ -211,7 +211,6 @@ def run_option_expiry_trading(
                 last_day=last_day,
                 hold_days=block.hold_days,
                 reasons=block.reasons,
-                excluded_count=entries.excluded_count,
             ):
                 grid_rows.append({**identity, **row})
             trade_rows.extend(block.trades)

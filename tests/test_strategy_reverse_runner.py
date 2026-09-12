@@ -520,15 +520,18 @@ class TestSamplePreservation:
         목적: 보유 한도가 데이터 끝을 넘어간 신호를 **조용히 버리지 않는다.**
               건수를 보고하지 않으면 표본이 줄어든 사실이 산출물에서 보이지 않는다.
 
+        **자리는 `summary.json` 이다** (2026-09-12). 성적표에서 컬럼을 걷어냈지만
+        표본 보존은 그대로이므로 요약이 대상마다 그 수를 담는다.
+
         Given: 마지막 신호의 보유 구간이 잘린 시세
         When: 실행하면
-        Then: 집계에 제외 건수가 1건 이상 실린다
+        Then: 요약의 대상 기록에 제외 건수가 1건 이상 실린다
         """
         # Given / When
         outputs = self._trimmed_outputs(tmp_path)
 
         # Then
-        assert int(_overall(outputs.performance)[DISPLAY_EXCLUDED]) >= 1
+        assert int(outputs.summary[KEY_RULE][KEY_TARGETS][0]["excluded_count"]) >= 1
 
     def test_신호_수와_제외_수의_합이_전체_신호_수다(self, tmp_path: Path) -> None:
         """
@@ -537,45 +540,38 @@ class TestSamplePreservation:
 
         Given: 마지막 신호의 보유 구간이 잘린 시세
         When: 실행하면
-        Then: 집계의 신호 수 + 제외 수가 요약의 전체 신호 수와 같다
+        Then: 성적표의 신호 수 + 요약의 제외 수가 요약의 전체 신호 수와 같다
         """
         # Given / When
         outputs = self._trimmed_outputs(tmp_path)
 
         # Then
-        row = _overall(outputs.performance)
-        counted = int(row[DISPLAY_SIGNAL_COUNT]) + int(row[DISPLAY_EXCLUDED])
-        assert counted == int(outputs.summary[KEY_RULE][KEY_TARGETS][0]["signal_count"])
+        record = outputs.summary[KEY_RULE][KEY_TARGETS][0]
+        counted = int(_overall(outputs.performance)[DISPLAY_SIGNAL_COUNT]) + int(record["excluded_count"])
+        assert counted == int(record["signal_count"])
 
-    def test_전부_체결되면_전체_구간의_제외가_0이다(self, outputs: StrategyOutputs) -> None:
+    def test_전부_체결되면_제외가_0이다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 제외가 없을 때 전체 행에 0 이 실린다. 빈칸으로 두면 "안 쟀다"로 읽힌다.
+        목적: 제외가 없을 때 `0` 이 실린다. 키가 아예 없으면 "안 쟀다"와 구별되지 않는다.
 
         Given: 모든 신호의 보유 구간이 데이터 안에 있는 시세
         When: 실행하면
-        Then: 전체 구간 행의 제외 건수가 0 이다
+        Then: 요약의 제외 건수가 0 이다
         """
         # Given / When / Then
-        assert int(_overall(outputs.performance)[DISPLAY_EXCLUDED]) == 0
+        assert int(outputs.summary[KEY_RULE][KEY_TARGETS][0]["excluded_count"]) == 0
 
-    def test_구간_행의_제외는_비어_있다(self, outputs: StrategyOutputs) -> None:
+    def test_성적표에는_제외_컬럼이_없다(self, outputs: StrategyOutputs) -> None:
         """
-        목적: 구간 행이 「제외 0건」이라고 **거짓으로 주장하지 않는지** 고정한다
-
-        제외된 신호는 보유 구간이 데이터 끝을 넘어간 것이라 **언제나 가장 최근**이다.
-        그래서 뒤 절반·최근 N년 행에 `0` 을 적으면 사실과 반대가 될 수 있다.
-        귀속 규칙이 없으므로 「귀속시키지 않았다」를 빈칸으로 남긴다.
+        목적: 컬럼을 걷어낸 것을 고정한다. 판정에도 성적에도 쓰이지 않는 열이었고,
+              전체 행에만 값이 있어 구간 행은 늘 빈칸이었다.
 
         Given: 실행 결과의 성적표
-        When: 전체가 아닌 구간 행을 봤을 때
-        Then: 제외 칸이 비어 있다
+        When: 컬럼을 봤을 때
+        Then: 「제외」가 없다
         """
-        # Given
-        others = outputs.performance[outputs.performance[DISPLAY_PERIOD] != PERIOD_ALL]
-
-        # When / Then
-        assert len(others) == len(PERIODS) - 1
-        assert others[DISPLAY_EXCLUDED].isna().all()
+        # Given / When / Then
+        assert DISPLAY_EXCLUDED not in outputs.performance.columns
 
 
 class TestInputValidation:

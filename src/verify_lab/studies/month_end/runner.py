@@ -85,7 +85,6 @@ from verify_lab.studies.month_end.constants import (
     GRID_CELL_TEMPLATE,
     GRID_EXIT_MONTH_END,
     GRID_EXIT_RELATIVE,
-    JUDGING_PERIODS,
     PERCENT_COLUMNS,
     PROBABILITY_COLUMNS,
     RECENT_WINDOWS_YEARS,
@@ -469,27 +468,6 @@ def _matching_baseline_mask(
     return (baseline_dates >= selected.min()) & (baseline_dates <= selected.max())
 
 
-def _judging_periods(periods: pd.DataFrame) -> pd.DataFrame:
-    """후보 판정의 시기 항목이 읽을 행만 남긴다 (측정의 원칙 17).
-
-    **관찰용 최근 구간을 빼는 것이 이 함수의 존재 이유다.** 최근 구간은 기간이 짧아 표본이 적고,
-    그것으로 판정하면 **결과를 보고 구간을 고르는 것과 구별되지 않는다.** 판정은 균등 분할로만
-    하고, 최근 구간은 판정용에서 이미 무너진 칸의 크기를 확인하는 데에만 쓴다.
-
-    산출물에는 네 구간이 모두 남으므로 이 필터가 정보를 지우지는 않는다.
-
-    Args:
-        periods: 시기 분해 표
-
-    Returns:
-        균등 분할 행만 남긴 표
-    """
-    if periods.empty:
-        return periods
-
-    return periods[periods[COL_PERIOD].isin(JUDGING_PERIODS)]
-
-
 def _aggregate_by_month(
     signal: pd.DataFrame,
     baseline: pd.DataFrame,
@@ -669,11 +647,11 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
         if not cell_periods.empty:
             accumulator.periods.append(_identify(cell_periods, **identity))
 
-        # **시기표는 같은 대상의 것만 넘긴다.** 다른 대상의 행이 섞이면 한 칸의 시기 항목이
-        # 남의 시기로 판정된다
+        # **살 수 없는 대상은 판정하지 않는다** (측정의 원칙 9). 지수는 긴 시계열을 참고하려고
+        # 재지만 그 결과로 「우위가 있다」를 주장하면 집행할 수 없는 성적이 근거가 된다
         accumulator.grid_candidates.append(
             _identify(
-                screen_candidates(grid, _judging_periods(cell_periods), axis_column=COL_GRID_CELL),
+                screen_candidates(grid, axis_column=COL_GRID_CELL, tradable=not dataset.is_index),
                 **identity,
             )
         )
@@ -733,7 +711,7 @@ def _run_base_cell(
         accumulator.months.append(_identify(by_month, **identity))
         accumulator.month_candidates.append(
             _identify(
-                screen_candidates(by_month, _judging_periods(halves), axis_column=COL_MONTH_NUMBER),
+                screen_candidates(by_month, axis_column=COL_MONTH_NUMBER, tradable=not dataset.is_index),
                 **identity,
             )
         )

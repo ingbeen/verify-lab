@@ -50,9 +50,12 @@ from verify_lab.strategy.constants import (
 )
 from verify_lab.strategy.month_end_runner import (
     DISPLAY_MONTH,
+    KEY_EXCLUDED_COUNT,
+    KEY_TARGETS,
     TradingOutputs,
     run_month_end_trading,
 )
+from verify_lab.strategy.run_summary import KEY_RULE
 from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP, MARKET_KOSDAQ, Dataset
 
 # 합성 시세 구간. 12개월이 다 차려면 몇 해가 필요하다
@@ -344,19 +347,16 @@ class TestStopLoss:
 class TestSamplePreservation:
     """표본이 조용히 사라지지 않는다"""
 
-    def test_제외_건수가_성적표에_실린다(self, tmp_path: Path) -> None:
+    def test_제외_건수가_요약에_실린다(self, tmp_path: Path) -> None:
         """
-        목적: 제외 건수가 **성적표까지** 오는지 고정한다.
+        목적: 제외 건수가 **`summary.json` 까지** 오는지 고정한다.
 
-        전에는 `_collect_entries` 가 센 값이 `summary.json` 에만 가고 성적표에는 안 왔다 —
-        성적표의 제외가 **구조적으로 항상 0** 이었고, 실제 값도 0 이어서 드러나지 않았다.
+        성적표에서 컬럼을 걷어냈지만(2026-09-12) 표본 보존은 그대로다 —
         표본을 줄이는 처리는 몇 건이 왜 빠졌는지 함께 내야 한다 (절대 원칙 「표본 보존」).
-
-        **달별로 센다.** 대상 합계를 칸마다 실으면 같은 건수가 216번 반복된다.
 
         Given: 6월 20일 이전이 전부 휴장인 달력 — 그 달은 진입일을 잡을 수 없다
         When: 격자를 돌린다
-        Then: 6월 전체 행의 제외가 1 이고 다른 달은 0 이다
+        Then: 요약의 대상 기록에 제외 1건이 실린다
         """
         # Given
         gap_year, gap_month = 2021, 6
@@ -370,31 +370,23 @@ class TestSamplePreservation:
         dataset = _write_market(tmp_path, "999911", days)
 
         # When
-        overall = run_month_end_trading((dataset,)).performance
-        overall = overall[overall[DISPLAY_PERIOD] == PERIOD_ALL]
+        summary = run_month_end_trading((dataset,)).summary
 
         # Then
-        counts = overall.groupby(DISPLAY_MONTH)[DISPLAY_EXCLUDED].max()
-        assert counts[gap_month] == 1, f"6월 제외가 1 이 아닙니다: {counts[gap_month]}"
-        assert set(counts.drop(gap_month)) == {0}, f"다른 달에 제외가 섞였습니다: {counts.to_dict()}"
+        targets = summary[KEY_RULE][KEY_TARGETS]
+        assert [record[KEY_EXCLUDED_COUNT] for record in targets] == [1]
 
-    def test_구간_행의_제외는_비어_있다(self, outputs: TradingOutputs) -> None:
+    def test_성적표에는_제외_컬럼이_없다(self, outputs: TradingOutputs) -> None:
         """
-        목적: 구간 행이 「제외 0건」이라고 **거짓으로 주장하지 않는지** 고정한다.
-
-        제외된 신호는 **언제나 가장 최근**이므로, 뒤 절반·최근 N년에 `0` 을 적으면
-        사실과 반대가 될 수 있다. 귀속 규칙이 없으니 빈칸으로 남긴다.
+        목적: 컬럼을 걷어낸 것을 고정한다. 판정에도 성적에도 쓰이지 않는 열이었고,
+              전체 행에만 값이 있어 구간 행은 늘 빈칸이었다.
 
         Given: 격자 성적표
-        When: 전체가 아닌 구간 행을 봤을 때
-        Then: 제외 칸이 비어 있다
+        When: 컬럼을 봤을 때
+        Then: 「제외」가 없다
         """
-        # Given
-        others = outputs.performance[outputs.performance[DISPLAY_PERIOD] != PERIOD_ALL]
-
-        # When / Then
-        assert not others.empty
-        assert others[DISPLAY_EXCLUDED].isna().all()
+        # Given / When / Then
+        assert DISPLAY_EXCLUDED not in outputs.performance.columns
 
     def test_trade_count_matches_across_stop_levels(self, outputs: TradingOutputs) -> None:
         """
@@ -682,7 +674,7 @@ class TestFromYear:
 
         Given: 2021-06 의 20일 이전이 전부 휴장인 달력 — 그 달은 진입일을 잡을 수 없다
         When: 시작 연도 2022 로 격자를 돌린다 (그 제외 건이 범위 밖이 된다)
-        Then: 어느 달에도 제외가 남지 않는다
+        Then: 요약의 제외 건수가 0 이다
         """
         # Given
         gap_year, gap_month = 2021, 6
@@ -696,11 +688,11 @@ class TestFromYear:
         dataset = _write_market(tmp_path, "999922", days)
 
         # When
-        overall = run_month_end_trading((dataset,), from_year=2022).performance
-        overall = overall[overall[DISPLAY_PERIOD] == PERIOD_ALL]
+        summary = run_month_end_trading((dataset,), from_year=2022).summary
 
         # Then
-        assert set(overall[DISPLAY_EXCLUDED]) == {0}, f"범위 밖이 제외로 샜습니다: {set(overall[DISPLAY_EXCLUDED])}"
+        counts = [record[KEY_EXCLUDED_COUNT] for record in summary[KEY_RULE][KEY_TARGETS]]
+        assert set(counts) == {0}, f"범위 밖이 제외로 샜습니다: {counts}"
 
     def test_sample_counts_shrink_by_the_dropped_years(self, dataset: Dataset) -> None:
         """

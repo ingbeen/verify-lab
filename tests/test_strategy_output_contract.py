@@ -60,7 +60,6 @@ from verify_lab.strategy.constants import (
     DISPLAY_WIN_AMOUNT,
     JUDGEABLE_NO,
     NO_STOP_LABEL,
-    PERIOD_ALL,
     PERIOD_RECENT_5Y,
     PERIODS,
     STOP_NOT_MEASURABLE_LABEL,
@@ -68,9 +67,12 @@ from verify_lab.strategy.constants import (
     ExpiryCell,
     Target,
 )
-from verify_lab.strategy.month_end_runner import TradingOutputs, run_month_end_trading
+from verify_lab.strategy.month_end_runner import KEY_EXCLUDED_COUNT, TradingOutputs, run_month_end_trading
+from verify_lab.strategy.month_end_runner import KEY_TARGETS as MONTH_END_KEY_TARGETS
+from verify_lab.strategy.option_expiry_runner import KEY_CELLS as EXPIRY_KEY_CELLS
 from verify_lab.strategy.option_expiry_runner import ExpiryOutputs, run_option_expiry_trading
 from verify_lab.strategy.periods import period_rows
+from verify_lab.strategy.reverse_runner import KEY_TARGETS as REVERSE_KEY_TARGETS
 from verify_lab.strategy.reverse_runner import StrategyOutputs, run_reverse_trading
 from verify_lab.strategy.run_summary import (
     COST_NOTE,
@@ -108,7 +110,6 @@ SUMMARY_COMMON_COLUMNS = (
     "손절선(%)",
     "구간",
     "신호",
-    "제외",
     "합계(%)",
     "평균(%)",
     "승률(%)",
@@ -694,28 +695,62 @@ class TestReversePeriods:
         assert summary[DISPLAY_PERIOD].tolist() == list(PERIODS)
         assert (summary.loc[summary[DISPLAY_SIGNAL_COUNT] < 10, DISPLAY_JUDGEABLE] == JUDGEABLE_NO).all()
 
-    def test_구간_행의_제외는_세_매매법_모두_비어_있다(
+    def test_성적표에_제외_컬럼을_두지_않는다(
         self,
         reverse_outputs: StrategyOutputs,
         expiry_outputs: ExpiryOutputs,
         month_end_outputs: TradingOutputs,
     ) -> None:
         """
-        목적: 같은 컬럼이 매매법마다 다른 뜻이 되지 않게 고정한다
+        목적: **제외의 SoT 를 성적표에서 `summary.json` 으로 옮긴 것을 고정한다** (2026-09-12).
 
-        제외된 신호는 보유 구간이 데이터 끝을 넘어간 것이라 **언제나 가장 최근**이다.
-        구간 행에 `0` 을 적으면 뒤 절반·최근 N년이 「제외 0건」이라고 **거짓으로 주장**한다.
-        전에는 월말만 이 컬럼을 아예 받지 못해 **구조적으로 항상 0** 이기도 했다.
+        제외된 신호는 보유 구간이 데이터 끝을 넘어간 것이라 **언제나 가장 최근**이고, 구간 행에
+        귀속시킬 규칙이 없어 전체 행에만 적히는 열이었다. 판정에도 성적에도 쓰이지 않으므로
+        성적표에서 걷어냈다 — **사실이 사라진 것이 아니라 자리를 옮긴 것**이며,
+        아래 테스트가 요약이 그 값을 계속 담는지 검사한다.
 
         Given: 세 매매법의 성적표
-        When: 전체가 아닌 구간 행의 제외 칸을 봤을 때
-        Then: 셋 다 비어 있다
+        When: 컬럼을 봤을 때
+        Then: 셋 다 「제외」가 없다
         """
         # Given / When / Then
-        for table in (reverse_outputs.performance, expiry_outputs.performance, month_end_outputs.performance):
-            others = table[table[DISPLAY_PERIOD] != PERIODS[0]]
-            assert not others.empty
-            assert others[DISPLAY_EXCLUDED].isna().all()
+        for name, table in (
+            ("역방향", reverse_outputs.performance),
+            ("옵션 만기일", expiry_outputs.performance),
+            ("월말", month_end_outputs.performance),
+        ):
+            assert DISPLAY_EXCLUDED not in table.columns, f"{name} 성적표에 제외 컬럼이 남아 있습니다"
+
+    def test_제외_건수는_요약이_대상마다_담는다(
+        self,
+        reverse_outputs: StrategyOutputs,
+        expiry_outputs: ExpiryOutputs,
+        month_end_outputs: TradingOutputs,
+    ) -> None:
+        """
+        목적: **표본 보존은 그대로다** (패키지 절대 원칙). 컬럼을 없앤 대신 요약이 담아야 하며,
+              둘 다 없으면 몇 건이 왜 빠졌는지가 **어디에도 남지 않는다.**
+
+        **각 매매법이 실제로 쓰는 키를 지목해 검사한다.** `rule` 안은 고정하지 않는 것이
+        계약이므로(`src/verify_lab/CLAUDE.md`), 「사전이 든 목록」을 훑으면 나중에 다른
+        목록이 하나 생기는 것만으로 이 테스트가 엉뚱하게 깨진다.
+
+        Given: 세 매매법의 실행 요약
+        When: 대상별 기록을 봤을 때
+        Then: 셋 다 모든 항목에 `excluded_count` 가 있다
+        """
+        # Given
+        records = {
+            "역방향": reverse_outputs.summary[KEY_RULE][REVERSE_KEY_TARGETS],
+            "옵션 만기일": expiry_outputs.summary[KEY_RULE][EXPIRY_KEY_CELLS],
+            "월말": month_end_outputs.summary[KEY_RULE][MONTH_END_KEY_TARGETS],
+        }
+
+        # When / Then
+        for name, group in records.items():
+            assert group, f"{name} 요약의 대상별 목록이 비어 있습니다"
+            for record in group:
+                assert KEY_EXCLUDED_COUNT in record, f"{name} 요약에 제외 건수가 없습니다: {record}"
 
     def test_표본이_0건인_구간은_지표를_비운다(self, tmp_path: Path) -> None:
         """
@@ -985,7 +1020,7 @@ class TestIntegerCounts:
     # 건수 컬럼. **`제외` 가 `0.0` 으로 나가고 있었다** — 전체 구간엔 정수, 나머지엔 결측이라
     # pandas 열이 실수가 됐다. 같은 구조가 나머지 넷에도 있어 0건 구간이 하나만 생기면
     # 그 열 전체가 `11.0` 로 바뀐다
-    COUNT_COLUMNS = ("신호", "제외", "질 때 표본", "갭손절", "장중손절")
+    COUNT_COLUMNS = ("신호", "질 때 표본", "갭손절", "장중손절")
 
     def test_박아_둔_건수_목록이_프로덕션과_어긋나지_않는다(self) -> None:
         """
@@ -1030,27 +1065,28 @@ class TestIntegerCounts:
         # Given / When / Then
         assert str(reverse_outputs.performance[DISPLAY_EVENT_COUNT].dtype) == "Int64"
 
-    def test_정수형이어도_빈칸은_빈칸으로_저장된다(self, month_end_outputs: TradingOutputs) -> None:
+    def test_정수형이어도_빈칸은_빈칸으로_저장된다(self, tmp_path: Path) -> None:
         """
         목적: 정수화가 빈칸을 `0` 으로 바꾸지 않는지 확인한다 — 그러면 원래 문제가 뒤집혀 재발한다
 
-        `제외` 는 전체 구간 행에만 적고 나머지 네 구간은 비운다. `0` 을 적으면
-        뒤 절반·최근 N년이 「제외 0건」이라고 거짓으로 주장한다.
+        표본이 0건인 구간은 **잰 적이 없는 것**이라 건수도 빈칸이다.
+        `0` 을 적으면 「손절이 한 번도 안 걸렸다」로 읽혀 정반대의 사실이 된다.
 
-        Given: 합성 시세로 돈 월말 결과
-        When: 성적표를 CSV 문자열로 뽑았을 때
-        Then: 전체 아닌 구간의 `제외` 칸이 빈칸이다
+        Given: 신호를 앞쪽에만 심은 합성 시세 (최근 5년 구간이 0건이 된다)
+        When: 그 구간 행을 CSV 문자열로 뽑았을 때
+        Then: 건수 칸이 빈칸이다
         """
         # Given
-        summary = month_end_outputs.performance
-        others = summary[summary[DISPLAY_PERIOD] != PERIOD_ALL]
-        assert not others.empty
+        target = _reverse_target(_write_market(tmp_path / "early", "SYN", EARLY_SIGNAL_POSITIONS))
+        summary = run_reverse_trading([target]).performance
+        empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
+        assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다 — 신호 위치를 앞으로 옮기세요"
+        assert empty[DISPLAY_GAP_STOP_COUNT].isna().all()
 
         # When
-        text = others.head(1).to_csv(index=False)
+        text = empty.head(1).to_csv(index=False)
 
         # Then
-        assert others[DISPLAY_EXCLUDED].isna().all(), "전체 아닌 구간의 제외가 비어 있지 않습니다"
         assert ",," in text, "빈칸이 값으로 채워졌습니다"
 
 

@@ -44,7 +44,7 @@ from verify_lab.strategy.month_end_runner import (
     run_month_end_trading,
 )
 from verify_lab.strategy.run_summary import KEY_COST, KEY_ROW_COUNTS, KEY_RULE
-from verify_lab.studies.month_end.constants import DATASETS, TRACK_NAME, Dataset
+from verify_lab.studies.month_end.constants import DATASETS, DATASETS_TRADING, TRACK_NAME, Dataset
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -99,7 +99,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--ticker",
         action="append",
-        help="측정할 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: 코스피·코스닥 8대상 전부). " "지수는 장중 손절을 잴 수 없어 「손절불가」 한 줄로만 나온다",
+        help="측정할 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: 인버스를 뺀 코스피·코스닥 6대상). 인버스는 확정 전 교차검증용이라 지목해야 돈다. 지수는 장중 손절을 잴 수 없어 「손절불가」 한 줄로만 나온다",
     )
     parser.add_argument(
         "--from-year",
@@ -115,11 +115,14 @@ def parse_args() -> argparse.Namespace:
 def _selected_datasets(tickers: list[str] | None) -> tuple[Dataset, ...]:
     """인자로 고른 대상만 남긴다.
 
-    **지수도 기본 대상에 든다.** 장중 손절은 못 걸지만 손절 없는 성적은 낼 수 있고,
-    ETF 로는 볼 수 없는 기간(코스피 종합 46년 · 코스닥 종합 30년)이 거기 있다.
+    **지수는 기본 대상에 들고 인버스는 들지 않는다.** 지수는 장중 손절을 못 걸지만
+    ETF 로는 볼 수 없는 기간(코스피 종합 46년 · 코스닥 종합 30년)이 거기 있고,
+    인버스는 1배의 부호를 뒤집은 값과 차이가 잡음이라 확정 전 교차검증에만 쓴다.
+
+    **조회는 `DATASETS` 기준이다** — 기본값으로 좁히면 인버스를 지목했을 때 막힌다.
 
     Args:
-        tickers: 종목 또는 지수 코드 목록. `None` 이면 전부
+        tickers: 종목 또는 지수 코드 목록. `None` 이면 기본 대상
 
     Returns:
         고른 대상 목록
@@ -128,7 +131,7 @@ def _selected_datasets(tickers: list[str] | None) -> tuple[Dataset, ...]:
         ValueError: 알 수 없는 코드를 지목한 경우
     """
     if not tickers:
-        return DATASETS
+        return DATASETS_TRADING
 
     known = {dataset.ticker: dataset for dataset in DATASETS}
     unknown = [ticker for ticker in tickers if ticker not in known]

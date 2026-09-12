@@ -60,7 +60,7 @@ from verify_lab.studies.month_end.constants import (
     BASE_EXIT_OFFSET,
     COL_EXIT_DATE,
     COL_MONTH,
-    DATASETS,
+    DATASETS_TRADING,
     TRACK_NAME,
     Dataset,
 )
@@ -130,14 +130,11 @@ class _Entries:
         entry_positions: 진입일의 위치 인덱스
         exit_positions: 청산일의 위치 인덱스
         entry_dates: 진입일
-        excluded_count: **그 달의** 제외 건수 — 청산일을 확정하지 못해 빠진 진입 수.
-            대상 전체 합계가 아니라 달별이어야 성적표의 한 칸에 실을 수 있다
     """
 
     entry_positions: list[int]
     exit_positions: list[int]
     entry_dates: pd.DatetimeIndex
-    excluded_count: int
 
 
 def _collect_entries(
@@ -190,9 +187,6 @@ def _collect_entries(
                 int(position) for position in trading_days.get_indexer(pd.DatetimeIndex(rows[COL_EXIT_DATE]))
             ],
             entry_dates=entry_dates,
-            # **달별로 쪼갠다.** 대상 합계를 칸마다 실으면 같은 건수가 216번 반복돼
-            # 「이 칸에서 몇 건이 빠졌나」를 답하지 못한다 (표본 보존)
-            excluded_count=int((dropped[COL_MONTH].dt.month == month).sum()),
         )
 
     logger.debug(f"{dataset.ticker}: 진입 {len(usable):,}건, 제외 {excluded_count:,}건")
@@ -307,23 +301,22 @@ def _run_cell(
         DISPLAY_STOP_LEVEL: stop_display,
     }
 
-    # 성적 산식은 `periods` 가 소유한다. 구간 5개와 갭손절 집계가 여기서 나온다
-    # **제외 건수를 넘긴다.** 전에는 넘기지 않아 `summary.json` 에만 남고 성적표의 제외가
-    # **구조적으로 항상 0** 이었다 — 값이 실제로 0 이어서 드러나지 않았을 뿐이다.
-    # 표본을 줄이는 처리는 몇 건이 왜 빠졌는지 함께 내야 한다 (패키지 절대 원칙 「표본 보존」)
+    # 성적 산식은 `periods` 가 소유한다. 구간 5개와 갭손절 집계가 여기서 나온다.
+    # **제외 건수는 넘기지 않는다** — 성적표에서 그 컬럼을 걷어냈고 자리는 `summary.json` 의
+    # `rule` 하나다. 표본을 줄이는 처리는 몇 건이 왜 빠졌는지 함께 내야 하므로
+    # (패키지 절대 원칙 「표본 보존」) **요약에는 반드시 남는다**
     for row in period_rows(
         entries.entry_dates,
         returns,
         last_day=last_day,
         hold_days=hold_days,
         reasons=reasons,
-        excluded_count=entries.excluded_count,
     ):
         accumulator.performance.append({**identity, **row})
 
 
 def run_month_end_trading(
-    datasets: tuple[Dataset, ...] = DATASETS,
+    datasets: tuple[Dataset, ...] = DATASETS_TRADING,
     *,
     stop_levels: tuple[float, ...] = MONTH_END_STOP_LEVELS,
     from_year: int | None = None,
@@ -334,10 +327,12 @@ def run_month_end_trading(
     그 선택이 손절 결과에도 그대로 실린다.
 
     Args:
-        datasets: 대상 목록. 기본값은 **검증 계층과 같은 8대상**이다 — 두 계층의 기본값이
-            갈리면 「인자 없이 돌렸다」가 계층마다 다른 범위를 뜻하고, 산출물 폴더 이름으로는
-            그것이 드러나지 않는다. **지수도 받는다** — 다만 장중 손절에 고가·저가가
-            필요하므로 지수는 한 줄로 강등되고 `손절선(%)` 에 「손절불가」로 적힌다
+        datasets: 대상 목록. 기본값은 **인버스를 뺀 여섯**(`DATASETS_TRADING`)이다 —
+            성적표는 사용자가 판단하는 표인데 인버스는 1배의 부호를 뒤집은 값과 차이가 잡음이라
+            같은 베팅이 두 줄로 실린다. **검증 계층은 인버스를 그대로 받는다** —
+            `execution.csv` 가 「아래」를 인버스 실물로 재는 자리이기 때문이다.
+            **지수도 받는다** — 다만 장중 손절에 고가·저가가 필요하므로 지수는 한 줄로
+            강등되고 `손절선(%)` 에 「손절불가」로 적힌다
         stop_levels: 손절선 목록 (비율). 무손절은 자동으로 함께 산출된다
         from_year: 이 연도의 진입부터 잰다 (포함). `None` 이면 전 기간이다.
             **성과가 좋아지는 값을 찾는 노브가 아니라 미리 정한 구간을 대조하는 축이며**,

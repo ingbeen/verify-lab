@@ -123,8 +123,8 @@ class StudyOutputs:
         trade_excess: 두 기준선 대비 차이 — 같은 요일 주간 보유 · 같은 길이 단순 보유
         trade_test: 그 매매의 순열 검정
         trade_by_month: 만기월(1~12)별 집계와 같은 달 기준선
-        trade_by_month_halves: 만기월 × 시기 앞뒤 절반 — 판정의 시기 항목을 재는 축
-        candidates: 후보 판정 결과 — 전 칸의 1차 판정과 등급 (제외된 칸도 남는다)
+        trade_by_month_halves: 만기월 × 시기 앞뒤 절반 — **관찰용**이며 판정에 쓰이지 않는다
+        candidates: 후보 판정 결과 — 전 칸의 1차 판정과 그 판정을 읽을 값 (제외된 칸도 남는다)
         summary: 실행 파라미터와 핵심 수치
     """
 
@@ -471,8 +471,8 @@ def _aggregate_month_halves(
     지표를 비운 뒤 `판정가능` 을 「아니오」로 적는다 — `leverage_tracking` 과 `strategy` 가
     이미 쓰는 관용이다. **0 으로 채우지 않는다**(「손실도 이익도 없었다」로 읽힌다).
 
-    **판정에는 쓰이지 않는다.** 후보 판정의 시기 항목은 `판정가능` 이 「예」인 행만 읽으므로
-    (`measure.screening`), 행을 복원해도 등급은 달라지지 않는다.
+    **판정에는 쓰이지 않는다.** 게이트는 전체 구간 하나만 보므로(`measure.screening`),
+    행을 복원해도 판정은 달라지지 않는다 — 시기는 사용자가 보는 관찰용 축이다.
 
     Args:
         signal: 신호군 long-form (유효 행)
@@ -600,7 +600,8 @@ def _run_weekly_trade(
         by_month = _aggregate_by_month(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
         accumulator.candidates.append(
             _identify(
-                screen_candidates(by_month, halves, axis_column=COL_EXPIRY_MONTH_NUMBER),
+                # 이 검증의 대상은 전부 ETF 라 언제나 판정한다 — 지수가 들어오면 그때 갈라야 한다
+                screen_candidates(by_month, axis_column=COL_EXPIRY_MONTH_NUMBER, tradable=True),
                 **identity,
             )
         )

@@ -29,20 +29,11 @@ from verify_lab.measure.constants import (
 from verify_lab.measure.screening import (
     COL_BASELINE_GAP,
     COL_BASELINE_HIT_RATE,
-    COL_BREAKEVEN_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
-    COL_LOSING_COUNT,
-    COL_P_VALUE,
-    COL_PAYOFF_RATIO,
-    COL_PERIOD_COUNT,
-    COL_PERIOD_MIN_HIT_RATE,
     COL_SCREEN,
-    COL_SUPPORT_COUNT,
-    COL_SUPPORT_TOTAL,
     COL_TOTAL_RETURN,
-    COL_UNMET_SUPPORT,
 )
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
@@ -84,7 +75,6 @@ from verify_lab.report.constants import (
     DISPLAY_BASELINE_GAP,
     DISPLAY_BASELINE_HIT_RATE,
     DISPLAY_BASELINE_SAMPLE,
-    DISPLAY_BREAKEVEN_HIT_RATE,
     DISPLAY_DATE,
     DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
@@ -95,7 +85,6 @@ from verify_lab.report.constants import (
     DISPLAY_EXPECTED_VALUE,
     DISPLAY_HIT_RATE,
     DISPLAY_HORIZON,
-    DISPLAY_LOSING_COUNT,
     DISPLAY_MAX,
     DISPLAY_MEAN,
     DISPLAY_MEAN_DIFF,
@@ -112,30 +101,22 @@ from verify_lab.report.constants import (
     DISPLAY_OBSERVED_MEAN,
     DISPLAY_OBSERVED_MEDIAN,
     DISPLAY_OBSERVED_UP_RATE,
-    DISPLAY_P_VALUE,
-    DISPLAY_PAYOFF_RATIO,
-    DISPLAY_PERIOD_COUNT,
-    DISPLAY_PERIOD_MIN_HIT_RATE,
     DISPLAY_POPULATION,
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SCREEN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_SIGNAL_SAMPLE,
     DISPLAY_STD,
-    DISPLAY_SUPPORT,
     DISPLAY_TEST_NOTE,
     DISPLAY_TOTAL_RETURN,
-    DISPLAY_UNMET_SUPPORT,
     DISPLAY_UP_RATE,
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
     DISPLAY_UP_RATE_PERCENTILE,
     EMPTY_MARK,
     HORIZON_LABELS,
-    PAYOFF_DECIMALS,
     PERCENT_DECIMALS,
     PROBABILITY_DECIMALS,
-    SUPPORT_SEPARATOR,
 )
 from verify_lab.utils.formatting import Align, TableLogger, get_display_width
 
@@ -511,7 +492,6 @@ def to_display_columns(
     *,
     percent_columns: Sequence[str] = (),
     probability_columns: Sequence[str] = (),
-    payoff_columns: Sequence[str] = (),
 ) -> pd.DataFrame:
     """저장 직전에 컬럼 헤더를 한글로 바꾸고 단위를 맞춘다.
 
@@ -530,14 +510,12 @@ def to_display_columns(
         labels: `COL_* → 한글 레이블` 사전. 표의 모든 컬럼을 덮어야 한다
         percent_columns: 비율(0~1)로 들어와 백분율로 내보낼 컬럼
         probability_columns: 확률로 들어와 자릿수만 맞출 컬럼
-        payoff_columns: **배수**로 들어와 자릿수만 맞출 컬럼 (손익비).
-            백분율도 확률도 아니라 자릿수가 또 다르다 — 2자리면 1.034 와 1.056 이 뭉개진다
 
     Note:
-        **단위 인자가 셋이다.** `unit_columns` 매핑 하나로 접자는 제안을 검토했고 두지 않았다 —
-        세 검증의 호출부를 모두 손대는 리팩토링인데 **얻는 것이 인자 개수 둘뿐**이고,
-        매핑으로 바꾸면 자릿수 소유자가 호출자로 옮겨 가 검증마다 갈릴 길이 열린다.
-        **네 번째 단위가 나올 때 다시 판단한다.**
+        **배수(손익비) 인자는 2026-09-12 에 걷어냈다.** 등급이 사라지면서 판정표에서
+        손익비가 빠져 호출처가 0 이 됐다. 매매 계층의 `성적표.csv` 는 이 함수를 지나지 않고
+        `strategy/periods.py` 가 저장 직전에 직접 반올림하므로 그쪽은 영향이 없다.
+        **세 번째 단위가 다시 필요해지면 그때 되살린다.**
 
     Returns:
         헤더가 한글이고 단위가 맞춰진 새 DataFrame. 컬럼 순서는 그대로다
@@ -553,9 +531,7 @@ def to_display_columns(
     if missing:
         raise ValueError(f"한글 이름이 없는 컬럼이 있습니다: {missing}")
 
-    unknown = [
-        column for column in (*percent_columns, *probability_columns, *payoff_columns) if column not in table.columns
-    ]
+    unknown = [column for column in (*percent_columns, *probability_columns) if column not in table.columns]
     if unknown:
         raise ValueError(f"변환 대상 컬럼이 표에 없습니다: {unknown}")
 
@@ -564,8 +540,6 @@ def to_display_columns(
         converted[column] = (converted[column] * RATE_TO_PERCENT).round(PERCENT_DECIMALS)
     for column in probability_columns:
         converted[column] = converted[column].round(PROBABILITY_DECIMALS)
-    for column in payoff_columns:
-        converted[column] = converted[column].round(PAYOFF_DECIMALS)
 
     return converted.rename(columns=dict(labels))
 
@@ -573,15 +547,16 @@ def to_display_columns(
 def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_label: str) -> pd.DataFrame:
     """후보 판정 결과를 표시용으로 바꾼다.
 
-    비율은 백분율로, 우연확률은 확률 자릿수로 반올림한다. 시기를 쪼갤 수 없었던 칸은
-    「가장 약한 시기」가 비어 있는데, **0 으로 채우지 않는다** — 0% 로 읽히기 때문이다.
+    **판정에 쓰이는 값과 그 값을 읽는 데 필요한 값만 낸다.** 전에는 등급 넷(기준선 대비 차이·
+    우연확률·시기·손익비)의 재료가 함께 실렸는데, 등급이 사라진 뒤로는 판정과 무관한 열이 된다.
 
     **회당 기대값과 합산 수익률을 표본 수와 함께 나란히 낸다** (측정의 원칙 16).
     셋 중 하나라도 빠지면 그 칸의 크기를 판단할 수 없다 — 회당만 있으면 작아 보이고,
     합산만 있으면 기간이 긴 칸이 자동으로 이긴다.
 
-    **등급은 「충족/물음」 한 칸으로 합치되 분모를 떼지 않는다.** 시기를 못 잰 칸은 `3/3` 이
-    되는데 이는 `4/4` 와 같은 뜻이 아니며, 분모를 지우면 표본이 작은 칸이 만점처럼 보인다.
+    **기준선을 함께 낸다.** 판정에 쓰이지는 않지만 **같은 적중률이 방향에 따라 뜻이 정반대**이고
+    (오르는 쪽 기준선 55~59% · 내리는 쪽 41~45%), 기준선과 사실상 같은 칸이 게이트를 통과하기
+    때문이다 — SPY 11월은 적중률 66.7% 인데 기준선도 66.7% 다.
 
     Args:
         candidates: `screening.screen_candidates` 의 결과
@@ -597,11 +572,6 @@ def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_l
     if axis_column not in candidates.columns:
         raise ValueError(f"판정표에 축 컬럼이 없습니다: {axis_column}")
 
-    support = [
-        f"{int(count)}{SUPPORT_SEPARATOR}{int(total)}"
-        for count, total in zip(candidates[COL_SUPPORT_COUNT], candidates[COL_SUPPORT_TOTAL], strict=True)
-    ]
-
     return pd.DataFrame(
         {
             axis_label: candidates[axis_column].to_numpy(),
@@ -613,18 +583,8 @@ def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_l
             # 매매법은 회당 평균이 구조적으로 작게 나와 크기 감각을 주지 못하고, 왕복 수수료와
             # 견줄 값인지도 그 자리에서 보이지 않는다. 떨어뜨려 두면 둘이 같이 읽히지 않는다
             DISPLAY_TOTAL_RETURN: _to_percent(candidates[COL_TOTAL_RETURN]).to_numpy(),
-            # **손익비 옆에 빗나간 표본을 붙인다** — 그 값이 손익비의 «분모»라
-            # 없으면 5건으로 만든 1.034 와 2건으로 만든 16.822 가 같은 무게로 읽힌다
-            DISPLAY_PAYOFF_RATIO: candidates[COL_PAYOFF_RATIO].round(PAYOFF_DECIMALS).to_numpy(),
-            DISPLAY_BREAKEVEN_HIT_RATE: _to_percent(candidates[COL_BREAKEVEN_HIT_RATE]).to_numpy(),
-            DISPLAY_LOSING_COUNT: candidates[COL_LOSING_COUNT].to_numpy(),
             DISPLAY_BASELINE_HIT_RATE: _to_percent(candidates[COL_BASELINE_HIT_RATE]).to_numpy(),
             DISPLAY_BASELINE_GAP: _to_percent(candidates[COL_BASELINE_GAP]).to_numpy(),
-            DISPLAY_P_VALUE: candidates[COL_P_VALUE].round(PROBABILITY_DECIMALS).to_numpy(),
-            DISPLAY_PERIOD_COUNT: candidates[COL_PERIOD_COUNT].to_numpy(),
-            DISPLAY_PERIOD_MIN_HIT_RATE: _to_percent(candidates[COL_PERIOD_MIN_HIT_RATE]).to_numpy(),
             DISPLAY_SCREEN: candidates[COL_SCREEN].to_numpy(),
-            DISPLAY_SUPPORT: support,
-            DISPLAY_UNMET_SUPPORT: candidates[COL_UNMET_SUPPORT].to_numpy(),
         }
     )

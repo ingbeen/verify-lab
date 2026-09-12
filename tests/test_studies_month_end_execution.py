@@ -38,6 +38,7 @@ from verify_lab.studies.month_end.constants import (
     DATASETS,
     DATASETS_KOSDAQ,
     DATASETS_KOSPI,
+    DATASETS_TRADING,
     EXECUTION_ROLE_DOWN,
     EXECUTION_ROLE_NONE,
     EXECUTION_ROLE_UP,
@@ -198,11 +199,14 @@ class TestDatasetComposition:
 
     def test_all_datasets_are_the_sum_of_two_markets(self) -> None:
         """
-        목적: 전체 목록이 시장별 목록의 합임을 고정한다 — 어느 한쪽에만 있는 대상이 없다
+        목적: 정의된 목록이 시장별 목록의 합임을 고정한다 — 어느 한쪽에만 있는 대상이 없다
+
+        **`DATASETS` 는 검증 기본값이자 정의 전부다.** 매매 기본값(`DATASETS_TRADING`)만
+        인버스를 빼므로 그쪽이 진부분집합이다 (2026-09-12).
 
         Given: 시장별 목록과 전체 목록
         When: 티커 집합을 비교한다
-        Then: 합집합이 전체와 같고 개수도 같다
+        Then: 합집합이 전체와 같고 개수도 같으며, 매매 기본값은 그 진부분집합이다
         """
         # Given
         kospi = {dataset.ticker for dataset in DATASETS_KOSPI}
@@ -215,6 +219,7 @@ class TestDatasetComposition:
         # Then
         assert combined == every, f"시장별 목록의 합이 전체와 다릅니다: {combined ^ every}"
         assert len(DATASETS) == len(DATASETS_KOSPI) + len(DATASETS_KOSDAQ), "두 시장에 겹치는 대상이 있습니다"
+        assert set(DATASETS_TRADING) < set(DATASETS), "매매 기본값이 진부분집합이 아닙니다"
 
     def test_tickers_and_labels_are_unique(self) -> None:
         """
