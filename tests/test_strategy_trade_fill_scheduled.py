@@ -7,13 +7,15 @@
 청산이 달력 기준(다음 주 금요일)이라 이익이 나도 그날까지 들고 간다.
 나머지(진입가 기준 고정 손절선, 시가 → 장중 순서, 방향별 고가·저가)는 같은 판정식을 쓴다.
 
-핵심 계약은 여섯 가지다.
+핵심 계약은 일곱 가지다.
 - 손절이 안 걸리면 **이익이어도 청산일 종가**로 나간다 (역방향과 갈리는 자리)
 - 갭 청산은 **손절선보다 더 잃는다**. 시가가 이미 아래면 그 시가가 체결가다
 - 장중 손절은 **손절선 가격**에 체결된다
 - **아래로 거는 칸은 고가**로, **위로 거는 칸은 저가**로 손절을 판정한다
 - **무손절**이면 얼마나 밀려도 청산일까지 보유한다
 - 청산일 이후의 데이터를 잘라도 결과가 같다 (**미래 참조 감시**)
+- **음수 진입 위치는 두 경로 모두에서 거부한다.** `iloc[-1]` 이 뒤에서 세어 마지막 행을
+  진입가로 잡으므로, 막지 않으면 무손절 경로가 **예외 없이** 엉뚱한 체결을 만든다
 """
 
 import pandas as pd
@@ -21,7 +23,7 @@ import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
 from verify_lab.strategy.constants import EXIT_GAP_STOP, EXIT_INTRADAY_STOP, EXIT_LIMIT
-from verify_lab.strategy.trade_fill import simulate_scheduled_trade
+from verify_lab.strategy.trade_fill import resolve_positions, simulate_scheduled_trade
 
 # 손계산을 쉽게 하려고 진입가를 100 으로 둔다
 ENTRY_PRICE = 100.0
@@ -419,6 +421,47 @@ class TestValidation:
         with pytest.raises(ValueError, match="청산 위치"):
             simulate_scheduled_trade(frame, 0, 5, bet_down=False, stop_level=STOP_LEVEL)
 
+    def test_무손절_경로에서_음수_진입_위치를_거부한다(self) -> None:
+        """
+        목적: **예외도 경고도 없이 결과만 틀리던 경로**를 막는다.
+
+        `pandas.Index.get_indexer` 는 찾지 못한 날짜에 `-1` 을 돌려준다. 그 값이 여기까지
+        오면 `_scheduled_exit` 의 `iloc[-1]` 이 **마지막 행을 진입가로** 잡는다 —
+        예외가 나지 않고 체결 하나가 조용히 만들어진다.
+
+        **무손절은 월말의 지수 대상이 언제나 지나는 길**이라(지수는 고가·저가가 없어
+        손절을 못 건다) 가드가 없는 쪽이 하필 상시 경로였다.
+
+        Given: 마지막 행만 500 으로 튀는 시세 (진입가로 잡히면 -79.4% 가 나온다)
+        When: 진입 위치 -1 로 무손절 체결을 요청했을 때
+        Then: 체결되지 않고 ValueError 가 난다
+        """
+        # Given
+        frame = _frame([_entry_day(), _flat_day(), _flat_day(), (500.0, 500.0, 500.0, 500.0)])
+
+        # When / Then
+        with pytest.raises(ValueError, match="진입 위치"):
+            simulate_scheduled_trade(frame, -1, 3, bet_down=False, stop_level=None)
+
+    def test_손절_경로에서도_음수_진입_위치를_거부한다(self) -> None:
+        """
+        목적: 두 경로의 가드 강도를 같게 고정한다 (엣지 케이스).
+
+        손절 경로는 `simulate_signal._validate` 의 `0 <= entry_position` 에 걸려 원래
+        살아났다. **그 동작이 유지되는지** 함께 고정한다 — 근본 수정이 한쪽만 고치면
+        두 경로가 다시 갈린다.
+
+        Given: 같은 시세
+        When: 진입 위치 -1 로 손절 체결을 요청했을 때
+        Then: ValueError 가 난다
+        """
+        # Given
+        frame = _frame([_entry_day(), _flat_day(), _flat_day(), (500.0, 500.0, 500.0, 500.0)])
+
+        # When / Then
+        with pytest.raises(ValueError, match="진입 위치"):
+            simulate_scheduled_trade(frame, -1, 3, bet_down=False, stop_level=STOP_LEVEL)
+
     def test_손절선이_양수가_아니면_거부한다(self) -> None:
         """
         목적: 잘못된 손절선을 즉시 막는지 고정한다
@@ -472,3 +515,94 @@ class TestValidation:
         # When / Then
         with pytest.raises(ValueError, match="청산가"):
             simulate_scheduled_trade(frame, 0, 1, bet_down=False, stop_level=None)
+
+
+class TestResolvePositions:
+    """날짜 → 거래일 위치 변환의 계약 — 매매 계층 네 곳이 공유한다.
+
+    **`-1` 을 흘려보내지 않는 것이 이 함수의 존재 이유다.** 매매 계층은 진입일·청산일을
+    `trading_days` 자신에서 만들므로 `-1` 은 일정 모듈의 버그로만 생긴다. 그래서
+    입력 검증(`ValueError`)이 아니라 **내부 불변조건 위반(`RuntimeError`)** 이다.
+
+    같은 사고를 **날짜 목록을 파라미터로 받는** `studies/` 세 곳은 `ValueError` 로 던진다 —
+    거기서는 잘못된 값이 외부에서 올 수 있기 때문이며, 메시지 본문만 같게 맞춘다.
+    """
+
+    def test_전부_거래일이면_위치를_그대로_돌려준다(self) -> None:
+        """
+        목적: 정상 경로가 `get_indexer` 와 같은 값을 낸다는 것을 고정한다.
+
+        Given: 거래일 목록에 모두 들어 있는 날짜 셋
+        When: 위치를 구하면
+        Then: 오름차순 위치가 그대로 나온다
+        """
+        # Given
+        trading_days = pd.DatetimeIndex(pd.bdate_range("2020-01-01", periods=5))
+        dates = trading_days[[0, 2, 4]]
+
+        # When
+        positions = resolve_positions(trading_days, dates, label="진입일")
+
+        # Then
+        assert positions.tolist() == [0, 2, 4]
+
+    def test_거래일에_없는_날짜가_있으면_내부_불변조건_위반이다(self) -> None:
+        """
+        목적: **이 계획서가 막으려는 사고 그 자체**를 고정한다.
+
+        `get_indexer` 가 `-1` 을 돌려주는데 그것을 검사하지 않으면 음수 위치가
+        `simulate_scheduled_trade` 로 흘러간다.
+
+        Given: 거래일 목록에 없는 날짜(휴장일)가 섞인 목록
+        When: 위치를 구하면
+        Then: RuntimeError 이고 메시지에 **그 날짜**가 담긴다
+        """
+        # Given
+        trading_days = pd.DatetimeIndex(pd.bdate_range("2020-01-01", periods=5))
+        dates = pd.DatetimeIndex([trading_days[0], pd.Timestamp("2020-01-04")])
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반") as caught:
+            resolve_positions(trading_days, dates, label="진입일")
+
+        assert "2020-01-04" in str(caught.value)
+
+    def test_라벨이_메시지에_실린다(self) -> None:
+        """
+        목적: 진입일이 없는 것과 청산일이 없는 것을 메시지로 가른다.
+
+        원인이 다르다 — 진입일은 일정 모듈의 앞당김, 청산일은 상대 거래일 계산에서 온다.
+        같은 문구로 나가면 어느 쪽을 봐야 하는지 알 수 없다.
+
+        Given: 거래일 목록에 없는 날짜
+        When: 라벨을 「청산일」로 주고 위치를 구하면
+        Then: 메시지에 「청산일」이 들어간다
+        """
+        # Given
+        trading_days = pd.DatetimeIndex(pd.bdate_range("2020-01-01", periods=5))
+        dates = pd.DatetimeIndex([pd.Timestamp("2020-01-04")])
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="청산일"):
+            resolve_positions(trading_days, dates, label="청산일")
+
+    def test_빈_날짜_목록은_빈_배열이다(self) -> None:
+        """
+        목적: 신호가 하나도 없는 달에서 터지지 않는지 고정한다 (엣지 케이스).
+
+        `numpy` 의 `min()` 은 빈 배열에서 `ValueError` 를 낸다 — 그 자리를 막지 않으면
+        정상적인 「그 달에 진입이 없음」이 예외가 된다.
+
+        Given: 빈 날짜 목록
+        When: 위치를 구하면
+        Then: 빈 배열이 나오고 예외가 없다
+        """
+        # Given
+        trading_days = pd.DatetimeIndex(pd.bdate_range("2020-01-01", periods=5))
+        dates = pd.DatetimeIndex([])
+
+        # When
+        positions = resolve_positions(trading_days, dates, label="진입일")
+
+        # Then
+        assert positions.tolist() == []

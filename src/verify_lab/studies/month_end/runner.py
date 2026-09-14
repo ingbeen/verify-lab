@@ -595,6 +595,9 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
 
     Returns:
         이 대상의 요약 수치
+
+    Raises:
+        RuntimeError: 격자 순회가 기준 칸에 한 번도 닿지 못한 경우 (내부 불변조건 위반)
     """
     df = _load(dataset)
     trading_days = pd.DatetimeIndex(df[COL_DATE])
@@ -654,6 +657,18 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
                 screen_candidates(grid, axis_column=COL_GRID_CELL, tradable=not dataset.is_index),
                 **identity,
             )
+        )
+
+    # **요약이 「정상으로 보이는 것」이 이 가드의 이유다.** 진입·제외 건수와 보유일은 원 매매법
+    # 칸에서만 나오는데, 그 칸에 닿지 못하면 `base_record` 가 빈 채로 펼쳐져 다섯 키가 통째로
+    # 빠진다 — 나머지 키는 멀쩡하므로 `summary.json` 만 봐서는 알 수 없다.
+    # **경고로 끝내지 않는다** — 표본 보존은 「몇 건이 왜 빠졌는지」가 남아야 지켜진 것이다
+    # **원인이 둘이라 메시지가 둘을 다 말한다** — 어느 쪽인지에 따라 볼 곳이 다르다
+    if not base_record:
+        raise RuntimeError(
+            f"내부 불변조건 위반: 기준 칸의 집계가 없어 요약에 진입·제외 건수를 남길 수 없습니다: "
+            f"{dataset.label} 기준 칸 {grid_cell_label(BASE_ENTRY_DAY, BASE_EXIT_OFFSET)} "
+            f"(그 칸의 유효 신호가 0건이거나, 격자가 그 칸을 포함하지 않는다)"
         )
 
     return {

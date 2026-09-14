@@ -31,6 +31,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS_KRW,
 )
 from verify_lab.measure.screening import SCREENING_COLUMNS
+from verify_lab.studies.month_end import runner as month_end_runner
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
@@ -298,6 +299,63 @@ class TestPeriodSplit:
         assert set(SCREENING_COLUMNS) <= set(outputs.grid_candidates.columns)
         leftovers = [column for column in outputs.grid_candidates.columns if "Period" in column]
         assert leftovers == []
+
+
+class TestBaseCellRecord:
+    """기준 칸이 요약에 진입·제외 건수를 남기는지 — 표본 보존의 마지막 자리
+
+    월별 분해와 원자료는 **원 매매법 칸(20일 → 말일)에서만** 낸다. 그 칸에 도달하지 못하면
+    요약의 `진입`·`제외`·`보유일`·`기준선 진입`·`수렴한 달` 다섯이 통째로 빠지는데,
+    **`summary.json` 은 나머지 키가 멀쩡해 정상으로 보인다.**
+
+    현재 데이터에서는 도달할 수 없다 — 격자가 기준 칸을 포함하고 그 칸에 신호가 있다.
+    **그래서 격자를 기준 칸이 없는 것으로 갈아끼운다** (전역 `python.md` — 불가능 조건은
+    `RuntimeError` 로 즉시 인지시킨다).
+    """
+
+    def test_base_cell_missing_from_the_grid_raises(
+        self, etf_dataset: Dataset, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        목적: 기준 칸에 한 번도 닿지 못한 실행이 **조용히 요약을 내지 않는지** 고정한다.
+
+        Given: 기준 칸(20일 → 말일)을 포함하지 않는 격자
+        When: 검증을 돌린다
+        Then: RuntimeError 이고 메시지에 「내부 불변조건 위반」과 기준 칸이 담긴다
+        """
+        # Given
+        assert BASE_ENTRY_DAY not in (15,), "기준 칸이 축소한 격자에 들어가면 이 테스트가 무의미해진다"
+        monkeypatch.setattr(month_end_runner, "ENTRY_CALENDAR_DAYS", (15,))
+        monkeypatch.setattr(month_end_runner, "EXIT_OFFSETS", (BASE_EXIT_OFFSET,))
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반") as caught:
+            run_study((etf_dataset,), repeats=FAST_REPEATS, seed=FIXED_SEED)
+
+        assert grid_cell_label(BASE_ENTRY_DAY, BASE_EXIT_OFFSET) in str(caught.value)
+
+    def test_base_cell_with_no_valid_signal_raises(self, etf_dataset: Dataset, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: **실제로 일어날 수 있는 쪽**을 고정한다 — 기준 칸의 유효 신호가 0건인 경우.
+
+        그때 격자 순회는 그 칸에 «닿지만» 집계가 비어 `continue` 하므로 `base_record` 가
+        빈 채로 남는다. 앞 테스트(격자에 기준 칸이 없는 경우)와 도달 경로가 다르므로
+        둘을 함께 건다 — 한쪽만 걸면 `block.empty` 처리를 바꿨을 때 조용히 통과한다.
+
+        Given: 어느 칸에서도 집계가 나오지 않는 실행
+        When: 검증을 돌린다
+        Then: 경고로 끝나지 않고 RuntimeError 가 난다
+        """
+
+        # Given
+        def _no_aggregate(*_args: object, **_kwargs: object) -> pd.DataFrame:
+            return pd.DataFrame()
+
+        monkeypatch.setattr(month_end_runner, "_aggregate", _no_aggregate)
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
+            run_study((etf_dataset,), repeats=FAST_REPEATS, seed=FIXED_SEED)
 
 
 class TestDisplayTables:

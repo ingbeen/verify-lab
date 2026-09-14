@@ -10,6 +10,10 @@
 **두 번째가 첫 번째를 `take_profit=False` 로 부른다.** 차이가 그 단계 하나뿐이므로 판정식을
 두 벌 만들지 않는다.
 
+**「어느 위치가 유효한가」도 이 모듈이 소유한다.** 두 진입점의 범위 검사와, 날짜를 거래일
+위치로 바꾸는 `resolve_positions` 가 여기 함께 있다 — 매매법 네 곳이 그 변환을 각자 하면
+찾지 못한 날짜(`-1`)를 거르는 검사도 네 벌이 되고, 한 곳만 빠져도 예외가 나지 않는다.
+
 **이 계층이 틀리는 방식은 판정 순서가 뒤바뀌는 것**이다. 시가·장중·종가를 이 순서로 보지
 않으면 갭 하락한 날에 장중 손절가로 체결된 것처럼 계산되어 손실이 실제보다 작게 나온다.
 그래서 순서를 함수 하나에 가두고 테스트로 고정한다.
@@ -26,6 +30,7 @@
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import COL_CLOSE, COL_HIGH, COL_LOW, COL_OPEN
@@ -56,6 +61,42 @@ class TradeResult:
     return_rate: float
     reason: str
     hold_days: int
+
+
+def resolve_positions(trading_days: pd.DatetimeIndex, dates: pd.DatetimeIndex, *, label: str) -> np.ndarray:
+    """날짜를 거래일 위치로 바꾼다. 찾지 못한 날짜가 하나라도 있으면 멈춘다.
+
+    `pandas.Index.get_indexer` 는 찾지 못한 날짜에 **`-1`** 을 돌려준다. 검사하지 않으면 그 값이
+    `simulate_scheduled_trade` 로 흘러가고, 무손절 경로에서는 `iloc` 가 뒤에서 세어
+    **마지막 행을 진입가로** 잡는다 — 예외 없이 체결 하나가 만들어진다.
+
+    **`RuntimeError` 인 이유**: 매매 계층은 진입일·청산일을 `trading_days` 자신에서 만든다
+    (`month_end_runner` 는 `month_exit_schedule` 을 지난 날짜를, `option_expiry_runner` 는
+    스스로 읽은 시세의 날짜를 쓴다). 따라서 `-1` 은 잘못된 입력이 아니라 **일정 모듈의 버그**로만
+    생긴다. 같은 사고를 날짜 목록을 **파라미터로 받는** `studies/` 세 곳
+    (`month_end/schedule.py` · `option_expiry/weekly_exit.py` · `option_expiry/offsets.py`)은
+    `ValueError` 로 던진다 — 거기서는 외부에서 잘못된 값이 올 수 있다. **메시지 본문은 맞춘다.**
+
+    Args:
+        trading_days: 거래일 목록
+        dates: 위치를 구할 날짜
+        label: 메시지에 쓸 날짜의 이름 (예: `진입일`). 진입일이 없는 것과 청산일이 없는 것은
+            원인이 다르므로 한 문구로 합치지 않는다
+
+    Returns:
+        거래일 위치 배열
+
+    Raises:
+        RuntimeError: 거래일 목록에 없는 날짜가 있는 경우 (내부 불변조건 위반)
+    """
+    positions = np.asarray(trading_days.get_indexer(dates), dtype=np.int64)
+
+    # 빈 배열에서 `min()` 은 예외를 내므로 길이를 먼저 본다. 진입이 하나도 없는 달은 정상이다
+    if len(positions) and positions.min() < 0:
+        missing = dates[positions < 0]
+        raise RuntimeError(f"내부 불변조건 위반: {label}이 거래일 목록에 없습니다: {[day.date().isoformat() for day in missing]}")
+
+    return positions
 
 
 def simulate_signal(
@@ -224,14 +265,21 @@ def simulate_scheduled_trade(
         체결 결과
 
     Raises:
-        ValueError: 청산 위치가 진입 위치보다 뒤가 아니거나 시세 범위를 벗어난 경우,
-            손절선이 양수가 아닌 경우, 필요한 컬럼이 없거나 진입 위치가 범위 밖인 경우,
-            **종가가 아닌 가격 컬럼에 손절선을 건 경우**
+        ValueError: **진입 위치가 음수인 경우**, 청산 위치가 진입 위치보다 뒤가 아니거나
+            시세 범위를 벗어난 경우, 손절선이 양수가 아닌 경우,
+            **종가가 아닌 가격 컬럼에 손절선을 건 경우**,
+            손절 경로에서 시세 컬럼이 없는 경우. **무손절 경로는 가격 컬럼 하나만 읽으므로
+            그 컬럼이 없으면 `KeyError` 다** — 시세 스키마 전체를 요구하지 않는다
         RuntimeError: 청산일까지 체결되지 않은 경우 (내부 불변조건 위반)
     """
-    if not entry_position < exit_position < len(frame):
+    # **하한을 여기 두는 이유**: 무손절 경로(`_scheduled_exit`)는 `iloc` 만 쓰므로 음수 위치가
+    # 예외 없이 **마지막 행**을 진입가로 만든다. 손절 경로는 `simulate_signal._validate` 의
+    # `0 <= entry_position` 에 걸려 살아나므로, 하한이 없으면 두 경로의 가드 강도가 정반대가 된다.
+    # 그리고 **지수 대상은 고가·저가가 없어 무손절 경로만 지난다** — 약한 쪽이 하필 상시 경로다
+    if not 0 <= entry_position < exit_position < len(frame):
         raise ValueError(
-            f"청산 위치는 진입 위치보다 뒤이면서 시세 범위 안이어야 합니다: " f"진입 {entry_position}, 청산 {exit_position} (시세 {len(frame)}행)"
+            f"진입 위치는 0 이상이고 청산 위치는 그보다 뒤이면서 시세 범위 안이어야 합니다: "
+            f"진입 {entry_position}, 청산 {exit_position} (시세 {len(frame)}행)"
         )
 
     hold_days = exit_position - entry_position
@@ -308,4 +356,4 @@ def _scheduled_exit(
     return TradeResult((exit_price / entry_price - 1.0) * sign, EXIT_LIMIT, hold_days)
 
 
-__all__ = ["TradeResult", "simulate_scheduled_trade", "simulate_signal"]
+__all__ = ["TradeResult", "resolve_positions", "simulate_scheduled_trade", "simulate_signal"]

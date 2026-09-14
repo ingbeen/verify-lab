@@ -426,6 +426,40 @@ class TestMonthExitSchedule:
         # Then
         assert _entry_on(schedule.frame, "2024-02")[COL_EXCLUDED_REASON] == REASON_NO_ENTRY_DAY
 
+    def test_entry_whose_month_is_not_in_the_calendar_raises(self) -> None:
+        """
+        목적: **「유효도 제외도 아닌 행」이 생기던 자리**를 막는다 (표본 보존).
+
+        진입일은 있는데 그 달이 거래일 목록에 없으면 `usable` 은 거짓인데, 사유를 덮는
+        세 갈래 어디에도 걸리지 않아 **진입 단계의 「정상」이 그대로 남는다.**
+        그러면 「유효」로 세어지는 행의 청산일이 `NaT` 이고 보유일이 결측이다 —
+        예외도 경고도 없이 진입 수 = 유효 + 제외 항등식이 깨진다.
+
+        현재 입력에서는 도달할 수 없다. 진입일이 `trading_days` 에서 나오므로 그 달은
+        반드시 존재하기 때문이며, **그래서 인위적인 진입일 표를 직접 만든다**
+        (전역 `python.md` — 불가능 조건은 `RuntimeError` 로 즉시 인지시킨다).
+
+        Given: 진입일은 실재하는 거래일인데 진입 달만 거래일 목록 밖(2023-12)인 진입일 표
+        When: 청산 일정을 만든다
+        Then: RuntimeError 이고 메시지에 「내부 불변조건 위반」과 그 달이 담긴다
+        """
+        # Given
+        days = _trading_days("2024-01-01", "2024-03-29")
+        entries = pd.DataFrame(
+            {
+                COL_MONTH: [pd.Timestamp("2023-12-01")],
+                COL_TARGET_DAY: [ENTRY_DAY_20],
+                COL_DATE: [days[5]],
+                COL_EXCLUDED_REASON: [REASON_NONE],
+            }
+        )
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반") as caught:
+            month_exit_schedule(days, entries, exit_offset=0)
+
+        assert "2023-12" in str(caught.value)
+
 
 class TestMonthExitReturns:
     """수익률 산식과 원자료"""

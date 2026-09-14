@@ -206,6 +206,8 @@ def month_exit_schedule(
     Raises:
         ValueError: 거래일 목록이 비었거나, 진입일 표에 필요한 컬럼이 없거나,
             진입일이 거래일 목록에 없는 경우
+        RuntimeError: 진입일이 있는데 그 진입 달이 거래일 목록에 없는 경우
+            (내부 불변조건 위반)
     """
     if len(trading_days) == 0:
         raise ValueError("거래일 목록이 비어 있어 청산일을 정할 수 없습니다")
@@ -239,6 +241,17 @@ def month_exit_schedule(
     if has_entry.any() and entry_positions[has_entry].min() < 0:
         unknown = frame.loc[has_entry & (entry_positions < 0), COL_DATE]
         raise ValueError(f"진입일이 거래일 목록에 없습니다: {[day.date().isoformat() for day in unknown]}")
+
+    # **「진입일은 있는데 그 달이 없다」는 상태를 여기서 끊는다.** 그런 행은 `usable` 이
+    # 거짓인데 아래 세 갈래 어디에도 걸리지 않아 **진입 단계의 사유가 그대로 남는다** —
+    # 유효로 세어지면서 청산일은 `NaT` 인 행이 되어 「진입 = 유효 + 제외」가 조용히 깨진다.
+    # 진입일은 `trading_days` 에서 나오므로 그 달은 반드시 존재한다 — 도달하면 버그다
+    broken = has_entry & ~has_month
+    if broken.any():
+        months = frame.loc[broken, COL_MONTH]
+        raise RuntimeError(
+            f"내부 불변조건 위반: 진입일이 있는데 그 달이 거래일 목록에 없습니다: " f"{[month.strftime('%Y-%m') for month in months]}"
+        )
 
     # 3. 청산 위치는 그 달 마지막 거래일에서 상대 거래일만큼 이동한 자리다
     exit_positions = safe_month_position + exit_offset

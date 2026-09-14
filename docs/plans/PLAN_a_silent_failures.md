@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🔄 In Progress
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-09-14 12:05
-**마지막 업데이트**: 2026-09-14 12:40
+**마지막 업데이트**: 2026-09-14 14:00
 **관련 범위**: measure, strategy, studies/month_end, tests
 **관련 문서**: `src/verify_lab/CLAUDE.md`, `tests/CLAUDE.md`, `.claude/rules/python.md`(전역), `.claude/rules/strategy.md`
 
@@ -42,9 +42,9 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: **잘못된 입력이 예외 없이 그럴듯한 숫자로 흘러가는 경로 4곳을 막는다.** 전부 「예외도 경고도 나지 않고 결과만 틀리는」 형태다
-- [ ] 목표 2: 막은 각 지점에 **재발을 잡는 테스트**를 붙인다
-- [ ] 목표 3: **기존 산출물의 값은 하나도 바뀌지 않는다.** 이 계획서는 동작을 바꾸는 것이 아니라 「일어나면 안 되는 일」에서 멈추게 하는 것이다
+- [x] 목표 1: **잘못된 입력이 예외 없이 그럴듯한 숫자로 흘러가는 경로 4곳을 막는다.** 전부 「예외도 경고도 나지 않고 결과만 틀리는」 형태다
+- [x] 목표 2: 막은 각 지점에 **재발을 잡는 테스트**를 붙인다
+- [x] 목표 3: **기존 산출물의 값은 하나도 바뀌지 않는다.** 이 계획서는 동작을 바꾸는 것이 아니라 「일어나면 안 되는 일」에서 멈추게 하는 것이다
 
 ## 2) 비목표(Non-Goals)
 
@@ -130,17 +130,17 @@ rows = [
 - [x] **선행 계획서 복기 완료** — `docs/plans/PLAN_[a-g]_*.md` 의 상태와 「후속 계획서 인계」 절을 읽고,
       이 계획서의 전제가 바뀐 것이 있으면 진행 로그에 적었다
 - [x] Phase 0 재판단 게이트를 전 항목에 대해 실행하고, 각 항목의 「한다 / 안 한다」를 진행 로그에 근거와 함께 남겼다
-- [ ] A-1 ~ A-4 중 「한다」로 판정된 항목이 전부 구현됐다
-- [ ] 회귀/신규 테스트 추가 (막은 지점마다 최소 1개)
-- [ ] **기존 산출물 값 불변 확인** — Phase 3 의 대조 절차를 수행하고 결과를 진행 로그에 적었다
-- [ ] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
-- [ ] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
-- [ ] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
-- [ ] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 없음을 확인 — 실행 방법·CLI 옵션이 바뀌지 않는다)
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
+- [x] A-1 ~ A-4 중 「한다」로 판정된 항목이 전부 구현됐다
+- [x] 회귀/신규 테스트 추가 (막은 지점마다 최소 1개)
+- [x] **기존 산출물 값 불변 확인** — Phase 3 의 대조 절차를 수행하고 결과를 진행 로그에 적었다
+- [x] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
+- [x] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
+- [x] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
+- [x] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 없음을 확인 — 실행 방법·CLI 옵션이 바뀌지 않는다)
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
       (「무손절 경로가 지수의 상시 경로라 가드가 없는 쪽이 하필 상시 경로였다」는 사실을
       `src/verify_lab/CLAUDE.md` 「계층 간 계약」의 매매 산출물 계약에 한 줄로 남긴다)
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -266,22 +266,22 @@ rows = [
 
 **작업 내용**:
 
-- [ ] **A-1 테스트** — `tests/test_strategy_trade_fill_scheduled.py`
+- [x] **A-1 테스트** — `tests/test_strategy_trade_fill_scheduled.py`
   - `simulate_scheduled_trade(frame, -1, exit, stop_level=None, ...)` 이 `ValueError` 를 던진다
   - 손절 경로(`stop_level=0.05`)에서도 같은 입력이 `ValueError` 를 던진다 (기존 동작 유지 확인)
   - **정상 입력에서는 값이 그대로**임을 고정하는 기존 테스트가 깨지지 않는지 본다
-- [ ] **A-1 테스트(호출부)** — `tests/test_strategy_month_end_runner.py`
+- [x] **A-1 테스트(호출부)** — `tests/test_strategy_month_end_runner.py`
   - 시세에 없는 진입일이 섞이면 **날짜가 담긴** `RuntimeError` 가 난다 (`get_indexer` 가드).
     **2026-09-14 사용자 승인으로 `ValueError` 에서 바꿨다** — 근거는 진행 로그
   - 옵션 만기일 쪽은 `collect_entries` 가 파일을 읽으므로, 파일 격리 픽스처가 없으면
     **runner 대신 `trade_fill` 단에서만 고정**하고 그 사실을 테스트 docstring 에 적는다
-- [ ] **A-2 테스트** — `tests/test_measure_screening.py`
+- [x] **A-2 테스트** — `tests/test_measure_screening.py`
   - 같은 축 값이 두 행이면 `ValueError` 이고, 메시지에 **그 축 값**이 들어 있다
   - 축당 1행인 기존 테스트 9개가 그대로 통과한다
-- [ ] **A-3 테스트** — `tests/test_studies_month_end_schedule.py`
+- [x] **A-3 테스트** — `tests/test_studies_month_end_schedule.py`
   - 진입일은 있는데 그 달이 거래일 목록에 없는 프레임을 **직접 만들어** `RuntimeError` 를 확인한다
   - 메시지에 「내부 불변조건 위반」 접두사와 위반된 값이 들어 있다
-- [ ] **A-4 테스트** — `tests/test_studies_month_end_runner.py`
+- [x] **A-4 테스트** — `tests/test_studies_month_end_runner.py`
   - 기준 칸의 유효 신호가 0건이 되는 최소 데이터로 `run_study` 가 **조용히 넘어가지 않음**을 확인한다
 
 ---
@@ -290,7 +290,7 @@ rows = [
 
 **작업 내용**:
 
-- [ ] **A-1a (근본)** `strategy/trade_fill.py` — `simulate_scheduled_trade` 의 첫 검사에 하한을 넣는다.
+- [x] **A-1a (근본)** `strategy/trade_fill.py` — `simulate_scheduled_trade` 의 첫 검사에 하한을 넣는다.
 
   ```python
   if not 0 <= entry_position < exit_position < len(frame):
@@ -299,7 +299,7 @@ rows = [
   메시지도 「진입 위치가 0 이상이어야 한다」를 포함하게 고친다.
   **주석으로 남길 것**: 무손절 경로(`_scheduled_exit`)는 `iloc` 만 쓰므로 음수 인덱스가
   **예외 없이 마지막 행**이 된다는 사실. 이것이 하한을 여기 두는 이유다
-- [ ] **A-1b (호출부 4곳)** `strategy/option_expiry_runner.py:300-301` · `strategy/month_end_runner.py:185-187`
+- [x] **A-1b (호출부 4곳)** `strategy/option_expiry_runner.py:300-301` · `strategy/month_end_runner.py:185-187`
   - `get_indexer` 결과에 `-1` 이 있으면 **어느 날짜가 시세에 없는지**를 담아 `RuntimeError`
     (「내부 불변조건 위반」 접두사). **2026-09-14 사용자 승인으로 `ValueError` 에서 바꿨다** —
     근거는 진행 로그
@@ -309,15 +309,15 @@ rows = [
     **메시지 본문 형식을 맞춘다** — 같은 사고의 메시지가 계층마다 다르면 안 된다
   - 🔴 **주의**: `studies/` 세 곳을 이 헬퍼로 «바꾸지 않는다». 계층 의존 방향이
     `studies → strategy` 가 되어 뒤집힌다. 지금은 형식만 맞춘다
-- [ ] **A-2** `measure/screening.py`
+- [x] **A-2** `measure/screening.py`
   - `groupby` 결과의 그룹 크기가 1이 아니면 `ValueError`
   - 메시지에 축 이름·축 값·행 수를 담는다
   - 모듈 docstring 에 「축당 한 행을 요구한다」를 한 줄 추가
-- [ ] **A-3** `studies/month_end/schedule.py`
+- [x] **A-3** `studies/month_end/schedule.py`
   - `has_entry & ~has_month` 가 하나라도 있으면 `RuntimeError`(「내부 불변조건 위반」 접두사 + 해당 달)
   - 그 뒤에는 `has_month` 분기를 **유지**한다 — 예외가 먼저 나므로 `safe_month_position` 의
     `np.where` 는 그대로 두어도 되고, 지우면 인덱싱이 터지는 자리가 생긴다
-- [ ] **A-4** `studies/month_end/runner.py`
+- [x] **A-4** `studies/month_end/runner.py`
   - 기준 칸(`BASE_ENTRY_DAY`, `BASE_EXIT_OFFSET`)이 격자 순회에서 한 번도 도달하지 못했으면
     `RuntimeError` — 「기준 칸의 유효 신호가 0건이라 요약에 진입·제외 건수를 남길 수 없다」
   - `logger.warning` 으로 끝내지 않는다. 요약이 **정상으로 보이는 것**이 이 항목의 문제다
@@ -330,7 +330,7 @@ rows = [
 
 **작업 내용**:
 
-- [ ] 세 검증과 세 매매를 인자 없이 한 번씩 돌린다 (재수집하지 않는다 — 시세 파일은 그대로 쓴다)
+- [x] 세 검증과 세 매매를 인자 없이 한 번씩 돌린다 (재수집하지 않는다 — 시세 파일은 그대로 쓴다)
 
   ```bash
   poetry run python scripts/studies/run_reverse_study.py
@@ -341,17 +341,18 @@ rows = [
   poetry run python scripts/strategy/run_month_end_trading.py
   ```
 
-- [ ] 새 폴더의 CSV 를 **직전 산출물과 기계로 대조**한다. 눈으로 보지 않는다.
+- [x] 새 폴더의 CSV 를 **직전 산출물과 기계로 대조**한다. 눈으로 보지 않는다.
       기준 폴더(2026-09-14 기준 최신):
   - 검증: `storage/results/검증/20260912_225752_reverse` · `.../20260912_212058_option_expiry` · `.../20260912_221404_month_end`
   - 매매: `storage/results/매매/20260912_211908_reverse` · `.../20260912_211914_option_expiry` · `.../20260912_211927_month_end`
   - 대조는 **컬럼 구성과 전 셀 값**을 본다. `summary.json` 은 이 계획서에서 안 바꾸므로 함께 본다
   - 🔴 **한 셀이라도 다르면 멈추고 원인을 밝힌다.** 「가드를 넣었더니 값이 달라졌다」는
     **가드가 실제 경로를 막았다**는 뜻이고, 그러면 지금까지의 산출물이 틀렸을 수 있다
-- [ ] 대조 결과(파일 수·행 수·불일치 셀 수)를 진행 로그에 적는다.
+- [x] 대조 결과(파일 수·행 수·불일치 셀 수)를 진행 로그에 적는다.
       **옛 폴더 이름을 결과 문서에 적지 않는다** — 인용 스캐너가 그것을 인용으로 잡아
       그 폴더가 영구히 묶인다 (`docs/INDEX.md` §5)
-- [ ] 이번 실행으로 생긴 새 폴더는 **커밋하지 않는다.** `/clean-results` 로 정리한다
+- [x] 산출물 정리 — **옛 정리 대상 11개만 지우고 이번 실행으로 생긴 9개는 남겼다**
+      (2026-09-14 사용자 결정, 진행 로그 13:58). **커밋 여부는 사용자가 정한다**
 
 ---
 
@@ -359,24 +360,24 @@ rows = [
 
 **작업 내용**
 
-- [ ] `src/verify_lab/CLAUDE.md` 「계층 간 계약」의 매매 산출물 계약에 근거 한 줄 추가 —
+- [x] `src/verify_lab/CLAUDE.md` 「계층 간 계약」의 매매 산출물 계약에 근거 한 줄 추가 —
       「지수 대상은 무손절 경로만 지나므로 그 경로에 가드가 없으면 상시 노출된다」
-- [ ] `docs/COMMANDS.md`: **변경 없음** (실행 방법·CLI 옵션 불변)
-- [ ] 자동 포맷 적용: `poetry run black .`
-- [ ] 🔴 **「후속 계획서 인계」 절을 채운다** (§8 Notes) — 이 계획서가 바꾼 것 중
+- [x] `docs/COMMANDS.md`: **변경 없음** (실행 방법·CLI 옵션 불변)
+- [x] 자동 포맷 적용: `poetry run black .`
+- [x] 🔴 **「후속 계획서 인계」 절을 채운다** (§8 Notes) — 이 계획서가 바꾼 것 중
       **B~G 가 알아야 할 것**을 적는다: 새로 생긴 가드와 그 예외 타입, 바뀐 시그니처,
       새 테스트 파일, 뒤로 넘긴 결정, **계획서 본문에 적힌 전제 중 깨진 것**.
       **비워 두면 다음 계획서가 낡은 전제로 시작한다**
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] 변경 기능 및 전체 플로우 최종 검증
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
 
 **Validation**:
 
 > 순서를 지킨다 — 리뷰에서 고치면 코드가 바뀌므로 품질 검증이 마지막 관문이어야 한다.
 
-- [ ] `/code-review xhigh` (발견 \_\_건 · 조치: \_\_)
-- [ ] `poetry run python validate_project.py` (passed=\_\_, failed=\_\_, skipped=\_\_)
+- [x] `/code-review xhigh` (발견 10건 · 조치: 6건 반영 · 4건 미반영, 근거는 진행 로그 13:40)
+- [x] `poetry run python validate_project.py` (passed=1116, failed=0, skipped=0)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 
@@ -384,7 +385,11 @@ rows = [
 > 계획서를 쓰는 시점에는 diff 가 없어 여기 적는 것은 전부 추측이고,
 > **추측으로 적은 줄은 그대로 나간다.** 형식·문체 규칙은 `/commit` 이 정한다.
 
-(비어 있음 — `/commit` 으로 채운다)
+1. `측정 / 조용히 틀리던 네 지점에 가드 추가와 회귀 테스트 12개`
+2. `측정 / get_indexer 의 -1 과 groupby 의 결측 축을 막는 불변조건 가드`
+3. `매매 / 날짜→거래일 위치 변환을 trade_fill 로 통합하고 축당 한 행 계약 도입`
+4. `측정 / 예외 없이 결과만 틀리던 경로 차단 — 진입 위치 하한·축 중복·기준 칸 미도달`
+5. `측정 / 산출물 값 불변을 유지한 채 조용한 실패 4건을 즉시 중단으로 전환`
 
 ## 7) 리스크(Risks)
 
@@ -409,7 +414,16 @@ rows = [
 >
 > 아무것도 안 바뀌었으면 **「없음」이라고 적는다** — 비워 두면 「아직 안 썼다」와 구별되지 않는다.
 
-(비어 있음 — 마지막 Phase 에서 채운다)
+| 무엇이 | 어떻게 바뀌었나 | 어느 계획서가 영향받나 |
+| --- | --- | --- |
+| **`strategy/trade_fill.py` 에 공개 함수가 하나 늘었다** | `resolve_positions(trading_days, dates, *, label)` — 날짜를 거래일 위치로 바꾸고 `-1` 이 있으면 `RuntimeError`. `__all__` 에 들어 있고 두 runner 가 쓴다 | **D** (미사용 판정에서 제외할 것) · **E** (매매 계층 파일 구성을 옮길 때) · **F** (공통 조각의 자리 — 이미 여기로 정해졌다) |
+| **`simulate_scheduled_trade` 의 검사식이 바뀌었다** | `entry_position < exit_position < len(frame)` → `0 <= entry_position < exit_position < len(frame)`. **메시지 문구도 바뀌었다** — `"진입 위치는 0 이상이고 청산 위치는 그보다 뒤이면서…"` | 그 메시지를 `match=` 로 잡는 테스트를 새로 쓰는 계획서 |
+| **`screen_candidates` 가 입력을 두 가지로 더 거부한다** | ① 축 값이 빈 행이 있으면 `ValueError` ② 한 축 값에 행이 둘 이상이면 `ValueError`. **축당 정확히 한 행**이 이제 계약이다 | **B** (산출물 계약을 손볼 때 — 새 축을 붙이면 이 계약을 먼저 본다) · **F** |
+| **새 예외가 넷 생겼다** | `resolve_positions`(RuntimeError) · `month_exit_schedule` 의 `has_entry & ~has_month`(RuntimeError) · `_run_dataset` 의 기준 칸 미도달(RuntimeError) · `screen_candidates`(ValueError 둘) | 전부. **「조용히 넘어가던 자리」가 이제 멈춘다** — 리팩터링 중 실행이 죽으면 그것이 이 가드가 일한 것이다 |
+| **테스트가 12개 늘었다** (새 파일은 없다) | `test_strategy_trade_fill_scheduled.py` +6 · `test_measure_screening.py` +3 · `test_studies_month_end_schedule.py` +1 · `test_strategy_month_end_runner.py` +1 · `test_studies_month_end_runner.py` +2. 전체 `1116 passed / 0 failed / 0 skipped` | 테스트 수를 세는 계획서 |
+| 🔴 **뒤로 넘긴 결정 — 죽은 조건 세 곳** | `studies/month_end/schedule.py` 의 `out_of_range`·`no_holding`·`usable` 에 있는 `& has_month` 는 **위의 새 `RuntimeError` 때문에 이제 증명 가능하게 죽었다**(`has_entry ⇒ has_month`). 수술적 변경 원칙으로 이 계획서에서는 건드리지 않았다. ⚠️ **`safe_month_position` 의 `np.where`(`schedule.py` 233행)는 지우면 안 된다** — `~has_entry` 행의 인덱싱이 거기서 터진다 | **D** (데드코드) |
+| **계획서 본문에 적힌 전제 중 깨진 것 둘** | ① Phase 0 의 A-2 확인 명령이 **실제 축이 아닌 컬럼**으로 잰다(진행 로그 12:40) ② Phase 3 의 월말 «매매» 기준 폴더 `20260912_211927_month_end` 는 `from_year=2000` 실행이라 **인자 없는 실행과 대조할 수 없다** — 짝은 `20260912_211918_month_end` 다(진행 로그 13:15) | **B~G 중 같은 대조 절차를 복사해 쓰는 계획서.** 산출물을 대조할 때는 **`summary.json` 의 `rule` 을 먼저 열어 구간을 맞춘다** — 폴더 이름은 잰 구간을 말하지 않는다 |
+| **산출물 값은 하나도 바뀌지 않았다** | CSV 27장 · 55,027행 전 셀 일치. 따라서 **B~G 는 「A 때문에 수치가 달라졌다」를 의심하지 않아도 된다** | 전부 |
 
 ### 진행 로그 (KST)
 
@@ -468,3 +482,88 @@ rows = [
   헬퍼 위치도 함께 확정했다 — **`strategy/trade_fill.py`**. 그 모듈이 이미 「위치가 유효한가」를
   소유하고 있고(`_validate` 의 `0 <= entry_position < len(frame)`, A-1a 로 고칠 검사식),
   10줄짜리 함수 하나를 위해 모듈을 늘리지 않는다.
+
+- 2026-09-14 13:15: **Phase 3 값 불변 대조 완료. 산출물 값은 한 셀도 바뀌지 않았다.**
+
+  여섯 실행을 인자 없이 한 번씩 돌리고(시세는 재수집하지 않았다) 직전 산출물과 기계로 대조했다 —
+  파일 구성 · 컬럼 구성 · 전 셀 값 · `summary.json` 전부. 눈으로 보지 않았다.
+
+  | 대조 | 파일 | CSV 행 | 결과 |
+  | --- | ---: | ---: | --- |
+  | 검증 reverse · option_expiry · month_end | 19 | 36,299 | **전 셀 일치** |
+  | 매매 reverse · option_expiry · month_end | 15 | 18,728 | **전 셀 일치** |
+  | 합계 | **34** | **55,027** | 불일치 **2건** (아래) |
+
+  **남은 2건은 둘 다 `summary.json` 의 절대 경로다.** 기준 산출물은 **WSL**
+  (`/home/yblee/workspace/...`)에서, 이번 실행은 **mac**(`/Users/yubeen/Workspace/...`)에서
+  돌렸다 — `검증/reverse` 는 `datasets[].path`, `검증/option_expiry` 는 `output_dir` 이다.
+  **코드 변경과 무관하며 PC 를 옮기면 언제나 달라지는 값이다.**
+
+  🔴 **계획서가 지목한 월말 «매매» 기준 폴더가 틀렸다.** `20260912_211927_month_end` 는
+  `rule.from_year` 가 **2000** 인 실행이고, 인자 없이 돌린 짝은 9초 앞선
+  `20260912_211918_month_end`(`from_year: null`)다. 처음 대조에서 성적표 216셀과 거래내역
+  804행이 어긋났는데 **원인이 코드가 아니라 실행 구간**이었다 — `구간 시작일` 이
+  `2000-01-20` 대 `1990-01-20` 인 것이 단서였다. 올바른 짝으로 다시 재니 전 셀이 같다
+  (거래내역 10,648행 · 성적표 2,640행).
+
+  **이것이 「폴더 이름이 잰 구간을 말하지 않는다」의 실물 사례다**
+  (`src/verify_lab/CLAUDE.md` 매매법 이름 계약). 같은 계층·같은 slug 로 구간만 다른 두 실행이
+  **9초 간격으로 나란히** 있어 이름만으로는 고를 수 없었고, 구간의 SoT 인 `summary.json` 의
+  `rule` 을 열어야 갈렸다.
+
+  새로 생긴 산출물 6개는 **커밋하지 않는다** — 결과 문서가 인용하지 않으므로 `/clean-results`
+  로 정리한다.
+
+- 2026-09-14 13:40: **코드 리뷰 10건. 6건 반영, 4건 근거를 들어 미반영.**
+
+  **반영한 것**
+
+  | # | 무엇 | 조치 |
+  | --- | --- | --- |
+  | 1 | `tests/test_studies_month_end_runner.py` 의 새 import 가 isort 순서를 깨 **Ruff I001 로 품질 검증이 실패**했다 | `ruff check --fix` 로 정렬 |
+  | 2 | A-4 가드 메시지가 「기준 칸에 «닿지 못해»」라 **실제로 일어날 쪽**(그 칸의 유효 신호가 0건이라 `continue`)을 잘못 설명했다 — 읽는 사람을 격자 상수로 보낸다 | 원인 둘을 다 적도록 문구 수정 |
+  | 3 | 🔴 **A-2 가드가 자기가 막으려던 구멍을 다 막지 못했다.** `groupby` 는 기본이 `dropna=True` 라 **축 값이 빈 행을 그룹째 버리는데**, 「축당 한 행」 검사는 남은 그룹만 보므로 그것을 못 잡는다 — 같은 형태의 조용한 손실이 남아 있었다 | `isna()` 검사를 앞에 추가 + 테스트 |
+  | 5 | A-4 테스트가 **격자에 기준 칸이 없는 경우**만 걸어, 계획서가 지목한 실제 경로(`block.empty → continue`)는 미검증이었다 | `_aggregate` 가 빈 표를 내는 테스트 추가 |
+  | 6 | `simulate_scheduled_trade` 의 `Raises` 가 컬럼 누락에 `ValueError` 를 약속하는데 **무손절 경로는 `KeyError`** 다 (그 경로는 `_validate` 를 지나지 않는다). 지수 대상이 언제나 그 경로다 | 문서 주석을 실제 동작으로 정정 |
+  | 10 | `assert "2" in message` 가 **행 수를 고정하지 못한다** — 축 값이 2·12·20 이어도 통과한다 | `"(2행)"` 로 바꿈 |
+
+  **미반영한 것과 근거**
+
+  | # | 지적 | 왜 받지 않나 |
+  | --- | --- | --- |
+  | 4 | `label="진입일"` 대신 `DISPLAY_ENTRY_DATE` 를 쓰라 | 그 상수는 **CSV 헤더 레이블**(`DISPLAY_*` 의 정의가 「CSV 출력·화면 표시용」)이고 여기는 **예외 메시지**다. 헤더를 「진입 일자」로 바꾸면 메시지까지 끌려간다. 저장소의 기존 관용도 인라인 문자열이다 — `studies/month_end/schedule.py` 가 같은 사고에 `"진입일이 거래일 목록에 없습니다"` 를 그대로 쓴다 |
+  | 7 | 새 `RuntimeError` 뒤로 `has_entry & has_month` 세 곳이 죽은 조건이 됐으니 `has_entry` 로 줄이라 | 맞는 관찰이지만 **그 세 줄은 이 계획서가 건드린 코드가 아니다**(수술적 변경). 계획서 Phase 2 가 「`has_month` 분기를 유지한다」로 이미 정했고, 데드코드 정리는 **PLAN_d 소관**이다 — 인계에 적어 넘긴다 |
+  | 8 | `TestResolvePositions` 가 `simulate_scheduled_trade` 전용 파일에 있다 | 그 함수가 막는 사고가 **바로 그 파일이 고정하는 무손절 경로**에서 터진다. 파일 머리말에 일곱 번째 계약으로 적어 두었다. 옮기면 계약과 그 실패 사례가 갈라진다 |
+  | 9 | 새 테스트 셋이 영문 이름이라 주변 한글 이름과 섞인다 | **사실이 아니다.** 파일마다 관용이 갈려 있고 각 파일의 지배적 관용을 따랐다 — `test_studies_month_end_schedule.py`·`test_studies_month_end_runner.py` 는 기존 테스트가 **전부 영문**이고, 한글 이름(`test_무손절_경로에서_음수_진입_위치를_거부한다` 등)은 **다른 파일**(`test_strategy_trade_fill_scheduled.py`·`test_measure_screening.py`)의 것이며 거기에는 한글로 넣었다 |
+
+  🔴 **3번이 이 리뷰의 값어치다.** 가드를 넣으면서 **같은 함수가 가진 두 번째 조용한 손실 경로를
+  못 봤다** — `iloc[0]` 만 보고 `groupby` 의 기본값을 보지 않았다.
+
+  **3번은 새 가드를 더하는 수정이라 Phase 3 대조를 다시 돌렸다.** 세 검증을 재실행해 같은
+  기준과 대조했고 **결과가 같다 — 27장 55,027행 전 셀 일치, 불일치 2건은 그대로 절대 경로뿐.**
+  현재 데이터에는 빈 축 값이 없다(축당 1행 대조가 이미 그것을 함께 배제했다 — 빈 축 값이
+  있었다면 판정표 행 수가 입력보다 «적게» 나왔을 것이다).
+
+- 2026-09-14 13:58: **산출물 정리 — 계획서 전제 하나를 사용자 결정으로 바꿨다.**
+
+  Scope 와 Phase 3 은 「이번 실행으로 생긴 새 폴더는 커밋하지 않고 `/clean-results` 로 정리한다」로
+  적었는데, **사용자가 오늘 만든 9개는 남기기로 정했다.** 그래서 **옛 정리 대상 11개만** 지웠다.
+
+  | | 개수 | |
+  | --- | ---: | --- |
+  | 정리 대상 (실행 전) | 20 | |
+  | 지운 것 | **11** | 전부 `20260912_*`. 10개는 커밋돼 있어 이력에서 되살릴 수 있고, 1개(`20260912_223622_reverse`)는 index 에만 있었다 |
+  | 남긴 것 | **9** | 이번 실행으로 생긴 `20260914_*` |
+
+  `clean_results.py --delete` 는 전부/전무라 부분 삭제가 안 된다. **판정을 손으로 고르지 않고**
+  `utils/result_citations.py` 의 같은 함수에서 정리 대상을 받아 오늘 접두사만 걸러냈고,
+  지우기 직전에 **인용 집합과의 교집합이 비었는지** 다시 확인했다 — 17개가 `20260912_*` 로
+  시작하는데 그중 6개는 「지킨다」라, 이름으로 고르면 인용 폴더를 지울 수 있었다.
+
+  🔴 **지운 것 중 둘은 Phase 3 의 기준 폴더였다** (`20260912_212058_option_expiry` ·
+  `20260912_221404_month_end`). 어느 문서도 인용하지 않아 정리 대상이 맞고 커밋돼 있어
+  되살릴 수 있지만, **이 진행 로그의 대조 기록을 살아있는 문서로 승격하면 안 된다** —
+  죽은 폴더 이름이 인용으로 잡혀 품질 검증이 깨진다 (`docs/INDEX.md` §5).
+
+  정리 후 `validate_project.py` 통과(`passed=1116, failed=0, skipped=0`) — 인용 폴더를
+  실수로 지우지 않았음을 `tests/test_result_citations.py` 가 확인했다.

@@ -517,6 +517,72 @@ class TestAxisIndependence:
         with pytest.raises(ValueError, match="필수 컬럼"):
             screen_candidates(summary, axis_column=AXIS, tradable=True)
 
+    def test_같은_축_값이_두_행이면_예외다(self) -> None:
+        """
+        목적: **축 값당 첫 행만 쓰고 나머지를 조용히 버리던 것**을 막는다.
+
+        판정은 축으로 묶어 칸마다 한 행을 낸다. 한 축 값에 행이 둘 이상이면 두 번째부터
+        **사라지는데 예외도 경고도 없다** — 로그마저 「1칸 중 후보 1」로 정상처럼 찍힌다.
+        축을 하나 더 붙이거나 기준을 둘로 늘리는 날 없는 우위를 보고하게 된다.
+
+        같은 저장소의 `report/tables.py` 는 같은 종류의 사고에 이미 `ValueError` 를 던진다.
+
+        Given: 축 값이 9 로 같은 행 둘
+        When: 판정하면
+        Then: `ValueError` 이고 메시지에 축 이름·축 값·행 수가 담긴다
+        """
+        # Given
+        blocks = [_down_summary(), _down_summary(mean=-0.009)]
+        summary = pd.concat(blocks, ignore_index=True)
+
+        # When · Then
+        with pytest.raises(ValueError, match="축 값") as caught:
+            screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        message = str(caught.value)
+        assert f"{AXIS}=9" in message
+        assert "(2행)" in message
+
+    def test_축_값이_비어_있으면_예외다(self) -> None:
+        """
+        목적: **「축당 한 행」 검사가 못 잡는 다른 구멍**을 막는다.
+
+        `groupby` 는 기본이 `dropna=True` 라 축이 비어 있는 행을 **그룹째 버린다.**
+        남은 그룹만 보는 검사로는 그 행이 사라진 것을 알 수 없고, 로그는 그대로
+        정상처럼 찍힌다 — 이 모듈이 막으려던 것과 같은 형태의 사고다.
+
+        Given: 축 값이 결측인 행이 섞인 집계표
+        When: 판정하면
+        Then: `ValueError` 다
+        """
+        # Given
+        blocks = [_down_summary().assign(**{AXIS: 9}), _down_summary().assign(**{AXIS: None})]
+        summary = pd.concat(blocks, ignore_index=True)
+
+        # When · Then
+        with pytest.raises(ValueError, match="축 값이 비어"):
+            screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+    def test_축_값이_서로_다르면_통과한다(self) -> None:
+        """
+        목적: 중복 거부가 **정상 입력을 막지 않는지** 고정한다 (엣지 케이스).
+
+        현재 호출처 넷은 전부 축당 1행이다 — 이 가드는 값을 바꾸지 않아야 한다.
+
+        Given: 축 값이 9·3 으로 다른 행 둘
+        When: 판정하면
+        Then: 두 행이 모두 나온다
+        """
+        # Given
+        blocks = [_down_summary().assign(**{AXIS: 9}), _down_summary().assign(**{AXIS: 3})]
+        summary = pd.concat(blocks, ignore_index=True)
+
+        # When
+        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        # Then
+        assert result[AXIS].tolist() == [3, 9]
+
     def test_평균이_없으면_예외다(self) -> None:
         """
         목적: **평균 없이 게이트를 통과시키면** 방향은 맞지만 걸면 손실인 칸이 후보로 올라간다.

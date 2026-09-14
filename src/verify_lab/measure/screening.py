@@ -31,6 +31,10 @@
 어떤 축을 돌릴지는 그 검증이 정하고, 이 모듈은 받은 칸을 판정하기만 한다.
 **정렬도 하지 않는다** — 무엇을 먼저 보여줄지는 표시 계층의 몫이다.
 
+**대신 «축당 한 행»을 요구한다.** 축을 모르므로 어느 행을 고를지도 모른다 — 둘 이상이 오면
+고르지 않고 거부한다. 식별 컬럼(종목·방향 등)은 판정이 끝난 뒤 실행 계층이 붙이므로,
+여기 오는 표는 이미 한 대상의 것이어야 한다.
+
 **방향을 가리지 않는다** (측정의 원칙 11). 오른 비율이 기준선보다 낮은 칸은 탈락이 아니라
 **아래로 거는 후보**다. 판정은 기준선에서 얼마나 멀어졌는가(크기)로 하고, 부호는 방향을 알려줄 뿐이다.
 
@@ -128,7 +132,8 @@ def screen_candidates(
     **제외된 칸도 행이 그대로 남는다.** 산출물에서 사라지면 사용자가 되짚을 수 없다.
 
     Args:
-        summary: 축별 집계표. `REQUIRED_SUMMARY_COLUMNS` 가 있어야 한다
+        summary: 축별 집계표. `REQUIRED_SUMMARY_COLUMNS` 가 있어야 하고
+            **축 값마다 행이 하나**여야 한다
         axis_column: 축 컬럼 이름. 만기월·요일 등 무엇이든 받는다
         tradable: 살 수 있는 대상인가. `False` 면 값만 내고 판정하지 않는다 —
             지수가 그 경우이며 `1차 판정` 이 전부 「판정 안 함」이 된다.
@@ -140,17 +145,28 @@ def screen_candidates(
         축 컬럼 뒤에 `SCREENING_COLUMNS` 가 붙은 판정표. **축 오름차순**이며 정렬은 하지 않는다
 
     Raises:
-        ValueError: 필요한 컬럼이 없는 경우
+        ValueError: 필요한 컬럼이 없거나, **축 값이 비었거나, 한 축 값에 행이 둘 이상인 경우**
     """
     required = [axis_column, *REQUIRED_SUMMARY_COLUMNS]
     missing = [column for column in required if column not in summary.columns]
     if missing:
         raise ValueError(f"집계표에 필수 컬럼이 없습니다: {missing}")
 
-    rows = [
-        _screen_cell(cell.iloc[0], axis_column=axis_column, tradable=tradable)
-        for _, cell in summary.groupby(axis_column, sort=True)
-    ]
+    # **빈 축 값도 조용히 사라진다.** `groupby` 는 기본이 `dropna=True` 라 축이 비어 있는 행을
+    # 그룹째 버리는데, 아래 「축당 한 행」 검사는 남은 그룹만 보므로 그것을 잡지 못한다
+    blank_axis = int(summary[axis_column].isna().sum())
+    if blank_axis:
+        raise ValueError(f"축 값이 비어 있는 행이 있습니다: {axis_column} {blank_axis}행")
+
+    # **축 값 하나에 행 하나를 «요구»한다.** 전에는 `iloc[0]` 으로 첫 행만 쓰고 나머지를
+    # 조용히 버렸다 — 예외도 경고도 없고 로그마저 「1칸 중 후보 1」로 정상처럼 찍힌다.
+    # 축을 하나 더 붙이거나 기준을 둘로 늘리는 날 없는 우위를 보고하게 된다.
+    # `report/tables.py` 는 같은 종류의 사고를 이미 거부하고 있었다 — 가드 강도를 맞춘다
+    rows: list[dict[str, object]] = []
+    for axis_value, cell in summary.groupby(axis_column, sort=True):
+        if len(cell) != 1:
+            raise ValueError(f"축 값 하나에 행이 하나여야 합니다: {axis_column}={axis_value} ({len(cell)}행)")
+        rows.append(_screen_cell(cell.iloc[0], axis_column=axis_column, tradable=tradable))
     result = pd.DataFrame(rows, columns=[axis_column, *SCREENING_COLUMNS])
 
     candidates = int((result[COL_SCREEN] == SCREEN_CANDIDATE).sum())

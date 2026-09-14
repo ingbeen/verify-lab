@@ -50,7 +50,7 @@ from verify_lab.strategy.constants import (
 )
 from verify_lab.strategy.periods import period_rows, to_summary_frame
 from verify_lab.strategy.run_summary import build_run_summary, dataset_record
-from verify_lab.strategy.trade_fill import TradeResult, simulate_scheduled_trade
+from verify_lab.strategy.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
 from verify_lab.studies.option_expiry.constants import (
     COL_EXIT_DATE,
     COL_EXPIRY_DATE,
@@ -277,6 +277,9 @@ def collect_entries(dataset: Dataset, cell: ExpiryCell) -> Entries:
 
     Returns:
         진입 목록
+
+    Raises:
+        RuntimeError: 진입일·청산일이 시세의 거래일에 없는 경우 (내부 불변조건 위반)
     """
     df = load_market_csv(MARKET_DIR / dataset.file_name)
     trading_days = pd.DatetimeIndex(df[COL_DATE])
@@ -297,8 +300,8 @@ def collect_entries(dataset: Dataset, cell: ExpiryCell) -> Entries:
 
     return Entries(
         frame=df,
-        entry_positions=np.asarray(trading_days.get_indexer(pd.DatetimeIndex(kept[COL_DATE])), dtype=np.int64),
-        exit_positions=np.asarray(trading_days.get_indexer(pd.DatetimeIndex(kept[COL_EXIT_DATE])), dtype=np.int64),
+        entry_positions=resolve_positions(trading_days, pd.DatetimeIndex(kept[COL_DATE]), label="진입일"),
+        exit_positions=resolve_positions(trading_days, pd.DatetimeIndex(kept[COL_EXIT_DATE]), label="청산일"),
         target_dates=pd.DatetimeIndex(kept[COL_TARGET_DATE]),
         excluded_count=int((~usable).sum()),
     )

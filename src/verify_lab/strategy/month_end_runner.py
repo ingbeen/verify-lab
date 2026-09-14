@@ -54,7 +54,7 @@ from verify_lab.strategy.constants import (
 )
 from verify_lab.strategy.periods import period_rows, to_summary_frame
 from verify_lab.strategy.run_summary import build_run_summary, dataset_record
-from verify_lab.strategy.trade_fill import TradeResult, simulate_scheduled_trade
+from verify_lab.strategy.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
@@ -156,6 +156,9 @@ def _collect_entries(
 
     Returns:
         (월 → 진입 목록, 청산일을 확정하지 못해 빠진 진입 수)
+
+    Raises:
+        RuntimeError: 진입일·청산일이 시세의 거래일에 없는 경우 (내부 불변조건 위반)
     """
     trading_days = pd.DatetimeIndex(frame[COL_DATE])
 
@@ -181,11 +184,10 @@ def _collect_entries(
     for month in ALL_MONTHS:
         rows = usable[usable[COL_MONTH].dt.month == month]
         entry_dates = pd.DatetimeIndex(rows[COL_DATE])
+        exit_dates = pd.DatetimeIndex(rows[COL_EXIT_DATE])
         by_month[month] = _Entries(
-            entry_positions=[int(position) for position in trading_days.get_indexer(entry_dates)],
-            exit_positions=[
-                int(position) for position in trading_days.get_indexer(pd.DatetimeIndex(rows[COL_EXIT_DATE]))
-            ],
+            entry_positions=[int(position) for position in resolve_positions(trading_days, entry_dates, label="진입일")],
+            exit_positions=[int(position) for position in resolve_positions(trading_days, exit_dates, label="청산일")],
             entry_dates=entry_dates,
         )
 

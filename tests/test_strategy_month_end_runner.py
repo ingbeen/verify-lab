@@ -31,8 +31,10 @@ from verify_lab.common_constants import (
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS_KRW,
 )
+from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.report.constants import DISPLAY_EXCLUDED
+from verify_lab.strategy import month_end_runner
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_EXIT_REASON,
@@ -56,7 +58,14 @@ from verify_lab.strategy.month_end_runner import (
     run_month_end_trading,
 )
 from verify_lab.strategy.run_summary import KEY_RULE
-from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP, MARKET_KOSDAQ, Dataset
+from verify_lab.studies.month_end.constants import (
+    COL_EXIT_DATE,
+    EXECUTION_ROLE_NONE,
+    EXECUTION_ROLE_UP,
+    MARKET_KOSDAQ,
+    Dataset,
+)
+from verify_lab.studies.month_end.schedule import MonthExitSchedule, month_exit_schedule
 
 # 합성 시세 구간. 12개월이 다 차려면 몇 해가 필요하다
 SYNTHETIC_START = "2018-01-01"
@@ -468,6 +477,47 @@ class TestLookAhead:
         assert merged[f"{DISPLAY_RETURN}_short"].tolist() == pytest.approx(
             merged[f"{DISPLAY_RETURN}_whole"].tolist(), abs=PERCENT_TOLERANCE
         )
+
+
+class TestTradingDayPositions:
+    """진입일·청산일이 시세에 실재하는지 — 매매 계층의 `-1` 가드
+
+    `pandas.Index.get_indexer` 는 찾지 못한 날짜에 **`-1`** 을 돌려주고, 그 값은
+    `simulate_scheduled_trade` 의 무손절 경로에서 `iloc[-1]` 로 **마지막 행을 진입가**로
+    만든다 — 예외 없이 체결이 하나 생긴다. **월말의 지수 대상은 언제나 그 경로를 지난다.**
+
+    현재 입력에서는 도달할 수 없다. 진입일과 청산일이 둘 다 `trading_days` 자신에서
+    나오기 때문이며, **그래서 일정 모듈을 갈아끼워 인위적으로 만든다.**
+    runner 가 가드를 실제로 «부르는지»는 이 층에서만 확인된다.
+    """
+
+    def test_exit_date_missing_from_the_market_raises(self, dataset: Dataset, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 청산일이 시세에 없으면 조용히 넘어가지 않고 멈추는지 고정한다.
+
+        Given: 청산일 하나를 시세에 없는 날짜로 바꿔 돌려주는 일정 모듈
+        When: 매매를 돌린다
+        Then: RuntimeError 이고 메시지에 「내부 불변조건 위반」과 그 날짜가 담긴다
+        """
+
+        # Given
+        def _unknown_exit(
+            trading_days: pd.DatetimeIndex, entries: pd.DataFrame, *, exit_offset: int
+        ) -> MonthExitSchedule:
+            original = month_exit_schedule(trading_days, entries, exit_offset=exit_offset)
+            frame = original.frame.copy()
+            usable = frame.index[frame[COL_EXCLUDED_REASON] == REASON_NONE]
+            frame.loc[usable[0], COL_EXIT_DATE] = pd.Timestamp("1999-01-04")
+
+            return MonthExitSchedule(frame=frame, exit_offset=original.exit_offset)
+
+        monkeypatch.setattr(month_end_runner, "month_exit_schedule", _unknown_exit)
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반") as caught:
+            run_month_end_trading((dataset,))
+
+        assert "1999-01-04" in str(caught.value)
 
 
 class TestIndexDataset:
