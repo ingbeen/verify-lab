@@ -54,7 +54,7 @@ from verify_lab.strategy.reverse_runner import (
     StrategyOutputs,
     run_reverse_trading,
 )
-from verify_lab.strategy.run_summary import KEY_RULE
+from verify_lab.strategy.run_summary import KEY_NOTES, KEY_RULE
 from verify_lab.studies.reverse.constants import Dataset
 
 # 합성 시세를 만드는 난수 시드. 시드 없는 난수는 금지다
@@ -497,6 +497,51 @@ class TestTargetsInvariant:
             stop_level_value(STOP_LOSS_LEVEL, measurable=True), abs=RATE_TOLERANCE
         )
         assert rule[KEY_HOLD_LIMIT] == HOLD_LIMIT
+
+    def test_규칙에는_기계값만_담고_산문은_notes_가_담는다(self, outputs: StrategyOutputs) -> None:
+        """
+        목적: 같은 문장이 한 파일에 두 번 들어가지 않게 한다
+
+        `rule` 에 `entry`·`exit` 라는 산문 두 칸이 더 있었고 **그 둘이 `notes` 에도 그대로** 있었다.
+        같은 문장이 두 자리에 있으면 한쪽만 고쳐질 때 어느 쪽이 맞는지 판별할 방법이 없다.
+        게다가 `exit` 에 들어 있던 문장은 청산 규칙이 아니라 **손절 기준 설명**이었다.
+
+        나머지 두 매매법은 `rule` 에 기계값만 두고 산문은 전부 `notes` 에 둔다 —
+        옵션 만기일 `{stop_levels, cells}` · 월말 `{stop_levels, from_year, targets}`.
+        **청산 규칙은 `notes` 의 문장과 `rule.hold_limit` 숫자가 담으므로 잃는 정보가 없다.**
+
+        Given: 실행 결과의 요약
+        When: 규칙 항목과 실행 조건을 함께 봤을 때
+        Then: 규칙에 산문 키가 없고, 두 자리에 겹치는 문장도 없다
+        """
+        # Given
+        summary = outputs.summary
+        rule = summary[KEY_RULE]
+
+        # When
+        prose_keys = {key for key in ("entry", "exit") if key in rule}
+        duplicated = {value for value in rule.values() if isinstance(value, str)} & set(summary[KEY_NOTES])
+
+        # Then
+        assert prose_keys == set(), f"규칙에 산문 키가 남아 있습니다: {sorted(prose_keys)}"
+        assert duplicated == set(), f"같은 문장이 규칙과 실행 조건 양쪽에 있습니다: {sorted(duplicated)}"
+
+    def test_보유_한도_문장이_실행_조건에_남는다(self, outputs: StrategyOutputs) -> None:
+        """
+        목적: 산문을 `rule` 에서 빼면서 청산 규칙 설명까지 사라지지 않게 한다
+
+        **「없앴다」와 「옮겼다」는 다르다.** `rule` 에서 두 칸을 빼는 변경이 청산 규칙을
+        산출물에서 지워 버리면 그것은 계약 위반이다.
+
+        Given: 실행 결과의 요약
+        When: 실행 조건 목록을 봤을 때
+        Then: 이익이면 즉시·손실이면 한도까지라는 청산 규칙이 문장으로 남아 있다
+        """
+        # Given / When
+        notes = outputs.summary[KEY_NOTES]
+
+        # Then
+        assert any("보유 한도" in note and "청산" in note for note in notes), f"청산 규칙이 없습니다: {notes}"
 
 
 class TestSamplePreservation:

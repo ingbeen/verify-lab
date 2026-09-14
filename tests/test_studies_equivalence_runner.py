@@ -10,6 +10,7 @@
 3. **합격 판정이 합격선을 따른다** — 값이 아니라 임계 비교로 결정된다
 """
 
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -98,8 +99,8 @@ def synthetic_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[S
     # 고시형은 직전 시장일의 값이다. 첫날은 대응할 직전 값이 없어 같은 값으로 둔다
     _write_series(tmp_path / "published.csv", days, [market[0], *market[:-1]])
 
-    _write_series(tmp_path / "CD91.csv", days, [3.50] * len(days))
-    _write_series(tmp_path / "DTB3.csv", days, [4.20] * len(days))
+    _write_series(tmp_path / "synthetic_krw.csv", days, [3.50] * len(days))
+    _write_series(tmp_path / "synthetic_usd.csv", days, [4.20] * len(days))
 
     # 1배 ETF 는 시장 환율을, 2배 ETF 는 그 두 배 움직임을 따른다
     base_close = [10_000.0 * value / market[0] for value in market]
@@ -113,8 +114,8 @@ def synthetic_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[S
     _write_series(tmp_path / "base_nav.csv", days, base_close)
     _write_series(tmp_path / "leverage_nav.csv", days, leverage_close)
 
-    monkeypatch.setattr(runner_module, "KRW_RATE_PATH", tmp_path / "CD91.csv")
-    monkeypatch.setattr(runner_module, "USD_RATE_PATH", tmp_path / "DTB3.csv")
+    monkeypatch.setattr(runner_module, "KRW_RATE_PATH", tmp_path / "synthetic_krw.csv")
+    monkeypatch.setattr(runner_module, "USD_RATE_PATH", tmp_path / "synthetic_usd.csv")
     base = EtfTarget(
         "base",
         "BASE",
@@ -241,6 +242,28 @@ def test_row_counts_match_actual_tables(synthetic_inputs: tuple[SpotSource, ...]
     assert counts["leverage"] == len(outputs.leverage)
     assert counts["premium"] == len(outputs.premium)
     assert counts["daily"] == len(outputs.daily)
+
+
+def test_inputs_hold_file_names_not_absolute_paths(
+    synthetic_inputs: tuple[SpotSource, ...],
+    assert_no_absolute_paths: Callable[[object, str], None],
+) -> None:
+    """
+    목적: 두 PC 를 오가는 산출물에 그 PC 의 절대경로가 박히지 않게 한다.
+
+    이 저장소는 mac·WSL 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다.
+    실제로 커밋된 `summary.json` 에 **두 PC 의 경로가 섞여** 있었고, 이 검증의 것은
+    `inputs.spot.close` 처럼 **두 단계 아래**에 있어 얕게 훑으면 그대로 지나간다.
+
+    Given: 합성 입력
+    When: 검증을 실행해 요약을 재귀로 훑는다
+    Then: 절대경로가 하나도 없고, 입력 자리에는 파일 이름이 남아 있다
+    """
+    outputs = run_equivalence(sources=synthetic_inputs)
+
+    assert_no_absolute_paths(outputs.meta, "원달러 ETF 등가성")
+    assert outputs.meta["inputs"]["krw_rate"] == "synthetic_krw.csv"
+    assert outputs.meta["inputs"]["spot"]["close"] == "close.csv"
 
 
 def test_premium_covers_both_targets(synthetic_inputs: tuple[SpotSource, ...]) -> None:

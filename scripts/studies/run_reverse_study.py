@@ -53,20 +53,19 @@ from verify_lab.studies.reverse.constants import (
 )
 from verify_lab.studies.reverse.runner import (
     KEY_CANDIDATES,
+    KEY_DATA_PERIOD,
     KEY_DATASETS,
     KEY_EMPTY_SIGNAL_GROUPS,
-    KEY_END_DATE,
     KEY_EXCESS,
-    KEY_PATH,
+    KEY_FILE,
+    KEY_LABEL,
     KEY_PRICE_BASIS,
-    KEY_ROW_COUNT,
     KEY_ROW_COUNTS,
+    KEY_ROWS,
     KEY_SIGNAL_GROUP_COUNT,
     KEY_SIGNALS,
-    KEY_START_DATE,
     KEY_STATISTICS,
     KEY_TEST_TABLE,
-    KEY_TICKER,
     StudyOutputs,
     run_study,
 )
@@ -171,11 +170,11 @@ def _print_datasets(outputs: StudyOutputs) -> None:
     table = pd.DataFrame(
         [
             {
-                DISPLAY_TICKER: record[KEY_TICKER],
+                DISPLAY_TICKER: record[KEY_LABEL],
                 DISPLAY_PRICE_BASIS: record[KEY_PRICE_BASIS],
-                DISPLAY_ROW_COUNT: record[KEY_ROW_COUNT],
-                DISPLAY_PERIOD_RANGE: f"{record[KEY_START_DATE]} ~ {record[KEY_END_DATE]}",
-                DISPLAY_FILE: Path(record[KEY_PATH]).name,
+                DISPLAY_ROW_COUNT: record[KEY_ROWS],
+                DISPLAY_PERIOD_RANGE: record[KEY_DATA_PERIOD],
+                DISPLAY_FILE: record[KEY_FILE],
             }
             for record in outputs.summary[KEY_DATASETS]
         ]
@@ -287,9 +286,7 @@ def main() -> int:
         KEY_META_REVERSE_STUDY,
         {
             "result_dir": str(directory),
-            "datasets": [
-                record[KEY_TICKER] + " " + record[KEY_PRICE_BASIS] for record in outputs.summary[KEY_DATASETS]
-            ],
+            "datasets": [record[KEY_LABEL] + " " + record[KEY_PRICE_BASIS] for record in outputs.summary[KEY_DATASETS]],
             "signal_group_count": outputs.summary[KEY_SIGNAL_GROUP_COUNT],
             "empty_signal_group_count": len(outputs.summary[KEY_EMPTY_SIGNAL_GROUPS]),
             "row_counts": outputs.summary[KEY_ROW_COUNTS],

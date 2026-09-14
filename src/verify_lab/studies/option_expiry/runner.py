@@ -94,7 +94,11 @@ KEY_PERMUTATION_SEED = "permutation_seed"
 KEY_DATASETS = "datasets"
 KEY_ROW_COUNTS = "row_counts"
 
+# **`ticker` 는 종목코드이고 `label` 은 표시 이름이다.** 여섯 산출 지점(검증 셋·매매 셋)이
+# 같은 뜻을 쓴다 — 전에는 이 모듈의 `ticker` 에 표시 이름이 들어가 `069500` 이 산출물
+# 어디에도 남지 않았다. **미국 ETF 는 둘이 같아(`QQQ`) 한 번도 드러나지 않았다**
 KEY_TICKER = "ticker"
+KEY_LABEL = "label"
 KEY_FILE = "file"
 KEY_ROWS = "rows"
 KEY_PERIOD = "period"
@@ -271,10 +275,13 @@ def _run_dataset(
 
     expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
     return {
-        KEY_TICKER: dataset.label,
+        KEY_TICKER: dataset.ticker,
+        KEY_LABEL: dataset.label,
         KEY_FILE: dataset.file_name,
-        KEY_ROWS: len(df),
+        # 공통 다섯 키는 **매매 계층과 같은 순서**로 낸다. JSON 은 넣은 순서를 보존하므로
+        # 순서가 갈리면 같은 구간의 두 요약을 diff 할 때 자리만 바뀐 줄이 섞인다
         KEY_PERIOD: f"{df[COL_DATE].iloc[0].date()} ~ {df[COL_DATE].iloc[-1].date()}",
+        KEY_ROWS: len(df),
         KEY_EXPIRY_COUNT: len(expiries),
         KEY_ADVANCED_COUNT: int((expiries[COL_ADVANCED_DAYS] > 0).sum()),
         KEY_INSIDE_WINDOW_DAYS: int(inside_window.sum()),

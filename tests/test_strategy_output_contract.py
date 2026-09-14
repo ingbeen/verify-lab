@@ -22,7 +22,7 @@
 """
 
 import json
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import numpy as np
@@ -1145,6 +1145,26 @@ class TestRunSummary:
             assert isinstance(records, list) and records, f"{name} 의 datasets 가 비었습니다"
             for record in records:
                 assert set(record) == expected, f"{name} 의 datasets 한 줄이 다릅니다: {sorted(record)}"
+
+    def test_요약에_절대경로가_없다(
+        self,
+        summaries: dict[str, dict[str, object]],
+        assert_no_absolute_paths: Callable[[object, str], None],
+    ) -> None:
+        """
+        목적: 두 PC 를 오가는 산출물에 그 PC 의 절대경로가 박히지 않게 한다
+
+        `dataset_record` 가 `file` 에 이름만 담는 것은 그 함수의 docstring 이 말하지만,
+        **`rule` 과 `notes` 는 매매법이 각자 채운다** — 거기로 경로가 들어와도 아무도 안 본다.
+        요약 전체를 재귀로 훑어야 그 자리까지 닫힌다.
+
+        Given: 세 매매법의 실행 요약
+        When: 요약 전체를 재귀로 훑었을 때
+        Then: 절대경로로 읽히는 문자열이 하나도 없다
+        """
+        # Given / When / Then
+        for name, summary in summaries.items():
+            assert_no_absolute_paths(summary, name)
 
     def test_row_counts_의_키가_파일_이름이다(self, summaries: dict[str, dict[str, object]]) -> None:
         """

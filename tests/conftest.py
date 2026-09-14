@@ -2,10 +2,12 @@
 
 파일을 쓰는 기능은 프로덕션 경로(`storage/`)를 건드리지 않도록 `tmp_path`로 격리한다.
 look-ahead 감시 계약은 이벤트 정의가 늘 때마다 같은 형태로 재사용되므로 여기에 둔다.
+실행 요약의 절대경로 금지도 계층을 가리지 않는 계약이라 같은 자리에 둔다.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -15,6 +17,13 @@ from verify_lab.utils import meta_manager
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12
+
+# 절대경로로 읽히는 문자열의 머리. **손으로 박는다** — 프로덕션 상수(`BASE_DIR`)를 가져다 쓰면
+# 이 PC 의 경로만 보게 되어 «다른 PC 가 쓴» 경로를 못 잡는다. 실제로 커밋된 산출물에
+# mac(`/Users/`)과 WSL(`/home/`) 두 벌이 섞여 있었고 **둘 다 `/` 로 시작한다.**
+# 윈도우 드라이브 문자를 넣지 않는 것은 이 저장소의 두 PC 가 모두 POSIX 이기 때문이다 —
+# 오지 않은 경우를 상상해 넣으면 `D:`·UNC 경로는 어차피 빠져 반쪽짜리 안심만 준다
+_ABSOLUTE_PATH_PREFIXES = ("/", "~/")
 
 
 @pytest.fixture
@@ -81,5 +90,56 @@ def assert_stable_under_truncation() -> Callable[..., None]:
         assert compared[f"{value_column}_truncated"].tolist() == pytest.approx(
             compared[f"{value_column}_whole"].tolist(), abs=EXACT_TOLERANCE
         ), "뒤를 잘라낸 입력과 전체 입력의 값이 다릅니다 — 미래 데이터를 참조하고 있습니다"
+
+    return _assert
+
+
+def _strings_in(value: Any, trail: str = "") -> Iterator[tuple[str, str]]:
+    """중첩된 값 안의 모든 문자열을 「어디에 있었는지」와 함께 낸다.
+
+    **키도 값과 똑같이 훑는다.** 이 저장소의 요약에는 **경로에서 나온 키**가 실재한다 —
+    `row_counts` 는 파일 이름으로, `inputs` 는 소스 이름으로 키잉한다. 그 자리가
+    `{str(path): ...}` 로 되돌아가면 절대경로가 **키에** 들어가는데, 값만 보면 통과한다.
+
+    Args:
+        value: 검사할 값 (사전·목록·문자열이 섞여 있을 수 있다)
+        trail: 지금까지 내려온 키 경로
+
+    Yields:
+        `(키 경로, 문자열)` 쌍
+    """
+    if isinstance(value, str):
+        yield trail, value
+    elif isinstance(value, Mapping):
+        for key, inner in value.items():
+            here = f"{trail}.{key}" if trail else str(key)
+            if isinstance(key, str):
+                yield f"{here} (키)", key
+            yield from _strings_in(inner, here)
+    elif isinstance(value, list | tuple):
+        for index, inner in enumerate(value):
+            yield from _strings_in(inner, f"{trail}[{index}]")
+
+
+@pytest.fixture
+def assert_no_absolute_paths() -> Callable[[Any, str], None]:
+    """실행 요약에 절대경로가 없는지 검사하는 함수를 돌려준다.
+
+    **이 저장소는 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다.** 절대경로가
+    산출물에 박히면 재현·대조가 그 PC 에 묶이고, 실제로 커밋된 `summary.json` 에
+    mac(`/Users/…`)과 WSL(`/home/…`) 두 벌의 경로가 섞여 있었다. 경로가 아니라 **파일 이름**을
+    담는 것이 계약이다 (`src/verify_lab/CLAUDE.md` 실행 요약).
+
+    [중요] **중첩을 재귀로 훑는다.** 절대경로가 최상위 키에만 있지 않았다 —
+    `inputs.spot.close` 처럼 두 단계 아래에 있어 얕게 보면 그대로 지나간다.
+
+    Returns:
+        `(summary, name)` 을 받아 검사하는 함수
+    """
+
+    def _assert(summary: Any, name: str) -> None:
+        found = [(trail, text) for trail, text in _strings_in(summary) if text.startswith(_ABSOLUTE_PATH_PREFIXES)]
+
+        assert not found, f"{name} 의 실행 요약에 절대경로가 있습니다 (파일 이름만 담으세요): {found}"
 
     return _assert

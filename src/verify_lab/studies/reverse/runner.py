@@ -124,18 +124,35 @@ KEY_EMPTY_SIGNAL_GROUPS = "empty_signal_groups"
 KEY_ROW_COUNTS = "row_counts"
 KEY_NOTES = "notes"
 
+# **`ticker` 는 종목코드이고 `label` 은 표시 이름이다.** 여섯 산출 지점(검증 셋·매매 셋)이
+# 같은 뜻을 쓴다 — 전에는 이 모듈의 `ticker` 에 표시 이름이 들어가 `069500` 이 산출물
+# 어디에도 남지 않았다. **미국 ETF 는 둘이 같아(`QQQ`) 한 번도 드러나지 않았다**
 KEY_TICKER = "ticker"
+KEY_LABEL = "label"
 KEY_PRICE_BASIS = "price_basis"
-KEY_PATH = "path"
-KEY_ROW_COUNT = "row_count"
-KEY_START_DATE = "start_date"
-KEY_END_DATE = "end_date"
+
+# 경로가 아니라 **파일 이름**이다. 절대경로는 PC 마다 달라 산출물이 갈리는데, 이 저장소는
+# 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다
+KEY_FILE = "file"
+
+# 데이터 기간과 행 수의 이름도 매매 계층(`strategy/run_summary.py`)과 맞춘다. 전에는 이 모듈만
+# `row_count`·`start_date`·`end_date` 를 썼다 — **같은 것을 다르게 부르면 두 산출물을
+# 나란히 읽을 수 없고, 한쪽이 바뀌어도 예외가 나지 않는다.**
+#
+# **`KEY_DATA_PERIOD` 와 아래 `KEY_PERIOD` 는 JSON 키 이름이 같지만 다른 것을 담는다** —
+# 여기는 데이터 기간(`시작 ~ 종료`), 저기는 신호군의 시대 구간 이름(`전체`·`2010년대`)이다.
+# 서로 다른 사전에 있어 산출물에서는 섞이지 않지만, **코드에서 한 상수를 돌려쓰면 그 구별이
+# 사라진다** — 둘 다 `str` 이라 타입 검사가 잡지 못한다. 그래서 이름을 갈라 둔다
+KEY_DATA_PERIOD = "period"
+KEY_ROWS = "rows"
 KEY_SMA_UNDETERMINED = "sma_undetermined_count"
 
 KEY_TEST = "test"
 KEY_PARAMETER = "parameter"
 KEY_START_YEAR = "start_year"
 KEY_DIRECTION = "direction"
+
+# 신호군의 **시대 구간 이름**(`전체`·`2010년대`)이다. 데이터 기간은 위 `KEY_DATA_PERIOD` 다
 KEY_PERIOD = "period"
 KEY_BASELINE = "baseline"
 KEY_DAY_COUNT = "day_count"
@@ -463,6 +480,11 @@ def _build_context(dataset: Dataset) -> _Context:
 def _dataset_record(context: _Context) -> dict[str, Any]:
     """데이터셋 정보를 요약용 dict 로 만든다.
 
+    **여기가 종목코드의 유일한 자리다.** 코드는 차트·증권앱과 대조할 때 필요한데 행마다 반복할
+    값이 아니라 데이터셋 단위 속성이므로, 산출물 CSV 가 아니라 실행 요약이 담는다
+    (`src/verify_lab/CLAUDE.md` 출력 계약). 앞의 다섯 키는 매매 계층의 `dataset_record` 와
+    같고, 뒤의 둘은 이 검증의 축이다.
+
     Args:
         context: 데이터셋 공통 값
 
@@ -472,12 +494,12 @@ def _dataset_record(context: _Context) -> dict[str, Any]:
     dates = context.frame[COL_DATE]
 
     return {
-        KEY_TICKER: context.dataset.label,
+        KEY_TICKER: context.dataset.ticker,
+        KEY_LABEL: context.dataset.label,
+        KEY_FILE: context.dataset.path.name,
+        KEY_DATA_PERIOD: f"{dates.min().date()} ~ {dates.max().date()}",
+        KEY_ROWS: len(context.frame),
         KEY_PRICE_BASIS: context.dataset.price_basis,
-        KEY_PATH: str(context.dataset.path),
-        KEY_ROW_COUNT: len(context.frame),
-        KEY_START_DATE: str(dates.min().date()),
-        KEY_END_DATE: str(dates.max().date()),
         KEY_SMA_UNDETERMINED: context.sma_undetermined,
     }
 
@@ -584,7 +606,7 @@ def _population_records(
 
     return [
         {
-            KEY_TICKER: context.dataset.label,
+            KEY_LABEL: context.dataset.label,
             KEY_PRICE_BASIS: context.dataset.price_basis,
             KEY_START_YEAR: start_year,
             KEY_PERIOD: period.label,
@@ -983,6 +1005,10 @@ def _signal_details(
 def _empty_group_record(identity: Mapping[str, Any]) -> dict[str, Any]:
     """신호 0건 신호군을 요약용 dict 로 만든다.
 
+    **키가 `label` 인 것은 값이 표시 이름이기 때문이다.** 신호군을 가르는 것은 산출물 CSV 의
+    `종목` 컬럼이고 그 컬럼에는 표시 이름이 들어간다 — 종목코드가 아니다. 전에는 이 키를
+    `ticker` 라고 불러 같은 파일 안에서 한 이름이 두 가지를 가리켰다.
+
     Args:
         identity: 신호군 식별 정보
 
@@ -990,7 +1016,7 @@ def _empty_group_record(identity: Mapping[str, Any]) -> dict[str, Any]:
         요약 dict
     """
     return {
-        KEY_TICKER: identity[DISPLAY_TICKER],
+        KEY_LABEL: identity[DISPLAY_TICKER],
         KEY_TEST: identity[DISPLAY_TEST],
         KEY_PARAMETER: identity[DISPLAY_PARAMETER],
         KEY_START_YEAR: identity[DISPLAY_START_YEAR],

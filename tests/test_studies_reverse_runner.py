@@ -89,8 +89,8 @@ from verify_lab.studies.reverse.runner import (
     KEY_POPULATIONS,
     KEY_PRICE_BASIS,
     KEY_REPEATS,
-    KEY_ROW_COUNT,
     KEY_ROW_COUNTS,
+    KEY_ROWS,
     KEY_SEED,
     KEY_SIGNAL_GROUP_COUNT,
     KEY_SIGNALS,
@@ -191,13 +191,20 @@ def _write_dataset(
     frame: pd.DataFrame,
     *,
     key: str = "synthetic",
-    ticker: str = "합성",
+    ticker: str = "069500",
+    label: str = "합성",
     price_basis: str = "원본가",
     price_decimals: int = PRICE_DECIMALS_KRW,
 ) -> Dataset:
     """시세 프레임을 CSV 로 저장하고 그 파일을 가리키는 데이터셋을 돌려준다.
 
     실경로 `storage/` 를 건드리지 않도록 언제나 임시 디렉터리에 쓴다.
+
+    **코드와 표시 이름을 기본값부터 다르게 둔다.** 전에는 `label=ticker` 로 둘을 같게 만들었고,
+    그래서 `ticker` 자리에 표시 이름이 실려도 이 픽스처로는 영원히 드러나지 않았다 —
+    **미국 ETF 가 `QQQ` 하나로 둘을 겸해 실제 산출물에서도 안 보이던 것과 같은 함정**이다
+    (`tests/CLAUDE.md` 「픽스처가 코드와 같은 가정을 하면 그 버그는 영원히 안 잡힙니다」).
+    숫자 코드를 쓰는 것은 국내 종목이 그 구별이 드러나는 유일한 자리이기 때문이다.
     """
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{key}.csv"
@@ -206,7 +213,7 @@ def _write_dataset(
     saved.to_csv(path, index=False)
 
     return Dataset(
-        key=key, ticker=ticker, label=ticker, price_basis=price_basis, path=path, price_decimals=price_decimals
+        key=key, ticker=ticker, label=label, price_basis=price_basis, path=path, price_decimals=price_decimals
     )
 
 
@@ -571,7 +578,7 @@ class TestBaselinePopulation:
         Then: 시작연도 이후 거래일 중 다음 날이 있는 날의 수와 같다
         """
         # Given
-        total_rows = wide_outputs.summary[KEY_DATASETS][0][KEY_ROW_COUNT]
+        total_rows = wide_outputs.summary[KEY_DATASETS][0][KEY_ROWS]
         dates = pd.DatetimeIndex(pd.date_range("2003-01-06", periods=total_rows, freq="7D"))
         expected = int((dates >= pd.Timestamp(f"{DEFAULT_START_YEAR}-01-01")).sum()) - 1
 
@@ -854,12 +861,13 @@ class TestMultipleDatasets:
         # Given
         dates = pd.DatetimeIndex(pd.bdate_range("2003-01-01", periods=CLUSTERED_ROWS))
         changes = _quiet_changes(len(dates) - 1)
-        raw = _write_dataset(tmp_path, _market_frame(dates, changes), key="raw", ticker="합성 원본")
+        raw = _write_dataset(tmp_path, _market_frame(dates, changes), key="raw", ticker="069500", label="합성 원본")
         adjusted = _write_dataset(
             tmp_path,
             _market_frame(dates, changes * 1.01),
             key="adjusted",
-            ticker="합성 수정",
+            ticker="229200",
+            label="합성 수정",
             price_basis="수정주가",
         )
 
@@ -1040,6 +1048,72 @@ class TestDatasetsInvariant:
 
         # Then
         assert len(set(tickers)) == len(DATASETS)
+
+
+class TestRunSummaryDatasets:
+    """실행 요약의 `datasets` 한 줄 — 「범위의 SoT」가 실제로 범위를 말한다
+
+    **기대 키를 손으로 박는다.** 프로덕션 상수를 가져다 비교하면 그 상수를 고치는 순간
+    테스트가 함께 따라와 아무것도 고정하지 못한다 (`tests/CLAUDE.md`).
+    """
+
+    def test_종목코드가_요약에_남는다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: `ticker` 가 종목코드를 담는다 — 표시 이름이 아니다
+
+        전에는 `ticker` 에 **표시 이름**이 들어가 `069500` 이 산출물 어디에도 남지 않았다.
+        차트·증권앱과 대조하려면 코드가 필요한데 **행마다 반복할 값이 아니라서**
+        `summary.json` 의 `datasets` 가 유일한 자리다 (`src/verify_lab/CLAUDE.md` 출력 계약).
+
+        **미국 ETF 는 코드와 이름이 같아(`QQQ`) 이 계약을 검사하지 못한다.** 그래서 픽스처가
+        숫자 코드와 한글 이름을 따로 준다.
+
+        Given: 코드와 표시 이름이 다른 합성 데이터셋으로 돈 실행
+        When: 요약의 데이터셋 한 줄을 봤을 때
+        Then: 코드와 이름이 각자의 자리에 있다
+        """
+        # Given / When
+        record = wide_outputs.summary["datasets"][0]
+
+        # Then
+        assert record["ticker"] == "069500", f"종목코드가 아닙니다: {record['ticker']!r}"
+        assert record["label"] == "합성", f"표시 이름이 아닙니다: {record['label']!r}"
+
+    def test_데이터셋_한_줄이_매매와_같은_다섯_키를_갖는다(self, wide_outputs: StudyOutputs) -> None:
+        """
+        목적: 검증과 매매의 `datasets` 가 같은 말을 쓰게 한다
+
+        역방향만 기간을 `start_date`+`end_date`, 행 수를 `row_count` 로 불렀다.
+        **정의처가 갈린 이름은 결과가 우연히 같아도 한쪽이 바뀌는 날 조용히 갈라진다.**
+
+        Given: 합성 데이터셋으로 돈 실행
+        When: 요약의 데이터셋 한 줄의 키를 봤을 때
+        Then: 다섯 키를 빠짐없이 갖는다
+        """
+        # Given / When
+        record = wide_outputs.summary["datasets"][0]
+
+        # Then
+        assert {"ticker", "label", "file", "period", "rows"} <= set(record), f"키가 모자랍니다: {sorted(record)}"
+
+    def test_경로가_아니라_파일_이름을_담는다(
+        self,
+        wide_outputs: StudyOutputs,
+        assert_no_absolute_paths: Callable[[object, str], None],
+    ) -> None:
+        """
+        목적: 두 PC 를 오가는 산출물에 그 PC 의 절대경로가 박히지 않게 한다
+
+        이 저장소는 mac·WSL 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다.
+        실제로 커밋된 `summary.json` 에 **두 PC 의 경로가 섞여** 있었다.
+
+        Given: 합성 데이터셋으로 돈 실행
+        When: 요약 전체를 재귀로 훑었을 때
+        Then: 절대경로로 읽히는 문자열이 하나도 없고, 파일 이름이 남아 있다
+        """
+        # Given / When / Then
+        assert_no_absolute_paths(wide_outputs.summary, "역방향 검증")
+        assert wide_outputs.summary["datasets"][0]["file"] == "synthetic.csv"
 
 
 class TestCandidates:

@@ -91,10 +91,13 @@ KEY_EXCLUDED_COUNT = "excluded_count"
 
 KEY_STOP_LEVEL = "stop_loss_level"
 KEY_HOLD_LIMIT = "hold_limit"
-KEY_ENTRY = "entry"
-KEY_EXIT = "exit"
 
-# 산출물만 보고는 알 수 없는 실행 조건
+# 산출물만 보고는 알 수 없는 실행 조건.
+# **`rule` 에는 기계값만 담고 산문은 전부 여기 담는다** — 나머지 두 매매법과 같은 관용이다.
+# 전에는 `rule` 에 `entry`·`exit` 두 칸이 더 있었고 **그 둘이 이 목록에도 그대로** 있었다.
+# 같은 문장이 한 파일에 두 번 있으면 한쪽만 고쳐질 때 어느 쪽이 맞는지 판별할 방법이 없고,
+# 하필 `exit` 에 들어 있던 것은 청산 규칙이 아니라 **손절 기준 설명**이었다.
+# 청산 규칙은 아래 `NOTE_HOLD_LIMIT` 과 `rule` 의 `hold_limit` 숫자가 함께 담는다
 NOTE_ENTRY = "진입은 신호일 종가다. 15:20 판정 후 종가 단일가매매로 체결하는 것을 전제하며, 익일 시가 집행이 아니다"
 NOTE_STOP_BASE = "손절선은 전부 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
 NOTE_HOLD_LIMIT = "보유 한도는 D+2 로 고정돼 있다. 이익이 나면 그날 즉시 청산하고 손실일 때만 한도까지 끈다"
@@ -230,8 +233,6 @@ def run_reverse_trading(
         rule={
             KEY_STOP_LEVEL: stop_level_value(stop_level, measurable=True),
             KEY_HOLD_LIMIT: hold_limit,
-            KEY_ENTRY: NOTE_ENTRY,
-            KEY_EXIT: NOTE_STOP_BASE,
             KEY_TARGETS: target_records,
         },
         row_counts={TRADES_FILENAME: len(trades), SUMMARY_FILENAME: len(performance)},

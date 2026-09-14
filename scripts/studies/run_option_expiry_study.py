@@ -215,17 +215,19 @@ def main() -> int:
 
     _display_headline(outputs)
 
-    summary = {**outputs.summary, "output_dir": str(directory)}
-    save_run_summary(directory, summary)
+    # **요약에 값을 끼워 넣지 않는다.** 전에는 `output_dir` 로 이 PC 의 절대경로를 한 칸 얹었는데,
+    # 그 값은 파일이 놓인 폴더 «자신»이라 잉여이기도 했다 (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」).
+    # `meta.json` 쪽은 남긴다 — git 제외라 PC 를 넘지 않고 「최근 실행이 어디 있나」가 그 파일의 용도다
+    save_run_summary(directory, outputs.summary)
     save_metadata(
         KEY_META_OPTION_EXPIRY,
         {
             "output_dir": str(directory),
             KEY_DATASETS: [dataset.key for dataset in datasets],
-            KEY_MAX_OFFSET: summary[KEY_MAX_OFFSET],
-            KEY_PERMUTATION_REPEATS: summary[KEY_PERMUTATION_REPEATS],
-            KEY_PERMUTATION_SEED: summary[KEY_PERMUTATION_SEED],
-            KEY_ROW_COUNTS: summary[KEY_ROW_COUNTS],
+            KEY_MAX_OFFSET: outputs.summary[KEY_MAX_OFFSET],
+            KEY_PERMUTATION_REPEATS: outputs.summary[KEY_PERMUTATION_REPEATS],
+            KEY_PERMUTATION_SEED: outputs.summary[KEY_PERMUTATION_SEED],
+            KEY_ROW_COUNTS: outputs.summary[KEY_ROW_COUNTS],
         },
     )
 

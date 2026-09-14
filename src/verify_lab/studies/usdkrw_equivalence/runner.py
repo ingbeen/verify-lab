@@ -232,11 +232,14 @@ def run_equivalence(
 
     meta = {
         KEY_STUDY: "usdkrw_equivalence",
+        # **경로가 아니라 파일 이름을 담는다.** 절대경로는 PC 마다 달라 산출물이 갈리는데,
+        # 이 저장소는 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다.
+        # 폴더는 `data/` 계층의 상수가 정하므로 이름만으로 어느 파일인지 특정된다
         KEY_INPUTS: {
-            "spot": {source.key: str(source.path) for source in sources},
-            "krw_rate": str(KRW_RATE_PATH),
-            "usd_rate": str(USD_RATE_PATH),
-            **{target.key: str(target.price_path) for target in ETF_TARGETS},
+            "spot": {source.key: source.path.name for source in sources},
+            "krw_rate": KRW_RATE_PATH.name,
+            "usd_rate": USD_RATE_PATH.name,
+            **{target.key: target.price_path.name for target in ETF_TARGETS},
         },
         KEY_ALIGNMENT: alignment_counts,
         KEY_THRESHOLDS: {

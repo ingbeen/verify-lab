@@ -30,8 +30,10 @@
 
 import ast
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
+from verify_lab.common_constants import BASE_DIR
 from verify_lab.measure import constants as measure_constants
 
 # 검사 대상 소스 트리. 테스트와 스크립트는 정의처가 아니라 사용처다
@@ -50,6 +52,23 @@ _STRATEGY_SHARED = ("trade_fill", "periods", "constants", "run_summary")
 # 평균-비율 어긋남 판정과 판정가능 식을 소유한 파일. `_files_defining` 은 `_OWNER` 하나만
 # 빼므로 이 이름이 결과에 그대로 남는 것이 정상이다
 _MEASURE_STATISTICS = "verify_lab/measure/statistics.py"
+
+# `summary.json` 의 `datasets` 한 줄을 만드는 자리. 검증은 셋이 각자 만들고 매매 셋은
+# `strategy/run_summary.dataset_record` 하나를 공유한다 — **검증이 그것을 쓸 수 없다.**
+# `studies → strategy` 의존이 생겨 계층 방향이 뒤집히기 때문이다. 소유자를 중립 자리로
+# 옮기는 것은 별도 작업이고, 그때까지는 **키 「집합」만** 같은지 본다
+_DATASET_RECORD_SITES = (
+    ("studies/reverse/runner.py", "_dataset_record"),
+    ("studies/option_expiry/runner.py", "_run_dataset"),
+    ("studies/month_end/runner.py", "_run_dataset"),
+)
+
+# 매매 계층이 이미 내고 있는 다섯 키. **손으로 박는다** — `run_summary` 의 상수를 가져다
+# 비교하면 그 상수를 고치는 순간 테스트가 함께 따라와 아무것도 고정하지 못한다
+# (`tests/CLAUDE.md`). 매매 쪽의 「정확히 이 다섯」은 `test_strategy_output_contract.py` 가
+# 런타임으로 보고, 여기서는 **검증 셋이 그 다섯을 빠짐없이 갖는지**를 본다 —
+# 검증은 `expiry_count` 처럼 자기 축을 더 갖는 것이 정상이라 부분집합으로 검사한다
+_DATASET_MINIMUM_KEYS = frozenset({"ticker", "label", "file", "period", "rows"})
 
 
 def _strategy_runner_modules() -> list[Path]:
@@ -147,6 +166,103 @@ def _files_defining(pattern: str) -> list[str]:
             found.append(str(path.relative_to(_SOURCE_ROOT.parent)))
 
     return found
+
+
+def _string_constants(tree: ast.Module) -> dict[str, str]:
+    """모듈 최상단의 문자열 상수를 이름 → 값으로 모은다.
+
+    `KEY_TICKER = "ticker"` 와 `KEY_TICKER: Final = "ticker"` 를 모두 본다 —
+    한 형태만 보면 다른 형태로 쓴 모듈의 키가 통째로 안 잡힌다.
+
+    Args:
+        tree: 파싱된 모듈
+
+    Returns:
+        상수 이름 → 문자열 값
+    """
+    found: dict[str, str] = {}
+
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            continue
+
+        found.update({target.id: value.value for target in targets if isinstance(target, ast.Name)})
+
+    return found
+
+
+def _own_nodes(function: ast.FunctionDef) -> Iterator[ast.AST]:
+    """중첩 함수·람다 본문을 빼고 그 함수 «자신»의 노드만 낸다.
+
+    `ast.walk` 는 중첩 함수 안까지 내려간다. 거기서 나온 반환문은 이 함수의 산출물이 아니므로
+    섞이면 검사가 엉뚱한 사전을 보게 된다.
+
+    Args:
+        function: 검사할 함수 노드
+
+    Yields:
+        그 함수 본문의 노드
+    """
+    stack: list[ast.AST] = list(function.body)
+
+    while stack:
+        node = stack.pop()
+        yield node
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+
+
+def _returned_records(relative: str, function: str) -> list[dict[str, str]]:
+    """그 함수가 돌려주는 사전 리터럴을 **반환문마다 하나씩** 낸다.
+
+    키가 `KEY_TICKER` 같은 이름이라 최상단 상수를 먼저 읽어 값으로 바꾼다. **값으로 봐야 한다** —
+    상수 이름이 모듈마다 달라도(`KEY_ROWS` 대 `KEY_ROW_COUNT`) 실제 `summary.json` 에 나가는 것은
+    값이고, 이름만 맞춰 보면 산출물이 갈린 것을 못 잡는다. 각 키가 **어디서 온 값인지**도
+    함께 담는다 — 키 이름만 보면 `ticker` 에 표시 이름을 넣던 원래 버그가 그대로 통과한다.
+
+    **반환문끼리 합치지 않는다.** 합치면 「어느 경로로 나가도 다섯 키가 다 있다」가 아니라
+    「어딘가에는 있다」를 검사하게 되어, 두 키만 내는 이른 반환이 끼어도 통과한다.
+    **중첩 함수의 반환도 보지 않는다** — 그것은 이 함수의 산출물이 아니다.
+
+    `**base_record` 처럼 펼친 것은 키가 없어 건너뛴다. 최소 집합 검사는 「적어도 이만큼은 있다」
+    이므로 펼친 쪽에 더 있는 것은 문제가 아니다.
+
+    Args:
+        relative: `src/verify_lab` 기준 상대 경로
+        function: 검사할 함수 이름
+
+    Returns:
+        반환문마다 `{키 값: 값 표현식의 소스}` 사전
+    """
+    tree = ast.parse((_SOURCE_ROOT / relative).read_text(encoding="utf-8"))
+    constants = _string_constants(tree)
+
+    definitions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == function]
+    assert len(definitions) == 1, f"{relative} 에서 {function} 을 하나로 특정하지 못했습니다 ({len(definitions)}개)"
+
+    records: list[dict[str, str]] = []
+    for node in _own_nodes(definitions[0]):
+        if not isinstance(node, ast.Return) or not isinstance(node.value, ast.Dict):
+            continue
+        record: dict[str, str] = {}
+        for key, value in zip(node.value.keys, node.value.values, strict=True):
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                record[key.value] = ast.unparse(value)
+            elif isinstance(key, ast.Name) and key.id in constants:
+                record[constants[key.id]] = ast.unparse(value)
+        records.append(record)
+
+    assert records, f"{relative} 의 {function} 에서 사전 리터럴을 찾지 못했습니다"
+
+    return records
 
 
 class TestJudgeableOwnership:
@@ -370,6 +486,91 @@ class TestStrategyLayerComposition:
 
         # Then
         assert offenders == ["verify_lab/strategy/trade_fill.py"], f"체결 결과 타입을 자체 정의한 파일이 있습니다: {offenders}"
+
+
+class TestDatasetRecordKeys:
+    """`summary.json` 의 `datasets` 한 줄은 계층을 가리지 않고 같은 키를 쓴다"""
+
+    def test_세_검증이_매매와_같은_최소_키를_낸다(self) -> None:
+        """
+        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 여섯 산출 지점이 같은 말로 이행한다.
+
+        **월말만 이 형태였다.** 역방향은 `ticker` 에 «표시 이름»을 담고 `label` 이 아예 없었으며
+        기간을 `start_date`+`end_date`, 행 수를 `row_count` 로 불렀다. 옵션 만기일도 `ticker` 에
+        표시 이름이 들어 있었다.
+
+        Given: 검증 셋의 데이터셋 한 줄을 만드는 함수
+        When: 그 함수가 돌려주는 사전의 키를 값으로 읽었을 때
+        Then: 반환문마다 매매가 내는 다섯 키를 빠짐없이 갖는다
+        """
+        # Given / When / Then
+        for relative, function in _DATASET_RECORD_SITES:
+            for record in _returned_records(relative, function):
+                missing = _DATASET_MINIMUM_KEYS - set(record)
+
+                assert missing == set(), f"{relative} 의 datasets 한 줄에 키가 없습니다: {sorted(missing)}"
+
+    def test_코드와_이름과_파일이_제_출처에서_온다(self) -> None:
+        """
+        목적: 키 이름만 맞고 **값이 엉뚱한 데서 오는** 상태를 막는다.
+
+        [중요] **키 집합 검사만으로는 이 계약의 원래 버그를 못 잡는다.** `ticker` 의 값을
+        `dataset.label` 로 되돌려도 키 이름 `ticker` 는 그대로라 위 테스트가 통과한다.
+        **미국 ETF 는 코드와 이름이 같아(`QQQ`) 산출물을 눈으로 봐도 드러나지 않고**,
+        둘 다 `str` 이라 타입 검사도 못 잡는다 — 그래서 출처를 직접 본다.
+
+        Given: 검증 셋의 데이터셋 한 줄을 만드는 함수
+        When: 세 키의 값 표현식을 봤을 때
+        Then: 코드는 `.ticker`, 이름은 `.label`, 파일은 파일 이름에서 온다
+        """
+        # Given
+        expected_suffixes = {
+            "ticker": (".ticker",),
+            "label": (".label",),
+            # 경로를 통째로 넣지 못하게 한다 — `path.name` 이거나 애초에 이름인 필드여야 한다
+            "file": (".name", ".file_name"),
+        }
+
+        # When / Then
+        for relative, function in _DATASET_RECORD_SITES:
+            for record in _returned_records(relative, function):
+                for key, suffixes in expected_suffixes.items():
+                    source = record[key]
+                    assert source.endswith(suffixes), f"{relative} 의 {key} 가 {source!r} 에서 옵니다"
+
+
+class TestRunSummaryOwnership:
+    """실행 요약을 만드는 것은 runner 이고 CLI 는 그대로 넘기기만 한다
+
+    **여기는 `datasets` 키가 아니라 「누가 요약을 조립하는가」를 본다.** 규칙을 다른
+    스크립트로 넓힐 때 이 클래스가 그 자리다.
+    """
+
+    def test_옵션_만기일_검증_CLI_가_요약에_값을_끼워_넣지_않는다(self) -> None:
+        """
+        목적: 요약의 소유자를 runner 하나로 되돌린다 (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」).
+
+        CLI 가 `{**outputs.summary, "output_dir": str(directory)}` 로 한 칸을 얹고 있었고,
+        그 값이 **이 PC 의 절대경로**였다. `output_dir` 은 그 파일이 놓인 폴더 자신이라
+        값 자체가 잉여이기도 하다 — `meta.json` 쪽은 「최근 실행이 어디 있나」를 찾는 용도라 남긴다.
+
+        **두 줄로 검사하는 것은 매매 쪽 쌍둥이 테스트와 같은 관용이다**
+        (`tests/test_strategy_output_contract.py`) — 넘기는 줄이 맞는지와, 사전 리터럴을
+        조립한 흔적이 없는지를 함께 본다.
+
+        Given: 옵션 만기일 검증 실행 스크립트
+        When: 요약을 저장하는 줄을 봤을 때
+        Then: runner 가 낸 요약을 그대로 넘기고 조립부가 없다
+        """
+        # Given
+        script = BASE_DIR / "scripts" / "studies" / "run_option_expiry_study.py"
+
+        # When
+        source = script.read_text(encoding="utf-8")
+
+        # Then
+        assert "save_run_summary(directory, outputs.summary)" in source, "CLI 가 요약을 runner 에서 받지 않습니다"
+        assert "save_run_summary(\n" not in source, "CLI 가 요약을 조립합니다"
 
 
 class TestCredentialsBeforeImport:
