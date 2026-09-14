@@ -253,13 +253,16 @@ def month_exit_schedule(
             f"내부 불변조건 위반: 진입일이 있는데 그 달이 거래일 목록에 없습니다: " f"{[month.strftime('%Y-%m') for month in months]}"
         )
 
-    # 3. 청산 위치는 그 달 마지막 거래일에서 상대 거래일만큼 이동한 자리다
+    # 3. 청산 위치는 그 달 마지막 거래일에서 상대 거래일만큼 이동한 자리다.
+    # **아래 셋에 `has_month` 를 다시 걸지 않는다** — 바로 위 가드가 `has_entry & ~has_month` 를
+    # 끊어 여기서는 `has_entry` 가 참이면 `has_month` 도 참이다. 그 가드를 지우려는 사람은
+    # 이 셋도 함께 봐야 한다. (`safe_month_position` 쪽 `has_month` 는 가드 «앞»이라 살아 있다)
     exit_positions = safe_month_position + exit_offset
 
-    out_of_range = has_entry & has_month & ((exit_positions > len(trading_days) - 1) | (exit_positions < 0))
-    no_holding = has_entry & has_month & ~out_of_range & (exit_positions <= entry_positions)
+    out_of_range = has_entry & ((exit_positions > len(trading_days) - 1) | (exit_positions < 0))
+    no_holding = has_entry & ~out_of_range & (exit_positions <= entry_positions)
 
-    usable = has_entry & has_month & ~out_of_range & ~no_holding
+    usable = has_entry & ~out_of_range & ~no_holding
 
     # 4. 사유는 **진입 단계의 것을 덮지 않는다.** 진입일이 없던 행은 그 사유를 그대로 둔다
     reasons = frame[COL_EXCLUDED_REASON].to_numpy(dtype=object)

@@ -51,11 +51,11 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# pykrx 가 돌려주는 한글 컬럼 → 공통 스키마. 두 조회 함수가 함께 주는 컬럼만 담는다.
-# `NAV`·`거래대금`·`기초지수`·`등락률` 은 공통 스키마에 없으므로 저장하지 않는다
 # pykrx 가 돌려주는 종가 컬럼 이름. 지수 수집도 이 컬럼 하나만 꺼내 쓴다
 KRX_CLOSE_COLUMN = "종가"
 
+# pykrx 가 돌려주는 한글 컬럼 → 공통 스키마. 두 조회 함수가 함께 주는 컬럼만 담는다.
+# `NAV`·`거래대금`·`기초지수`·`등락률` 은 공통 스키마에 없으므로 저장하지 않는다
 KRX_COLUMN_MAP = {
     "시가": COL_OPEN,
     "고가": COL_HIGH,
@@ -66,9 +66,6 @@ KRX_COLUMN_MAP = {
 
 # 반환값의 날짜 인덱스에 붙일 이름. pykrx 는 `날짜` 를 쓰지만 이름에 의존하지 않고 덮어쓴다
 KRX_INDEX_NAME = "날짜"
-
-# 조회 시작일 형식. pykrx 가 요구하는 표기다
-
 
 # 저장 직전 정수화 대상. KRX 원화 가격과 거래량은 정수이며 반올림 규칙도 0자리다.
 # **부호 있는 int64 로 고정한다** — `get_etf_ohlcv_by_date` 는 가격을 `uint32` 로 주는데,

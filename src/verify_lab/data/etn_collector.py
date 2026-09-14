@@ -77,9 +77,6 @@ ETN_BASIC_ISIN_COLUMN = "ISU_CD"
 # KRX 통계 코드
 BLD_ETN_DAILY_PRICE = "dbms/MDC/STAT/standard/MDCSTAT06601"
 
-# 조회 인자의 날짜 형식
-
-
 # 저장 직전 정수화 대상. KRX 원화 가격과 거래량은 정수다
 INTEGER_COLUMNS = [*PRICE_COLUMNS, COL_VOLUME]
 

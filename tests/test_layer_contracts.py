@@ -293,6 +293,68 @@ def _module_constants(path: Path) -> dict[str, str]:
     return _string_constants(ast.parse(path.read_text(encoding="utf-8")))
 
 
+def _module_assignments(tree: ast.Module) -> Iterator[tuple[list[str], ast.expr]]:
+    """모듈 최상단 대입문을 (만들어지는 이름들, 대입되는 값)으로 편다.
+
+    **이름을 목록으로 내는 이유는 `COL_A = COL_B = "x"` 때문이다.** 하나만 돌려주면 그렇게
+    정의된 상수가 「이 패키지가 정의한 것」 목록에서 빠지고, 그 이름의 죽은 레이블은
+    「다른 계층에서 가져온 것」으로 잘못 분류돼 영영 안 잡힌다.
+
+    Args:
+        tree: 검사할 모듈의 AST
+
+    Returns:
+        (이름 목록, 값 노드) 순회자. 값이 없는 선언(`x: int`)은 내지 않는다
+    """
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign):
+            if isinstance(node.target, ast.Name) and node.value is not None:
+                yield [node.target.id], node.value
+        elif isinstance(node, ast.Assign):
+            if names := [target.id for target in node.targets if isinstance(target, ast.Name)]:
+                yield names, node.value
+
+
+def _package_trees(package: Path) -> dict[Path, ast.Module]:
+    """패키지의 모든 소스를 **한 번씩만** 파싱해 돌려준다.
+
+    같은 파일을 두 번 파싱하면 노드 객체가 새로 생겨 **`id()` 로 하는 「이 노드는 사전 안이다」
+    판정이 헛돈다** — 실제로 그렇게 만들었더니 죽은 레이블을 한 건도 잡지 못했다.
+
+    Args:
+        package: 검증 패키지 폴더
+
+    Returns:
+        파일 경로 → 그 파일의 AST
+    """
+    return {module: ast.parse(module.read_text(encoding="utf-8")) for module in sorted(package.rglob("*.py"))}
+
+
+def _rename_dicts(tree: ast.Module) -> list[tuple[str, ast.Dict]]:
+    """모듈 최상단의 **컬럼 이름표 사전**을 모은다 — `COL_* → DISPLAY_*` 모양의 것.
+
+    **이름이 아니라 «구조»로 찾는다: 키에 상수 이름이 오는 사전.** 처음에는 `*_LABELS` 라는
+    이름으로 찾았는데, 그러면 사전 이름을 `COLUMN_MAP` 으로 바꾸는 것만으로 그 검증이 감시에서
+    통째로 빠지면서 **검사는 초록으로 남는다** — 막으려는 실패 방식과 정확히 같다.
+
+    구조로 거르면 값-사전(`HORIZON_LABELS`·`MODEL_LABELS`·`EXTREME_DIRECTION_LABELS`)이
+    자연히 빠진다. 키가 정수·실수·열거형이라 이름이 아니기 때문이다. **그것들이 섞이면 해롭다** —
+    그 사전 «안»의 노드까지 「사전 안이라 참조로 세지 않는다」에 걸려, 값 자리에 쓰인 살아 있는
+    이름이 죽은 것으로 뒤집힌다.
+
+    Args:
+        tree: 검사할 모듈의 AST
+
+    Returns:
+        (사전 이름, 사전 노드) 목록
+    """
+    return [
+        (names[0], value)
+        for names, value in _module_assignments(tree)
+        if isinstance(value, ast.Dict) and any(isinstance(key, ast.Name) for key in value.keys)
+    ]
+
+
 def _absolute_module(path: Path, node: ast.ImportFrom) -> str:
     """`from ... import` 의 대상 모듈을 **절대 경로로 펴서** 돌려준다.
 
@@ -726,6 +788,69 @@ class TestReportLabelOwnership:
             allowed = _REPORT_LABEL_COLLISIONS.get(label, frozenset())
 
             assert offenders <= allowed, f"{label!r} 을 재정의한 파일이 있습니다: {sorted(offenders - allowed)}"
+
+
+class TestDisplayLabelLiveness:
+    """이름표 사전에 **죽은 레이블**이 쌓이지 않는다
+
+    **[중요] 런타임 가드로는 못 막는다.** `report.tables.to_display_columns` 는 표마다 컬럼 구성이
+    달라 사전이 언제나 **상위집합**이어야 하고, 그래서 검사가 「표 → 사전」 한 방향뿐이다 —
+    사전에 있는데 아무 표에도 안 나오는 키는 그냥 통과한다. 양방향으로 막으면 정상 호출이
+    전부 막힌다. **그 반대 방향을 여기서 본다.**
+
+    실제로 월말이 `COL_BASELINE_KIND`·`COL_CONVERGED_MONTHS` 두 쌍을 그렇게 이고 있었고,
+    **미사용 전수 스캔에도 안 잡혔다** — 사전에 키로 한 번 얹히는 것만으로 「쓰인다」가 되기 때문이다.
+    """
+
+    def test_사전의_키_중_그_검증이_정의한_것은_사전_밖에서도_쓰인다(self) -> None:
+        """
+        목적: 컬럼을 만드는 코드는 사라졌는데 이름표만 남는 상태를 막는다.
+
+        **자기가 정의한 키만 판정한다.** `measure`·`common` 에서 가져온 키(`COL_SIGNAL_COUNT` 등)는
+        **다른 계층이 그 컬럼을 프레임에 넣으므로** 검증 패키지 안에서는 사전이 유일한 등장처인
+        것이 정상이다. 그 구별을 빼면 살아 있는 레이블이 무더기로 걸린다.
+
+        Given: `studies/` 각 패키지의 컬럼 이름표 사전
+        When: 키 중 그 패키지가 «정의한» 이름이 사전 밖에서 참조되는지 본다
+        Then: 한 건도 빠짐없이 참조된다
+        """
+        # Given
+        packages = sorted(path for path in (_SOURCE_ROOT / "studies").iterdir() if path.is_dir())
+        assert packages, "검증 패키지를 하나도 찾지 못했습니다"
+
+        judged = 0
+        for package in packages:
+            trees = _package_trees(package)
+            dicts = [(module, name, node) for module, tree in trees.items() for name, node in _rename_dicts(tree)]
+            if not dicts:
+                continue
+
+            owned = {name for tree in trees.values() for names, _ in _module_assignments(tree) for name in names}
+            loads = [
+                node
+                for tree in trees.values()
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+            ]
+
+            # When / Then
+            for module, name, labels in dicts:
+                # **판정 중인 사전 «하나»만 뺀다.** 발견한 사전을 전부 빼면 스키마 사전
+                # (`SCHEDULE_DTYPES` 등)에도 들어 있는 살아 있는 컬럼이 죽은 것으로 뒤집힌다 —
+                # 그 사전에 실린다는 것이 곧 「그 컬럼이 프레임에 만들어진다」는 뜻이다
+                inside = {id(node) for node in ast.walk(labels)}
+                referenced = {node.id for node in loads if id(node) not in inside}
+
+                keys = {key.id for key in labels.keys if isinstance(key, ast.Name)}
+                dead = sorted(key for key in keys & owned if key not in referenced)
+                judged += len(keys & owned)
+
+                relative = module.relative_to(_SOURCE_ROOT)
+                assert dead == [], f"{relative} 의 {name} 에 죽은 레이블이 있습니다: {dead}"
+
+        # **검사가 조용히 아무것도 안 보게** 되는 것을 막는다. 사전을 구조로 찾으므로 이름을
+        # 바꿔서는 빠져나갈 수 없고, 여기 걸린다면 사전이 리터럴이 아니게 된 것이다
+        assert judged > 0, "판정한 키가 하나도 없습니다 — 사전 발견 규칙이 깨졌습니다"
 
 
 class TestStudyPackageComposition:

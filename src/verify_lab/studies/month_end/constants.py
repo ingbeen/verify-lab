@@ -315,10 +315,6 @@ COL_HOLD_DAYS: Final = "hold_days"
 COL_ENTRY_CLOSE: Final = "entry_close"
 COL_EXIT_CLOSE: Final = "exit_close"
 
-# 앞당김으로 서로 다른 달력일이 같은 거래일에 모인 달의 수 (결정 ⑥).
-# 격자의 칸들이 독립이 아니라는 사실의 근거값이다
-COL_CONVERGED_MONTHS: Final = "converged_months"
-
 # ============================================================
 # 구간 표지
 # ============================================================
@@ -360,18 +356,11 @@ COL_MONTH_NUMBER: Final = "month_number"
 # 시기 구분 이름이 들어가는 컬럼
 COL_PERIOD: Final = "period"
 
-# 어느 기준선과 견줬는지 밝히는 컬럼
-COL_BASELINE_KIND: Final = "baseline"
-
 # 그 행을 실제로 집행하는 상품이 무엇인가
 COL_EXECUTION_ROLE: Final = "execution_role"
 
 # 집행 축 표가 어느 시장의 행인가. 코스피와 코스닥을 나란히 읽으려면 축이 하나 더 필요하다
 COL_MARKET: Final = "market"
-
-# 어느 기준선과 견줬는지 밝히는 이름. 둘은 묻는 질문이 다르다 (spec §3.6 결정 ⑤)
-BASELINE_MONTH_ANY: Final = "그 달 아무 날 진입"
-BASELINE_MATCHED_LENGTH: Final = "같은 길이 단순 보유"
 
 # 기준선 집계를 신호 집계와 나란히 놓을 때 붙이는 접미사
 BASELINE_SUFFIX: Final = "_baseline"
@@ -403,11 +392,9 @@ DISPLAY_EXIT_OFFSET: Final = "청산 상대 거래일"
 DISPLAY_HOLD_DAYS: Final = "보유 거래일"
 DISPLAY_ENTRY_CLOSE: Final = "진입 종가"
 DISPLAY_EXIT_CLOSE: Final = "청산 종가"
-DISPLAY_CONVERGED_MONTHS: Final = "앞당김 수렴 달 수"
 DISPLAY_TICKER: Final = "대상"
 DISPLAY_MONTH_NUMBER: Final = "월"
 DISPLAY_PERIOD: Final = "시기"
-DISPLAY_BASELINE_KIND: Final = "기준선"
 DISPLAY_MARKET: Final = "시장"
 DISPLAY_EXECUTION_ROLE: Final = "집행"
 
@@ -441,7 +428,6 @@ COLUMN_LABELS: Final = {
     COL_EXIT_OFFSET: DISPLAY_EXIT_OFFSET,
     COL_MONTH_NUMBER: DISPLAY_MONTH_NUMBER,
     COL_PERIOD: DISPLAY_PERIOD,
-    COL_BASELINE_KIND: DISPLAY_BASELINE_KIND,
     # 원자료
     COL_MONTH: DISPLAY_MONTH,
     COL_DATE: DISPLAY_DATE,
@@ -452,7 +438,6 @@ COLUMN_LABELS: Final = {
     COL_EXIT_CLOSE: DISPLAY_EXIT_CLOSE,
     COL_FORWARD_RETURN: DISPLAY_RETURN,
     COL_EXCLUDED_REASON: DISPLAY_EXCLUDED_REASON,
-    COL_CONVERGED_MONTHS: DISPLAY_CONVERGED_MONTHS,
     # 집계
     COL_SIGNAL_COUNT: DISPLAY_SIGNAL_COUNT,
     COL_EXCLUDED_COUNT: DISPLAY_EXCLUDED,

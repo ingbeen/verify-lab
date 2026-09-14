@@ -1,0 +1,19 @@
+{
+  "index_filter": null,
+  "pair_count": 6,
+  "skipped_pairs": [],
+  "comparison_rows": 546,
+  "decomposition_rows": 84,
+  "roll_event_rows": 328,
+  "breakeven_rows": 24,
+  "wipeout_window_total": 2814,
+  "integer_contract_rows": 24,
+  "window_files": [
+    "KOSDAQ150_233740",
+    "KOSDAQ150_251340",
+    "KOSDAQ150_530107",
+    "KOSPI200_114800",
+    "KOSPI200_122630",
+    "KOSPI200_252670"
+  ]
+}

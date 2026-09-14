@@ -26,6 +26,7 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_HORIZON,
     COL_JUDGEABLE,
+    JUDGEABLE_YES,
     REASON_OUT_OF_RANGE,
 )
 from verify_lab.measure.distribution import (
@@ -467,4 +468,6 @@ def headline(outputs: StudyOutputs) -> pd.DataFrame:
         DISPLAY_REALIZED_MULTIPLE,
     ]
 
-    return outputs.divergence.loc[outputs.divergence[DISPLAY_JUDGEABLE] == "예", columns].reset_index(drop=True)
+    return outputs.divergence.loc[outputs.divergence[DISPLAY_JUDGEABLE] == JUDGEABLE_YES, columns].reset_index(
+        drop=True
+    )

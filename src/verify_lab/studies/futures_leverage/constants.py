@@ -251,7 +251,6 @@ DISPLAY_WIPEOUT_DATE: Final = "자기자본 소진일"
 DISPLAY_BREAKEVEN_HORIZON: Final = "선물이 앞서는 최소 보유 기간"
 
 DISPLAY_EQUITY_SIZE: Final = "자기자본 규모(원)"
-DISPLAY_TARGET_MULTIPLE: Final = "목표 배수"
 DISPLAY_ACTUAL_MULTIPLE: Final = "실제 배수"
 DISPLAY_INTEGER_CONTRACTS: Final = "정수 계약 수"
 DISPLAY_CONTRACT_NOTIONAL: Final = "1계약 명목(원)"

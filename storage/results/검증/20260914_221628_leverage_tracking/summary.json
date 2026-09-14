@@ -1,0 +1,151 @@
+{
+  "index": null,
+  "pair_count": 22,
+  "horizons": [
+    5,
+    10,
+    21,
+    63,
+    126,
+    252,
+    756
+  ],
+  "pairs": [
+    {
+      "index": "KOSPI200",
+      "base": "069500",
+      "target": "122630",
+      "multiple": 2.0
+    },
+    {
+      "index": "KOSPI200",
+      "base": "069500",
+      "target": "114800",
+      "multiple": -1.0
+    },
+    {
+      "index": "KOSPI200",
+      "base": "069500",
+      "target": "252670",
+      "multiple": -2.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "233740",
+      "multiple": 2.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "251340",
+      "multiple": -1.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "530107",
+      "multiple": -2.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "520057",
+      "multiple": -2.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SSO",
+      "multiple": 2.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "UPRO",
+      "multiple": 3.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SH",
+      "multiple": -1.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SDS",
+      "multiple": -2.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SPXU",
+      "multiple": -3.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "QLD",
+      "multiple": 2.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "TQQQ",
+      "multiple": 3.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "PSQ",
+      "multiple": -1.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "QID",
+      "multiple": -2.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "SQQQ",
+      "multiple": -3.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "DDM",
+      "multiple": 2.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "UDOW",
+      "multiple": 3.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "DOG",
+      "multiple": -1.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "DXD",
+      "multiple": -2.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "SDOW",
+      "multiple": -3.0
+    }
+  ],
+  "divergence_rows": 154,
+  "breakdown_rows": 2553,
+  "distribution_rows": 154,
+  "window_rows": 593179
+}
