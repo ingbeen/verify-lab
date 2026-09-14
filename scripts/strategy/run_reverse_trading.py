@@ -18,16 +18,8 @@ import pandas as pd
 from verify_lab.common_constants import RATE_TO_PERCENT, RESULT_LAYER_STRATEGY
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
-from verify_lab.strategy.constants import (
-    DISPLAY_START_YEAR,
-    HOLD_LIMIT,
-    STOP_LOSS_LEVEL,
-    SUMMARY_FILENAME,
-    TARGETS,
-    TRADES_FILENAME,
-    Target,
-    stop_level_value,
-)
+from verify_lab.strategy.constants import DISPLAY_START_YEAR, SUMMARY_FILENAME, TRADES_FILENAME, stop_level_value
+from verify_lab.strategy.reverse_constants import HOLD_LIMIT, STOP_LOSS_LEVEL, TARGETS, Target
 from verify_lab.strategy.reverse_runner import StrategyOutputs, run_reverse_trading
 from verify_lab.strategy.run_summary import KEY_ROW_COUNTS
 from verify_lab.studies.reverse.constants import TRACK_NAME

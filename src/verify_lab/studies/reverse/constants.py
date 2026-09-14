@@ -13,6 +13,13 @@ from pathlib import Path
 from typing import Final
 
 from verify_lab.common_constants import MARKET_DIR, MARKET_FILE_TEMPLATE, PRICE_DECIMALS, PRICE_DECIMALS_KRW
+from verify_lab.report.constants import (
+    CANDIDATES_FILENAME,
+    EXCESS_FILENAME,
+    SIGNALS_FILENAME,
+    STATISTICS_FILENAME,
+    TEST_FILENAME,
+)
 
 
 class Direction(Enum):
@@ -225,3 +232,19 @@ DISPLAY_BASELINE_BELOW_SMA: Final = "조건부 SMA200"
 # 재는 것은 역대급 등락이지만 그 신호로 하는 매매가 역방향이고, **둘을 한 이름으로 묶는 쪽**을
 # 택했다. 본문에서 신호 자체를 가리킬 때는 「역대급 등락」을 그대로 쓴다
 TRACK_NAME: Final = "reverse"
+
+
+# ============================================================
+# 산출물 파일
+# ============================================================
+
+# **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
+# runner 가 `row_counts` 를 이것으로 키잉하고 CLI 가 이것을 돌며 저장한다 —
+# 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
+OUTPUT_FILES: Final[dict[str, str]] = {
+    "signals": SIGNALS_FILENAME,
+    "statistics": STATISTICS_FILENAME,
+    "excess": EXCESS_FILENAME,
+    "test": TEST_FILENAME,
+    "candidates": CANDIDATES_FILENAME,
+}

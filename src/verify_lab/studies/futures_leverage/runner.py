@@ -27,6 +27,7 @@ ETF 는 롤 규칙·이자 가정과 무관하다. 그냥 곱하면 같은 값�
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -102,6 +103,7 @@ from verify_lab.studies.futures_leverage.constants import (
     METHOD_FUTURES_DAILY,
     METHOD_FUTURES_HOLD,
     METHOD_FUTURES_MONTHLY,
+    OUTPUT_FILES,
     PAIRS,
     REASON_NOT_EXECUTABLE,
     REBALANCE_DAILY,
@@ -109,6 +111,7 @@ from verify_lab.studies.futures_leverage.constants import (
     REBALANCE_MONTHLY,
     REBALANCE_NONE,
     ROLL_RULES,
+    WINDOWS_FILENAME_TEMPLATE,
     FuturesPair,
 )
 from verify_lab.studies.futures_leverage.continuous import (
@@ -140,6 +143,21 @@ class PairOutputs:
     wipeouts: pd.DataFrame
 
 
+# ============================================================
+# summary.json 키
+# ============================================================
+
+KEY_INDEX_FILTER = "index_filter"
+KEY_PAIR_COUNT = "pair_count"
+KEY_SKIPPED_PAIRS = "skipped_pairs"
+KEY_WIPEOUT_WINDOW_TOTAL = "wipeout_window_total"
+KEY_ROW_COUNTS = "row_counts"
+
+# 건너뛴 짝 한 줄의 키
+KEY_SKIPPED_TICKER = "ticker"
+KEY_SKIPPED_REASON = "reason"
+
+
 @dataclass(frozen=True)
 class StudyOutputs:
     """검증 전체의 산출물.
@@ -155,6 +173,8 @@ class StudyOutputs:
         windows_by_pair: 짝별 시작일 원자료
         pair_count: 실제로 잰 짝 수
         skipped_pairs: 데이터가 없어 건너뛴 짝과 사유
+        summary: 실행 요약. **CLI 가 아니라 여기서 만든다** — 전에는 CLI 가 리터럴 키로
+            조립해 `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸렸다
     """
 
     comparison: pd.DataFrame
@@ -167,6 +187,7 @@ class StudyOutputs:
     windows_by_pair: dict[str, pd.DataFrame]
     pair_count: int
     skipped_pairs: list[tuple[str, str]]
+    summary: dict[str, Any]
 
 
 def _non_overlapping_count(usable: np.ndarray, horizon: int) -> int:
@@ -618,17 +639,36 @@ def run_study(
 
     logger.debug(f"검증 실행 완료: 짝 {len(comparison_parts)}개, 집계 {len(comparison):,}행, 건너뜀 {len(skipped)}개")
 
+    tables = {
+        "comparison": comparison,
+        "decomposition": decomposition,
+        "roll_events": pd.concat(roll_parts, ignore_index=True) if roll_parts else pd.DataFrame(),
+        "breakeven": _build_breakeven(comparison),
+        "wipeouts": pd.concat(wipeout_parts, ignore_index=True),
+        "leverage_drift": pd.concat(drift_parts, ignore_index=True),
+        "integer_contracts": pd.concat(contract_parts, ignore_index=True),
+    }
+
+    # **행 수의 키는 파일 이름이다** (`src/verify_lab/CLAUDE.md` 실행 요약 계약).
+    # 짝마다 따로 내는 원자료는 **파일별로** 센다 — 전에는 이름 목록만 `window_files` 로 남고
+    # 행 수가 없었다
+    row_counts = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
+    row_counts.update(
+        {WINDOWS_FILENAME_TEMPLATE.format(pair=name): len(window) for name, window in windows_by_pair.items()}
+    )
+
     return StudyOutputs(
-        comparison=comparison,
-        decomposition=decomposition,
-        roll_events=pd.concat(roll_parts, ignore_index=True) if roll_parts else pd.DataFrame(),
-        breakeven=_build_breakeven(comparison),
-        wipeouts=pd.concat(wipeout_parts, ignore_index=True),
-        leverage_drift=pd.concat(drift_parts, ignore_index=True),
-        integer_contracts=pd.concat(contract_parts, ignore_index=True),
+        **tables,
         windows_by_pair=windows_by_pair,
         pair_count=len(comparison_parts),
         skipped_pairs=skipped,
+        summary={
+            KEY_INDEX_FILTER: index_filter,
+            KEY_PAIR_COUNT: len(comparison_parts),
+            KEY_SKIPPED_PAIRS: [{KEY_SKIPPED_TICKER: ticker, KEY_SKIPPED_REASON: reason} for ticker, reason in skipped],
+            KEY_WIPEOUT_WINDOW_TOTAL: int(tables["wipeouts"][COL_WIPEOUT_COUNT].sum()),
+            KEY_ROW_COUNTS: row_counts,
+        },
     )
 
 

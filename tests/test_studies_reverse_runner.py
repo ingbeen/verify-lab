@@ -46,6 +46,7 @@ from verify_lab.report.constants import (
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_UP_RATE,
 )
+from verify_lab.report.run_summary import KEY_DATASET_ROWS
 from verify_lab.studies.reverse.constants import (
     DATASETS,
     DECADE_PERIODS,
@@ -68,6 +69,7 @@ from verify_lab.studies.reverse.constants import (
     DISPLAY_TICKER,
     DISPLAY_ZSCORE,
     EXTREME_DIRECTION_LABELS,
+    OUTPUT_FILES,
     PERIOD_ALL,
     PRICE_DECIMALS_KRW,
     RANK_CUTS,
@@ -82,7 +84,6 @@ from verify_lab.studies.reverse.runner import (
     KEY_DAY_COUNT,
     KEY_DIRECTION,
     KEY_EMPTY_SIGNAL_GROUPS,
-    KEY_EXCESS,
     KEY_PARAMETERS,
     KEY_PERIOD,
     KEY_PERMUTATION,
@@ -90,14 +91,10 @@ from verify_lab.studies.reverse.runner import (
     KEY_PRICE_BASIS,
     KEY_REPEATS,
     KEY_ROW_COUNTS,
-    KEY_ROWS,
     KEY_SEED,
     KEY_SIGNAL_GROUP_COUNT,
-    KEY_SIGNALS,
     KEY_SMA_UNDETERMINED,
     KEY_START_YEAR,
-    KEY_STATISTICS,
-    KEY_TEST_TABLE,
     StudyOutputs,
     run_study,
 )
@@ -578,7 +575,7 @@ class TestBaselinePopulation:
         Then: 시작연도 이후 거래일 중 다음 날이 있는 날의 수와 같다
         """
         # Given
-        total_rows = wide_outputs.summary[KEY_DATASETS][0][KEY_ROWS]
+        total_rows = wide_outputs.summary[KEY_DATASETS][0][KEY_DATASET_ROWS]
         dates = pd.DatetimeIndex(pd.date_range("2003-01-06", periods=total_rows, freq="7D"))
         expected = int((dates >= pd.Timestamp(f"{DEFAULT_START_YEAR}-01-01")).sum()) - 1
 
@@ -812,18 +809,20 @@ class TestDeterminism:
         """
         목적: 요약이 실제 산출물과 어긋나지 않는지 고정한다
 
+        **키는 파일 이름이다.** 별칭으로 키잉하면 읽는 쪽이 그 문자열을 파일 이름으로
+        되짚게 되고, 파일이 사라진 뒤에도 키만 남는다 (`src/verify_lab/CLAUDE.md` 실행 요약 계약).
+
         Given: 실행 결과
         When: 요약의 행 수와 실제 표의 행 수를 비교했을 때
-        Then: 네 표 모두 같다
+        Then: 선언한 파일마다 행 수가 같고, 키가 전부 파일 이름이다
         """
         # Given / When
         row_counts = wide_outputs.summary[KEY_ROW_COUNTS]
 
         # Then
-        assert row_counts[KEY_SIGNALS] == len(wide_outputs.signals)
-        assert row_counts[KEY_STATISTICS] == len(wide_outputs.statistics)
-        assert row_counts[KEY_EXCESS] == len(wide_outputs.excess)
-        assert row_counts[KEY_TEST_TABLE] == len(wide_outputs.test)
+        assert set(row_counts) == set(OUTPUT_FILES.values())
+        for field, filename in OUTPUT_FILES.items():
+            assert row_counts[filename] == len(getattr(wide_outputs, field)), f"{filename} 의 행 수가 어긋납니다"
 
 
 class TestMultipleDatasets:

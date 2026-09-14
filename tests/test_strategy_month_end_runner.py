@@ -44,7 +44,6 @@ from verify_lab.strategy.constants import (
     DISPLAY_STOP_LEVEL,
     EXIT_GAP_STOP,
     EXIT_LIMIT,
-    MONTH_END_STOP_LEVELS,
     NO_STOP_LABEL,
     PERIOD_ALL,
     PERIODS,
@@ -54,6 +53,7 @@ from verify_lab.strategy.month_end_runner import (
     DISPLAY_MONTH,
     KEY_EXCLUDED_COUNT,
     KEY_TARGETS,
+    MONTH_END_STOP_LEVELS,
     TradingOutputs,
     run_month_end_trading,
 )
@@ -623,7 +623,8 @@ class TestDatasetLabel:
         Then: 요약의 데이터셋 항목에 코드와 종목명이 모두 있다
         """
         # Given
-        from verify_lab.strategy.run_summary import KEY_DATASET_LABEL, KEY_DATASET_TICKER, KEY_DATASETS
+        from verify_lab.report.run_summary import KEY_DATASET_LABEL, KEY_DATASET_TICKER
+        from verify_lab.strategy.run_summary import KEY_DATASETS
 
         # When
         entries = outputs.summary[KEY_DATASETS]

@@ -21,9 +21,8 @@ from verify_lab.strategy.constants import (
     EXIT_INTRADAY_STOP,
     EXIT_LIMIT,
     EXIT_PROFIT,
-    HOLD_LIMIT,
-    STOP_LOSS_LEVEL,
 )
+from verify_lab.strategy.reverse_constants import HOLD_LIMIT, STOP_LOSS_LEVEL
 from verify_lab.strategy.trade_fill import simulate_signal
 
 # 손계산을 쉽게 하려고 진입가를 100 으로 둔다
@@ -72,7 +71,7 @@ class TestStopLoss:
         frame = _frame([_signal_day(), (99.5, 100.0, 93.0, 94.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -92,7 +91,7 @@ class TestStopLoss:
         frame = _frame([_signal_day(), (99.5, 100.0, stop_price, 99.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -132,7 +131,7 @@ class TestGapExit:
         frame = _frame([_signal_day(), (92.0, 95.0, 90.0, 94.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -156,7 +155,7 @@ class TestHoldLimit:
         frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -176,7 +175,7 @@ class TestHoldLimit:
         frame = _frame([_signal_day(), (99.5, 100.0, 98.0, 99.0), (99.0, 99.5, 97.5, 98.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -209,7 +208,7 @@ class TestHoldLimit:
 
         # When / Then
         with pytest.raises(ValueError, match="보유 한도"):
-            simulate_signal(frame, 0, upward=False, hold_limit=0)
+            simulate_signal(frame, 0, upward=False, hold_limit=0, stop_level=STOP_LOSS_LEVEL)
 
 
 class TestStopBase:
@@ -230,7 +229,7 @@ class TestStopBase:
         frame = _frame([_signal_day(), (99.5, 100.0, 96.5, 97.0), (97.0, 97.5, 94.0, 94.5)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -256,7 +255,7 @@ class TestDirection:
         frame = _frame([_signal_day(), (100.5, 107.0, 100.0, 101.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=True, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=True, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -275,7 +274,7 @@ class TestDirection:
         frame = _frame([_signal_day(), (99.0, 99.5, 96.5, 97.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=True, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=True, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -300,7 +299,7 @@ class TestBoundary:
         frame = _frame([_signal_day(), (99.5, 100.0, 98.0, 99.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is None
@@ -317,7 +316,7 @@ class TestBoundary:
         frame = _frame([_signal_day(), (99.5, 100.5, 98.0, ENTRY_PRICE)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -337,7 +336,7 @@ class TestBoundary:
 
         # When / Then
         with pytest.raises(ValueError, match="진입 위치"):
-            simulate_signal(frame, 5, upward=False, hold_limit=1)
+            simulate_signal(frame, 5, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
     def test_시세에_필수_컬럼이_없으면_거부한다(self) -> None:
         """
@@ -352,7 +351,7 @@ class TestBoundary:
 
         # When / Then
         with pytest.raises(ValueError, match="필수 컬럼"):
-            simulate_signal(frame, 0, upward=False, hold_limit=1)
+            simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
 
 class TestJudgementOrder:
@@ -373,7 +372,7 @@ class TestJudgementOrder:
         frame = _frame([_signal_day(), (92.0, 93.0, 88.0, 90.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -395,7 +394,7 @@ class TestJudgementOrder:
         frame = _frame([_signal_day(), (99.5, 101.5, 93.0, 101.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -424,7 +423,7 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -443,7 +442,7 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -463,7 +462,7 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (99.5, 100.0, 93.0, 94.0), (94.0, 96.0, 93.5, 95.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None
@@ -482,7 +481,7 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (92.0, 95.0, 90.0, 94.0), (94.0, 96.0, 93.0, 95.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LOSS_LEVEL)
 
         # Then
         assert result is not None

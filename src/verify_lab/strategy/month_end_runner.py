@@ -27,7 +27,7 @@
 """
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 import pandas as pd
 
@@ -36,6 +36,7 @@ from verify_lab.data.loader import load_market_csv, load_series_csv
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.report.run_summary import dataset_record
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_ENTRY_DATE,
@@ -47,14 +48,13 @@ from verify_lab.strategy.constants import (
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
-    MONTH_END_STOP_LEVELS,
     NOTE_STOP_BASE,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
     stop_level_value,
 )
 from verify_lab.strategy.periods import period_rows, to_summary_frame
-from verify_lab.strategy.run_summary import build_run_summary, dataset_record
+from verify_lab.strategy.run_summary import build_run_summary
 from verify_lab.strategy.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
@@ -69,6 +69,19 @@ from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 월말 매매의 손절선 격자 (비율, 0.03 = 3%). **하나를 고르지 않고 전부 산출한다.**
+#
+# **이 파일에서만 쓰므로 여기 둔다** (`src/verify_lab/CLAUDE.md` 「상수 관리」 — 1개 파일에서만
+# 사용 → 해당 파일 상단). 전에는 `strategy/constants.py` 에 있었는데, 그 모듈은 세 매매법이
+# 함께 쓰는 자리라 **매매법 이름이 붙은 값이 공유 모듈에 얹혀 있는 상태**였다.
+#
+# **하한이 -3% 인 이유**: 검증 #7 의 손절 격자에서 **-1.0% 가 4칸의 적중률을 60% 아래로
+# 무너뜨렸다.** 그보다 좁은 구간은 이미 쓸모없다고 확인됐다.
+# **간격이 1%p 인 이유**: 이 매매는 월별 칸당 표본이 10~11건이라 0.5%p 해상도를 표본이
+# 지탱하지 못한다. 값 하나를 옮겼을 때 크게 흔들리면 그것은 「좋은 값을 찾았다」가 아니라
+# 「표본이 그 지점을 특정할 만큼 크지 않다」는 신호다 (`.claude/rules/strategy.md`)
+MONTH_END_STOP_LEVELS: Final = (0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10)
 
 # 월 축의 한글 레이블. 이 파일에서만 쓰므로 여기에 둔다
 DISPLAY_MONTH = "월"

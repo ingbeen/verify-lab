@@ -378,6 +378,9 @@ poetry run python scripts/studies/run_option_expiry_study.py --dataset kodex200
 
 # 순열 검정 반복 수를 줄여 빠르게 확인
 poetry run python scripts/studies/run_option_expiry_study.py --repeats 200
+
+# 무작위 뽑기 대조의 시드를 바꿔 재현성을 확인
+poetry run python scripts/studies/run_option_expiry_study.py --repeats 5000 --seed 42
 ```
 
 - **산출물은 9개 CSV 이고, 가장 먼저 볼 것은 `candidates.csv`** 입니다 — 전 칸의 1차 판정과

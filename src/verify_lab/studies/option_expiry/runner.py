@@ -53,6 +53,7 @@ from verify_lab.measure.statistics import (
     permutation_test,
     summarize,
 )
+from verify_lab.report.run_summary import dataset_record
 from verify_lab.studies.option_expiry.constants import (
     BASELINE_SUFFIX,
     COL_ADVANCED_DAYS,
@@ -71,6 +72,7 @@ from verify_lab.studies.option_expiry.constants import (
     DATASETS,
     HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
+    OUTPUT_FILES,
     WEEKDAY_LABELS,
     Dataset,
 )
@@ -94,14 +96,8 @@ KEY_PERMUTATION_SEED = "permutation_seed"
 KEY_DATASETS = "datasets"
 KEY_ROW_COUNTS = "row_counts"
 
-# **`ticker` 는 종목코드이고 `label` 은 표시 이름이다.** 여섯 산출 지점(검증 셋·매매 셋)이
-# 같은 뜻을 쓴다 — 전에는 이 모듈의 `ticker` 에 표시 이름이 들어가 `069500` 이 산출물
-# 어디에도 남지 않았다. **미국 ETF 는 둘이 같아(`QQQ`) 한 번도 드러나지 않았다**
-KEY_TICKER = "ticker"
-KEY_LABEL = "label"
-KEY_FILE = "file"
-KEY_ROWS = "rows"
-KEY_PERIOD = "period"
+# 데이터셋 한 줄의 공통 다섯 키는 **`report/run_summary.py` 가 소유한다.** 여기서 다시
+# 정의하지 않는다 — 이름을 한 벌 더 두면 옛 경로가 살아남아 소유자를 옮겨도 검사가 통과한다
 KEY_EXPIRY_COUNT = "expiry_count"
 KEY_ADVANCED_COUNT = "advanced_count"
 KEY_INSIDE_WINDOW_DAYS = "inside_window_days"
@@ -275,13 +271,10 @@ def _run_dataset(
 
     expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
     return {
-        KEY_TICKER: dataset.ticker,
-        KEY_LABEL: dataset.label,
-        KEY_FILE: dataset.file_name,
-        # 공통 다섯 키는 **매매 계층과 같은 순서**로 낸다. JSON 은 넣은 순서를 보존하므로
-        # 순서가 갈리면 같은 구간의 두 요약을 diff 할 때 자리만 바뀐 줄이 섞인다
-        KEY_PERIOD: f"{df[COL_DATE].iloc[0].date()} ~ {df[COL_DATE].iloc[-1].date()}",
-        KEY_ROWS: len(df),
+        # 공통 다섯 키는 **한 함수가 만든다.** 순서까지 그 함수가 정하므로 갈릴 수 없다 —
+        # JSON 은 넣은 순서를 보존해서, 순서가 갈리면 같은 구간의 두 요약을 diff 할 때
+        # 자리만 바뀐 줄이 섞인다
+        **dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.file_name, frame=df),
         KEY_EXPIRY_COUNT: len(expiries),
         KEY_ADVANCED_COUNT: int((expiries[COL_ADVANCED_DAYS] > 0).sum()),
         KEY_INSIDE_WINDOW_DAYS: int(inside_window.sum()),
@@ -736,7 +729,9 @@ def run_study(
 
     # **요약을 먼저 완성한 뒤 산출물을 만든다.** 만들고 나서 그 안의 dict 를 고치면
     # 동작은 하지만 `frozen` 이 막으려던 것을 우회하게 된다
-    summary[KEY_ROW_COUNTS] = {name: len(table) for name, table in tables.items()}
+    # **키는 파일 이름이다.** `tables` 의 키는 `StudyOutputs` 의 «필드 이름»이라
+    # 그대로 쓰면 요약이 별칭으로 키잉된다. `OUTPUT_FILES` 가 둘을 잇는다
+    summary[KEY_ROW_COUNTS] = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
 
     return StudyOutputs(**tables, summary=summary)
 

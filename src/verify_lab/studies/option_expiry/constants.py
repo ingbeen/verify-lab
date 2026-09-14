@@ -66,6 +66,7 @@ from verify_lab.measure.statistics import (
     COL_WIN_RATE_EXCESS,
 )
 from verify_lab.report.constants import (
+    CANDIDATES_FILENAME,
     DISPLAY_BASELINE_GAP,
     DISPLAY_BASELINE_HIT_RATE,
     DISPLAY_BASELINE_SAMPLE,
@@ -113,6 +114,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
     DISPLAY_UP_RATE_PERCENTILE,
+    SIGNALS_FILENAME,
 )
 
 
@@ -519,3 +521,24 @@ PROBABILITY_OUTPUT_COLUMNS: Final = (
     COL_UP_RATE_P_VALUE,
     COL_DOWN_RATE_P_VALUE,
 )
+
+
+# ============================================================
+# 산출물 파일
+# ============================================================
+
+# **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
+# runner 가 `row_counts` 를 이것으로 키잉하고 CLI 가 이것을 돌며 저장한다 —
+# 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
+OUTPUT_FILES: Final[dict[str, str]] = {
+    "expiries": "expiries.csv",
+    # 공통 컬럼의 파일 이름은 `report/constants.py` 가 소유한다 — 역방향도 같은 상수를 쓴다
+    "signals": SIGNALS_FILENAME,
+    "trade_signals": "weekly_trade_signals.csv",
+    "trade_summary": "weekly_trade_summary.csv",
+    "trade_excess": "weekly_trade_excess.csv",
+    "trade_test": "weekly_trade_permutation.csv",
+    "trade_by_month": "weekly_trade_by_month.csv",
+    "trade_by_month_halves": "weekly_trade_by_month_halves.csv",
+    "candidates": CANDIDATES_FILENAME,
+}

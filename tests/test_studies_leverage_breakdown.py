@@ -16,16 +16,16 @@ from verify_lab.studies.leverage_tracking.constants import (
     BASE_RETURN_BUCKETS,
     COL_BASE_RETURN,
     COL_BASE_RETURN_BUCKET,
-    COL_DIRECTION,
     COL_NON_OVERLAPPING_COUNT,
     COL_PERIOD,
     COL_SAMPLE_COUNT,
     COL_START_POSITION,
-    DIRECTION_DOWN,
-    DIRECTION_FLAT,
-    DIRECTION_UP,
+    COL_TREND,
     PERIOD_HIGH_RATE,
     PERIOD_LOW_RATE,
+    TREND_DOWN,
+    TREND_FLAT,
+    TREND_UP,
 )
 from verify_lab.studies.leverage_tracking.divergence import compute_divergence
 from verify_lab.studies.leverage_tracking.pairing import align_pair
@@ -134,8 +134,8 @@ class TestAttachAxes:
         prepared = _prepared([100.0, 110.0, 110.0, 99.0], [50.0, 55.0, 55.0, 49.0], horizons=(1,))
 
         # Then
-        directions = prepared[prepared[COL_DIRECTION].notna()][COL_DIRECTION].tolist()
-        assert directions == [DIRECTION_UP, DIRECTION_FLAT, DIRECTION_DOWN]
+        directions = prepared[prepared[COL_TREND].notna()][COL_TREND].tolist()
+        assert directions == [TREND_UP, TREND_FLAT, TREND_DOWN]
 
     def test_시기는_시작일의_금리_국면으로_나눈다(self) -> None:
         """
@@ -289,8 +289,8 @@ class TestBaseReturnBuckets:
         prepared = _prepared([100.0, 110.0, 110.0, 99.0], [50.0, 55.0, 55.0, 49.0], horizons=(1,))
 
         # Then
-        directions = prepared[prepared[COL_DIRECTION].notna()][COL_DIRECTION].tolist()
-        assert directions == [DIRECTION_UP, DIRECTION_FLAT, DIRECTION_DOWN]
+        directions = prepared[prepared[COL_TREND].notna()][COL_TREND].tolist()
+        assert directions == [TREND_UP, TREND_FLAT, TREND_DOWN]
         assert sorted(prepared[COL_START_POSITION].unique().tolist()) == [0, 1, 2, 3]
 
 
@@ -395,8 +395,8 @@ class TestSummarize:
         )
 
         # When
-        summary = summarize_by_axis(prepared, COL_DIRECTION)
+        summary = summarize_by_axis(prepared, COL_TREND)
 
         # Then
-        assert set(summary.columns) >= {COL_HORIZON, COL_DIRECTION, COL_SAMPLE_COUNT}
-        assert set(summary[COL_DIRECTION].dropna()) == {DIRECTION_UP, DIRECTION_DOWN}
+        assert set(summary.columns) >= {COL_HORIZON, COL_TREND, COL_SAMPLE_COUNT}
+        assert set(summary[COL_TREND].dropna()) == {TREND_UP, TREND_DOWN}

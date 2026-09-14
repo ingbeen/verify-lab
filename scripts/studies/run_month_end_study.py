@@ -17,7 +17,7 @@ from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_CO
 from verify_lab.report.constants import DISPLAY_SCREEN
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
-from verify_lab.studies.month_end.constants import DATASETS, TRACK_NAME
+from verify_lab.studies.month_end.constants import DATASETS, OUTPUT_FILES, TRACK_NAME
 from verify_lab.studies.month_end.runner import (
     base_cell_headline,
     candidates_headline,
@@ -129,8 +129,11 @@ def main() -> int:
     tables = display_tables(outputs)
 
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
-    for name, table in tables.items():
-        save_table(directory, f"{name}.csv", table)
+    # **저장할 파일 목록의 SoT 는 `OUTPUT_FILES` 하나다.** 여기 나열하면 요약의 행 수와
+    # 실제 파일이 갈릴 수 있고, 파일 이름을 CLI 가 소유하면 흩어진 문자열이 반드시 갈라진다
+    # (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」)
+    for field, table in tables.items():
+        save_table(directory, OUTPUT_FILES[field], table)
     save_run_summary(directory, outputs.summary)
 
     # 화면은 **저장한 표시용 프레임에서 발췌**한다 — 따로 가공하면 반올림 시점이 갈려

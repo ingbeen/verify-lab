@@ -1,7 +1,7 @@
 {
   "pythonVersion": "3.12",
   "typeCheckingMode": "strict",
-  "include": ["src", "tests", "scripts"],
+  "include": ["src", "tests", "scripts", "validate_project.py"],
   "exclude": ["storage", "reference", "**/__pycache__", "**/.ruff_cache", "**/node_modules", "**/.*"],
   "extraPaths": ["src"],
   "reportMissingTypeStubs": "none",

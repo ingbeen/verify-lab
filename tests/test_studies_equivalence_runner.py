@@ -36,6 +36,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     MODEL_LABELS,
     OUTLIER_LABEL_EXCLUDED,
     OUTLIER_LABEL_INCLUDED,
+    OUTPUT_FILES,
     EtfTarget,
     SpotSource,
     TheoreticalModel,
@@ -232,16 +233,17 @@ def test_row_counts_match_actual_tables(synthetic_inputs: tuple[SpotSource, ...]
 
     Given: 합성 입력
     When: 검증을 실행한다
-    Then: 다섯 표의 행 수가 요약과 같다
+    **키는 파일 이름이다.** 전에는 별칭이라 CLI 가 파일명 상수와 그 별칭을 손으로 짝지었고,
+    한쪽만 고치면 화면의 표가 엉뚱한 숫자를 보여주는데 예외는 나지 않았다.
+
+    Then: 선언한 파일마다 행 수가 같고, 키가 전부 파일 이름이다
     """
     outputs = run_equivalence(sources=synthetic_inputs)
-    counts = outputs.meta["row_counts"]
+    counts = outputs.summary["row_counts"]
 
-    assert counts["equivalence"] == len(outputs.equivalence)
-    assert counts["annual_drift"] == len(outputs.annual_drift)
-    assert counts["leverage"] == len(outputs.leverage)
-    assert counts["premium"] == len(outputs.premium)
-    assert counts["daily"] == len(outputs.daily)
+    assert set(counts) == set(OUTPUT_FILES.values())
+    for field, filename in OUTPUT_FILES.items():
+        assert counts[filename] == len(getattr(outputs, field)), f"{filename} 의 행 수가 어긋납니다"
 
 
 def test_inputs_hold_file_names_not_absolute_paths(
@@ -261,9 +263,9 @@ def test_inputs_hold_file_names_not_absolute_paths(
     """
     outputs = run_equivalence(sources=synthetic_inputs)
 
-    assert_no_absolute_paths(outputs.meta, "원달러 ETF 등가성")
-    assert outputs.meta["inputs"]["krw_rate"] == "synthetic_krw.csv"
-    assert outputs.meta["inputs"]["spot"]["close"] == "close.csv"
+    assert_no_absolute_paths(outputs.summary, "원달러 ETF 등가성")
+    assert outputs.summary["inputs"]["krw_rate"] == "synthetic_krw.csv"
+    assert outputs.summary["inputs"]["spot"]["close"] == "close.csv"
 
 
 def test_premium_covers_both_targets(synthetic_inputs: tuple[SpotSource, ...]) -> None:

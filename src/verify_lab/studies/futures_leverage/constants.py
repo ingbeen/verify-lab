@@ -275,6 +275,10 @@ WIPEOUTS_FILENAME: Final = "wipeouts.csv"
 LEVERAGE_DRIFT_FILENAME: Final = "leverage_drift.csv"
 INTEGER_CONTRACTS_FILENAME: Final = "integer_contracts.csv"
 
+# 짝마다 따로 내는 시작일 원자료. **틀을 CLI 가 아니라 여기서 갖는다** —
+# 확장자를 포함한 이름의 소유자가 그 검증이어야 `row_counts` 의 키와 실제 파일이 갈리지 않는다
+WINDOWS_FILENAME_TEMPLATE: Final = "windows_{pair}.csv"
+
 # 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
 TRACK_NAME: Final = "futures_leverage"
 
@@ -289,7 +293,14 @@ COL_TARGET_TICKER: Final = "TargetTicker"
 COL_MULTIPLE: Final = "Multiple"
 COL_METHOD: Final = "Method"
 COL_ROLL_RULE: Final = "RollRule"
+# 「이자를 붙였는가」를 나누는 **축**이다. 값은 `이자 없음`/`이자 있음` 문자열이다
 COL_INTEREST: Final = "Interest"
+
+# 그날의 **일별 이자율(실수)**. 자기자본 곡선의 컬럼이며 위 축과 다른 것이다.
+# [중요] **한 이름으로 겸하지 않는다.** 전에는 둘 다 `COL_INTEREST` 였고 `OUTPUT_LABELS` 가
+# 그것을 `이자 가정` 으로 이름 붙여, 곡선을 저장하는 순간 실수 컬럼이 축의 레이블을 받는다.
+# 지금은 곡선이 CSV 로 나가지 않아 드러나지 않을 뿐이며, 예외도 나지 않는다
+COL_INTEREST_RATE: Final = "InterestRate"
 COL_PERIOD: Final = "Period"
 
 # 구간 집계
@@ -465,3 +476,21 @@ PERCENT_OUTPUT_COLUMNS: Final = (
     METHOD_FUTURES_MONTHLY,
     METHOD_FUTURES_HOLD,
 )
+
+
+# ============================================================
+# 산출물 파일
+# ============================================================
+
+# **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
+# runner 가 `row_counts` 를 이것으로 키잉하고 CLI 가 이것을 돌며 저장한다 —
+# 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
+OUTPUT_FILES: Final[dict[str, str]] = {
+    "comparison": COMPARISON_FILENAME,
+    "decomposition": DECOMPOSITION_FILENAME,
+    "roll_events": ROLL_EVENTS_FILENAME,
+    "breakeven": BREAKEVEN_FILENAME,
+    "wipeouts": WIPEOUTS_FILENAME,
+    "leverage_drift": LEVERAGE_DRIFT_FILENAME,
+    "integer_contracts": INTEGER_CONTRACTS_FILENAME,
+}

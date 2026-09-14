@@ -31,6 +31,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     DISPLAY_TER_GAP,
     DISPLAY_TICKER,
     DISPLAY_TRACKING_ERROR,
+    OUTPUT_FILES,
     TRACK_NAME,
     TheoreticalModel,
 )
@@ -44,14 +45,6 @@ logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_EQUIVALENCE = "usdkrw_equivalence_study"
-
-# 산출물 파일 이름
-EQUIVALENCE_FILENAME = "equivalence.csv"
-ANNUAL_DRIFT_FILENAME = "annual_drift.csv"
-LEVERAGE_FILENAME = "leverage.csv"
-PREMIUM_FILENAME = "premium.csv"
-EFFECTIVE_COST_FILENAME = "effective_cost.csv"
-DAILY_FILENAME = "daily.csv"
 
 # 회귀 표의 컬럼 정의 (컬럼명, 폭, 정렬)
 EQUIVALENCE_COLUMNS = [
@@ -194,24 +187,19 @@ def main() -> int:
     _print_effective_cost(outputs)
 
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
-    save_table(directory, EQUIVALENCE_FILENAME, outputs.equivalence)
-    save_table(directory, ANNUAL_DRIFT_FILENAME, outputs.annual_drift)
-    save_table(directory, LEVERAGE_FILENAME, outputs.leverage)
-    save_table(directory, PREMIUM_FILENAME, outputs.premium)
-    save_table(directory, EFFECTIVE_COST_FILENAME, outputs.effective_cost)
-    save_table(directory, DAILY_FILENAME, outputs.daily)
-    save_run_summary(directory, outputs.meta)
+    # **저장할 파일 목록의 SoT 는 `OUTPUT_FILES` 하나다.** 여기 나열하면 요약의 행 수와
+    # 실제 파일이 갈릴 수 있고, 파일 이름을 CLI 가 소유하면 흩어진 문자열이 반드시 갈라진다
+    # (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」)
+    for field, filename in OUTPUT_FILES.items():
+        save_table(directory, filename, getattr(outputs, field))
+    save_run_summary(directory, outputs.summary)
 
-    counts = outputs.meta["row_counts"]
+    # **행 수의 키가 곧 파일 이름이라 그대로 찍는다.** 전에는 파일명 상수와 별칭 키를
+    # `[EQUIVALENCE_FILENAME, counts['equivalence']]` 처럼 손으로 짝지어, 한쪽만 고치면
+    # 표가 엉뚱한 숫자를 보여주는데 예외는 나지 않았다
+    counts = outputs.summary["row_counts"]
     TableLogger(OUTPUT_COLUMNS, logger).print_table(
-        [
-            [EQUIVALENCE_FILENAME, f"{counts['equivalence']:,}"],
-            [ANNUAL_DRIFT_FILENAME, f"{counts['annual_drift']:,}"],
-            [LEVERAGE_FILENAME, f"{counts['leverage']:,}"],
-            [PREMIUM_FILENAME, f"{counts['premium']:,}"],
-            [EFFECTIVE_COST_FILENAME, f"{counts['effective_cost']:,}"],
-            [DAILY_FILENAME, f"{counts['daily']:,}"],
-        ],
+        [[filename, f"{rows:,}"] for filename, rows in counts.items()],
         title=f"산출물 (저장 폴더: {directory})",
     )
 
@@ -221,7 +209,7 @@ def main() -> int:
             "models": [model.value for model in models],
             "output": str(directory),
             "row_counts": counts,
-            "alignment": outputs.meta["alignment"],
+            "alignment": outputs.summary["alignment"],
         },
     )
 

@@ -18,7 +18,13 @@ import pandas as pd
 
 from verify_lab.common_constants import RATE_TO_PERCENT, RESULT_LAYER_STUDY
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
-from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_WIN_RATE
+from verify_lab.measure.statistics import (
+    COL_MEAN,
+    COL_MEDIAN,
+    COL_WIN_RATE,
+    DEFAULT_RANDOM_SEED,
+    DEFAULT_REPEAT_COUNT,
+)
 from verify_lab.report.constants import (
     CANDIDATES_FILENAME,
     DISPLAY_EXCLUDED,
@@ -38,6 +44,7 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_EXIT_WEEKDAY,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
+    OUTPUT_FILES,
     OUTPUT_LABELS,
     PERCENT_OUTPUT_COLUMNS,
     PROBABILITY_OUTPUT_COLUMNS,
@@ -64,18 +71,6 @@ logger = get_logger(__name__)
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_OPTION_EXPIRY = "option_expiry_study"
 
-# 산출물 파일명. 표 하나에 파일 하나이며 전부 long-form 이다
-FILE_EXPIRIES = "expiries.csv"
-FILE_SIGNALS = "signals.csv"
-
-# 만기일 매수 → 다음주 청산 매매의 산출물. 접두사로 묶어 상대 거래일 표와 섞이지 않게 한다
-FILE_TRADE_SIGNALS = "weekly_trade_signals.csv"
-FILE_TRADE_SUMMARY = "weekly_trade_summary.csv"
-FILE_TRADE_EXCESS = "weekly_trade_excess.csv"
-FILE_TRADE_TEST = "weekly_trade_permutation.csv"
-FILE_TRADE_BY_MONTH = "weekly_trade_by_month.csv"
-FILE_TRADE_BY_MONTH_HALVES = "weekly_trade_by_month_halves.csv"
-
 
 def parse_args() -> argparse.Namespace:
     """명령행 인자를 파싱한다.
@@ -90,11 +85,21 @@ def parse_args() -> argparse.Namespace:
         action="append",
         help="검증할 종목 (여러 번 지정 가능, 기본값: 전부)",
     )
+    # **두 인자의 방식을 나머지 두 검증과 맞춘다.** 전에는 `--repeats` 만 `None` 기본값에
+    # `kwargs` 로 넘기는 형태였고 `--seed` 는 아예 없었다 — runner 는 시드를 받는데
+    # CLI 에서 고칠 수 없어, **시드를 바꾸려면 코드를 고쳐야** 했다
+    # (`src/verify_lab/CLAUDE.md` 「난수는 시드를 인자로 받고 기본값을 상수로 둔다」)
     parser.add_argument(
         "--repeats",
         type=int,
-        default=None,
-        help="순열 검정 반복 수 (기본값: 측정 계층의 확정값)",
+        default=DEFAULT_REPEAT_COUNT,
+        help=f"무작위 뽑기 대조 반복 수 (기본값: {DEFAULT_REPEAT_COUNT})",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_RANDOM_SEED,
+        help=f"무작위 뽑기 대조 시드 (기본값: {DEFAULT_RANDOM_SEED}). 결과 재현에 필요하다",
     )
     return parser.parse_args()
 
@@ -199,19 +204,14 @@ def main() -> int:
     args = parse_args()
     datasets = _selected_datasets(args.dataset)
 
-    kwargs = {} if args.repeats is None else {"repeats": args.repeats}
-    outputs = run_study(datasets, **kwargs)
+    outputs = run_study(datasets, repeats=args.repeats, seed=args.seed)
 
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
-    _save(directory, FILE_EXPIRIES, outputs.expiries)
-    _save(directory, FILE_SIGNALS, outputs.signals)
-    _save(directory, FILE_TRADE_SIGNALS, outputs.trade_signals)
-    _save(directory, FILE_TRADE_SUMMARY, outputs.trade_summary)
-    _save(directory, FILE_TRADE_EXCESS, outputs.trade_excess)
-    _save(directory, FILE_TRADE_TEST, outputs.trade_test)
-    _save(directory, FILE_TRADE_BY_MONTH, outputs.trade_by_month)
-    _save(directory, FILE_TRADE_BY_MONTH_HALVES, outputs.trade_by_month_halves)
-    _save(directory, CANDIDATES_FILENAME, outputs.candidates)
+    # **저장할 파일 목록의 SoT 는 `OUTPUT_FILES` 하나다.** 여기 나열하면 요약의 행 수와
+    # 실제 파일이 갈릴 수 있고, 파일 이름을 CLI 가 소유하면 흩어진 문자열이 반드시 갈라진다
+    # (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」)
+    for field, filename in OUTPUT_FILES.items():
+        _save(directory, filename, getattr(outputs, field))
 
     _display_headline(outputs)
 

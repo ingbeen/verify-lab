@@ -4,6 +4,7 @@
 어떤 검증이 자기를 쓰는지 몰라야 하므로 `studies` 를 import 하지 않는다.
 """
 
+from .run_summary import dataset_record, format_period
 from .tables import (
     build_candidates_table,
     build_excess_table,
@@ -22,6 +23,8 @@ __all__ = [
     "build_statistics_table",
     "build_test_table",
     "create_run_directory",
+    "dataset_record",
+    "format_period",
     "print_dataframe",
     "save_run_summary",
     "save_table",

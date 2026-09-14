@@ -148,15 +148,23 @@ COL_REALIZED_MULTIPLE: Final = "RealizedMultiple"
 COL_START_POSITION: Final = "StartPosition"
 
 COL_VOLATILITY_BUCKET: Final = "VolatilityBucket"
-COL_DIRECTION: Final = "Direction"
+# 값까지 가른다. **이름만 바꾸면 충돌이 그대로다** — `measure/screening.py` 의
+# `COL_DIRECTION` 도 `"Direction"` 이라, 이 프레임이 그쪽 헬퍼를 지나면 `오름`/`내림` 이
+# 거는 방향으로 읽히고 **문자열이 나오므로 예외가 나지 않는다**
+COL_TREND: Final = "Trend"
 COL_BASE_RETURN_BUCKET: Final = "BaseReturnBucket"
 COL_PERIOD: Final = "Period"
 
-# 방향 라벨. **보합을 어느 쪽에도 넣지 않는다** — 여집합으로 만들면 비율이 부푼다
-# (`.claude/rules/docs.md` 의 오른 비율·내린 비율 규약과 같은 이유)
-DIRECTION_UP: Final = "오름"
-DIRECTION_DOWN: Final = "내림"
-DIRECTION_FLAT: Final = "보합"
+# **기초지수가 오른 날인가**를 나누는 축이다. **보합을 어느 쪽에도 넣지 않는다** —
+# 여집합으로 만들면 비율이 부푼다 (`.claude/rules/docs.md` 의 오른 비율·내린 비율 규약과 같은 이유).
+#
+# [중요] **`DIRECTION_*` 이라 부르지 않는다.** `measure/screening.py` 가 같은 이름으로
+# **신호를 어느 쪽으로 거는가**(`위`·`아래`, 측정의 원칙 11)를 갖고 있어 **같은 이름에 다른 값**이
+# 두 곳에 있었다 — 잘못된 모듈에서 가져와도 문자열이 나오므로 **조용히 다른 축이 된다.**
+# 통합할 수 없는 다른 개념이라 이름을 갈랐다
+TREND_UP: Final = "오름"
+TREND_DOWN: Final = "내림"
+TREND_FLAT: Final = "보합"
 
 # 변동성 사분위 라벨. 구간 «안»의 1배 일간 변동성으로 나눈다 —
 # 경로 효과는 변동성의 함수이므로 이 축이 없으면 평균이 서로 다른 국면을 뭉갠다
@@ -304,3 +312,18 @@ WINDOWS_FILENAME_TEMPLATE: Final = "windows_{ticker}.csv"
 
 # 실현 배수를 내지 않은 칸의 사유. 괴리 3값은 그대로 있고 실현 배수만 비어 있다
 REASON_BASE_RETURN_TOO_SMALL: Final = "1배 수익률이 너무 작아 실현 배수를 내지 않음"
+
+
+# ============================================================
+# 산출물 파일
+# ============================================================
+
+# **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
+# runner 가 `row_counts` 를 이것으로 키잉하고 CLI 가 이것을 돌며 저장한다 —
+# 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
+OUTPUT_FILES: Final[dict[str, str]] = {
+    "divergence": DIVERGENCE_FILENAME,
+    "breakdown": BREAKDOWN_FILENAME,
+    "distribution": DISTRIBUTION_FILENAME,
+    "full_period": FULL_PERIOD_FILENAME,
+}

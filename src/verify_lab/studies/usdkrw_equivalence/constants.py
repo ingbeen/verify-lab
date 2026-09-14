@@ -313,3 +313,20 @@ RATIO_DECIMALS: Final = 4
 
 # 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
 TRACK_NAME: Final = "usdkrw_equivalence"
+
+
+# ============================================================
+# 산출물 파일
+# ============================================================
+
+# **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
+# runner 가 `row_counts` 를 이것으로 키잉하고 CLI 가 이것을 돌며 저장한다 —
+# 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
+OUTPUT_FILES: Final[dict[str, str]] = {
+    "equivalence": "equivalence.csv",
+    "annual_drift": "annual_drift.csv",
+    "leverage": "leverage.csv",
+    "premium": "premium.csv",
+    "effective_cost": "effective_cost.csv",
+    "daily": "daily.csv",
+}

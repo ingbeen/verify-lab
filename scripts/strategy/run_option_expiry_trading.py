@@ -25,15 +25,8 @@ import pandas as pd
 from verify_lab.common_constants import RATE_TO_PERCENT, RESULT_LAYER_STRATEGY
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
-from verify_lab.strategy.constants import (
-    DISPLAY_STOP_LEVEL,
-    EXPIRY_CELLS,
-    EXPIRY_STOP_LEVEL,
-    EXPIRY_STOP_LEVELS,
-    NO_STOP_LABEL,
-    TRADES_FILENAME,
-    ExpiryCell,
-)
+from verify_lab.strategy.constants import DISPLAY_STOP_LEVEL, NO_STOP_LABEL, TRADES_FILENAME
+from verify_lab.strategy.option_expiry_constants import EXPIRY_CELLS, EXPIRY_STOP_LEVEL, EXPIRY_STOP_LEVELS, ExpiryCell
 from verify_lab.strategy.option_expiry_runner import ExpiryOutputs, run_option_expiry_trading
 from verify_lab.strategy.run_summary import KEY_ROW_COUNTS
 from verify_lab.studies.option_expiry.constants import TRACK_NAME

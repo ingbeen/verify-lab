@@ -20,7 +20,6 @@ from verify_lab.common_constants import RESULT_LAYER_STUDY
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.constants import (
-    CANDIDATES_FILENAME,
     DISPLAY_DOWN_RATE,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
@@ -28,11 +27,13 @@ from verify_lab.report.constants import (
     DISPLAY_SAMPLE_COUNT,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_UP_RATE,
-    EXCESS_FILENAME,
     HORIZON_LABELS,
-    SIGNALS_FILENAME,
-    STATISTICS_FILENAME,
-    TEST_FILENAME,
+)
+from verify_lab.report.run_summary import (
+    KEY_DATASET_FILE,
+    KEY_DATASET_LABEL,
+    KEY_DATASET_PERIOD,
+    KEY_DATASET_ROWS,
 )
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
@@ -47,25 +48,17 @@ from verify_lab.studies.reverse.constants import (
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
     DISPLAY_TICKER,
+    OUTPUT_FILES,
     PERIOD_ALL,
     TRACK_NAME,
     Dataset,
 )
 from verify_lab.studies.reverse.runner import (
-    KEY_CANDIDATES,
-    KEY_DATA_PERIOD,
     KEY_DATASETS,
     KEY_EMPTY_SIGNAL_GROUPS,
-    KEY_EXCESS,
-    KEY_FILE,
-    KEY_LABEL,
     KEY_PRICE_BASIS,
     KEY_ROW_COUNTS,
-    KEY_ROWS,
     KEY_SIGNAL_GROUP_COUNT,
-    KEY_SIGNALS,
-    KEY_STATISTICS,
-    KEY_TEST_TABLE,
     StudyOutputs,
     run_study,
 )
@@ -82,17 +75,6 @@ KEY_META_REVERSE_STUDY = "reverse_study"
 DISPLAY_ROW_COUNT = "행 수"
 DISPLAY_PERIOD_RANGE = "기간"
 DISPLAY_FILE = "파일"
-
-# 저장할 파일과 요약의 행 수 키. 출력 계약이 확정한 CSV 4개에 판정표가 더해져 다섯이다
-OUTPUT_FILES = (
-    (SIGNALS_FILENAME, KEY_SIGNALS),
-    (STATISTICS_FILENAME, KEY_STATISTICS),
-    (EXCESS_FILENAME, KEY_EXCESS),
-    (TEST_FILENAME, KEY_TEST_TABLE),
-    # **화면에는 내지 않는다.** 이 검증의 신호군은 파라미터 스윕이라 후보만 뽑아 찍으면
-    # 「고를 목록」이 된다 (측정의 원칙 1). 값은 CSV 에 전 칸 그대로 남는다
-    (CANDIDATES_FILENAME, KEY_CANDIDATES),
-)
 
 # 터미널에 실을 발췌의 축. 전 조합은 CSV 에 있고, 화면은 기본 설정만 훑는 자리다.
 # 집계는 한 기준으로만 나오므로(runner.AGGREGATED_BASIS) 기준으로 거를 것이 없다
@@ -170,11 +152,11 @@ def _print_datasets(outputs: StudyOutputs) -> None:
     table = pd.DataFrame(
         [
             {
-                DISPLAY_TICKER: record[KEY_LABEL],
+                DISPLAY_TICKER: record[KEY_DATASET_LABEL],
                 DISPLAY_PRICE_BASIS: record[KEY_PRICE_BASIS],
-                DISPLAY_ROW_COUNT: record[KEY_ROWS],
-                DISPLAY_PERIOD_RANGE: record[KEY_DATA_PERIOD],
-                DISPLAY_FILE: record[KEY_FILE],
+                DISPLAY_ROW_COUNT: record[KEY_DATASET_ROWS],
+                DISPLAY_PERIOD_RANGE: record[KEY_DATASET_PERIOD],
+                DISPLAY_FILE: record[KEY_DATASET_FILE],
             }
             for record in outputs.summary[KEY_DATASETS]
         ]
@@ -216,31 +198,13 @@ def _save_outputs(outputs: StudyOutputs, directory: Path) -> None:
         outputs: 실행 산출물
         directory: 결과 폴더
     """
-    for filename, key in OUTPUT_FILES:
-        save_table(directory, filename, _table_of(outputs, key))
+    # **저장할 파일 목록의 SoT 는 `OUTPUT_FILES` 하나다.** 여기 나열하면 요약의 행 수와
+    # 실제 파일이 갈릴 수 있고, 파일 이름을 CLI 가 소유하면 흩어진 문자열이 반드시 갈라진다
+    # (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」)
+    for field, filename in OUTPUT_FILES.items():
+        save_table(directory, filename, getattr(outputs, field))
 
     save_run_summary(directory, outputs.summary)
-
-
-def _table_of(outputs: StudyOutputs, key: str) -> pd.DataFrame:
-    """요약의 행 수 키에 대응하는 표를 꺼낸다.
-
-    Args:
-        outputs: 실행 산출물
-        key: 행 수 키
-
-    Returns:
-        표시용 표
-    """
-    tables = {
-        KEY_SIGNALS: outputs.signals,
-        KEY_STATISTICS: outputs.statistics,
-        KEY_EXCESS: outputs.excess,
-        KEY_TEST_TABLE: outputs.test,
-        KEY_CANDIDATES: outputs.candidates,
-    }
-
-    return tables[key]
 
 
 def _print_outputs(outputs: StudyOutputs, directory: Path) -> None:
@@ -250,10 +214,10 @@ def _print_outputs(outputs: StudyOutputs, directory: Path) -> None:
         outputs: 실행 산출물
         directory: 결과 폴더
     """
+    # **행 수의 키가 곧 파일 이름이라 그대로 찍는다.** 전에는 파일명과 별칭 키를 짝지은
+    # 목록을 CLI 가 따로 들고 있었고, 한쪽만 고치면 표가 엉뚱한 숫자를 보여줬다
     row_counts = outputs.summary[KEY_ROW_COUNTS]
-    table = pd.DataFrame(
-        [{DISPLAY_FILE: filename, DISPLAY_ROW_COUNT: row_counts[key]} for filename, key in OUTPUT_FILES]
-    )
+    table = pd.DataFrame([{DISPLAY_FILE: filename, DISPLAY_ROW_COUNT: rows} for filename, rows in row_counts.items()])
     print_dataframe(table, logger, title=f"산출물 (저장 폴더: {directory})")
 
 
@@ -286,7 +250,9 @@ def main() -> int:
         KEY_META_REVERSE_STUDY,
         {
             "result_dir": str(directory),
-            "datasets": [record[KEY_LABEL] + " " + record[KEY_PRICE_BASIS] for record in outputs.summary[KEY_DATASETS]],
+            "datasets": [
+                record[KEY_DATASET_LABEL] + " " + record[KEY_PRICE_BASIS] for record in outputs.summary[KEY_DATASETS]
+            ],
             "signal_group_count": outputs.summary[KEY_SIGNAL_GROUP_COUNT],
             "empty_signal_group_count": len(outputs.summary[KEY_EMPTY_SIGNAL_GROUPS]),
             "row_counts": outputs.summary[KEY_ROW_COUNTS],

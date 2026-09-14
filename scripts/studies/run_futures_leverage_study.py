@@ -21,18 +21,12 @@ from verify_lab.measure.constants import COL_HORIZON
 from verify_lab.report.tables import print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.futures_leverage.constants import (
-    BREAKEVEN_FILENAME,
-    COL_WIPEOUT_COUNT,
-    COMPARISON_FILENAME,
-    DECOMPOSITION_FILENAME,
-    INTEGER_CONTRACTS_FILENAME,
-    LEVERAGE_DRIFT_FILENAME,
+    OUTPUT_FILES,
     OUTPUT_LABELS,
     PAIRS,
     PERCENT_OUTPUT_COLUMNS,
-    ROLL_EVENTS_FILENAME,
     TRACK_NAME,
-    WIPEOUTS_FILENAME,
+    WINDOWS_FILENAME_TEMPLATE,
 )
 from verify_lab.studies.futures_leverage.runner import StudyOutputs, run_study
 from verify_lab.utils.cli_helpers import cli_exception_handler
@@ -43,9 +37,6 @@ logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_FUTURES_LEVERAGE_STUDY = "futures_leverage_study"
-
-# 시작일 원자료 파일명. 짝마다 하나씩 나온다
-WINDOWS_FILENAME_TEMPLATE = "windows_{pair}.csv"
 
 # 화면에 먼저 띄울 보유 기간 (거래일). 전 격자를 찍으면 화면을 넘긴다
 SCREEN_HORIZON = 252
@@ -111,13 +102,11 @@ def _save_outputs(outputs: StudyOutputs) -> str:
     """
     directory = create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
 
-    save_table(directory, COMPARISON_FILENAME, _display(outputs.comparison))
-    save_table(directory, DECOMPOSITION_FILENAME, _display(outputs.decomposition))
-    save_table(directory, ROLL_EVENTS_FILENAME, _display(outputs.roll_events))
-    save_table(directory, BREAKEVEN_FILENAME, _display(outputs.breakeven))
-    save_table(directory, LEVERAGE_DRIFT_FILENAME, _display(outputs.leverage_drift))
-    save_table(directory, WIPEOUTS_FILENAME, _display(outputs.wipeouts))
-    save_table(directory, INTEGER_CONTRACTS_FILENAME, _display(outputs.integer_contracts))
+    # **저장할 파일 목록의 SoT 는 `OUTPUT_FILES` 하나다.** 여기 나열하면 요약의 행 수와
+    # 실제 파일이 갈릴 수 있다 — 전에는 `full_period` 처럼 저장은 되는데 요약에 안 세어진
+    # 표가 실제로 있었다 (검증 #8)
+    for field, filename in OUTPUT_FILES.items():
+        save_table(directory, filename, _display(getattr(outputs, field)))
 
     for pair_name, windows in outputs.windows_by_pair.items():
         save_table(
@@ -140,21 +129,10 @@ def main() -> int:
     outputs = run_study(index_filter=args.index)
 
     directory = _save_outputs(outputs)
-    summary = {
-        "index_filter": args.index,
-        "pair_count": outputs.pair_count,
-        "skipped_pairs": [{"ticker": ticker, "reason": reason} for ticker, reason in outputs.skipped_pairs],
-        "comparison_rows": len(outputs.comparison),
-        "decomposition_rows": len(outputs.decomposition),
-        "roll_event_rows": len(outputs.roll_events),
-        "breakeven_rows": len(outputs.breakeven),
-        "wipeout_window_total": int(outputs.wipeouts[COL_WIPEOUT_COUNT].sum()),
-        "integer_contract_rows": len(outputs.integer_contracts),
-        "window_files": sorted(outputs.windows_by_pair),
-    }
     # **결과 폴더 안에도 요약을 남긴다.** 실행 이력(`meta.json`)은 최근 N개만 순환 저장하므로
-    # 오래된 실행은 그 폴더만 남고 「무슨 조건으로 돌렸는지」를 잃는다
-    save_run_summary(Path(directory), summary)
+    # 오래된 실행은 그 폴더만 남고 「무슨 조건으로 돌렸는지」를 잃는다.
+    # **조립은 runner 가 한다** (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」)
+    save_run_summary(Path(directory), outputs.summary)
 
     screen = outputs.comparison[outputs.comparison[COL_HORIZON] == SCREEN_HORIZON]
     if not screen.empty:
@@ -177,7 +155,7 @@ def main() -> int:
     for ticker, reason in outputs.skipped_pairs:
         logger.warning(f"건너뛴 짝 - {ticker}: {reason}")
 
-    save_metadata(KEY_META_FUTURES_LEVERAGE_STUDY, {"directory": directory, **summary})
+    save_metadata(KEY_META_FUTURES_LEVERAGE_STUDY, {"directory": directory, **outputs.summary})
 
     return 0
 

@@ -16,6 +16,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -43,12 +44,12 @@ from verify_lab.report.constants import (
     EMPTY_MARK,
     PERCENT_DECIMALS,
 )
+from verify_lab.report.run_summary import format_period
 from verify_lab.studies.leverage_tracking.breakdown import attach_axes, summarize_by_axis, summarize_by_horizon
 from verify_lab.studies.leverage_tracking.constants import (
     COL_ACTUAL,
     COL_BASE_RETURN,
     COL_BASE_RETURN_BUCKET,
-    COL_DIRECTION,
     COL_NAIVE_EXPECTED,
     COL_NON_OVERLAPPING_COUNT,
     COL_PATH_EFFECT,
@@ -58,6 +59,7 @@ from verify_lab.studies.leverage_tracking.constants import (
     COL_REALIZED_MULTIPLE,
     COL_SAMPLE_COUNT,
     COL_TOTAL_DIVERGENCE,
+    COL_TREND,
     COL_VOLATILITY_BUCKET,
     DISPLAY_ACTUAL,
     DISPLAY_AXIS,
@@ -93,12 +95,14 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_VOLATILITY_AXIS,
     HORIZON_LABELS,
     HORIZONS,
+    OUTPUT_FILES,
     PAIRS,
     SUFFIX_COUNT,
     SUFFIX_MEAN,
     SUFFIX_MEDIAN,
     TAIL_DISPLAY_LABELS,
     TAIL_QUANTILES,
+    WINDOWS_FILENAME_TEMPLATE,
     LeveragePair,
     tail_column,
 )
@@ -112,7 +116,7 @@ logger = get_logger(__name__)
 # **방향과 1배 수익률 분위는 둘 다 둔다** — 앞은 부호, 뒤는 크기를 보며 답이 다르다
 AXIS_COLUMNS = (
     (COL_VOLATILITY_BUCKET, DISPLAY_VOLATILITY_AXIS),
-    (COL_DIRECTION, DISPLAY_DIRECTION_AXIS),
+    (COL_TREND, DISPLAY_DIRECTION_AXIS),
     (COL_BASE_RETURN_BUCKET, DISPLAY_BASE_RETURN_AXIS),
     (COL_PERIOD, DISPLAY_PERIOD_AXIS),
 )
@@ -153,6 +157,25 @@ REALIZED_MULTIPLE_DECIMALS = 3
 AXIS_VALUE_UNAVAILABLE = "판정 불가"
 
 
+# ============================================================
+# summary.json 키
+# ============================================================
+
+# **값을 검증 #9 와 맞춘다.** 전에는 이쪽이 `"index"`, 저쪽이 `"index_filter"` 라
+# 같은 것을 다르게 불러 두 요약을 나란히 읽을 수 없었다
+KEY_INDEX_FILTER = "index_filter"
+KEY_PAIR_COUNT = "pair_count"
+KEY_HORIZONS = "horizons"
+KEY_PAIRS = "pairs"
+KEY_ROW_COUNTS = "row_counts"
+
+# 짝 한 줄의 키
+KEY_PAIR_INDEX = "index"
+KEY_PAIR_BASE = "base"
+KEY_PAIR_TARGET = "target"
+KEY_PAIR_MULTIPLE = "multiple"
+
+
 @dataclass(frozen=True)
 class StudyOutputs:
     """실행 산출물.
@@ -164,6 +187,9 @@ class StudyOutputs:
         full_period: 상장 후 전체 구간 1건씩
         windows: 티커별 시작일 원자료
         pair_count: 실제로 잰 쌍 수
+        summary: 실행 요약. **CLI 가 아니라 여기서 만든다** — 전에는 CLI 가 리터럴 키로
+            조립해 `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸렸고,
+            그 탓에 `full_period` 는 저장은 되는데 **행 수가 요약에서 통째로 빠져** 있었다
     """
 
     divergence: pd.DataFrame
@@ -172,6 +198,7 @@ class StudyOutputs:
     full_period: pd.DataFrame
     windows: dict[str, pd.DataFrame]
     pair_count: int
+    summary: dict[str, Any]
 
 
 def _identity(pair: LeveragePair) -> dict[str, str | float]:
@@ -324,7 +351,7 @@ def _distribution_rows(
         if base_share.start_date is None or base_share.end_date is None:
             row[DISPLAY_DISTRIBUTION_PERIOD] = EMPTY_MARK
         else:
-            row[DISPLAY_DISTRIBUTION_PERIOD] = f"{base_share.start_date.date()} ~ {base_share.end_date.date()}"
+            row[DISPLAY_DISTRIBUTION_PERIOD] = format_period(base_share.start_date, base_share.end_date)
         rows.append(row)
 
     return rows
@@ -355,7 +382,7 @@ def _window_block(prepared: pd.DataFrame, pair: LeveragePair) -> pd.DataFrame:
 
     block[DISPLAY_REALIZED_MULTIPLE] = valid[COL_REALIZED_MULTIPLE].round(REALIZED_MULTIPLE_DECIMALS)
     block[DISPLAY_VOLATILITY_AXIS] = valid[COL_VOLATILITY_BUCKET]
-    block[DISPLAY_DIRECTION_AXIS] = valid[COL_DIRECTION]
+    block[DISPLAY_DIRECTION_AXIS] = valid[COL_TREND]
     block[DISPLAY_BASE_RETURN_AXIS] = valid[COL_BASE_RETURN_BUCKET]
     block[DISPLAY_PERIOD_AXIS] = valid[COL_PERIOD]
 
@@ -366,20 +393,32 @@ def run_study(
     pairs: tuple[LeveragePair, ...] = PAIRS,
     horizons: tuple[int, ...] = HORIZONS,
     market_dir: Path = MARKET_DIR,
+    *,
+    index_filter: str | None = None,
 ) -> StudyOutputs:
-    """전 쌍의 괴리를 재고 산출물 표를 만든다.
+    """전 쌍의 괴리를 재고 산출물 표와 실행 요약을 만든다.
 
     Args:
         pairs: 측정 대상 짝 목록
         horizons: 보유 기간 목록 (거래일)
         market_dir: 원시 시세 폴더
+        index_filter: 이 지수만 잰다. `None` 이면 전부.
+            **거르는 것도 여기서 한다** — 요약에만 적고 거르기는 CLI 가 하면
+            `run_study(index_filter="KOSPI200")` 이 22쌍을 다 재고도 요약에는
+            「KOSPI200 만 쟀다」고 적는다. **예외는 나지 않는다.**
+            검증 #9 도 같은 인자로 같은 일을 하므로 두 검증이 갈리지 않는다
 
     Returns:
         산출물 표 묶음
 
     Raises:
-        ValueError: 시세 파일이 없거나, 겹치는 거래일이 없는 경우
+        ValueError: 거를 지수에 해당하는 짝이 없거나, 시세 파일이 없거나,
+            겹치는 거래일이 없는 경우
     """
+    selected = tuple(pair for pair in pairs if index_filter is None or pair.index_name == index_filter)
+    if not selected:
+        raise ValueError(f"실행할 짝이 없습니다 - 지수: {index_filter}")
+
     divergence_blocks: list[pd.DataFrame] = []
     breakdown_blocks: list[pd.DataFrame] = []
     distribution_rows: list[dict[str, object]] = []
@@ -395,7 +434,7 @@ def run_study(
             share_cache[ticker] = measure_distribution_share(ticker, market_dir=market_dir)
         return share_cache[ticker]
 
-    for pair in pairs:
+    for pair in selected:
         base = load_market_csv(market_dir / MARKET_FILE_TEMPLATE.format(ticker=pair.base_ticker))
         target = load_market_csv(market_dir / MARKET_FILE_TEMPLATE.format(ticker=pair.target_ticker))
 
@@ -427,13 +466,40 @@ def run_study(
             f"쌍 완료: {pair.base_ticker} → {pair.target_ticker} ({pair.multiple}배), 공통 {len(alignment.frame):,}일"
         )
 
+    tables = {
+        "divergence": pd.concat(divergence_blocks, ignore_index=True),
+        "breakdown": pd.concat(breakdown_blocks, ignore_index=True),
+        "distribution": pd.DataFrame(distribution_rows),
+        "full_period": pd.DataFrame(full_period_rows),
+    }
+
+    # **행 수의 키는 파일 이름이다** (`src/verify_lab/CLAUDE.md` 실행 요약 계약).
+    # 짝마다 따로 내는 원자료는 **파일별로** 센다 — 전에는 전부 더해 `window_rows` 한 칸이라
+    # 어느 짝이 몇 행인지 산출물만 보고는 알 수 없었다
+    row_counts = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
+    row_counts.update(
+        {WINDOWS_FILENAME_TEMPLATE.format(ticker=ticker): len(window) for ticker, window in windows.items()}
+    )
+
     return StudyOutputs(
-        divergence=pd.concat(divergence_blocks, ignore_index=True),
-        breakdown=pd.concat(breakdown_blocks, ignore_index=True),
-        distribution=pd.DataFrame(distribution_rows),
-        full_period=pd.DataFrame(full_period_rows),
+        **tables,
         windows=windows,
-        pair_count=len(pairs),
+        pair_count=len(selected),
+        summary={
+            KEY_INDEX_FILTER: index_filter,
+            KEY_PAIR_COUNT: len(selected),
+            KEY_HORIZONS: list(horizons),
+            KEY_PAIRS: [
+                {
+                    KEY_PAIR_INDEX: pair.index_name,
+                    KEY_PAIR_BASE: pair.base_ticker,
+                    KEY_PAIR_TARGET: pair.target_ticker,
+                    KEY_PAIR_MULTIPLE: pair.multiple,
+                }
+                for pair in selected
+            ],
+            KEY_ROW_COUNTS: row_counts,
+        },
     )
 
 

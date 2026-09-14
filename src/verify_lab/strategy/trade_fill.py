@@ -39,7 +39,6 @@ from verify_lab.strategy.constants import (
     EXIT_INTRADAY_STOP,
     EXIT_LIMIT,
     EXIT_PROFIT,
-    STOP_LOSS_LEVEL,
 )
 
 # 계산에 필요한 시세 컬럼. 장중 판정에 고가·저가가 모두 필요하다 — 방향에 따라 어느 쪽이
@@ -105,7 +104,7 @@ def simulate_signal(
     *,
     upward: bool,
     hold_limit: int,
-    stop_level: float = STOP_LOSS_LEVEL,
+    stop_level: float,
     take_profit: bool = True,
 ) -> TradeResult | None:
     """신호일 하나에 매매 규칙을 적용해 체결 결과를 낸다.
@@ -131,7 +130,12 @@ def simulate_signal(
         entry_position: 신호일의 위치 인덱스. 진입가는 이 날의 종가다
         upward: 상승 방향 신호(폭등)인지 여부. 참이면 인버스로 진입하므로 부호가 뒤집힌다
         hold_limit: 보유 한도 (거래일, 1 이상)
-        stop_level: 손절선 (비율, 0.05 = 5%)
+        stop_level: 손절선 (비율, 0.05 = 5%).
+            **기본값을 두지 않는다** — 이 모듈은 매매법 이름을 갖지 않는 공유 체결식인데
+            기본값이 있으면 그것이 **한 매매법의 파라미터**가 된다. 실제로 역방향의 −5% 가
+            기본값이었고, 인자를 빠뜨린 호출은 **예외 없이 남의 손절선으로 체결**된다.
+            `measure.screening.screen_candidates` 의 `tradable` 과
+            `constants.stop_level_value` 의 `measurable` 이 같은 이유로 기본값을 두지 않는다
         take_profit: 종가가 진입가 위면 그날 청산할지 여부. 거짓이면 손절이 걸리지 않는 한
             **한도일까지 보유한다**
 

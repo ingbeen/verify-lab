@@ -35,15 +35,11 @@ from verify_lab.strategy.constants import (
     DISPLAY_RETURN,
     DISPLAY_START_YEAR,
     DISPLAY_TOTAL,
-    HOLD_LIMIT,
     PERIOD_ALL,
     PERIODS,
-    START_YEAR,
-    STOP_LOSS_LEVEL,
-    TARGETS,
-    Target,
     stop_level_value,
 )
+from verify_lab.strategy.reverse_constants import HOLD_LIMIT, START_YEAR, STOP_LOSS_LEVEL, TARGETS, Target
 from verify_lab.strategy.reverse_runner import (
     IDENTITY_COLUMNS,
     KEY_EXCLUDED_COUNT,

@@ -55,7 +55,7 @@ import pandas as pd
 
 from verify_lab.common_constants import CALENDAR_DAYS_PER_YEAR, COL_DATE, RATE_TO_PERCENT
 from verify_lab.studies.futures_leverage.constants import (
-    COL_INTEREST,
+    COL_INTEREST_RATE,
     COL_PRICE,
     INITIAL_EQUITY,
     REBALANCE_DAILY,
@@ -84,7 +84,9 @@ class PositionResult:
     """한 포지션을 끝까지 굴린 결과.
 
     Attributes:
-        curve: 일별 자기자본 곡선. 원자료로 그대로 저장한다
+        curve: 일별 자기자본 곡선. **산출물로 나가지 않고 계산 중간값이다** —
+            소진 판정과 최대 유효 레버리지를 여기서 뽑는다. 저장하려면 컬럼마다
+            `OUTPUT_LABELS` 항목을 먼저 만들어야 한다 (「내부/출력 분리」)
         multiple: 목표 배수
         rebalance_rule: 리밸런싱 규칙
         with_interest: 여유현금 이자를 붙였는지
@@ -280,7 +282,7 @@ def run_position(
                     COL_EXPOSURE: 0.0,
                     COL_CONTRACT_COUNT: 0.0,
                     COL_EFFECTIVE_LEVERAGE: float("nan"),
-                    COL_INTEREST: float(rates[position]),
+                    COL_INTEREST_RATE: float(rates[position]),
                     COL_REBALANCED: False,
                 }
             )
@@ -304,7 +306,7 @@ def run_position(
                 COL_EXPOSURE: exposure,
                 COL_CONTRACT_COUNT: contracts,
                 COL_EFFECTIVE_LEVERAGE: exposure / equity,
-                COL_INTEREST: float(rates[position]),
+                COL_INTEREST_RATE: float(rates[position]),
                 COL_REBALANCED: rebalanced,
             }
         )

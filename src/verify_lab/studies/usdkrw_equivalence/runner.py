@@ -89,6 +89,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     OUTLIER_DATES,
     OUTLIER_LABEL_EXCLUDED,
     OUTLIER_LABEL_INCLUDED,
+    OUTPUT_FILES,
     PASS_MARK,
     RATIO_DECIMALS,
     SPOT_CLOSE,
@@ -136,7 +137,7 @@ class EquivalenceOutputs:
         premium: 종목별·연도별 NAV 프리미엄 (사양서 §16.4)
         effective_cost: 종목별 실효 총비용과 공시 총보수 대조
         daily: 날짜별 원자료. 사용자가 손으로 검산하는 대상이다
-        meta: 실행 파라미터와 핵심 수치
+        summary: 실행 파라미터와 핵심 수치
     """
 
     equivalence: pd.DataFrame
@@ -145,7 +146,7 @@ class EquivalenceOutputs:
     premium: pd.DataFrame
     effective_cost: pd.DataFrame
     daily: pd.DataFrame
-    meta: dict[str, Any]
+    summary: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -230,7 +231,16 @@ def run_equivalence(
     effective_cost = pd.DataFrame(cost_rows)
     daily = pd.concat(daily_blocks, ignore_index=True)
 
-    meta = {
+    tables = {
+        "equivalence": equivalence,
+        "annual_drift": drift,
+        "leverage": leverage,
+        "premium": premium,
+        "effective_cost": effective_cost,
+        "daily": daily,
+    }
+
+    summary = {
         KEY_STUDY: "usdkrw_equivalence",
         # **경로가 아니라 파일 이름을 담는다.** 절대경로는 PC 마다 달라 산출물이 갈리는데,
         # 이 저장소는 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다.
@@ -252,28 +262,16 @@ def run_equivalence(
             "leverage_alpha_range": [LEVERAGE_ALPHA_MIN, LEVERAGE_ALPHA_MAX],
             "leverage_r_squared_min": LEVERAGE_R_SQUARED_MIN,
         },
-        KEY_ROW_COUNTS: {
-            "equivalence": len(equivalence),
-            "annual_drift": len(drift),
-            "leverage": len(leverage),
-            "premium": len(premium),
-            "effective_cost": len(effective_cost),
-            "daily": len(daily),
-        },
+        # **행 수의 키는 파일 이름이고, 목록은 `OUTPUT_FILES` 를 돈다.** 손으로 나열하면
+        # 표가 늘 때 조용히 빠진다 — 실제로 검증 #8 의 `full_period` 가 저장은 되면서
+        # 요약에서 통째로 빠져 있었다
+        KEY_ROW_COUNTS: {OUTPUT_FILES[name]: len(table) for name, table in tables.items()},
         KEY_NOTES: [NOTE_MODELS, NOTE_OUTLIER, NOTE_ALPHA, NOTE_RATE, NOTE_LP, NOTE_COST, NOTE_TER],
     }
 
     logger.debug(f"등가성 검증 완료: 회귀 {len(equivalence)}행, 연도별 {len(drift)}행")
 
-    return EquivalenceOutputs(
-        equivalence=equivalence,
-        annual_drift=drift,
-        leverage=leverage,
-        premium=premium,
-        effective_cost=effective_cost,
-        daily=daily,
-        meta=meta,
-    )
+    return EquivalenceOutputs(**tables, summary=summary)
 
 
 def _load_spot(source: SpotSource) -> pd.DataFrame:

@@ -35,7 +35,7 @@ from verify_lab.common_constants import (
 )
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
-from verify_lab.strategy.constants import EXPIRY_CELLS, ExpiryCell
+from verify_lab.strategy.option_expiry_constants import EXPIRY_CELLS, ExpiryCell
 from verify_lab.strategy.option_expiry_runner import collect_entries
 from verify_lab.studies.option_expiry.constants import DATASETS, Dataset
 from verify_lab.utils.cli_helpers import cli_exception_handler

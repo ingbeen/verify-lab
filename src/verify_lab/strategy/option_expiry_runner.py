@@ -26,6 +26,7 @@ from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.report.run_summary import dataset_record
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_ENTRY_DATE,
@@ -33,23 +34,25 @@ from verify_lab.strategy.constants import (
     DISPLAY_EXIT_DATE,
     DISPLAY_EXIT_PRICE,
     DISPLAY_EXIT_REASON,
-    DISPLAY_EXPIRY_MONTH,
     DISPLAY_HOLD_DAYS,
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
-    DISPLAY_TARGET_DATE,
     DISPLAY_TICKER,
-    EXPIRY_CELLS,
-    EXPIRY_STOP_LEVEL,
     NOTE_STOP_BASE,
     STOP_GRID_FILENAME,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
-    ExpiryCell,
     stop_level_value,
 )
+from verify_lab.strategy.option_expiry_constants import (
+    DISPLAY_EXPIRY_MONTH,
+    DISPLAY_TARGET_DATE,
+    EXPIRY_CELLS,
+    EXPIRY_STOP_LEVEL,
+    ExpiryCell,
+)
 from verify_lab.strategy.periods import period_rows, to_summary_frame
-from verify_lab.strategy.run_summary import build_run_summary, dataset_record
+from verify_lab.strategy.run_summary import build_run_summary
 from verify_lab.strategy.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
 from verify_lab.studies.option_expiry.constants import (
     COL_EXIT_DATE,

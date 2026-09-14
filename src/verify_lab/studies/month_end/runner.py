@@ -54,6 +54,7 @@ from verify_lab.measure.statistics import (
     summarize,
 )
 from verify_lab.report.constants import DISPLAY_HIT_RATE, DISPLAY_SCREEN
+from verify_lab.report.run_summary import dataset_record
 from verify_lab.report.tables import build_candidates_table, to_display_columns
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
@@ -85,6 +86,7 @@ from verify_lab.studies.month_end.constants import (
     GRID_CELL_TEMPLATE,
     GRID_EXIT_MONTH_END,
     GRID_EXIT_RELATIVE,
+    OUTPUT_FILES,
     PERCENT_COLUMNS,
     PROBABILITY_COLUMNS,
     RECENT_WINDOWS_YEARS,
@@ -108,11 +110,8 @@ KEY_PERMUTATION_SEED = "permutation_seed"
 KEY_GRID = "grid"
 KEY_DATASETS = "datasets"
 KEY_ROW_COUNTS = "row_counts"
-KEY_TICKER = "ticker"
-KEY_LABEL = "label"
-KEY_FILE = "file"
-KEY_ROWS = "rows"
-KEY_PERIOD = "period"
+# 데이터셋 한 줄의 공통 다섯 키는 **`report/run_summary.py` 가 소유한다.** 여기서 다시
+# 정의하지 않는다 — 이름을 한 벌 더 두면 옛 경로가 살아남아 소유자를 옮겨도 검사가 통과한다
 KEY_IS_INDEX = "is_index"
 KEY_ENTRY_COUNT = "entry_count"
 KEY_EXCLUDED_COUNT = "excluded_count"
@@ -412,27 +411,68 @@ def _split_by_period(
         seed: 순열 검정 시드
 
     Returns:
-        시기별 집계. 구간마다 **반드시 한 행**이다
+        시기별 집계. 구간마다 **반드시 한 행**이고 **빈 구간도 전체 스키마를 갖는다**
+
+    Raises:
+        RuntimeError: 구간이 있는데 전부 비어 스키마를 얻을 수 없는 경우
     """
-    blocks: list[pd.DataFrame] = []
     baseline_dates = baseline[COL_DATE]
 
-    for label, signal_mask in _period_masks(signal, last_date):
-        period_signal = signal[signal_mask]
-        period_baseline = baseline[_matching_baseline_mask(baseline_dates, signal, signal_mask, last_date, label)]
-
-        block = _aggregate(period_signal, period_baseline, repeats=repeats, seed=seed)
-        if block.empty:
-            # 신호가 하나도 없는 구간이다. **행을 지우지 않고 지표만 비운다.**
-            # 표본 수는 0 이 사실이므로 적는다 (측정의 원칙 3)
-            block = pd.DataFrame({COL_SAMPLE_COUNT: [0], COL_JUDGEABLE: [JUDGEABLE_NO]})
-
-        blocks.append(_identify(block, **{COL_PERIOD: label}))
-
+    blocks = [
+        (
+            label,
+            _aggregate(
+                signal[signal_mask],
+                baseline[_matching_baseline_mask(baseline_dates, signal, signal_mask, last_date, label)],
+                repeats=repeats,
+                seed=seed,
+            ),
+        )
+        for label, signal_mask in _period_masks(signal, last_date)
+    ]
     if not blocks:
         return pd.DataFrame()
 
-    return pd.concat(blocks, ignore_index=True)
+    # **빈 구간의 스키마를 형제 블록에서 얻는다.** 옵션 만기일은 `excess` 를 거치지 않아
+    # 빈 집계를 그대로 `reindex` 할 수 있지만, 이쪽은 `excess` 가 「신호는 비었는데 기준선은
+    # 있는」 칸을 거부해 `_aggregate` 가 컬럼 없는 빈 표를 돌려준다. 그래서 이웃에서 받는다.
+    #
+    # **형제가 반드시 하나는 있다** — `_period_masks` 는 신호가 없으면 빈 목록을 내고,
+    # 신호가 있으면 경계가 `dates.iloc[n // 2]` 라 `뒤 절반` 이 최소 한 건을 갖는다
+    template = next((block for _, block in blocks if not block.empty), None)
+    if template is None:
+        raise RuntimeError(f"내부 불변조건 위반: 구간이 {len(blocks)}개인데 전부 비어 스키마를 얻을 수 없습니다")
+
+    return pd.concat(
+        [
+            _identify(block if not block.empty else _blank_period_row(template), **{COL_PERIOD: label})
+            for label, block in blocks
+        ],
+        ignore_index=True,
+    )
+
+
+def _blank_period_row(template: pd.DataFrame) -> pd.DataFrame:
+    """신호가 0건인 구간의 한 행을 만든다.
+
+    **행을 지우지 않고 지표만 비운다** (측정의 원칙 17). 행이 사라지면 그 구간을 못 봤다는
+    사실 자체를 사용자가 모르고, **0 으로 채우는 것도 금지다**(「손실도 이익도 없었다」로 읽힌다).
+
+    **전체 스키마를 유지한다.** 전에는 두 컬럼짜리 표를 만들어 붙였는데, 그러면 그 표가 맨 앞에
+    올 때 산출물의 **컬럼 순서가 그 두 개부터** 시작한다 — 같은 원칙을 이행하는 옵션 만기일과
+    빈 행의 모양이 달랐다.
+
+    Args:
+        template: 같은 호출에서 나온 비어 있지 않은 집계. 컬럼 구성만 빌린다
+
+    Returns:
+        지표가 빈 한 행. 표본 수는 0 이 사실이므로 적는다 (측정의 원칙 3)
+    """
+    blank = template.iloc[0:0].reindex([0])
+    blank[COL_SAMPLE_COUNT] = 0
+    blank[COL_JUDGEABLE] = JUDGEABLE_NO
+
+    return blank
 
 
 def _matching_baseline_mask(
@@ -672,12 +712,11 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
         )
 
     return {
-        KEY_TICKER: dataset.ticker,
-        KEY_LABEL: dataset.label,
-        KEY_FILE: dataset.path.name,
+        # **공통 다섯 키가 먼저, 이 검증의 축이 뒤에 온다.** 전에는 `is_index` 가 가운데
+        # 끼고 `rows`·`period` 가 뒤집혀 있어, 같은 계약을 따른다는 여섯 요약 중 이것만
+        # 자리가 달랐다. 순서를 공통 함수가 정하면 갈릴 수 없다
+        **dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.path.name, frame=df),
         KEY_IS_INDEX: dataset.is_index,
-        KEY_ROWS: len(df),
-        KEY_PERIOD: f"{trading_days[0].date()} ~ {last_date.date()}",
         **base_record,
     }
 
@@ -846,7 +885,9 @@ def run_study(
 
     # **요약을 먼저 완성한 뒤 산출물을 만든다.** 만들고 나서 그 안의 dict 를 고치면
     # 동작은 하지만 `frozen` 이 막으려던 것을 우회하게 된다
-    summary[KEY_ROW_COUNTS] = {name: len(table) for name, table in tables.items()}
+    # **키는 파일 이름이다.** `tables` 의 키는 `StudyOutputs` 의 «필드 이름»이라
+    # 그대로 쓰면 요약이 별칭으로 키잉된다. `OUTPUT_FILES` 가 둘을 잇는다
+    summary[KEY_ROW_COUNTS] = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
 
     return StudyOutputs(**tables, summary=summary)
 

@@ -45,7 +45,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     COL_BASE_CLOSE,
     COL_BASE_RETURN,
     COL_BASE_RETURN_BUCKET,
-    COL_DIRECTION,
     COL_NON_OVERLAPPING_COUNT,
     COL_PATH_EFFECT,
     COL_PERIOD,
@@ -54,10 +53,8 @@ from verify_lab.studies.leverage_tracking.constants import (
     COL_SAMPLE_COUNT,
     COL_START_POSITION,
     COL_TOTAL_DIVERGENCE,
+    COL_TREND,
     COL_VOLATILITY_BUCKET,
-    DIRECTION_DOWN,
-    DIRECTION_FLAT,
-    DIRECTION_UP,
     PERIOD_CUTOFF,
     PERIOD_HIGH_RATE,
     PERIOD_LOW_RATE,
@@ -65,6 +62,9 @@ from verify_lab.studies.leverage_tracking.constants import (
     SUFFIX_MEAN,
     SUFFIX_MEDIAN,
     TAIL_QUANTILES,
+    TREND_DOWN,
+    TREND_FLAT,
+    TREND_UP,
     VOLATILITY_BUCKETS,
     tail_column,
 )
@@ -119,12 +119,12 @@ def attach_axes(divergence: pd.DataFrame, alignment: pd.DataFrame) -> pd.DataFra
     result[COL_START_POSITION] = result[COL_START_POSITION].astype(int)
 
     # 2. 방향. 보합을 어느 쪽에도 넣지 않는다
-    result[COL_DIRECTION] = np.where(
+    result[COL_TREND] = np.where(
         result[COL_BASE_RETURN] > 0,
-        DIRECTION_UP,
-        np.where(result[COL_BASE_RETURN] < 0, DIRECTION_DOWN, DIRECTION_FLAT),
+        TREND_UP,
+        np.where(result[COL_BASE_RETURN] < 0, TREND_DOWN, TREND_FLAT),
     )
-    result.loc[result[COL_BASE_RETURN].isna(), COL_DIRECTION] = None
+    result.loc[result[COL_BASE_RETURN].isna(), COL_TREND] = None
 
     # 3. 시기. 시작일 기준이다 — 구간이 경계를 걸치면 진입 시점의 국면으로 센다
     cutoff = pd.Timestamp(PERIOD_CUTOFF)

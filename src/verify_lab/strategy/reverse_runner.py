@@ -19,6 +19,7 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
 from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.report.run_summary import dataset_record
 from verify_lab.strategy.constants import (
     DISPLAY_CHANGE_RATE,
     DISPLAY_DIRECTION,
@@ -34,17 +35,14 @@ from verify_lab.strategy.constants import (
     DISPLAY_START_YEAR,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
-    HOLD_LIMIT,
     PARAMETER_PREFIX_RANK_CUT,
-    STOP_LOSS_LEVEL,
     SUMMARY_FILENAME,
-    TARGETS,
     TRADES_FILENAME,
-    Target,
     stop_level_value,
 )
 from verify_lab.strategy.periods import period_rows, to_summary_frame
-from verify_lab.strategy.run_summary import build_run_summary, dataset_record
+from verify_lab.strategy.reverse_constants import HOLD_LIMIT, STOP_LOSS_LEVEL, TARGETS, Target
+from verify_lab.strategy.run_summary import build_run_summary
 from verify_lab.strategy.trade_fill import TradeResult, simulate_signal
 from verify_lab.studies.reverse.annotations import assign_event_ids
 from verify_lab.studies.reverse.constants import (

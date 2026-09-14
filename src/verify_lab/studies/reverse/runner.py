@@ -38,6 +38,7 @@ from verify_lab.measure.statistics import (
     summarize,
 )
 from verify_lab.report.constants import BASIS_LABELS, DISPLAY_HORIZON, PERCENT_DECIMALS
+from verify_lab.report.run_summary import KEY_DATASET_LABEL, dataset_record
 from verify_lab.report.tables import (
     build_candidates_table,
     build_excess_table,
@@ -71,6 +72,7 @@ from verify_lab.studies.reverse.constants import (
     DISPLAY_ZSCORE,
     EVENT_GAP_DAYS,
     EXTREME_DIRECTION_LABELS,
+    OUTPUT_FILES,
     PARAMETER_PREFIX_RANK_CUT,
     PERIOD_ALL,
     RANK_CUTS,
@@ -124,27 +126,12 @@ KEY_EMPTY_SIGNAL_GROUPS = "empty_signal_groups"
 KEY_ROW_COUNTS = "row_counts"
 KEY_NOTES = "notes"
 
-# **`ticker` 는 종목코드이고 `label` 은 표시 이름이다.** 여섯 산출 지점(검증 셋·매매 셋)이
-# 같은 뜻을 쓴다 — 전에는 이 모듈의 `ticker` 에 표시 이름이 들어가 `069500` 이 산출물
-# 어디에도 남지 않았다. **미국 ETF 는 둘이 같아(`QQQ`) 한 번도 드러나지 않았다**
-KEY_TICKER = "ticker"
-KEY_LABEL = "label"
-KEY_PRICE_BASIS = "price_basis"
-
-# 경로가 아니라 **파일 이름**이다. 절대경로는 PC 마다 달라 산출물이 갈리는데, 이 저장소는
-# 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다
-KEY_FILE = "file"
-
-# 데이터 기간과 행 수의 이름도 매매 계층(`strategy/run_summary.py`)과 맞춘다. 전에는 이 모듈만
-# `row_count`·`start_date`·`end_date` 를 썼다 — **같은 것을 다르게 부르면 두 산출물을
-# 나란히 읽을 수 없고, 한쪽이 바뀌어도 예외가 나지 않는다.**
+# 데이터셋 한 줄의 공통 다섯 키는 **`report/run_summary.py` 가 소유한다.** 여기서 다시
+# 정의하지 않는다 — 이름을 한 벌 더 두면 옛 경로가 살아남아 소유자를 옮겨도 검사가 통과한다
 #
-# **`KEY_DATA_PERIOD` 와 아래 `KEY_PERIOD` 는 JSON 키 이름이 같지만 다른 것을 담는다** —
-# 여기는 데이터 기간(`시작 ~ 종료`), 저기는 신호군의 시대 구간 이름(`전체`·`2010년대`)이다.
-# 서로 다른 사전에 있어 산출물에서는 섞이지 않지만, **코드에서 한 상수를 돌려쓰면 그 구별이
-# 사라진다** — 둘 다 `str` 이라 타입 검사가 잡지 못한다. 그래서 이름을 갈라 둔다
-KEY_DATA_PERIOD = "period"
-KEY_ROWS = "rows"
+# **이 검증이 더 붙이는 축**이다. `KEY_PRICE_BASIS` 는 가격 기준(원본가/수정주가)이고,
+# 행 단위가 아니라 데이터셋 단위 속성이라 여기 온다 (스펙 §7 결정 ⑲)
+KEY_PRICE_BASIS = "price_basis"
 KEY_SMA_UNDETERMINED = "sma_undetermined_count"
 
 KEY_TEST = "test"
@@ -152,19 +139,16 @@ KEY_PARAMETER = "parameter"
 KEY_START_YEAR = "start_year"
 KEY_DIRECTION = "direction"
 
-# 신호군의 **시대 구간 이름**(`전체`·`2010년대`)이다. 데이터 기간은 위 `KEY_DATA_PERIOD` 다
+# 신호군의 **시대 구간 이름**(`전체`·`2010년대`)이다. **데이터 기간의 `period` 와 이름이 같지만
+# 담는 것이 다르다** — 그쪽은 `report/run_summary.py` 의 `KEY_DATASET_PERIOD` 이고 여기는 구간
+# 이름이다. 서로 다른 사전에 있어 산출물에서는 섞이지 않지만, **한 상수를 돌려쓰면 그 구별이
+# 사라진다** — 둘 다 `str` 이라 타입 검사가 잡지 못한다
 KEY_PERIOD = "period"
 KEY_BASELINE = "baseline"
 KEY_DAY_COUNT = "day_count"
 
 KEY_REPEATS = "repeats"
 KEY_SEED = "seed"
-
-KEY_SIGNALS = "signals"
-KEY_STATISTICS = "statistics"
-KEY_EXCESS = "excess"
-KEY_TEST_TABLE = "test"
-KEY_CANDIDATES = "candidates"
 
 # 산출물만 보고는 알 수 없는 실행 조건. 대조의 전제가 무엇이었는지를 남긴다
 NOTE_SAME_PARAMETERS = "모든 데이터셋을 같은 실행·같은 파라미터로 계산했다. 데이터셋끼리 나란히 놓고 보는 것은 이 전제 위에서만 성립한다"
@@ -336,6 +320,14 @@ def run_study(
     test_table = _stack(test_blocks)
     candidates_table = _stack(candidates_blocks)
 
+    tables = {
+        "signals": signals,
+        "statistics": statistics,
+        "excess": excess_table,
+        "test": test_table,
+        "candidates": candidates_table,
+    }
+
     summary = {
         KEY_STUDY: TRACK_NAME,
         KEY_DATASETS: dataset_records,
@@ -353,13 +345,10 @@ def run_study(
         KEY_POPULATIONS: population_records,
         KEY_SIGNAL_GROUP_COUNT: len(statistics_blocks),
         KEY_EMPTY_SIGNAL_GROUPS: empty_groups,
-        KEY_ROW_COUNTS: {
-            KEY_SIGNALS: len(signals),
-            KEY_STATISTICS: len(statistics),
-            KEY_EXCESS: len(excess_table),
-            KEY_TEST_TABLE: len(test_table),
-            KEY_CANDIDATES: len(candidates_table),
-        },
+        # **행 수의 키는 파일 이름이고, 목록은 `OUTPUT_FILES` 를 돈다.** 손으로 나열하면
+        # 표가 늘 때 조용히 빠진다 — 실제로 검증 #8 의 `full_period` 가 저장은 되면서
+        # 요약에서 통째로 빠져 있었다
+        KEY_ROW_COUNTS: {OUTPUT_FILES[name]: len(table) for name, table in tables.items()},
         KEY_NOTES: [NOTE_SAME_PARAMETERS, NOTE_BASELINE_WINDOW, NOTE_REVERSE_ALL],
     }
 
@@ -367,14 +356,7 @@ def run_study(
         f"검증 실행 완료: 신호군 {len(statistics_blocks):,}개 " f"(신호 0건 {len(empty_groups):,}개 제외), 신호일 {len(signals):,}건"
     )
 
-    return StudyOutputs(
-        signals=signals,
-        statistics=statistics,
-        excess=excess_table,
-        test=test_table,
-        candidates=candidates_table,
-        summary=summary,
-    )
+    return StudyOutputs(**tables, summary=summary)
 
 
 def _validate_axes(
@@ -482,8 +464,10 @@ def _dataset_record(context: _Context) -> dict[str, Any]:
 
     **여기가 종목코드의 유일한 자리다.** 코드는 차트·증권앱과 대조할 때 필요한데 행마다 반복할
     값이 아니라 데이터셋 단위 속성이므로, 산출물 CSV 가 아니라 실행 요약이 담는다
-    (`src/verify_lab/CLAUDE.md` 출력 계약). 앞의 다섯 키는 매매 계층의 `dataset_record` 와
-    같고, 뒤의 둘은 이 검증의 축이다.
+    (`src/verify_lab/CLAUDE.md` 출력 계약).
+
+    **앞의 다섯 키는 공통 함수가 만든다.** 전에는 이 모듈이 같은 사전을 손으로 조립해
+    구현이 검증마다 한 벌씩 있었고, 한 벌만 고쳐도 예외가 나지 않았다. 뒤의 둘은 이 검증의 축이다.
 
     Args:
         context: 데이터셋 공통 값
@@ -491,14 +475,13 @@ def _dataset_record(context: _Context) -> dict[str, Any]:
     Returns:
         요약 dict
     """
-    dates = context.frame[COL_DATE]
-
     return {
-        KEY_TICKER: context.dataset.ticker,
-        KEY_LABEL: context.dataset.label,
-        KEY_FILE: context.dataset.path.name,
-        KEY_DATA_PERIOD: f"{dates.min().date()} ~ {dates.max().date()}",
-        KEY_ROWS: len(context.frame),
+        **dataset_record(
+            ticker=context.dataset.ticker,
+            label=context.dataset.label,
+            file=context.dataset.path.name,
+            frame=context.frame,
+        ),
         KEY_PRICE_BASIS: context.dataset.price_basis,
         KEY_SMA_UNDETERMINED: context.sma_undetermined,
     }
@@ -606,7 +589,7 @@ def _population_records(
 
     return [
         {
-            KEY_LABEL: context.dataset.label,
+            KEY_DATASET_LABEL: context.dataset.label,
             KEY_PRICE_BASIS: context.dataset.price_basis,
             KEY_START_YEAR: start_year,
             KEY_PERIOD: period.label,
@@ -1016,7 +999,7 @@ def _empty_group_record(identity: Mapping[str, Any]) -> dict[str, Any]:
         요약 dict
     """
     return {
-        KEY_LABEL: identity[DISPLAY_TICKER],
+        KEY_DATASET_LABEL: identity[DISPLAY_TICKER],
         KEY_TEST: identity[DISPLAY_TEST],
         KEY_PARAMETER: identity[DISPLAY_PARAMETER],
         KEY_START_YEAR: identity[DISPLAY_START_YEAR],
