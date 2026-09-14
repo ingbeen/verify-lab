@@ -31,7 +31,13 @@ import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import COL_DATE
-from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_EXCLUDED_REASON, COL_HORIZON, REASON_OUT_OF_RANGE
+from verify_lab.measure.constants import (
+    COL_EXCLUDED_COUNT,
+    COL_EXCLUDED_REASON,
+    COL_HORIZON,
+    COL_JUDGEABLE,
+    REASON_OUT_OF_RANGE,
+)
 from verify_lab.measure.statistics import judgeable, max_non_overlapping
 from verify_lab.studies.leverage_tracking.constants import (
     BASE_RETURN_BUCKETS,
@@ -40,7 +46,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     COL_BASE_RETURN,
     COL_BASE_RETURN_BUCKET,
     COL_DIRECTION,
-    COL_JUDGEABLE,
     COL_NON_OVERLAPPING_COUNT,
     COL_PATH_EFFECT,
     COL_PERIOD,
@@ -56,22 +61,25 @@ from verify_lab.studies.leverage_tracking.constants import (
     PERIOD_CUTOFF,
     PERIOD_HIGH_RATE,
     PERIOD_LOW_RATE,
+    SUFFIX_COUNT,
+    SUFFIX_MEAN,
+    SUFFIX_MEDIAN,
+    TAIL_QUANTILES,
     VOLATILITY_BUCKETS,
+    tail_column,
 )
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 비중첩 표본 계산은 **공통 계층이 소유한다.** 여기서는 이름만 다시 내보내
-# 기존 호출처(`summarize`)와 테스트가 그대로 동작하게 한다
-__all__ = ["attach_axes", "max_non_overlapping", "summarize", "summarize_by_axis", "summarize_by_horizon"]
+# 비중첩 표본 계산은 **공통 계층이 소유한다** (`measure.statistics.max_non_overlapping`).
+# **여기서 다시 내보내지 않는다** — 옛 경로가 살아 있으면 소유자를 옮겨도 그 경로로 들어오는
+# 테스트가 그대로 통과해 이동이 실제로 일어났는지 확인할 방법이 없다
+__all__ = ["attach_axes", "summarize", "summarize_by_axis", "summarize_by_horizon"]
 
 # 평균과 중앙값을 나란히 내는 항목. 둘이 벌어지면 소수 사건이 평균을 만들었다는 신호다
 # (루트 `CLAUDE.md` 측정의 원칙 4)
 MEAN_MEDIAN_COLUMNS = [COL_PATH_EFFECT, COL_PRODUCT_COST, COL_TOTAL_DIVERGENCE, COL_BASE_RETURN, COL_ACTUAL]
-
-# 분포의 양 끝. 평균만 보면 «최악에 얼마나 벌어졌나»를 알 수 없다
-TAIL_QUANTILES = (0.05, 0.95)
 
 
 def attach_axes(divergence: pd.DataFrame, alignment: pd.DataFrame) -> pd.DataFrame:
@@ -253,16 +261,15 @@ def summarize(frame: pd.DataFrame, group_columns: Sequence[str]) -> pd.DataFrame
         row[COL_JUDGEABLE] = judgeable(len(valid))
 
         for column in MEAN_MEDIAN_COLUMNS:
-            row[f"{column}Mean"] = valid[column].mean() if len(valid) else np.nan
-            row[f"{column}Median"] = valid[column].median() if len(valid) else np.nan
+            row[f"{column}{SUFFIX_MEAN}"] = valid[column].mean() if len(valid) else np.nan
+            row[f"{column}{SUFFIX_MEDIAN}"] = valid[column].median() if len(valid) else np.nan
 
         for quantile in TAIL_QUANTILES:
-            label = f"{COL_TOTAL_DIVERGENCE}P{int(quantile * 100):02d}"
-            row[label] = valid[COL_TOTAL_DIVERGENCE].quantile(quantile) if len(valid) else np.nan
+            row[tail_column(quantile)] = valid[COL_TOTAL_DIVERGENCE].quantile(quantile) if len(valid) else np.nan
 
         realized = valid[COL_REALIZED_MULTIPLE].dropna()
-        row[f"{COL_REALIZED_MULTIPLE}Median"] = realized.median() if len(realized) else np.nan
-        row[f"{COL_REALIZED_MULTIPLE}Count"] = len(realized)
+        row[f"{COL_REALIZED_MULTIPLE}{SUFFIX_MEDIAN}"] = realized.median() if len(realized) else np.nan
+        row[f"{COL_REALIZED_MULTIPLE}{SUFFIX_COUNT}"] = len(realized)
 
         rows.append(row)
 

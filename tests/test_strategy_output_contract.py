@@ -43,22 +43,20 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
-from verify_lab.report.constants import DISPLAY_EXCLUDED
+from verify_lab.measure.constants import JUDGEABLE_NO
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, DISPLAY_SIGNAL_COUNT
 from verify_lab.strategy import month_end_runner, option_expiry_runner, periods
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_EVENT_COUNT,
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
-    DISPLAY_JUDGEABLE,
     DISPLAY_LOSS_AMOUNT,
     DISPLAY_PERIOD,
-    DISPLAY_SIGNAL_COUNT,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     DISPLAY_TOTAL,
     DISPLAY_WIN_AMOUNT,
-    JUDGEABLE_NO,
     NO_STOP_LABEL,
     PERIOD_RECENT_5Y,
     PERIODS,

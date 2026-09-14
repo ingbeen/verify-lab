@@ -302,7 +302,8 @@ class TestStopLoss:
         Then: 성적표에 갭손절 컬럼이 있고 표본이 있는 행은 비어 있지 않다
         """
         # Given / When
-        from verify_lab.strategy.constants import DISPLAY_GAP_STOP_COUNT, DISPLAY_SIGNAL_COUNT
+        from verify_lab.report.constants import DISPLAY_SIGNAL_COUNT
+        from verify_lab.strategy.constants import DISPLAY_GAP_STOP_COUNT
 
         counted = outputs.performance[outputs.performance[DISPLAY_SIGNAL_COUNT] > 0]
 
@@ -757,7 +758,7 @@ class TestFromYear:
         Then: 1~11월 전체 행이 3건, 12월이 2건이다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_SIGNAL_COUNT
+        from verify_lab.report.constants import DISPLAY_SIGNAL_COUNT
 
         # When
         overall = run_month_end_trading((dataset,), from_year=2021).performance

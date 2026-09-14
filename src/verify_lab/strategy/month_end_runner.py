@@ -48,6 +48,7 @@ from verify_lab.strategy.constants import (
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     MONTH_END_STOP_LEVELS,
+    NOTE_STOP_BASE,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
     stop_level_value,
@@ -91,7 +92,6 @@ KEY_FROM_YEAR = "from_year"
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 그 달 20일(휴장이면 직전 거래일) 종가이고 청산은 말일 종가다 — 검증 #10 과 같은 날에 들어간다"
-NOTE_STOP_BASE = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
 NOTE_INDEX = "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다"
 NOTE_FROM_YEAR = "시작 연도로 «신호»만 걸렀고 시세는 자르지 않았다 — 「최근 N년」의 기준일은 여전히 시세의 마지막 거래일이다"
 

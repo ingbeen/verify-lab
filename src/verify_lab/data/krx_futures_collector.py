@@ -107,6 +107,14 @@ FUTURES_COLUMN_MAP: Final = {
 SNAPSHOT_ISIN_COLUMN: Final = "ISU_CD"
 SNAPSHOT_NAME_COLUMN: Final = "ISU_NM"
 
+# 계약 목록이 내는 관측 구간 컬럼 — 그 계약이 스냅숏에 보인 첫날과 마지막 날.
+# **만드는 곳과 읽는 곳이 다르다** (`collect_contract_catalog` → `collect_futures_history`).
+# 리터럴로 두면 한쪽만 바꿔도 `KeyError` 가 나기 전까지 드러나지 않는다.
+# **`continuous.py` 의 `FirstDate`·`LastDate` 와는 다른 값이다** — 그쪽은 연속 계열을 만든 뒤의
+# 계약 달력이고 이쪽은 수집 단계의 관측 구간이라, 한 곳으로 모으면 서로 다른 것이 같아 보인다
+CATALOG_FIRST_SEEN_COLUMN: Final = "FirstSeen"
+CATALOG_LAST_SEEN_COLUMN: Final = "LastSeen"
+
 # KRX 응답의 날짜 컬럼
 FUTURES_DATE_COLUMN: Final = "TRD_DD"
 
@@ -402,12 +410,12 @@ def collect_contract_catalog(product_id: str, start_date: str, end_date: str) ->
             {
                 COL_CONTRACT: isin,
                 COL_CONTRACT_NAME: record["name"],
-                "FirstSeen": record["first"],
-                "LastSeen": record["last"],
+                CATALOG_FIRST_SEEN_COLUMN: record["first"],
+                CATALOG_LAST_SEEN_COLUMN: record["last"],
             }
             for isin, record in seen.items()
         ]
-    ).sort_values("FirstSeen")
+    ).sort_values(CATALOG_FIRST_SEEN_COLUMN)
 
     logger.debug(f"계약 목록 확보: {len(catalog)}개 (스냅숏 {snapshot_count}회, 상품 {product_id})")
 
@@ -584,8 +592,8 @@ def collect_futures_history(
     for record in catalog.to_dict("records"):
         isin = str(record[COL_CONTRACT])
         name = str(record[COL_CONTRACT_NAME])
-        first_seen: date = record["FirstSeen"]
-        last_seen: date = record["LastSeen"]
+        first_seen: date = record[CATALOG_FIRST_SEEN_COLUMN]
+        last_seen: date = record[CATALOG_LAST_SEEN_COLUMN]
         fetch_start = (first_seen - timedelta(days=CONTRACT_FETCH_MARGIN_DAYS)).strftime(KRX_REQUEST_DATE_FORMAT)
         fetch_end = min(last_seen + timedelta(days=CONTRACT_FETCH_MARGIN_DAYS), reference_day)
 

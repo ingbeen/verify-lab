@@ -11,19 +11,15 @@ from typing import Final
 
 from verify_lab.common_constants import RATE_TO_PERCENT
 
-# **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 계층에 요구하는 개념이라
-# 계층마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
-from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
-from verify_lab.report.constants import DISPLAY_JUDGEABLE, PERCENT_DECIMALS
+# **구간 이름은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 매매법에 요구하는 축이라
+# 계층마다 새로 만들면 같은 축이 다른 말로 불린다. 구간 «목록»(`PERIODS`)은 이 계층의 구성이다
+from verify_lab.measure.constants import PERIOD_FIRST_HALF, PERIOD_SECOND_HALF
+from verify_lab.report.constants import PERCENT_DECIMALS
 from verify_lab.studies.reverse.constants import DATASETS, Dataset
 
-__all__ = [
-    "COL_JUDGEABLE",
-    "DISPLAY_JUDGEABLE",
-    "JUDGEABLE_NO",
-    "JUDGEABLE_YES",
-    "MIN_SAMPLE_PER_CELL",
-]
+# **`판정가능` 관련 이름을 여기서 다시 내보내지 않는다.** 옛 경로가 살아 있으면 소유자를 옮겨도
+# 그 경로로 들어오는 코드와 테스트가 그대로 통과해 이동이 실제로 일어났는지 확인할 방법이 없다
+# (`src/verify_lab/CLAUDE.md` 「매매 계층 구성 계약」의 기각안). 쓰는 쪽이 소유자에서 직접 가져온다
 
 # ============================================================
 # 산출물 파일 이름
@@ -59,6 +55,13 @@ STOP_GRID_FILENAME: Final = "손절선_격자.csv"
 # 반대로 -4% 아래로 내려가면 매매법 자체가 무너진다(적중률 56.8%). 근거는
 # `docs/strategy/역방향_매매_규칙.md` §3.1 의 손절 방식 격자다
 STOP_LOSS_LEVEL: Final = 0.05
+
+# 손절선의 성질을 실행 요약(`summary.json` 의 `notes`)에 남기는 문장. **두 매매법이 같은 문장을
+# 한 벌씩 들고 있었고 바이트 단위로 같았다** — 한쪽만 고치면 두 산출물이 다른 말을 하게 된다.
+#
+# **역방향은 이 상수를 쓰지 않는다.** 그쪽 문장은 「손절선은 **전부** 진입가 기준」이라 다른
+# 문장이며, 대상 × 순위 컷마다 손절선이 갈리는 그 매매법의 사정을 담는다
+NOTE_STOP_BASE: Final = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
 
 # 코스닥 월말 매매의 손절선 격자 (비율, 0.03 = 3%). **하나를 고르지 않고 전부 산출한다.**
 #
@@ -176,13 +179,19 @@ DISPLAY_EXIT_REASON: Final = "청산 사유"
 DISPLAY_HOLD_DAYS: Final = "보유일"
 DISPLAY_RETURN: Final = "수익률(%)"
 
-DISPLAY_SIGNAL_COUNT: Final = "신호"
 DISPLAY_EVENT_COUNT: Final = "사건"
 DISPLAY_TOTAL: Final = "합계(%)"
-DISPLAY_MEAN: Final = "평균(%)"
+
+# **`승률` 만 이 계층의 어휘다.** `strategy/` 는 방향이 확정된 계층이라 「승」이 무엇인지
+# 정해져 있고, 방향이 미정인 `measure`·`report` 는 「오른 비율」로 부른다
+# (`.claude/rules/docs.md` 용어 대응표의 예외).
+#
+# **`신호`·`평균(%)`·`최고(%)`·`최악(%)`·`표준편차(%)` 는 여기 없다** — 같은 것을 재는 공통 컬럼이라
+# `report/constants.py` 가 소유하고 쓰는 쪽이 거기서 직접 가져온다. 한 벌 더 두었을 때
+# `표준편차(%)` 는 이름까지 갈려(`DISPLAY_STDEV` 대 `DISPLAY_STD`) 두 값이 같다는 것을 매번
+# 확인해야 했다. **여기서 다시 내보내지도 않는다** — 옛 경로가 살아 있으면 소유자가 바뀌어도
+# 그 경로로 들어오는 코드가 그대로 통과한다
 DISPLAY_WIN_RATE: Final = "승률(%)"
-DISPLAY_MAX: Final = "최고(%)"
-DISPLAY_MIN: Final = "최악(%)"
 DISPLAY_MEAN_HOLD: Final = "평균 보유일"
 
 # 손익비와 그 값을 읽는 데 필요한 것. **「손익비」는 측정 계층과 같은 말을 쓰고**
@@ -352,10 +361,9 @@ EXPIRY_CELLS: Final = (
     ExpiryCell(dataset_key="qqq", expiry_month=12, bet_down=False),
 )
 
-# 방향 표기. `measure/screening.py` 의 `DIRECTION_UP`·`DIRECTION_DOWN` 과 같은 말을 쓴다 —
-# 판정표와 격자표를 나란히 놓고 읽으므로 갈라지면 안 된다
-EXPIRY_DIRECTION_DOWN: Final = "아래"
-EXPIRY_DIRECTION_UP: Final = "위"
+# 방향 표기는 **`measure/screening.py` 의 `DIRECTION_UP`·`DIRECTION_DOWN` 하나**를 쓴다.
+# 판정표와 격자표를 나란히 놓고 읽으므로 갈라지면 안 되는데, 여기 한 벌을 더 두었을 때
+# **같은 컬럼의 같은 값이 두 경로로 들어왔다** — 월말은 `measure`, 옵션 만기일은 여기서 가져갔다
 
 # **이 매매법만 갖는 두 컬럼**이다. 만기월은 축이고, 청산 목표일은 달력이 지목한 날이라
 # 실제 청산일과 갈릴 수 있다 (손절로 먼저 나가면 다르다)
@@ -373,7 +381,6 @@ DISPLAY_TARGET_DATE: Final = "청산 목표일"
 DISPLAY_ENTRY_DATE: Final = "진입일"
 DISPLAY_EXIT_DATE: Final = "청산일"
 DISPLAY_EXIT_PRICE: Final = "청산가"
-DISPLAY_STDEV: Final = "표준편차(%)"
 DISPLAY_GAP_STOP_COUNT: Final = "갭손절"
 DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
 
@@ -393,9 +400,10 @@ DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
 #
 # **3분할과 시장 국면은 넣지 않는다** (결정 ㊵). 33건 3분할은 11건이라 최근 10년과 사실상
 # 같은 축이고 5/7칸이 하한 미달이다. 국면은 칸당 하락장 표본이 3~6건이라 성립하지 않는다
+#
+# **`앞 절반`·`뒤 절반` 은 공통 계층에서 가져온다** — 검증도 같은 축을 내므로 이름이 갈리면
+# 두 산출물의 구간 열을 나란히 읽을 수 없다. 여기서 정하는 것은 **구간 목록**이다
 PERIOD_ALL: Final = "전체"
-PERIOD_FIRST_HALF: Final = "앞 절반"
-PERIOD_SECOND_HALF: Final = "뒤 절반"
 PERIOD_RECENT_10Y: Final = "최근 10년"
 PERIOD_RECENT_5Y: Final = "최근 5년"
 

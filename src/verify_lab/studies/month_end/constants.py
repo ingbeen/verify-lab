@@ -27,6 +27,7 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
     COL_JUDGEABLE,
+    COL_MEAN_RATE_CONFLICT,
     COL_SIGNAL_COUNT,
 )
 from verify_lab.measure.statistics import (
@@ -66,6 +67,7 @@ from verify_lab.report.constants import (
     DISPLAY_MEAN,
     DISPLAY_MEAN_DIFF,
     DISPLAY_MEAN_P_VALUE,
+    DISPLAY_MEAN_RATE_CONFLICT,
     DISPLAY_MEDIAN,
     DISPLAY_MEDIAN_DIFF,
     DISPLAY_MEDIAN_P_VALUE,
@@ -361,9 +363,6 @@ COL_PERIOD: Final = "period"
 # 어느 기준선과 견줬는지 밝히는 컬럼
 COL_BASELINE_KIND: Final = "baseline"
 
-# 평균의 부호와 방향 비율이 어긋나는 칸 (측정의 원칙 13)
-COL_MEAN_RATE_CONFLICT: Final = "mean_rate_conflict"
-
 # 그 행을 실제로 집행하는 상품이 무엇인가
 COL_EXECUTION_ROLE: Final = "execution_role"
 
@@ -382,9 +381,9 @@ BASELINE_SUFFIX: Final = "_baseline"
 # 시기 구분 (측정의 원칙 17)
 # ============================================================
 
-# 균등 2분할의 이름. **판정용**이며 칸당 표본 하한을 지킨다
-DISPLAY_PERIOD_EARLY: Final = "앞 절반"
-DISPLAY_PERIOD_LATE: Final = "뒤 절반"
+# 균등 2분할의 이름은 **공통 계층이 소유한다** (`measure/constants.py` 의
+# `PERIOD_FIRST_HALF`·`PERIOD_SECOND_HALF`). 원칙 17 이 모든 매매법에 요구하는 축이라
+# 검증마다 두면 같은 축이 다른 말로 불린다
 
 # 관찰용 최근 구간. **판정용에서 이미 무너진 칸을 확인하는 데에만 쓴다** —
 # 이 구간만으로 칸을 떨어뜨리지 않는다. 기준일은 실행 시각이 아니라 **데이터의 마지막 거래일**이다
@@ -409,7 +408,6 @@ DISPLAY_TICKER: Final = "대상"
 DISPLAY_MONTH_NUMBER: Final = "월"
 DISPLAY_PERIOD: Final = "시기"
 DISPLAY_BASELINE_KIND: Final = "기준선"
-DISPLAY_MEAN_RATE_CONFLICT: Final = "평균-비율 어긋남"
 DISPLAY_MARKET: Final = "시장"
 DISPLAY_EXECUTION_ROLE: Final = "집행"
 

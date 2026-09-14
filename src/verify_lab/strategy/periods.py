@@ -23,26 +23,31 @@ import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import RATE_TO_PERCENT
+from verify_lab.measure.constants import PERIOD_FIRST_HALF, PERIOD_SECOND_HALF
 from verify_lab.measure.statistics import judgeable, payoff_from_returns
-from verify_lab.report.constants import DATE_FORMAT, PAYOFF_DECIMALS, PERCENT_DECIMALS
+from verify_lab.report.constants import (
+    DATE_FORMAT,
+    DISPLAY_JUDGEABLE,
+    DISPLAY_MAX,
+    DISPLAY_MEAN,
+    DISPLAY_MIN,
+    DISPLAY_SIGNAL_COUNT,
+    DISPLAY_STD,
+    PAYOFF_DECIMALS,
+    PERCENT_DECIMALS,
+)
 from verify_lab.strategy.constants import (
     DISPLAY_BREAKEVEN_WIN_RATE,
     DISPLAY_EVENT_COUNT,
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
-    DISPLAY_JUDGEABLE,
     DISPLAY_LOSING_COUNT,
     DISPLAY_LOSS_AMOUNT,
-    DISPLAY_MAX,
-    DISPLAY_MEAN,
     DISPLAY_MEAN_HOLD,
-    DISPLAY_MIN,
     DISPLAY_PAYOFF_RATIO,
     DISPLAY_PERIOD,
     DISPLAY_PERIOD_END,
     DISPLAY_PERIOD_START,
-    DISPLAY_SIGNAL_COUNT,
-    DISPLAY_STDEV,
     DISPLAY_TOTAL,
     DISPLAY_WIN_AMOUNT,
     DISPLAY_WIN_RATE,
@@ -50,8 +55,6 @@ from verify_lab.strategy.constants import (
     EXIT_INTRADAY_STOP,
     HOLD_DAYS_DECIMALS,
     PERIOD_ALL,
-    PERIOD_FIRST_HALF,
-    PERIOD_SECOND_HALF,
     PERIODS,
     RECENT_YEARS,
 )
@@ -204,7 +207,7 @@ def _period_row(
         DISPLAY_MIN: np.nan if empty else round(float(percent.min()), PERCENT_DECIMALS),
         # 표본이 하나뿐인 칸에서 표본표준편차는 정의되지 않는다. 0 으로 채우면 "흔들림이 없다"로
         # 읽히므로 비워 둔다
-        DISPLAY_STDEV: round(float(percent.std(ddof=1)), PERCENT_DECIMALS) if count > 1 else np.nan,
+        DISPLAY_STD: round(float(percent.std(ddof=1)), PERCENT_DECIMALS) if count > 1 else np.nan,
         # **표본이 없으면 0 이 아니라 빈칸이다.** 0 은 「손절이 걸리지 않았다」로 읽히는데
         # 실제로는 「잰 적이 없다」이며, 같은 행의 다른 지표가 전부 비어 있는 것과 어긋난다.
         # 표본이 있는데 0 건인 것은 사실이므로 그때는 0 을 적는다 (측정의 원칙 17)

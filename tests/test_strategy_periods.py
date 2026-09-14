@@ -15,21 +15,22 @@
 import pandas as pd
 import pytest
 
-from verify_lab.measure.constants import MIN_SAMPLE_PER_CELL
+from verify_lab.measure.constants import (
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
+    MIN_SAMPLE_PER_CELL,
+    PERIOD_FIRST_HALF,
+    PERIOD_SECOND_HALF,
+)
+from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_SIGNAL_COUNT
 from verify_lab.strategy.constants import (
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
-    DISPLAY_JUDGEABLE,
     DISPLAY_PERIOD,
-    DISPLAY_SIGNAL_COUNT,
     EXIT_INTRADAY_STOP,
     EXIT_LIMIT,
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
     PERIOD_ALL,
-    PERIOD_FIRST_HALF,
     PERIOD_RECENT_5Y,
-    PERIOD_SECOND_HALF,
     PERIODS,
 )
 from verify_lab.strategy.periods import period_rows

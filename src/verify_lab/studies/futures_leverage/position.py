@@ -55,6 +55,8 @@ import pandas as pd
 
 from verify_lab.common_constants import CALENDAR_DAYS_PER_YEAR, COL_DATE, RATE_TO_PERCENT
 from verify_lab.studies.futures_leverage.constants import (
+    COL_INTEREST,
+    COL_PRICE,
     INITIAL_EQUITY,
     REBALANCE_DAILY,
     REBALANCE_INTERVAL_DAYS,
@@ -66,13 +68,14 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 자기자본 곡선의 컬럼
-COL_PRICE = "Price"
+# 자기자본 곡선의 컬럼. **`Price`·`Interest` 는 `runner` 도 쓰므로 `constants.py` 가 소유한다** —
+# 두 벌이던 시절에는 값이 우연히 같아서 동작했고, 한쪽만 바뀌면 이 모듈과 `runner` 가
+# 다른 컬럼을 가리키는데 예외가 나지 않았다.
+# 아래 다섯은 이 파일에서만 쓰므로 「1개 파일에서만 사용 → 해당 파일 상단」 규칙대로 여기 둔다
 COL_EQUITY = "Equity"
 COL_EXPOSURE = "Exposure"
 COL_CONTRACT_COUNT = "ContractCount"
 COL_EFFECTIVE_LEVERAGE = "EffectiveLeverage"
-COL_INTEREST = "Interest"
 COL_REBALANCED = "Rebalanced"
 
 

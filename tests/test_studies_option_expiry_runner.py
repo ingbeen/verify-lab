@@ -22,8 +22,11 @@ from verify_lab.measure.constants import (
     COL_FORWARD_RETURN,
     COL_HORIZON,
     COL_JUDGEABLE,
+    COL_MEAN_RATE_CONFLICT,
     JUDGEABLE_NO,
     JUDGEABLE_YES,
+    PERIOD_FIRST_HALF,
+    PERIOD_SECOND_HALF,
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
@@ -41,12 +44,9 @@ from verify_lab.studies.option_expiry.constants import (
     COL_DAILY_RETURN,
     COL_EXPIRY_MONTH_NUMBER,
     COL_HOLD_DAYS,
-    COL_MEAN_RATE_CONFLICT,
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
     COL_TIME_HALF,
-    DISPLAY_TIME_HALF_EARLY,
-    DISPLAY_TIME_HALF_LATE,
     FRIDAY,
     HORIZON_NEXT_WEEK_EXIT,
     KR_MONTHLY_EXPIRY,
@@ -307,7 +307,7 @@ class TestWeeklyTradeAssembly:
 
         # Then
         assert not result.empty, "표본이 모자란 달의 행이 사라졌습니다 (측정의 원칙 17)"
-        assert result[COL_TIME_HALF].tolist() == [DISPLAY_TIME_HALF_EARLY, DISPLAY_TIME_HALF_LATE]
+        assert result[COL_TIME_HALF].tolist() == [PERIOD_FIRST_HALF, PERIOD_SECOND_HALF]
         assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_NO, JUDGEABLE_NO]
 
     def test_표본이_충분한_달은_판정가능이_예다(self) -> None:
@@ -357,7 +357,7 @@ class TestWeeklyTradeAssembly:
         result = _aggregate_month_halves(signal, baseline, repeats=20, seed=0)
 
         # Then
-        assert result[COL_TIME_HALF].tolist() == [DISPLAY_TIME_HALF_EARLY, DISPLAY_TIME_HALF_LATE]
+        assert result[COL_TIME_HALF].tolist() == [PERIOD_FIRST_HALF, PERIOD_SECOND_HALF]
         assert result[COL_SAMPLE_COUNT].tolist() == [12, 12], "앞뒤 표본이 균등하지 않습니다"
         first, second = result.iloc[0], result.iloc[1]
         assert float(first[COL_LOSS_RATE]) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
@@ -449,6 +449,6 @@ def test_시기_절반이_비어도_행이_남는다() -> None:
     result = _aggregate_month_halves(signal, baseline, repeats=10, seed=0)
 
     # Then
-    assert result[COL_TIME_HALF].tolist() == [DISPLAY_TIME_HALF_EARLY, DISPLAY_TIME_HALF_LATE]
+    assert result[COL_TIME_HALF].tolist() == [PERIOD_FIRST_HALF, PERIOD_SECOND_HALF]
     assert int(result.loc[0, COL_SAMPLE_COUNT]) == 0
     assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_NO, JUDGEABLE_NO]

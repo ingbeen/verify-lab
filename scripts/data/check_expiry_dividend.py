@@ -34,12 +34,8 @@ from verify_lab.common_constants import (
     RATE_TO_PERCENT,
 )
 from verify_lab.data.loader import load_market_csv
-from verify_lab.strategy.constants import (
-    EXPIRY_CELLS,
-    EXPIRY_DIRECTION_DOWN,
-    EXPIRY_DIRECTION_UP,
-    ExpiryCell,
-)
+from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
+from verify_lab.strategy.constants import EXPIRY_CELLS, ExpiryCell
 from verify_lab.strategy.option_expiry_runner import collect_entries
 from verify_lab.studies.option_expiry.constants import DATASETS, Dataset
 from verify_lab.utils.cli_helpers import cli_exception_handler
@@ -138,7 +134,7 @@ def _measure_cell(cell: ExpiryCell) -> dict[str, Any]:
     return {
         "종목": dataset.label,
         "만기월": cell.expiry_month,
-        "방향": EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
+        "방향": DIRECTION_DOWN if cell.bet_down else DIRECTION_UP,
         "진입": len(entries.entry_positions),
         "대조 가능": len(series),
         "걸린 건": len(hit),

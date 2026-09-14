@@ -79,6 +79,11 @@ DISPLAY_TEST_NOTE = "비고"
 # (측정의 원칙 17). 세 검증이 같은 문자열을 따로 두고 있었으므로 여기서 하나로 낸다
 DISPLAY_JUDGEABLE = "판정가능"
 
+# 평균의 부호와 방향 비율이 어긋나는 칸 (측정의 원칙 13). 평균이 양수인데 절반 넘게 내렸다면
+# 소수의 큰 사건이 평균을 만든 것이라, 평균만 보면 그 칸을 놓친다.
+# 판정은 `measure.statistics.mean_rate_conflict`, 컬럼 토큰은 `measure/constants.py` 가 갖는다
+DISPLAY_MEAN_RATE_CONFLICT = "평균-비율 어긋남"
+
 # 후보 판정 (measure/screening.py 의 결과)
 DISPLAY_DIRECTION = "방향"
 DISPLAY_HIT_RATE = "적중률(%)"

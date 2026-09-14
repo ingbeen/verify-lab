@@ -31,6 +31,7 @@
 import ast
 import re
 from collections.abc import Iterator
+from functools import cache
 from pathlib import Path
 
 from verify_lab.common_constants import BASE_DIR
@@ -52,6 +53,39 @@ _STRATEGY_SHARED = ("trade_fill", "periods", "constants", "run_summary")
 # 평균-비율 어긋남 판정과 판정가능 식을 소유한 파일. `_files_defining` 은 `_OWNER` 하나만
 # 빼므로 이 이름이 결과에 그대로 남는 것이 정상이다
 _MEASURE_STATISTICS = "verify_lab/measure/statistics.py"
+
+# 값의 소유자를 이름으로 지목할 때 쓴다. `_files_with_literal`·`_files_defining_value` 는
+# 아무 파일도 빼지 않으므로 소유자 자신이 결과에 들어 있어야 정상이다
+_MEASURE_CONSTANTS = "verify_lab/measure/constants.py"
+_MEASURE_SCREENING = "verify_lab/measure/screening.py"
+_REPORT_CONSTANTS = "verify_lab/report/constants.py"
+
+# `report/constants.py` 의 표시 문자열인데 **다른 파일도 같은 문자열을 정의하는** 것들.
+# 값 → 정의해도 되는 파일 집합이며, 검사는 **부분집합**이다 — 목록에 없는 «새» 충돌만 실패시키고,
+# 나중에 통합해서 사라지는 것은 막지 않는다.
+#
+# **이 목록이 비어 있지 않은 것이 정상이다.** 같은 한글 단어가 계층마다 다른 것을 가리키는 자리가
+# 실재하고, 그 사실은 `src/verify_lab/CLAUDE.md` 「매매 산출물 계약」이 이미 명시했다
+_REPORT_LABEL_COLLISIONS = {
+    # 뜻이 다르다 — `report` 는 측정 구간(`1주`·`1개월`), `strategy` 는 시기 구간(`앞 절반`·`최근 5년`)
+    "구간": frozenset({"verify_lab/strategy/constants.py"}),
+    # `pykrx` 가 돌려주는 인덱스 이름이라 표시 레이블이 아니라 **데이터 소스의 사실**이다
+    "날짜": frozenset({"verify_lab/data/pykrx_collector.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
+    # **표마다 지시 대상이 다르다** — 역방향 성적표는 신호군 종류, 거래내역은 신호 방향,
+    # 배수 검증은 기초지수가 오른 날인지다. 계약 표가 이 갈림을 의도로 적어 두었다
+    "방향": frozenset(
+        {
+            "verify_lab/strategy/constants.py",
+            "verify_lab/studies/leverage_tracking/constants.py",
+            "verify_lab/studies/reverse/constants.py",
+        }
+    ),
+    "신호": frozenset({"verify_lab/studies/reverse/constants.py"}),
+    # 뜻이 다르다 — `screening` 은 1차 판정의 «값», `usdkrw` 는 이상치 라벨,
+    # `report` 는 제외 «건수» 컬럼의 머리다
+    "제외": frozenset({"verify_lab/measure/screening.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
+    "표본": frozenset({"verify_lab/studies/usdkrw_equivalence/constants.py"}),
+}
 
 # `summary.json` 의 `datasets` 한 줄을 만드는 자리. 검증은 셋이 각자 만들고 매매 셋은
 # `strategy/run_summary.dataset_record` 하나를 공유한다 — **검증이 그것을 쓸 수 없다.**
@@ -166,6 +200,215 @@ def _files_defining(pattern: str) -> list[str]:
             found.append(str(path.relative_to(_SOURCE_ROOT.parent)))
 
     return found
+
+
+def _files_with_literal(value: str) -> list[str]:
+    """`src` 안에서 그 문자열을 **소스 어디에든 적은** 파일을 찾는다 (docstring 제외).
+
+    `_files_defining` 이 「이 이름으로 정의하는가」를 보는 것과 달리 여기서는 **값**을 본다.
+    이름은 계층마다 다른데(`PERIOD_FIRST_HALF` · `DISPLAY_PERIOD_EARLY` · `DISPLAY_TIME_HALF_EARLY`)
+    산출물에 나가는 것은 값이라, 이름으로 찾으면 세 벌이 있어도 한 건도 안 걸린다.
+
+    **상수 대입만 보지 않는다.** 원칙이 요구하는 값이 되살아나는 가장 흔한 모양은 상수를 새로
+    만드는 것이 아니라 **호출부에 리터럴을 바로 적는 것**이다 — 실제로 두 runner 가
+    `masks = [(라벨, ...), (라벨, ...)]` 꼴로 쓰고 있어 그 자리에 문자열을 직접 적으면 그대로 산다.
+    주석은 AST 에 없으므로 애초에 안 걸린다.
+
+    **아무 파일도 빼지 않는다.** 소유자가 결과 목록에 이름으로 드러나야 그 자리가 어디인지
+    테스트만 읽고 알 수 있다.
+
+    Args:
+        value: 찾을 문자열 값
+
+    Returns:
+        그 값을 적은 파일의 저장소 상대 경로 목록 (정렬됨, 중복 없음)
+    """
+    return sorted(
+        {str(path.relative_to(_SOURCE_ROOT.parent)) for path in _SOURCE_ROOT.rglob("*.py") if value in _literals(path)}
+    )
+
+
+def _files_defining_value(value: str) -> list[str]:
+    """`src` 안에서 그 문자열을 **모듈 최상단 상수 값으로** 정의하는 파일을 찾는다.
+
+    위 `_files_with_literal` 보다 좁게 본다. **표시 레이블에는 좁은 쪽이 맞다** — 같은 한글
+    단어가 예외 메시지 조각으로도 쓰이기 때문이다(`measure/statistics.py` 가 「신호 집계에
+    필수 컬럼이 누락되었습니다」를 만들며 `"신호"`·`"베이스라인"` 을 f-string 재료로 쓴다).
+    그것은 레이블의 두 번째 정의가 아니라 문장의 일부다.
+
+    Args:
+        value: 찾을 문자열 값
+
+    Returns:
+        그 값을 상수로 정의한 파일의 저장소 상대 경로 목록 (정렬됨)
+    """
+    return sorted(
+        str(path.relative_to(_SOURCE_ROOT.parent))
+        for path in _SOURCE_ROOT.rglob("*.py")
+        if value in _module_constants(path).values()
+    )
+
+
+@cache
+def _literals(path: Path) -> frozenset[str]:
+    """그 파일에 적힌 문자열을 **docstring 만 빼고** 모은다.
+
+    Args:
+        path: 검사할 소스 파일
+
+    Returns:
+        문자열 값의 집합
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    documented = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef)
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and isinstance(node.body[0].value.value, str)
+    }
+
+    return frozenset(
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in documented
+    )
+
+
+@cache
+def _module_constants(path: Path) -> dict[str, str]:
+    """그 파일의 모듈 최상단 문자열 상수를 이름 → 값으로 모은다.
+
+    **결과를 캐시한다.** 레이블 소유자 검사가 `report` 의 레이블마다 소스 트리를 통째로 훑어
+    같은 파일을 수십 번 파싱한다.
+
+    Args:
+        path: 검사할 소스 파일
+
+    Returns:
+        상수 이름 → 문자열 값
+    """
+    return _string_constants(ast.parse(path.read_text(encoding="utf-8")))
+
+
+def _absolute_module(path: Path, node: ast.ImportFrom) -> str:
+    """`from ... import` 의 대상 모듈을 **절대 경로로 펴서** 돌려준다.
+
+    상대 import 를 그대로 두면 `from ..option_expiry import x` 가 모듈명 `option_expiry` 로만
+    보여 어느 패키지인지 판정할 수 없다. **`level` 을 파일 위치에 적용해야** 절대 경로가 나온다.
+
+    Args:
+        path: import 문이 들어 있는 소스 파일
+        node: 검사할 import 노드
+
+    Returns:
+        `verify_lab.` 으로 시작하는 절대 모듈 경로
+    """
+    if not node.level:
+        return node.module or ""
+
+    # 마지막 segment 는 모듈 이름이므로 떼면 그 파일이 속한 패키지가 된다.
+    # `__init__.py` 도 같다 — 그 이름이 마지막 segment 자리를 차지한다
+    package = ["verify_lab", *path.relative_to(_SOURCE_ROOT).with_suffix("").parts][:-1]
+    base = package[: len(package) - (node.level - 1)]
+
+    return ".".join([*base, *((node.module or "").split(".") if node.module else [])])
+
+
+def _imported_study_packages(path: Path) -> set[str]:
+    """그 파일이 가져오는 **검증 패키지 이름**을 모은다 (자기 것 포함).
+
+    Args:
+        path: 검사할 소스 파일
+
+    Returns:
+        `verify_lab.studies.` 바로 다음 segment 의 집합
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    prefix = "verify_lab.studies."
+    found: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = _absolute_module(path, node)
+            if module == "verify_lab.studies":
+                found.update(alias.name for alias in node.names)
+            elif module.startswith(prefix):
+                found.add(module[len(prefix) :].split(".")[0])
+        elif isinstance(node, ast.Import):
+            found.update(
+                alias.name[len(prefix) :].split(".")[0] for alias in node.names if alias.name.startswith(prefix)
+            )
+
+    return found
+
+
+def _names_borrowed_from_common(tree: ast.Module) -> set[str]:
+    """`measure`·`report` 에서 가져온 이름을 모은다.
+
+    Args:
+        tree: 파싱된 모듈
+
+    Returns:
+        그 모듈이 공통 계층에서 import 한 이름의 집합 (별칭이 있으면 별칭)
+    """
+    common = ("verify_lab.measure", "verify_lab.report")
+
+    return {
+        alias.asname or alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(common)
+        for alias in node.names
+    }
+
+
+def _declared_all(tree: ast.Module) -> set[str]:
+    """모듈이 선언한 `__all__` 의 이름을 모은다.
+
+    **네 가지 모양을 모두 본다** — `__all__ = [...]` · `__all__: Final = [...]`(이 저장소의
+    지배적 표기다) · 튜플 · 두 목록의 이어붙임. 한 모양만 보면 다른 모양으로 쓴 모듈이
+    **검사를 통과하고**, 그때 계약은 초록인데 재노출은 살아 있다.
+
+    Args:
+        tree: 파싱된 모듈
+
+    Returns:
+        `__all__` 에 실린 문자열 집합. 선언이 없으면 빈 집합
+    """
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets, value = node.targets, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            targets, value = [node.target], node.value
+        else:
+            continue
+
+        if not any(isinstance(target, ast.Name) and target.id == "__all__" for target in targets):
+            continue
+
+        return {
+            item.value for item in ast.walk(value) if isinstance(item, ast.Constant) and isinstance(item.value, str)
+        }
+
+    return set()
+
+
+def _passthrough_names(path: Path) -> set[str]:
+    """그 모듈을 **거쳐 가기만 하는** 공통 계층 이름을 모은다.
+
+    `measure`·`report` 에서 가져온 이름은 그 모듈이 자기 안에서 쓰려고 가져온 것이다.
+    **그런데 다른 모듈이 그것을 «이 모듈에서» 가져가면 옛 경로가 생긴다** — 소유자를 옮겨도
+    그 경로로 들어오는 코드가 그대로 통과해 이동이 실제로 일어났는지 확인할 방법이 없다.
+
+    Args:
+        path: 검사할 소스 파일
+
+    Returns:
+        그 모듈이 공통 계층에서 가져온 이름의 집합
+    """
+    return _names_borrowed_from_common(ast.parse(path.read_text(encoding="utf-8")))
 
 
 def _string_constants(tree: ast.Module) -> dict[str, str]:
@@ -389,6 +632,227 @@ class TestPrincipleThirteenOwnership:
 
         # Then
         assert offenders == [_MEASURE_STATISTICS], f"판정가능 식을 손으로 쓴 파일이 있습니다: {offenders}"
+
+
+class TestPrincipleValueOwnership:
+    """「측정의 원칙」이 요구하는 값은 공통 계층 하나가 소유한다
+
+    **이름이 아니라 값으로 검사한다.** 세 계층이 같은 문자열을 각자 다른 이름으로 들고 있었고
+    (`PERIOD_FIRST_HALF` · `DISPLAY_PERIOD_EARLY` · `DISPLAY_TIME_HALF_EARLY`), 이름으로 찾으면
+    세 벌이 있어도 한 건도 안 걸린다. 산출물에 나가는 것은 값이다.
+    """
+
+    def test_방향_표기를_한_곳에서만_정의한다(self) -> None:
+        """
+        목적: 측정의 원칙 11 의 두 방향이 갈라지지 않게 한다.
+
+        **같은 컬럼의 같은 값이 두 경로로 들어오고 있었다** — 월말 매매는 `measure.screening`
+        에서, 옵션 만기일 매매는 `strategy.constants` 에서 가져왔다.
+
+        Given: `src/verify_lab` 전체
+        When: `위`·`아래` 를 상수 값으로 정의하는 파일을 찾는다
+        Then: `measure/screening.py` 하나뿐이다
+        """
+        # When / Then
+        for value in ("위", "아래"):
+            assert _files_with_literal(value) == [_MEASURE_SCREENING], f"{value!r} 을 자체 정의한 파일이 있습니다"
+
+    def test_어긋남_컬럼과_레이블을_검증마다_두지_않는다(self) -> None:
+        """
+        목적: 측정의 원칙 13 의 **절반만 통합된 상태**를 닫는다.
+
+        판정 함수는 `measure/statistics` 로 올라갔는데 **컬럼 이름과 표시 레이블은 두 검증에
+        한 벌씩 남아 있었다.** 같은 원칙이 요구하는 것을 검증마다 두면 두 산출물의 같은 컬럼이
+        조용히 갈라진다.
+
+        Given: `src/verify_lab` 전체
+        When: 컬럼 토큰과 표시 레이블을 정의하는 파일을 각각 찾는다
+        Then: 컬럼은 `measure/constants.py`, 레이블은 `report/constants.py` 하나뿐이다
+        """
+        # When / Then
+        assert _files_with_literal("mean_rate_conflict") == [_MEASURE_CONSTANTS]
+        assert _files_with_literal("평균-비율 어긋남") == [_REPORT_CONSTANTS]
+
+    def test_절반_구간_이름을_한_곳에서만_정의한다(self) -> None:
+        """
+        목적: 측정의 원칙 17 의 구간 이름이 **세 벌**이던 것을 닫는다.
+
+        원칙 17 은 모든 매매법에 이 축을 요구한다. 매매 계층과 두 검증이 각자 이름을 두면
+        한쪽만 바뀌어도 예외가 나지 않고, 두 산출물의 `구간`/`시기` 열이 다른 말을 갖는다.
+
+        **`measure/constants.py` 가 소유하는 이유**: `JUDGEABLE_YES`(값이면서 표에 그대로 실리는
+        문자열)가 이미 같은 이유로 거기 있다. 표시 전용 레이블이 아니라 **데이터 칸에 들어가는 값**이다.
+
+        Given: `src/verify_lab` 전체
+        When: `앞 절반`·`뒤 절반` 을 상수 값으로 정의하는 파일을 찾는다
+        Then: `measure/constants.py` 하나뿐이다
+        """
+        # When / Then
+        for value in ("앞 절반", "뒤 절반"):
+            assert _files_with_literal(value) == [_MEASURE_CONSTANTS], f"{value!r} 을 자체 정의한 파일이 있습니다"
+
+
+class TestReportLabelOwnership:
+    """`measure`·`report` 가 내는 공통 컬럼의 한글 레이블은 `report/constants.py` 가 소유한다
+
+    계약이 「검증마다 다른 말을 쓰면 두 결과를 나란히 읽을 수 없다」로 정한 자리다.
+    **이미 알려진 충돌은 목록으로 고정하고 그 밖의 새 충돌만 막는다** — 같은 한글 단어가
+    계층마다 다른 것을 가리키는 자리가 실재하기 때문이다(`구간`·`방향`·`제외`).
+    """
+
+    def test_알려진_것_말고는_report_레이블을_재정의하지_않는다(self) -> None:
+        """
+        목적: `평균(%)`·`최고(%)`·`최악(%)`·`표준편차(%)`·`신호` 가 매매 계층에 한 벌 더 있던
+        상태로 되돌아가지 않게 하고, **새 재정의가 조용히 늘어나는 것**을 막는다.
+
+        검사는 **부분집합**이다. 허용목록에 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다 —
+        막으면 다음 계획서가 중복을 줄일 때마다 이 테스트가 실패한다.
+
+        Given: `report/constants.py` 의 `DISPLAY_*` 문자열 전부
+        When: 같은 문자열을 정의하는 다른 파일을 찾는다
+        Then: 허용목록에 적힌 파일뿐이다
+        """
+        # Given
+        labels = {
+            value
+            for name, value in _module_constants(_SOURCE_ROOT / "report" / "constants.py").items()
+            if name.startswith("DISPLAY_")
+        }
+        assert labels, "report 레이블을 하나도 찾지 못했습니다"
+
+        # When / Then
+        for label in sorted(labels):
+            offenders = set(_files_defining_value(label)) - {_REPORT_CONSTANTS}
+            allowed = _REPORT_LABEL_COLLISIONS.get(label, frozenset())
+
+            assert offenders <= allowed, f"{label!r} 을 재정의한 파일이 있습니다: {sorted(offenders - allowed)}"
+
+
+class TestStudyPackageComposition:
+    """검증 패키지는 자기 값을 한 파일에서만 정의하고 다른 검증을 모른다"""
+
+    def test_같은_접두사의_같은_값을_두_파일에_두지_않는다(self) -> None:
+        """
+        목적: 한 검증 안에서 같은 컬럼 토큰이 두 벌이던 상태로 되돌아가지 않게 한다.
+
+        `studies/futures_leverage` 가 `COL_PRICE`·`COL_INTEREST` 를 `constants.py` 와
+        `position.py` **양쪽에** 갖고 있었다. **값이 우연히 같아서 동작했고**, 한쪽만 바뀌면
+        `runner` 와 `position` 이 다른 컬럼을 가리키는데 예외는 나지 않는다.
+
+        **접두사가 같을 때만 본다.** `COL_HOLD_DAYS`(DataFrame 컬럼)와 `KEY_HOLD_DAYS`(JSON 키)는
+        **다른 이름공간**이라 같은 토큰을 써도 충돌이 아니다.
+
+        Given: `studies/` 의 검증 패키지 전부
+        When: 한 패키지 안에서 접두사가 같은 이름이 같은 문자열을 두 파일에 정의하는지 본다
+        Then: 한 건도 없다
+        """
+        # Given
+        packages = sorted(path for path in (_SOURCE_ROOT / "studies").iterdir() if path.is_dir())
+        assert packages, "검증 패키지를 하나도 찾지 못했습니다"
+
+        # When / Then
+        for package in packages:
+            # **파일 이름이 아니라 경로로 센다.** 하위 폴더가 생기면 같은 이름의 모듈이 둘이 되고,
+            # 이름으로 세면 그 둘이 한 파일로 뭉개져 중복이 조용히 통과한다
+            seen: dict[tuple[str, str], str] = {}
+            for module in sorted(package.rglob("*.py")):
+                relative = str(module.relative_to(package))
+                for name, value in _module_constants(module).items():
+                    key = (name.split("_")[0], value)
+                    previous = seen.setdefault(key, relative)
+
+                    assert (
+                        previous == relative
+                    ), f"{package.name} 의 {value!r} 이 {previous} 와 {relative} 양쪽에 정의돼 있습니다 ({name})"
+
+    def test_검증끼리_서로를_가져오지_않는다(self) -> None:
+        """
+        목적: 매매 계층에서 겪은 사슬이 검증 계층에 생기지 않게 **미리** 고정한다.
+
+        공유 함수가 특정 검증 파일의 소유가 되면, 그 검증 사정으로 고칠 때 빌려 쓰는 쪽이
+        조용히 함께 바뀐다. 공통으로 올릴 것은 `measure`·`report` 로 가야 한다.
+
+        Given: `studies/` 의 모든 소스 파일
+        When: 각 파일이 가져오는 검증 패키지를 본다 (상대 import 도 절대 경로로 펴서)
+        Then: 자기 패키지만 가져온다
+        """
+        # Given / When / Then
+        for package in sorted(path for path in (_SOURCE_ROOT / "studies").iterdir() if path.is_dir()):
+            for module in sorted(package.rglob("*.py")):
+                borrowed = _imported_study_packages(module) - {package.name}
+
+                assert borrowed == set(), f"{package.name}/{module.name} 이 다른 검증을 가져옵니다: {sorted(borrowed)}"
+
+
+class TestCommonLayerReexport:
+    """공통 계층의 이름은 **소유자에서 직접** 가져온다
+
+    `src/verify_lab/CLAUDE.md` 「매매 계층 구성 계약」이 **기각안으로 명시한 패턴**이다 —
+    그 경로가 지원되는 한 옛 사슬이 언제든 되살아나고, 실제로 테스트 하나가 그 경로로 들어와
+    소유자가 바뀌어도 통과하는 상태였다.
+
+    [중요] **`__all__` 을 지우는 것으로는 옛 경로가 닫히지 않는다.** `__all__` 은 `import *` 에만
+    걸리고 `from verify_lab.strategy.constants import PERIOD_FIRST_HALF` 는 그대로 동작한다.
+    그래서 선언이 아니라 **실제 import 문**을 본다.
+    """
+
+    def test_아래_계층을_거쳐_공통_이름을_가져오지_않는다(self) -> None:
+        """
+        목적: 소유자를 옮겼는데 옛 경로로 들어오는 코드가 남는 것을 막는다.
+
+        `tests/test_studies_leverage_breakdown.py` 가 `max_non_overlapping` 을
+        **`studies.leverage_tracking.breakdown` 에서** 가져오고 있었다. 소유자가
+        `measure.statistics` 로 옮겨간 뒤에도 그 테스트는 통과했고, 그래서 이동이 실제로
+        일어났는지 확인할 방법이 없었다.
+
+        Given: `studies/`·`strategy/` 가 공통 계층에서 가져온 이름
+        When: `src`·`tests`·`scripts` 전체에서 그 이름을 **그 모듈에서** 가져오는 곳을 찾는다
+        Then: 한 곳도 없다
+        """
+        # Given
+        passthrough = {
+            f"verify_lab.{'.'.join(path.relative_to(_SOURCE_ROOT).with_suffix('').parts)}": _passthrough_names(path)
+            for folder in ("studies", "strategy")
+            for path in (_SOURCE_ROOT / folder).rglob("*.py")
+        }
+        assert any(passthrough.values()), "공통 계층에서 이름을 가져오는 모듈을 하나도 찾지 못했습니다"
+
+        # When / Then
+        for folder in ("src", "tests", "scripts"):
+            for consumer in sorted((BASE_DIR / folder).rglob("*.py")):
+                for node in ast.walk(ast.parse(consumer.read_text(encoding="utf-8"))):
+                    if not isinstance(node, ast.ImportFrom):
+                        continue
+                    source = _absolute_module(consumer, node) if node.level else node.module or ""
+                    leaked = {alias.name for alias in node.names} & passthrough.get(source, set())
+
+                    assert leaked == set(), (
+                        f"{consumer.relative_to(BASE_DIR)}:{node.lineno} 가 공통 계층의 이름을 "
+                        f"{source} 를 거쳐 가져옵니다: {sorted(leaked)}"
+                    )
+
+    def test_공통_이름을_import_별표로_내보내지_않는다(self) -> None:
+        """
+        목적: `__all__` 이 되살아나 **Ruff 의 미사용 import 검사를 잠재우는** 것을 막는다.
+
+        위 테스트가 실제 경로를 막으므로 순수 통과용 import 는 미사용이 되어 Ruff 가 잡는다.
+        **그런데 `__all__` 에 이름을 얹으면 그 검사가 꺼진다** — 전에 네 모듈이 정확히
+        그 상태였다. 두 장치가 함께 있어야 통과 경로가 다시 열리지 않는다.
+
+        Given: `studies/`·`strategy/` 의 모든 소스 파일
+        When: `__all__` 과 공통 계층에서 가져온 이름을 겹쳐 본다
+        Then: 겹치는 이름이 없다
+        """
+        # Given
+        modules = sorted(path for folder in ("studies", "strategy") for path in (_SOURCE_ROOT / folder).rglob("*.py"))
+        assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
+
+        # When / Then
+        for module in modules:
+            tree = ast.parse(module.read_text(encoding="utf-8"))
+            reexported = _declared_all(tree) & _names_borrowed_from_common(tree)
+
+            assert reexported == set(), f"{module.name} 이 공통 계층의 이름을 재노출합니다: {sorted(reexported)}"
 
 
 class TestDataConstantsOwnership:

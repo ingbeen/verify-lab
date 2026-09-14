@@ -24,6 +24,7 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
+from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
@@ -39,9 +40,8 @@ from verify_lab.strategy.constants import (
     DISPLAY_TARGET_DATE,
     DISPLAY_TICKER,
     EXPIRY_CELLS,
-    EXPIRY_DIRECTION_DOWN,
-    EXPIRY_DIRECTION_UP,
     EXPIRY_STOP_LEVEL,
+    NOTE_STOP_BASE,
     STOP_GRID_FILENAME,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -83,7 +83,6 @@ KEY_EXCLUDED_COUNT = "excluded_count"
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 만기일 종가다. 만기일이 휴장이면 직전 거래일로 앞당긴다"
 NOTE_EXIT = "청산은 달력이 지목한 다음주 금요일 종가다. 이익이어도 중간에 팔지 않는다"
-NOTE_STOP_BASE = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
 
 
 @dataclass(frozen=True)
@@ -196,7 +195,7 @@ def run_option_expiry_trading(
             {
                 KEY_LABEL: dataset.label,
                 KEY_EXPIRY_MONTH: cell.expiry_month,
-                KEY_DIRECTION: EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
+                KEY_DIRECTION: DIRECTION_DOWN if cell.bet_down else DIRECTION_UP,
                 KEY_EXCLUDED_COUNT: entries.excluded_count,
             }
         )
@@ -417,7 +416,7 @@ def _identity(dataset: Dataset, cell: ExpiryCell, stop_level: float | None) -> d
     return {
         DISPLAY_TICKER: dataset.label,
         DISPLAY_EXPIRY_MONTH: cell.expiry_month,
-        DISPLAY_DIRECTION: EXPIRY_DIRECTION_DOWN if cell.bet_down else EXPIRY_DIRECTION_UP,
+        DISPLAY_DIRECTION: DIRECTION_DOWN if cell.bet_down else DIRECTION_UP,
         # **언제나 잴 수 있는 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
         # 그 로더가 시가·고가·저가를 요구하므로 종가 계열(지수)은 읽는 단계에서 거부된다 —
         # 그래서 `measurable` 을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다

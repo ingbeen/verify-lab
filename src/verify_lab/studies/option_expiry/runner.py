@@ -27,6 +27,9 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_HORIZON,
     COL_JUDGEABLE,
+    COL_MEAN_RATE_CONFLICT,
+    PERIOD_FIRST_HALF,
+    PERIOD_SECOND_HALF,
     REASON_NONE,
 )
 from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
@@ -60,15 +63,12 @@ from verify_lab.studies.option_expiry.constants import (
     COL_EXPIRY_MONTH,
     COL_EXPIRY_MONTH_NUMBER,
     COL_HOLD_DAYS,
-    COL_MEAN_RATE_CONFLICT,
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
     COL_RULE_DATE,
     COL_TICKER,
     COL_TIME_HALF,
     DATASETS,
-    DISPLAY_TIME_HALF_EARLY,
-    DISPLAY_TIME_HALF_LATE,
     HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
     WEEKDAY_LABELS,
@@ -499,8 +499,8 @@ def _aggregate_month_halves(
         month_baseline = baseline[baseline[COL_DATE].dt.month == month]
         boundary = month_signal[COL_DATE].iloc[len(month_signal) // 2]
         halves = (
-            (DISPLAY_TIME_HALF_EARLY, month_signal[COL_DATE] < boundary, month_baseline[COL_DATE] < boundary),
-            (DISPLAY_TIME_HALF_LATE, month_signal[COL_DATE] >= boundary, month_baseline[COL_DATE] >= boundary),
+            (PERIOD_FIRST_HALF, month_signal[COL_DATE] < boundary, month_baseline[COL_DATE] < boundary),
+            (PERIOD_SECOND_HALF, month_signal[COL_DATE] >= boundary, month_baseline[COL_DATE] >= boundary),
         )
         for label, signal_mask, baseline_mask in halves:
             # **구간 축을 만기월로 덮어쓴다.** 입력은 보유일수를 축으로 갖고 있어(`_per_length`)

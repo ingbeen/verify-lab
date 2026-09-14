@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON, COL_JUDGEABLE
-from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_SAMPLE_COUNT
+from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON, COL_JUDGEABLE, JUDGEABLE_YES
+from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT
 from verify_lab.studies.leverage_tracking.constants import (
     COL_NON_OVERLAPPING_COUNT,
     COL_REALIZED_MULTIPLE,
@@ -19,13 +19,11 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_BASE_TICKER,
     DISPLAY_DIVIDEND_ADJUSTMENT,
     DISPLAY_INDEX_NAME,
-    DISPLAY_JUDGEABLE,
     DISPLAY_MULTIPLE,
     DISPLAY_NON_OVERLAPPING,
     DISPLAY_PRODUCT_TYPE,
     DISPLAY_TARGET_TICKER,
     HORIZON_LABELS,
-    JUDGEABLE_YES,
     PRODUCT_ETF,
     LeveragePair,
 )

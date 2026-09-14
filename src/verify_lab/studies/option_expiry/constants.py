@@ -18,6 +18,7 @@ from verify_lab.measure.constants import (
     COL_FORWARD_RETURN,
     COL_HORIZON,
     COL_JUDGEABLE,
+    COL_MEAN_RATE_CONFLICT,
     COL_SIGNAL_COUNT,
 )
 from verify_lab.measure.screening import (
@@ -85,6 +86,7 @@ from verify_lab.report.constants import (
     DISPLAY_MEAN_DIFF,
     DISPLAY_MEAN_P_VALUE,
     DISPLAY_MEAN_PERCENTILE,
+    DISPLAY_MEAN_RATE_CONFLICT,
     DISPLAY_MEDIAN,
     DISPLAY_MEDIAN_DIFF,
     DISPLAY_MEDIAN_P_VALUE,
@@ -209,17 +211,13 @@ BASELINE_SUFFIX: Final = "_baseline"
 # 만기월을 1~12 정수로 놓는 축. `COL_EXPIRY_MONTH` 는 "YYYY-MM" 문자열이라 12칸으로 묶이지 않는다
 COL_EXPIRY_MONTH_NUMBER: Final = "expiry_month_number"
 
-# 평균의 부호와 방향 비율이 어긋나는 칸인지 (루트 `CLAUDE.md` 측정의 원칙 13).
-# 평균이 양수인데 절반 넘게 내렸다면 소수의 큰 사건이 평균을 만든 것이라, 평균만 보면 그 칸을 놓친다
-COL_MEAN_RATE_CONFLICT: Final = "mean_rate_conflict"
-
-
 # 시기 분할 축. 신호를 **시간순으로 세어 균등하게** 가른다 — 시장 구조가 바뀐 시점으로 나누는
 # 달력 경계 방식은 칸마다 표본이 들쭉날쭉해 쓰지 않는다(`docs/spec/옵션_만기일_설계.md` 결정 ㉖).
 # 후보 판정의 시기 항목은 **칸당 표본 하한**을 지켜야 하므로 이 축으로 잰다
+#
+# 절반 구간의 **이름**은 공통 계층이 소유한다 (`measure/constants.py` 의
+# `PERIOD_FIRST_HALF`·`PERIOD_SECOND_HALF`) — 원칙 17 이 모든 매매법에 요구하는 축이다
 COL_TIME_HALF: Final = "time_half"
-DISPLAY_TIME_HALF_EARLY: Final = "앞 절반"
-DISPLAY_TIME_HALF_LATE: Final = "뒤 절반"
 
 # 묶음 집계에서 쓰는 구간 표지. 보유 거래일 수를 구간 축에 넣으면 **한 매매가 여러 칸으로 쪼개져**
 # 묶음 값이 나오지 않는다. 실제 보유일수로는 도달할 수 없는 음수를 써서 진짜 구간과 섞이지 않게 한다
@@ -316,7 +314,6 @@ DATASETS: Final = (
 # ============================================================
 
 DISPLAY_EXPIRY_MONTH: Final = "만기월"
-DISPLAY_MEAN_RATE_CONFLICT: Final = "평균-비율 어긋남"
 DISPLAY_RULE_DATE: Final = "규칙일"
 DISPLAY_EXPIRY_DATE: Final = "만기일"
 DISPLAY_ADVANCED_DAYS: Final = "앞당김(달력일)"

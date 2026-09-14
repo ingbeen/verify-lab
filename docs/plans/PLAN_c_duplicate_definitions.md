@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🟡 Draft
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-09-14 12:05
-**마지막 업데이트**: 2026-09-14 12:05
+**마지막 업데이트**: 2026-09-14 18:25
 **관련 범위**: measure, report, strategy, studies 전체, tests
 **관련 문서**: `src/verify_lab/CLAUDE.md`, `tests/CLAUDE.md`, `.claude/rules/docs.md`
 
@@ -42,12 +42,12 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: **「측정의 원칙」이 요구하는 값이 검증마다 따로 정의된 것**을 공통 계층으로 올린다 (원칙 11·13·17)
-- [ ] 목표 2: **같은 패키지·같은 계층 안의 값 중복**을 없앤다 (같은 파일 두 벌, `report` ↔ `strategy` 레이블 5쌍)
-- [ ] 목표 3: **모듈 사이를 문자열 리터럴로 주고받는 컬럼명**을 상수로 만든다
-- [ ] 목표 4: **공통 계층 함수의 `__all__` 재노출**을 없앤다 — 계약이 명시적으로 기각한 패턴이다
-- [ ] 목표 5: 위가 다시 갈라지지 않도록 **`tests/test_layer_contracts.py` 를 `studies/` 까지 넓힌다**
-- [ ] 목표 6: **산출물의 값과 컬럼 이름은 하나도 바뀌지 않는다.** 이름의 정의처만 옮긴다
+- [x] 목표 1: **「측정의 원칙」이 요구하는 값이 검증마다 따로 정의된 것**을 공통 계층으로 올린다 (원칙 11·13·17)
+- [x] 목표 2: **같은 패키지·같은 계층 안의 값 중복**을 없앤다 (같은 파일 두 벌, `report` ↔ `strategy` 레이블 5쌍)
+- [x] 목표 3: **모듈 사이를 문자열 리터럴로 주고받는 컬럼명**을 상수로 만든다
+- [x] 목표 4: **공통 계층 함수의 `__all__` 재노출**을 없앤다 — 계약이 명시적으로 기각한 패턴이다
+- [x] 목표 5: 위가 다시 갈라지지 않도록 **`tests/test_layer_contracts.py` 를 `studies/` 까지 넓힌다**
+- [x] 목표 6: **산출물의 값과 컬럼 이름은 하나도 바뀌지 않는다.** 이름의 정의처만 옮긴다
 
 ## 2) 비목표(Non-Goals)
 
@@ -160,21 +160,21 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/impl-plan` 스킬)
 
-- [ ] **선행 계획서(A·B) 복기 완료** — 상태와 「후속 계획서 인계」 절을 읽고,
+- [x] **선행 계획서(A·B) 복기 완료** — 상태와 「후속 계획서 인계」 절을 읽고,
       이 계획서의 전제가 바뀐 것이 있으면 진행 로그에 적었다
-- [ ] Phase 0 재판단 게이트를 C-1 ~ C-7 전 항목에 실행하고 「한다 / 안 한다」를 진행 로그에 남겼다
-- [ ] 「한다」로 판정된 항목이 전부 구현됐다
-- [ ] **AST 중복 스캔 재실행 결과, 이 계획서가 다룬 값의 중복이 0건**임을 확인했다
-- [ ] `tests/test_layer_contracts.py` 가 `studies/` 까지 검사한다
-- [ ] **산출물 값·컬럼 이름 불변 확인** — Phase 4 의 대조를 수행하고 결과를 진행 로그에 적었다
-- [ ] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
-- [ ] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
-- [ ] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
-- [ ] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 여부 명시 — 예상: 변경 없음)
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
+- [x] Phase 0 재판단 게이트를 C-1 ~ C-7 전 항목에 실행하고 「한다 / 안 한다」를 진행 로그에 남겼다
+- [x] 「한다」로 판정된 항목이 전부 구현됐다
+- [x] **AST 중복 스캔 재실행 결과, 이 계획서가 다룬 값의 중복이 0건**임을 확인했다
+- [x] `tests/test_layer_contracts.py` 가 `studies/` 까지 검사한다
+- [x] **산출물 값·컬럼 이름 불변 확인** — Phase 4 의 대조를 수행하고 결과를 진행 로그에 적었다
+- [x] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
+- [x] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
+- [x] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
+- [x] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 여부 명시 — 예상: 변경 없음)
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
       (「어디까지 공통으로 올리고 어디부터 검증의 것인가」의 판단 기준을
       `src/verify_lab/CLAUDE.md` 「상수 관리」에 한 문단으로 남긴다)
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -207,7 +207,7 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
 **작업 내용**:
 
-- [ ] 🔴 **선행 계획서 복기 (이 Phase 의 첫 작업)** — **A·B** 를 비롯해 이미 진행된 계획서를 확인한다:
+- [x] 🔴 **선행 계획서 복기 (이 Phase 의 첫 작업)** — **A·B** 를 비롯해 이미 진행된 계획서를 확인한다:
 
   ```bash
   for f in docs/plans/PLAN_[a-g]_*.md; do
@@ -223,7 +223,7 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
     이 계획서가 그 파일들의 import 를 바꾸므로 **가드를 건드리지 않도록** 주의한다
   - 전제가 깨졌으면 무엇이 어떻게 달라졌는지 적고 Scope 를 조정한다
 
-- [ ] **중복 현황을 다시 뽑는다** (감사 때 쓴 것과 같은 스캐너):
+- [x] **중복 현황을 다시 뽑는다** (감사 때 쓴 것과 같은 스캐너):
 
   ```bash
   poetry run python - <<'PY'
@@ -244,21 +244,21 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
   - 이 목록을 **Context 의 표와 대조**한다. 사라진 항목은 이미 고쳐진 것이므로 그 항목을 Non-Goals 로 옮긴다
   - **새로 생긴 항목이 있으면** 같은 판단 기준(「측정의 원칙에 적혀 있는가」)으로 분류해 Scope 에 넣는다
 
-- [ ] **C-1 재판단**: `grep -n "COL_PRICE\|COL_INTEREST" src/verify_lab/studies/futures_leverage/*.py`
+- [x] **C-1 재판단**: `grep -n "COL_PRICE\|COL_INTEREST" src/verify_lab/studies/futures_leverage/*.py`
   - **한다**: `position.py` 와 `constants.py` 양쪽에 정의가 있을 때
-- [ ] **C-2 재판단**: 위 스캐너 출력에 `"위"`·`"아래"`·`"앞 절반"`·`"mean_rate_conflict"` 가 남아 있는가
+- [x] **C-2 재판단**: 위 스캐너 출력에 `"위"`·`"아래"`·`"앞 절반"`·`"mean_rate_conflict"` 가 남아 있는가
   - **한다**: 남아 있을 때. **안 한다**: 이미 하나로 줄었을 때
-- [ ] **C-3 재판단**: `"평균(%)"`·`"최고(%)"`·`"최악(%)"`·`"표준편차(%)"`·`"신호"` 가 두 곳에 있는가
+- [x] **C-3 재판단**: `"평균(%)"`·`"최고(%)"`·`"최악(%)"`·`"표준편차(%)"`·`"신호"` 가 두 곳에 있는가
   - 🔴 **주의**: `.claude/rules/docs.md` 용어 대응표가 **`strategy/` 만 `승률` 을 유지**하는 예외를 두었다.
     `DISPLAY_WIN_RATE`(`승률(%)`)는 **통합 대상이 아니다** — 뜻이 다른 말이다.
     위 다섯만 통합한다
-- [ ] **C-4 재판단**: `grep -rn '}Mean\|}Median\|}Count\|}P05\|}P95' src/verify_lab/`
-- [ ] **C-5 재판단**: `grep -rn "NOTE_STOP_BASE" src/verify_lab/strategy/`
-- [ ] **C-6 재판단**: `grep -rn "^__all__" src/verify_lab/studies/ src/verify_lab/strategy/constants.py`
+- [x] **C-4 재판단**: `grep -rn '}Mean\|}Median\|}Count\|}P05\|}P95' src/verify_lab/`
+- [x] **C-5 재판단**: `grep -rn "NOTE_STOP_BASE" src/verify_lab/strategy/`
+- [x] **C-6 재판단**: `grep -rn "^__all__" src/verify_lab/studies/ src/verify_lab/strategy/constants.py`
   - `max_non_overlapping` 이 `breakdown.__all__` 에 있고 테스트가 그 경로로 들어오는지 확인:
     `grep -n "breakdown import" -A6 tests/test_studies_leverage_breakdown.py`
-- [ ] **C-7 재판단**: `grep -n "_STRATEGY_SHARED\|_SOURCE_ROOT" tests/test_layer_contracts.py`
-- [ ] 🔴 **`studies` 교차 import 현황을 재확인한다** (2026-09-14 기준 **0건**):
+- [x] **C-7 재판단**: `grep -n "_STRATEGY_SHARED\|_SOURCE_ROOT" tests/test_layer_contracts.py`
+- [x] 🔴 **`studies` 교차 import 현황을 재확인한다** (2026-09-14 기준 **0건**):
 
   ```bash
   for d in reverse option_expiry month_end leverage_tracking futures_leverage usdkrw_equivalence; do
@@ -268,7 +268,7 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
   0건이면 C-7 의 새 테스트는 **현재 상태를 고정**하는 것이고, 1건이라도 있으면
   **그 자체가 발견**이므로 먼저 보고한다
-- [ ] 항목별 판정을 **진행 로그에 표로** 남긴다
+- [x] 항목별 판정을 **진행 로그에 표로** 남긴다
 
 ---
 
@@ -276,7 +276,7 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
 **작업 내용**:
 
-- [ ] `tests/test_layer_contracts.py` 에 추가
+- [x] `tests/test_layer_contracts.py` 에 추가
   - **소유자 단일성** — `"위"`·`"아래"`·`"앞 절반"`·`"뒤 절반"`·`"mean_rate_conflict"`·`"평균-비율 어긋남"` 을
     **직접 정의하는 파일이 각각 하나**임을 검사한다. 기존 `_files_defining` 헬퍼를 재사용한다
   - **`report` 레이블 재정의 금지** — `report/constants.py` 가 정의한 `DISPLAY_*` 문자열을
@@ -286,7 +286,7 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
     `measure`·`report` 에서 import 한 이름이 들어가지 않는다
   - **검증끼리 import 금지** — `studies/<A>/` 가 `studies/<B>/` 를 import 하지 않는다
     (`_imported_strategy_modules` 와 같은 방식으로 네 가지 import 형태를 전부 본다)
-- [ ] 이 테스트들이 **지금 실패하는지 확인**한다. 실패하지 않으면 테스트가 잘못 짜인 것이다
+- [x] 이 테스트들이 **지금 실패하는지 확인**한다. 실패하지 않으면 테스트가 잘못 짜인 것이다
 
 ---
 
@@ -294,15 +294,15 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
 **작업 내용**:
 
-- [ ] **C-2a (원칙 11)** `"위"`·`"아래"` 를 `measure/screening.py` 의 `DIRECTION_UP`·`DIRECTION_DOWN` 하나로
+- [x] **C-2a (원칙 11)** `"위"`·`"아래"` 를 `measure/screening.py` 의 `DIRECTION_UP`·`DIRECTION_DOWN` 하나로
   - `strategy/constants.py:357-358` 의 `EXPIRY_DIRECTION_UP`·`EXPIRY_DIRECTION_DOWN` 제거
   - `strategy/option_expiry_runner.py` 가 `measure.screening` 에서 가져오게 한다
     (`month_end_runner.py` 는 이미 그렇게 하고 있다 — **그쪽에 맞춘다**)
-- [ ] **C-2b (원칙 13)** `COL_MEAN_RATE_CONFLICT` 를 `measure/constants.py` 로,
+- [x] **C-2b (원칙 13)** `COL_MEAN_RATE_CONFLICT` 를 `measure/constants.py` 로,
       `DISPLAY_MEAN_RATE_CONFLICT` 를 `report/constants.py` 로
   - 판정 함수는 이미 `measure/statistics.mean_rate_conflict` 다. **이름만 따라 올린다**
   - 두 검증 `constants.py` 는 재정의 대신 import
-- [ ] **C-2c (원칙 17)** `"앞 절반"`·`"뒤 절반"` 을 **한 곳**으로
+- [x] **C-2c (원칙 17)** `"앞 절반"`·`"뒤 절반"` 을 **한 곳**으로
   - 🔴 **어디로 올릴지 결정이 필요하다.** 세 후보와 근거:
     - `measure/constants.py` — 원칙 17 은 「모든 매매법」에 요구하므로 측정 공통이 자연스럽다.
       **`MIN_SAMPLE_PER_CELL`·`COL_JUDGEABLE` 이 이미 같은 이유로 여기 있다** ← 권장
@@ -320,26 +320,26 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
 **작업 내용**:
 
-- [ ] **C-1** `studies/futures_leverage/position.py:70,75` 의 `COL_PRICE`·`COL_INTEREST` 정의를 지우고
+- [x] **C-1** `studies/futures_leverage/position.py:70,75` 의 `COL_PRICE`·`COL_INTEREST` 정의를 지우고
       `constants.py` 에서 import
   - 🔴 `position.py` 에는 `COL_EQUITY`·`COL_EXPOSURE`·`COL_CONTRACT_COUNT`·`COL_EFFECTIVE_LEVERAGE`·`COL_REBALANCED` 도 있다.
     **이들이 `constants.py` 에도 있는지 확인**해 있으면 함께 통합하고, 없으면 그대로 둔다
     (「1개 파일에서만 사용 → 해당 파일 상단」 규칙에 맞다)
-- [ ] **C-3** `strategy/constants.py` 의 `DISPLAY_MEAN`·`DISPLAY_MAX`·`DISPLAY_MIN`·`DISPLAY_STDEV`·`DISPLAY_SIGNAL_COUNT` 를
+- [x] **C-3** `strategy/constants.py` 의 `DISPLAY_MEAN`·`DISPLAY_MAX`·`DISPLAY_MIN`·`DISPLAY_STDEV`·`DISPLAY_SIGNAL_COUNT` 를
       `report/constants.py` 에서 import 로 바꾼다
   - ⚠️ `DISPLAY_STDEV` 와 `DISPLAY_STD` 는 **이름이 다르고 값이 같다.** 이름을 `report` 쪽(`DISPLAY_STD`)으로 맞추고
     `strategy` 안의 사용처를 전부 고친다 — 이름을 남겨 두면 「두 값이 같다」를 매번 확인해야 한다
-- [ ] **C-4a** `studies/leverage_tracking/constants.py` 에 접미사 상수를 둔다
+- [x] **C-4a** `studies/leverage_tracking/constants.py` 에 접미사 상수를 둔다
       (예: `SUFFIX_MEAN`·`SUFFIX_MEDIAN`·`SUFFIX_COUNT`, 분위 라벨은 `TAIL_QUANTILES` 에서 유도하는 함수 하나)
   - `breakdown.py` 와 `runner.py` 가 **같은 함수/상수**로 이름을 만들게 한다
   - 🔴 `TAIL_QUANTILES` 를 바꿔도 양쪽이 함께 따라오는 형태여야 한다. 지금은 `runner` 가 `P05`·`P95` 를 손으로 적는다
-- [ ] **C-4b** `data/krx_futures_collector.py` 의 `"FirstSeen"`·`"LastSeen"` 을 파일 상단 상수로
+- [x] **C-4b** `data/krx_futures_collector.py` 의 `"FirstSeen"`·`"LastSeen"` 을 파일 상단 상수로
   - `continuous.py:73-75` 에 같은 이름의 상수가 **따로** 있다. 두 모듈이 같은 표를 주고받지 않는다면
     각자 두는 것이 규칙에 맞다 — **먼저 확인하고**, 주고받는다면 한 곳으로 모은다
-- [ ] **C-5** `NOTE_STOP_BASE` 를 `strategy/constants.py` 로 올리고 두 runner 가 import
+- [x] **C-5** `NOTE_STOP_BASE` 를 `strategy/constants.py` 로 올리고 두 runner 가 import
   - 같은 자리에 `NOTE_ENTRY`·`NOTE_EXIT` 도 있는데 **이들은 매매법마다 내용이 다르다.**
     올리는 것은 **바이트 단위로 같은 것 하나**다
-- [ ] **C-6** 재노출 제거
+- [x] **C-6** 재노출 제거
   - `studies/leverage_tracking/breakdown.py:67` 의 `__all__` 에서 `max_non_overlapping` 제거
   - `tests/test_studies_leverage_breakdown.py:15` 의 import 를 `verify_lab.measure.statistics` 로 교정
   - `strategy/constants.py:20-26` · `studies/leverage_tracking/constants.py:18` ·
@@ -359,12 +359,12 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
 **작업 내용**:
 
-- [ ] Phase 0 의 중복 스캐너를 다시 돌려 **이 계획서가 다룬 값이 목록에서 사라졌는지** 확인한다
-- [ ] 여섯 실행(검증 3 + 매매 3)을 인자 없이 돌린다. 재수집하지 않는다
-- [ ] 새 산출물의 **CSV 헤더와 전 셀 값**, `summary.json` 을 직전 산출물과 기계로 대조한다
+- [x] Phase 0 의 중복 스캐너를 다시 돌려 **이 계획서가 다룬 값이 목록에서 사라졌는지** 확인한다
+- [x] 여섯 실행(검증 3 + 매매 3)을 인자 없이 돌린다. 재수집하지 않는다
+- [x] 새 산출물의 **CSV 헤더와 전 셀 값**, `summary.json` 을 직전 산출물과 기계로 대조한다
       (기준 폴더는 계획서 A Phase 3 과 같다. 계획서 B 를 먼저 했다면 **B 가 낸 산출물**이 기준이다)
-- [ ] 🔴 **한 셀이라도 다르면 멈춘다.** 이 계획서는 정의처만 옮기므로 값이 달라질 이유가 없다
-- [ ] 대조 결과를 진행 로그에 적고, 새 폴더는 커밋하지 않고 `/clean-results` 로 정리한다
+- [x] 🔴 **한 셀이라도 다르면 멈춘다.** 이 계획서는 정의처만 옮기므로 값이 달라질 이유가 없다
+- [x] 대조 결과를 진행 로그에 적고, 새 폴더는 커밋하지 않고 `/clean-results` 로 정리한다
 
 ---
 
@@ -372,28 +372,28 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 
 **작업 내용**
 
-- [ ] `src/verify_lab/CLAUDE.md` 「상수 관리」에 **판단 기준**을 명문화한다
+- [x] `src/verify_lab/CLAUDE.md` 「상수 관리」에 **판단 기준**을 명문화한다
   - 「어디까지 공통이고 어디부터 그 검증의 것인가」 = 루트 `CLAUDE.md` 의 「이것이 「측정의 원칙」에
     적혀 있는가」. 원칙 11·13·17 의 값이 공통 계층에 있는 이유를 예시로 든다
   - 비목표로 남긴 「검증 고유 어휘 두 벌」이 **왜 지금 통합 대상이 아닌지**도 함께 적는다 —
     적지 않으면 다음 사람이 같은 판단을 처음부터 한다
-- [ ] `docs/COMMANDS.md`: 변경 여부 확정해 적는다 (예상: 변경 없음)
-- [ ] 자동 포맷 적용: `poetry run black .`
-- [ ] 🔴 **「후속 계획서 인계」 절을 채운다** (§8 Notes) — **D~G 가 알아야 할 것**을 적는다:
+- [x] `docs/COMMANDS.md`: 변경 여부 확정해 적는다 (예상: 변경 없음)
+- [x] 자동 포맷 적용: `poetry run black .`
+- [x] 🔴 **「후속 계획서 인계」 절을 채운다** (§8 Notes) — **D~G 가 알아야 할 것**을 적는다:
       **어느 이름이 어디로 옮겨갔는지**(D 가 지울 후보를 판정할 때 필요), 새로 죽은 정의,
       새 계약 테스트가 무엇을 막는지(E 가 파일을 옮길 때 걸린다),
       **E 로 넘긴 「달력형 공통 어휘」 결정의 현재 상태**, 깨진 전제.
       **비워 두면 다음 계획서가 낡은 전제로 시작한다**
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] 변경 기능 및 전체 플로우 최종 검증
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
 
 **Validation**:
 
 > 순서를 지킨다 — 리뷰에서 고치면 코드가 바뀌므로 품질 검증이 마지막 관문이어야 한다.
 
-- [ ] `/code-review xhigh` (발견 \_\_건 · 조치: \_\_)
-- [ ] `poetry run python validate_project.py` (passed=\_\_, failed=\_\_, skipped=\_\_)
+- [x] `/code-review xhigh` (발견 12건 · 조치: **내 새 코드의 결함 7건 수정**, 나머지 5건은 기존 코드라 인계로 넘김)
+- [x] `poetry run python validate_project.py` (passed=1134, failed=0, skipped=0)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 
@@ -401,7 +401,11 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 > 계획서를 쓰는 시점에는 diff 가 없어 여기 적는 것은 전부 추측이고,
 > **추측으로 적은 줄은 그대로 나간다.** 형식·문체 규칙은 `/commit` 이 정한다.
 
-(비어 있음 — `/commit` 으로 채운다)
+1. `측정 / 중복 정의 통합과 계층 계약 테스트 확장`
+2. `측정 / 원칙 11·13·17 의 값을 공통 계층 소유로 이동하고 report 레이블 5쌍·패키지 내 2쌍 중복 제거`
+3. `측정 / 같은 원칙이 다른 답을 내지 않도록 값의 소유자 단일화`
+4. `측정 / 옛 import 경로 차단과 studies 까지 넓힌 계약 테스트 8개`
+5. `측정 / 산출물 불변 상태로 정의처만 이동, 공통·고유 판단 기준을 계약 문서에 명문화`
 
 ## 7) 리스크(Risks)
 
@@ -429,8 +433,78 @@ __all__ = ["attach_axes", "max_non_overlapping", "summarize", …]
 > E 가 파일을 옮길 때, G 가 문서를 고칠 때 전부 이 목록을 본다.
 > 아무것도 안 바뀌었으면 **「없음」이라고 적는다**.
 
-(비어 있음 — 마지막 Phase 에서 채운다)
+| 무엇이 | 어떻게 바뀌었나 | 어느 계획서가 영향받나 |
+| --- | --- | --- |
+| 🔴 **이름이 옮겨간 곳 — D 가 「미사용」을 판정할 때 이 표를 먼저 본다** | **신설**: `measure/constants.py` 에 `COL_MEAN_RATE_CONFLICT`·`PERIOD_FIRST_HALF`·`PERIOD_SECOND_HALF` / `report/constants.py` 에 `DISPLAY_MEAN_RATE_CONFLICT` / `strategy/constants.py` 에 `NOTE_STOP_BASE` / `leverage_tracking/constants.py` 에 `SUFFIX_MEAN`·`SUFFIX_MEDIAN`·`SUFFIX_COUNT`·`TAIL_QUANTILES`·`TAIL_DISPLAY_LABELS`·`tail_column()` / `data/krx_futures_collector.py` 에 `CATALOG_FIRST_SEEN_COLUMN`·`CATALOG_LAST_SEEN_COLUMN`. **제거**: `strategy/constants.py` 의 `EXPIRY_DIRECTION_UP/DOWN`·`PERIOD_FIRST_HALF`·`PERIOD_SECOND_HALF`·`DISPLAY_MEAN`·`DISPLAY_MAX`·`DISPLAY_MIN`·`DISPLAY_STDEV`·`DISPLAY_SIGNAL_COUNT` / `month_end/constants.py` 의 `COL_MEAN_RATE_CONFLICT`·`DISPLAY_MEAN_RATE_CONFLICT`·`DISPLAY_PERIOD_EARLY`·`DISPLAY_PERIOD_LATE` / `option_expiry/constants.py` 의 같은 넷(`DISPLAY_TIME_HALF_EARLY/LATE` 포함) / `futures_leverage/position.py` 의 `COL_PRICE`·`COL_INTEREST` / 두 runner 의 `NOTE_STOP_BASE` / `breakdown.py` 의 `TAIL_QUANTILES` | **D**(미사용 판정) · **E**(파일 이동) · **G**(문서 갱신) |
+| **`DISPLAY_STDEV` 가 `DISPLAY_STD` 로 개명됐다** | 값은 `"표준편차(%)"` 그대로. 파이썬 이름만 `report` 쪽으로 맞췄다 | 그 이름을 쓰는 계획서 |
+| **네 모듈의 `__all__` 이 사라졌다** | `strategy/constants.py` · `studies/leverage_tracking/{constants,breakdown}.py` · `studies/futures_leverage/constants.py`. 🔴 **그 자체로는 옛 경로가 닫히지 않는다** — `__all__` 은 `import *` 에만 걸린다. 닫은 것은 **소비처 11곳의 import 를 소유자로 돌린 것**이고, 되살아나지 않게 하는 것은 새 계약 테스트다 | **E**·**F** |
+| **새 계약 테스트 8개 (클래스 4개)** — E 가 파일을 옮기면 여기 걸린다 | `TestPrincipleValueOwnership`(원칙 11·13·17 의 값이 한 파일에만 «적혀» 있는가 — 상수뿐 아니라 **docstring 을 뺀 모든 문자열 리터럴**을 본다) · `TestReportLabelOwnership`(`report` 레이블 재정의 — **허용목록 부분집합**) · `TestStudyPackageComposition`(같은 접두사·같은 값이 한 패키지의 두 파일에 있지 않다 / 검증끼리 import 하지 않는다) · `TestCommonLayerReexport`(아래 계층을 **거쳐** 공통 이름을 가져오지 않는다 / `__all__` 로 내보내지 않는다) | **D**·**E**·**F** |
+| 🔴 **`_REPORT_LABEL_COLLISIONS` 허용목록에 6개 값이 남아 있다** | `구간`·`방향`·`제외` 셋은 **동음이의어라 통합하면 틀린다**(계약 표가 그 갈림을 이미 명시). `날짜`·`신호`·`표본` 셋은 **같은 뜻인데 남겼다** — `studies/usdkrw_equivalence/constants.py` 의 `DISPLAY_DATE`·`DISPLAY_SAMPLE_COUNT` 와 `studies/reverse/constants.py` 의 `DISPLAY_GROUP_SIGNAL_COUNT` 다. **사용자 결정으로 이번 범위 밖**(2026-09-14) | **G**(문서 용어) · 그 셋을 통합하려는 계획서 |
+| **계획서 전제 하나가 틀렸다** | C-4b 가 「`continuous.py:73-75` 에 같은 이름의 상수가 따로 있다」고 적었는데 **실제로는 `COL_FIRST_DATE = "FirstDate"`·`COL_LAST_DATE = "LastDate"` 로 이름도 값도 다르다.** 두 모듈을 잇는 작업은 없었고 `krx_futures_collector.py` 안에서만 상수화했다 | **E**(그 두 모듈을 묶으려는 계획서) |
+| 🔴 **범위 밖에서 찾은 것 넷 — 손대지 않았다** | ① `DIRECTION_UP`·`DIRECTION_DOWN` 이 `measure/screening.py`(`위`/`아래`)와 `studies/leverage_tracking/constants.py`(`오름`/`내림`)에 **같은 이름 다른 값**으로 있다 ② `COL_DIRECTION = "Direction"` 이 그 두 곳에 **같은 이름 같은 값 다른 뜻**으로 있다 ③ `studies/leverage_tracking/runner.py:317,467` 이 `JUDGEABLE_YES` 대신 **`"예"` 를 하드코딩**한다 ④ 같은 축의 **헤더가 갈려 있다** — 검증은 `시기`, 매매는 `구간`(그리고 `구간` 은 `report` 의 측정 구간과 충돌) | **D**(③은 「연결 누락」) · **E**(①②) · **G**(④) |
+| **`_to_percent` 의 조용한 건너뜀은 그대로다** | `leverage_tracking/runner.py` 가 없는 컬럼을 예외 없이 건너뛴다. C-4a 가 막은 것은 **분위 이름 유도 하나**이고, `MEAN_MEDIAN_COLUMNS` 에서 항목이 빠지는 경우는 여전히 열이 조용히 사라진다. 주석에 그 한계를 적어 뒀다 | **F**(공유 조각을 손볼 때) |
+| **산출물은 한 셀도 바뀌지 않았다** | 여섯 실행 대조 — CSV 28장 · 55,027행 · **709,506칸 전 셀 일치**, `summary.json` 여섯 개 모두 일치. 여섯에 없는 `leverage_tracking`·`futures_leverage`·`krx_futures_collector` 는 **생성되는 컬럼 이름이 옛 리터럴과 같은지 직접 대조**해 확인했다. 따라서 **D~G 는 「C 때문에 수치가 달라졌다」를 의심하지 않아도 된다** | 전부 |
 
 ### 진행 로그 (KST)
 
 - 2026-09-14 12:05: 계획서 작성. 감사의 「상수화 필요」·「불필요한 상수(중복)」·「불필요한 함수(재노출)」를 C 로 묶음
+- 2026-09-14 17:45: **Phase 0 재판단 게이트 실행.** 선행 계획서 복기 — **A·B 둘 다 ✅ Done**.
+  A 의 가드(`resolve_positions`·`screen_candidates` 의 `ValueError` 둘)와 B 의 `datasets` 다섯 키는
+  이 계획서가 손대지 않는다. B 가 새로 만든 `KEY_LABEL`·`KEY_FILE`·`KEY_DATA_PERIOD`·`KEY_ROWS` 가
+  중복 스캐너 목록에 들어왔으나 **매매법마다 자기 `rule`/`datasets` 키를 두는 것**이고
+  `summary.json` 계약이 「`rule` 안은 고정하지 않는다」로 정했으므로 C 의 대상이 아니다.
+  A·B 둘 다 「CSV 는 한 셀도 안 바뀌었다」를 남겼으므로 Phase 4 의 기준 폴더는 **B 가 낸 것**이다.
+
+  | 항목 | 판정 | 근거 (2026-09-14 실측) |
+  | --- | --- | --- |
+  | C-1 `COL_PRICE`·`COL_INTEREST` | **한다** | `futures_leverage/constants.py:295,345` + `position.py:70,75` 양쪽에 정의가 살아 있다 |
+  | C-2a `"위"`·`"아래"` | **한다** | `measure/screening.py:87,88` + `strategy/constants.py:357,358` 두 벌. 소비처는 `strategy/option_expiry_runner.py` 와 `scripts/data/check_expiry_dividend.py` 둘 |
+  | C-2b `mean_rate_conflict`·`평균-비율 어긋남` | **한다** | month_end·option_expiry 두 벌 그대로. 판정 함수만 `measure/statistics` 로 올라가 있다 |
+  | C-2c `"앞 절반"`·`"뒤 절반"` | **한다** | 세 벌 그대로. 목적지는 계획서 권장안 `measure/constants.py` — `JUDGEABLE_YES`(값이자 표시 문자열)가 이미 같은 이유로 거기 있다 |
+  | C-3 `report`↔`strategy` 5쌍 | **한다** | 다섯 전부 남아 있다. **`승률(%)` 은 `report/constants.py` 에 아예 없어 충돌하지 않는다** — 예외 목록이 기계적으로 필요하지 않다 |
+  | C-4a leverage_tracking 접미사 | **한다** | `breakdown.py:259-261` 은 `TAIL_QUANTILES` 에서 유도하는데 `runner.py:118,119` 는 `P05`·`P95` 를 손으로 적는다. `_to_percent` 가 `if source in frame.columns` 로 건너뛰므로 어긋나면 **빈 컬럼이 조용히** 된다 |
+  | C-4b `FirstSeen`·`LastSeen` | **한다 (범위 축소)** | 🔴 **계획서 전제가 틀렸다** — `continuous.py:73-75` 에 있는 것은 `COL_FIRST_DATE = "FirstDate"`·`COL_LAST_DATE = "LastDate"` 로 **이름도 값도 다른 계약 달력 컬럼**이고, `COL_FIRST_SEEN`·`COL_LAST_SEEN` 은 저장소 어디에도 없다. 생산(`krx_futures_collector.py:405-410`)과 소비(`:587-588`)가 **한 파일 안**이므로 「1개 파일에서만 사용 → 해당 파일 상단」 규칙대로 그 파일 상단에 둔다. 두 모듈을 잇는 작업은 없다 |
+  | C-5 `NOTE_STOP_BASE` | **한다** | month_end·option_expiry 가 바이트 단위로 같다. `reverse_runner.py:102` 는 「손절선은 **전부** 진입가 기준」이라 문장이 달라 대상이 아니다 |
+  | C-6 재노출 | **한다** | 네 자리 모두 살아 있고 `tests/test_studies_leverage_breakdown.py:13` 이 `breakdown` 경로로 `max_non_overlapping` 을 가져온다 — 기각 사유에 적힌 상황 그대로다 |
+  | C-7 계약 테스트 확장 | **한다** | `_STRATEGY_SHARED` 만 있고 `studies/` 를 보는 검사가 없다 |
+
+  **`studies` 교차 import 재확인 — 0건.** C-7 의 새 테스트는 현재 상태를 고정하는 것이다.
+
+  **재노출 소비처 전수 (AST, `src`·`tests`·`scripts`)**: `strategy/periods.py:28`(`DISPLAY_JUDGEABLE`) ·
+  `studies/leverage_tracking/breakdown.py:36`(`COL_JUDGEABLE`) · `studies/leverage_tracking/runner.py:39`
+  (`COL_JUDGEABLE`·`DISPLAY_JUDGEABLE`) · `tests/test_strategy_output_contract.py:48` ·
+  `tests/test_strategy_periods.py:19` · `tests/test_studies_leverage_breakdown.py:13,19` ·
+  `tests/test_studies_leverage_runner.py:15`. **`futures_leverage/constants.py` 의 `__all__` 은 소비처가 0건**이며
+  그 파일은 두 이름을 자기 안에서 쓰므로(`:406`) `__all__` 만 지우면 된다.
+- 2026-09-14 18:00: **Phase 1** — 계약 테스트를 먼저 넣어 **6개가 빨갛게 실패**하는 것을 확인했다.
+  「검증끼리 import 금지」만 처음부터 초록이며 그것은 현재 상태(0건)를 고정하는 것이다.
+  🔴 **계획서가 적은 「report 레이블 전면 금지」는 성립하지 않았다** — C-3 다섯을 고쳐도 충돌이
+  **6개 값·9자리** 남는다(`구간`·`날짜`·`방향`·`신호`·`제외`·`표본`). 전면 금지로 두면 예외 목록이
+  테스트의 절반이 되므로 **허용목록 + 부분집합 검사**로 바꿨다 (사용자 결정).
+  같은 라운드에서 **범위 밖 동음이의 둘(`DIRECTION_*`·`COL_DIRECTION`)은 「보고만」으로 확정**했다.
+- 2026-09-14 18:04: **Phase 2·3** 구현 완료. 소비처 11곳(테스트 9 · 스크립트 1 · 패키지 1)의 import 를
+  소유자로 돌렸다. 전체 테스트 **1,133 통과**.
+- 2026-09-14 18:08: **Phase 4 값 불변 대조** — 여섯 실행을 인자 없이 돌려
+  **CSV 28장 · 55,027행 · 709,506칸 전 셀 일치**, `summary.json` 여섯 개 모두 일치.
+  기준 폴더는 `검증/20260914_172437_reverse` · `172441_option_expiry` · `133016_month_end` ·
+  `매매/20260914_172442_reverse` · `131019_option_expiry` · `131021_month_end` 이며
+  매매 월말은 `rule.from_year` 가 `None` 인 것(인자 없는 실행)을 먼저 확인하고 골랐다.
+  새 폴더 6개는 전부 untracked 였고 대조 후 지웠다. **git 추적 중인 옛 산출물 17개가 인용 없이
+  남아 있다** — 이번 작업의 것이 아니라 계획서 A·B 가 낸 것이라 손대지 않았다.
+- 2026-09-14 18:15: **코드 리뷰(xhigh) 12건.** 그중 **7건이 이번에 내가 쓴 코드의 결함**이라 고쳤다:
+  ① 🔴 **`__all__` 을 지워도 옛 경로가 안 닫힌다**(`__all__` 은 `import *` 전용) — 재노출 테스트가
+  **공허하게 통과**하고 있었다. 실제 import 문을 보는 테스트로 바꾸고, `__all__` 검사는
+  「Ruff 의 미사용 import 검사를 잠재우는 것」을 막는 짝으로 남겼다
+  ② `tail_column` 의 `int(q*100)` 절사 — `0.29 → P28`. `round` 로 고쳤다
+  ③ `_declared_all` 이 `__all__: Final = [...]`(이 저장소의 지배 표기)를 못 봤다
+  ④ `_files_defining_value` 가 상수 대입만 봐서 **호출부 인라인 리터럴**을 놓쳤다 —
+  넓은 스캔(`_files_with_literal`)을 새로 두어 원칙 값 셋에 걸었다.
+  **표시 레이블에는 넓은 스캔을 쓰지 않는다** — `measure/statistics.py` 가 예외 메시지 재료로
+  `"신호"`·`"베이스라인"` 을 쓰는데 그것은 레이블의 두 번째 정의가 아니다
+  ⑤ 같은 패키지 중복 검사가 **파일 «이름»으로** 세어 하위 폴더가 생기면 뭉개졌다 — 경로로 바꿨다
+  ⑥ 레이블 소유자 검사가 파일을 레이블마다 다시 파싱했다 — 캐시를 붙였다
+  ⑦ `TAIL_DISPLAY_LABELS`·`SUFFIX_*` 주석이 실제 보장보다 크게 적혀 있었다 — 한계를 적었다.
+  **나머지 5건은 기존 코드의 것**이라 손대지 않고 「후속 계획서 인계」에 넘겼다.
+- 2026-09-14 18:22: 근거 승격 — `src/verify_lab/CLAUDE.md` 「상수 관리」에 **「어디까지 공통이고
+  어디부터 그 검증의 것인가」** 판단 기준과 동음이의어 처리, `__all__` 의 한계를 명문화했다.
+  `docs/COMMANDS.md` **변경 없음**(실행 방법·CLI 옵션 불변). 최종 품질 검증 **1,134 통과 · 실패 0 · 스킵 0**.

@@ -27,7 +27,10 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_HORIZON,
     COL_JUDGEABLE,
+    COL_MEAN_RATE_CONFLICT,
     JUDGEABLE_NO,
+    PERIOD_FIRST_HALF,
+    PERIOD_SECOND_HALF,
     REASON_NONE,
 )
 from verify_lab.measure.screening import SCREEN_CANDIDATE, screen_candidates
@@ -62,7 +65,6 @@ from verify_lab.studies.month_end.constants import (
     COL_GRID_CELL,
     COL_HOLD_DAYS,
     COL_MARKET,
-    COL_MEAN_RATE_CONFLICT,
     COL_MONTH_NUMBER,
     COL_PERIOD,
     COL_TARGET_DAY,
@@ -74,8 +76,6 @@ from verify_lab.studies.month_end.constants import (
     DISPLAY_GRID_CELL,
     DISPLAY_MARKET,
     DISPLAY_MONTH_NUMBER,
-    DISPLAY_PERIOD_EARLY,
-    DISPLAY_PERIOD_LATE,
     DISPLAY_PERIOD_RECENT,
     DISPLAY_TARGET_DAY,
     DISPLAY_TICKER,
@@ -380,8 +380,8 @@ def _period_masks(signal: pd.DataFrame, last_date: pd.Timestamp) -> list[tuple[s
     boundary = dates.iloc[len(signal) // 2]
 
     masks = [
-        (DISPLAY_PERIOD_EARLY, dates < boundary),
-        (DISPLAY_PERIOD_LATE, dates >= boundary),
+        (PERIOD_FIRST_HALF, dates < boundary),
+        (PERIOD_SECOND_HALF, dates >= boundary),
     ]
     for years in RECENT_WINDOWS_YEARS:
         cutoff = last_date - pd.DateOffset(years=years)

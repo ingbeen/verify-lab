@@ -21,7 +21,13 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv
-from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_EXCLUDED_REASON, COL_HORIZON, REASON_OUT_OF_RANGE
+from verify_lab.measure.constants import (
+    COL_EXCLUDED_COUNT,
+    COL_EXCLUDED_REASON,
+    COL_HORIZON,
+    COL_JUDGEABLE,
+    REASON_OUT_OF_RANGE,
+)
 from verify_lab.measure.distribution import (
     DistributionShare,
     dividend_adjustment,
@@ -31,6 +37,7 @@ from verify_lab.report.constants import (
     DISPLAY_DATE,
     DISPLAY_EXCLUDED,
     DISPLAY_HORIZON,
+    DISPLAY_JUDGEABLE,
     DISPLAY_SAMPLE_COUNT,
     EMPTY_MARK,
     PERCENT_DECIMALS,
@@ -41,7 +48,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     COL_BASE_RETURN,
     COL_BASE_RETURN_BUCKET,
     COL_DIRECTION,
-    COL_JUDGEABLE,
     COL_NAIVE_EXPECTED,
     COL_NON_OVERLAPPING_COUNT,
     COL_PATH_EFFECT,
@@ -68,7 +74,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_DIVIDEND_ADJUSTMENT,
     DISPLAY_END_DATE,
     DISPLAY_INDEX_NAME,
-    DISPLAY_JUDGEABLE,
     DISPLAY_MULTIPLE,
     DISPLAY_NAIVE_EXPECTED,
     DISPLAY_NON_OVERLAPPING,
@@ -84,13 +89,17 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_TARGET_ONLY,
     DISPLAY_TARGET_TICKER,
     DISPLAY_TOTAL_DIVERGENCE,
-    DISPLAY_TOTAL_DIVERGENCE_P05,
-    DISPLAY_TOTAL_DIVERGENCE_P95,
     DISPLAY_VOLATILITY_AXIS,
     HORIZON_LABELS,
     HORIZONS,
     PAIRS,
+    SUFFIX_COUNT,
+    SUFFIX_MEAN,
+    SUFFIX_MEDIAN,
+    TAIL_DISPLAY_LABELS,
+    TAIL_QUANTILES,
     LeveragePair,
+    tail_column,
 )
 from verify_lab.studies.leverage_tracking.divergence import compute_divergence
 from verify_lab.studies.leverage_tracking.pairing import align_pair
@@ -107,18 +116,22 @@ AXIS_COLUMNS = (
     (COL_PERIOD, DISPLAY_PERIOD_AXIS),
 )
 
-# 백분율로 바꿔 저장하는 집계 항목 (내부 컬럼 접미사 → 표시 이름)
+# 백분율로 바꿔 저장하는 집계 항목 (내부 컬럼 접미사 → 표시 이름).
+# **분위 열은 `TAIL_QUANTILES` 에서 유도한다** — 전에는 `P05`·`P95` 를 손으로 적어, 재는 쪽의
+# 분위를 바꾸면 이름이 어긋났다.
+#
+# [주의] **`_to_percent` 는 없는 컬럼을 조용히 건너뛴다.** 유도로 막은 것은 분위 하나뿐이고,
+# `MEAN_MEDIAN_COLUMNS` 에서 항목이 빠지는 경우는 여전히 예외 없이 열이 사라진다
 SUMMARY_PERCENT_COLUMNS = [
-    (f"{COL_PATH_EFFECT}Mean", f"{DISPLAY_PATH_EFFECT} 평균"),
-    (f"{COL_PATH_EFFECT}Median", f"{DISPLAY_PATH_EFFECT} 중앙값"),
-    (f"{COL_PRODUCT_COST}Mean", f"{DISPLAY_PRODUCT_COST} 평균"),
-    (f"{COL_PRODUCT_COST}Median", f"{DISPLAY_PRODUCT_COST} 중앙값"),
-    (f"{COL_TOTAL_DIVERGENCE}Mean", f"{DISPLAY_TOTAL_DIVERGENCE} 평균"),
-    (f"{COL_TOTAL_DIVERGENCE}Median", f"{DISPLAY_TOTAL_DIVERGENCE} 중앙값"),
-    (f"{COL_TOTAL_DIVERGENCE}P05", DISPLAY_TOTAL_DIVERGENCE_P05),
-    (f"{COL_TOTAL_DIVERGENCE}P95", DISPLAY_TOTAL_DIVERGENCE_P95),
-    (f"{COL_BASE_RETURN}Mean", f"{DISPLAY_BASE_RETURN} 평균"),
-    (f"{COL_ACTUAL}Mean", f"{DISPLAY_ACTUAL} 평균"),
+    (f"{COL_PATH_EFFECT}{SUFFIX_MEAN}", f"{DISPLAY_PATH_EFFECT} 평균"),
+    (f"{COL_PATH_EFFECT}{SUFFIX_MEDIAN}", f"{DISPLAY_PATH_EFFECT} 중앙값"),
+    (f"{COL_PRODUCT_COST}{SUFFIX_MEAN}", f"{DISPLAY_PRODUCT_COST} 평균"),
+    (f"{COL_PRODUCT_COST}{SUFFIX_MEDIAN}", f"{DISPLAY_PRODUCT_COST} 중앙값"),
+    (f"{COL_TOTAL_DIVERGENCE}{SUFFIX_MEAN}", f"{DISPLAY_TOTAL_DIVERGENCE} 평균"),
+    (f"{COL_TOTAL_DIVERGENCE}{SUFFIX_MEDIAN}", f"{DISPLAY_TOTAL_DIVERGENCE} 중앙값"),
+    *((tail_column(quantile), TAIL_DISPLAY_LABELS[quantile]) for quantile in TAIL_QUANTILES),
+    (f"{COL_BASE_RETURN}{SUFFIX_MEAN}", f"{DISPLAY_BASE_RETURN} 평균"),
+    (f"{COL_ACTUAL}{SUFFIX_MEAN}", f"{DISPLAY_ACTUAL} 평균"),
 ]
 
 # 원자료에서 백분율로 바꿀 컬럼
@@ -228,8 +241,10 @@ def _summary_block(summary: pd.DataFrame, pair: LeveragePair, extra: dict[str, s
 
     block = pd.concat([block, _to_percent(summary, SUMMARY_PERCENT_COLUMNS)], axis=1)
 
-    block[DISPLAY_REALIZED_MULTIPLE] = summary[f"{COL_REALIZED_MULTIPLE}Median"].round(REALIZED_MULTIPLE_DECIMALS)
-    block[DISPLAY_REALIZED_MULTIPLE_COUNT] = summary[f"{COL_REALIZED_MULTIPLE}Count"]
+    block[DISPLAY_REALIZED_MULTIPLE] = summary[f"{COL_REALIZED_MULTIPLE}{SUFFIX_MEDIAN}"].round(
+        REALIZED_MULTIPLE_DECIMALS
+    )
+    block[DISPLAY_REALIZED_MULTIPLE_COUNT] = summary[f"{COL_REALIZED_MULTIPLE}{SUFFIX_COUNT}"]
 
     return block
 

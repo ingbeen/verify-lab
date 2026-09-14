@@ -22,8 +22,6 @@ from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HORIZON, COL_J
 # 표시 레이블은 공통 계층이 소유한다 — 검증마다 다른 말을 쓰면 두 결과를 나란히 읽을 수 없다
 from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT
 
-__all__ = ["DISPLAY_JUDGEABLE"]
-
 # ============================================================
 # 측정 대상
 # ============================================================

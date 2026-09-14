@@ -30,6 +30,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
+from verify_lab.measure.constants import PERIOD_FIRST_HALF, PERIOD_SECOND_HALF
 from verify_lab.measure.screening import SCREENING_COLUMNS
 from verify_lab.studies.month_end import runner as month_end_runner
 from verify_lab.studies.month_end.constants import (
@@ -37,8 +38,6 @@ from verify_lab.studies.month_end.constants import (
     BASE_EXIT_OFFSET,
     COL_GRID_CELL,
     COL_TARGET_DAY,
-    DISPLAY_PERIOD_EARLY,
-    DISPLAY_PERIOD_LATE,
     DISPLAY_PERIOD_RECENT,
     ENTRY_CALENDAR_DAYS,
     EXECUTION_ROLE_NONE,
@@ -275,7 +274,7 @@ class TestPeriodSplit:
         outputs = etf_outputs
 
         # Then
-        expected = {DISPLAY_PERIOD_EARLY, DISPLAY_PERIOD_LATE} | {
+        expected = {PERIOD_FIRST_HALF, PERIOD_SECOND_HALF} | {
             DISPLAY_PERIOD_RECENT.format(years=years) for years in RECENT_WINDOWS_YEARS
         }
         assert set(outputs.periods["period"]) == expected

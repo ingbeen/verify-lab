@@ -9,19 +9,14 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON
-from verify_lab.studies.leverage_tracking.breakdown import (
-    attach_axes,
-    max_non_overlapping,
-    summarize_by_axis,
-    summarize_by_horizon,
-)
+from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON, COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES
+from verify_lab.measure.statistics import max_non_overlapping
+from verify_lab.studies.leverage_tracking.breakdown import attach_axes, summarize_by_axis, summarize_by_horizon
 from verify_lab.studies.leverage_tracking.constants import (
     BASE_RETURN_BUCKETS,
     COL_BASE_RETURN,
     COL_BASE_RETURN_BUCKET,
     COL_DIRECTION,
-    COL_JUDGEABLE,
     COL_NON_OVERLAPPING_COUNT,
     COL_PERIOD,
     COL_SAMPLE_COUNT,
@@ -29,8 +24,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     DIRECTION_DOWN,
     DIRECTION_FLAT,
     DIRECTION_UP,
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
     PERIOD_HIGH_RATE,
     PERIOD_LOW_RATE,
 )

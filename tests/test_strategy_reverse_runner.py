@@ -27,13 +27,12 @@ from verify_lab.common_constants import (
     COL_VOLUME,
     PRICE_DECIMALS,
 )
-from verify_lab.report.constants import DISPLAY_EXCLUDED
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_SIGNAL_COUNT
 from verify_lab.strategy.constants import (
     DISPLAY_ENTRY_DATE,
     DISPLAY_MEAN_HOLD,
     DISPLAY_PERIOD,
     DISPLAY_RETURN,
-    DISPLAY_SIGNAL_COUNT,
     DISPLAY_START_YEAR,
     DISPLAY_TOTAL,
     HOLD_LIMIT,

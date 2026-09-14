@@ -10,12 +10,12 @@
 from dataclasses import dataclass
 from typing import Final
 
-# **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 검증에 요구하는 개념이라
-# 검증마다 새로 만들면 같은 원칙이 다른 답을 낸다. 여기서는 이름만 다시 내보낸다
-from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
-from verify_lab.report.constants import DISPLAY_JUDGEABLE
+from verify_lab.common_constants import RATE_TO_PERCENT
 
-__all__ = ["COL_JUDGEABLE", "DISPLAY_JUDGEABLE", "JUDGEABLE_NO", "JUDGEABLE_YES", "MIN_SAMPLE_PER_CELL"]
+# **판정가능은 공통 계층이 소유한다** — 측정의 원칙 17 이 모든 검증에 요구하는 개념이라
+# 검증마다 새로 만들면 같은 원칙이 다른 답을 낸다. **여기서 다시 내보내지도 않는다** —
+# 옛 경로가 살아 있으면 소유자가 바뀌어도 그 경로로 들어오는 코드와 테스트가 그대로 통과해
+# 이동이 실제로 일어났는지 확인할 방법이 없다. 쓰는 쪽이 `measure`·`report` 에서 직접 가져온다
 
 # ============================================================
 # 측정 대상
@@ -114,8 +114,9 @@ HORIZON_LABELS: Final = {
 # 평균이 무의미해진다. 이 값 미만인 구간은 실현 배수를 비우고 사유를 남긴다
 MIN_BASE_RETURN_FOR_REALIZED_MULTIPLE: Final = 0.01
 
-# 축을 쪼갤 때 칸당 요구하는 최소 유효 표본은 **공통 계층이 소유한다** —
-# 위 import 로 가져와 이름만 다시 내보낸다 (루트 CLAUDE.md 측정의 원칙 12)
+# 축을 쪼갤 때 칸당 요구하는 최소 유효 표본은 **공통 계층이 소유한다**
+# (`measure/constants.py` 의 `MIN_SAMPLE_PER_CELL` — 루트 CLAUDE.md 측정의 원칙 12).
+# 쓰는 쪽이 거기서 직접 가져온다
 
 # ============================================================
 # 결과 스키마 (내부 계산용 영문 토큰)
@@ -241,6 +242,46 @@ DISPLAY_END_DATE: Final = "종료일"
 # 분포의 양 끝. 평균만 보면 최악에 얼마나 벌어졌는지 알 수 없다
 DISPLAY_TOTAL_DIVERGENCE_P05: Final = "총 괴리 하위5%(%p)"
 DISPLAY_TOTAL_DIVERGENCE_P95: Final = "총 괴리 상위5%(%p)"
+
+
+# ============================================================
+# 집계 컬럼 이름 짓기
+# ============================================================
+
+# 집계표의 컬럼은 **원본 컬럼 이름에 접미사를 붙여** 만든다. 그 이름을 만드는 쪽(`breakdown`)과
+# 읽는 쪽(`runner`)이 다른 파일이므로 접미사가 리터럴이면 한쪽만 바뀌어도 예외가 나지 않는다 —
+# `runner` 의 `_to_percent` 는 없는 컬럼을 **건너뛰므로 조용히 빈 열**이 된다
+SUFFIX_MEAN: Final = "Mean"
+SUFFIX_MEDIAN: Final = "Median"
+SUFFIX_COUNT: Final = "Count"
+
+# 분위 컬럼과 그 표시 이름. **재는 쪽과 읽는 쪽이 같은 목록을 본다** — 전에는 재는 쪽만
+# `TAIL_QUANTILES` 에서 컬럼 이름을 유도하고 읽는 쪽은 `P05`·`P95` 를 손으로 적어,
+# 분위를 바꾸면 그 열이 조용히 비었다.
+#
+# [주의] **레이블 문자열에는 분위가 박혀 있다**(`하위5%`). 키를 바꾸면 컬럼 이름은 따라오지만
+# 레이블은 따라오지 않으므로 **아래 `DISPLAY_TOTAL_DIVERGENCE_P05`·`_P95` 도 함께 고친다**
+TAIL_DISPLAY_LABELS: Final = {
+    0.05: DISPLAY_TOTAL_DIVERGENCE_P05,
+    0.95: DISPLAY_TOTAL_DIVERGENCE_P95,
+}
+
+TAIL_QUANTILES: Final = tuple(TAIL_DISPLAY_LABELS)
+
+
+def tail_column(quantile: float) -> str:
+    """분위 컬럼 이름을 만든다.
+
+    Args:
+        quantile: 분위 (비율, 0.05 = 하위 5%)
+
+    Returns:
+        총 괴리의 분위 컬럼 이름 (예: `TotalDivergenceP05`)
+    """
+    # **`int()` 로 자르지 않는다.** 이진 부동소수 오차 때문에 `0.29 * 100` 이 28.999… 로 나와
+    # `P28` 이 되고, 그 열은 29분위 값을 담은 채 이름만 틀린다 — 예외는 나지 않는다
+    return f"{COL_TOTAL_DIVERGENCE}P{round(quantile * RATE_TO_PERCENT):02d}"
+
 
 # ============================================================
 # 산출물 파일
