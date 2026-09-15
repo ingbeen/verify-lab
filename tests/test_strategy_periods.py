@@ -22,11 +22,10 @@ from verify_lab.measure.constants import (
     PERIOD_FIRST_HALF,
     PERIOD_SECOND_HALF,
 )
-from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_SIGNAL_COUNT
+from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
 from verify_lab.strategy.constants import (
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
-    DISPLAY_PERIOD,
     EXIT_INTRADAY_STOP,
     EXIT_LIMIT,
     PERIOD_ALL,

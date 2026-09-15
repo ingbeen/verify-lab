@@ -95,16 +95,6 @@ PAIRS: Final = (
 # 상장 후 전체 구간은 표본 1건이라 통계가 아니므로 이 격자에 넣지 않고 따로 낸다
 HORIZONS: Final = (5, 10, 21, 63, 126, 252, 756)
 
-# 화면·CSV 에 쓰는 구간 이름. 거래일 수를 그대로 보여주면 사람이 매번 환산해야 한다
-HORIZON_LABELS: Final = {
-    5: "1주",
-    10: "2주",
-    21: "1개월",
-    63: "3개월",
-    126: "6개월",
-    252: "1년",
-    756: "3년",
-}
 
 # ============================================================
 # 판정 임계값
@@ -229,7 +219,10 @@ DISPLAY_AXIS_VALUE: Final = "구분"
 DISPLAY_VOLATILITY_AXIS: Final = "변동성"
 DISPLAY_DIRECTION_AXIS: Final = "방향"
 DISPLAY_BASE_RETURN_AXIS: Final = "1배 수익률 분위"
-DISPLAY_PERIOD_AXIS: Final = "시기"
+# **「시기」가 아니라 무엇으로 나눴는지를 이름에 담는다.** 이 축은 측정의 원칙 17 의 시기
+# 구간(`앞 절반`·`최근 5년`)이 아니라 **금리 환경**이다 — 같은 `시기` 라는 이름을 쓰면
+# 두 뜻이 산출물에서 구별되지 않고, 실제로 `windows_*.csv` 한 파일에 둘이 나란히 실린다
+DISPLAY_RATE_REGIME: Final = "금리 환경"
 
 DISPLAY_ANNUAL_DISTRIBUTION: Final = "연율 분배 기여(%)"
 

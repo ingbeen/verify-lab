@@ -291,3 +291,51 @@ def test_empty_model_list_raises(synthetic_inputs: tuple[SpotSource, ...]) -> No
     """
     with pytest.raises(ValueError, match="비어 있습니다"):
         run_equivalence((), synthetic_inputs)
+
+
+def test_실효_총비용이_전달받은_계열만_읽는다(
+    synthetic_inputs: tuple[SpotSource, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    목적: 합성 데이터로 도는 테스트가 **저장소의 진짜 시세**를 함께 읽던 길을 닫는다.
+
+    실효 총비용이 `SPOT_CLOSE` 라는 **모듈 상수**를 직접 읽어, 호출자가 넘긴 계열과 무관하게
+    `storage/series/USDKRW_CLOSE.csv`(9,014행 · 1990~2026)를 열고 있었다. 환율을 재수집하면
+    **이 테스트의 결과가 조용히 바뀐다** — 예외도 경고도 나지 않는다 (`tests/CLAUDE.md` 파일 격리).
+
+    **모듈 상수를 못 쓰게 만들어 검사한다.** 읽은 경로를 세는 방식은 「마침 지금은 안 읽는다」와
+    「구조적으로 못 읽는다」를 구별하지 못한다.
+
+    Given: 합성 계열과, 존재하지 않는 경로로 바꿔친 모듈 상수
+    When: 검증을 실행한다
+    Then: 실패하지 않고 합성 계열만으로 끝난다
+    """
+    # Given — 이 상수를 읽으면 파일이 없어 즉시 터진다
+    broken = SpotSource("close", "종가 15:30", Path("/없는경로/USDKRW_CLOSE.csv"), needs_publication_shift=False)
+    monkeypatch.setattr(runner_module, "SPOT_CLOSE", broken)
+
+    # When
+    outputs = run_equivalence(sources=synthetic_inputs)
+
+    # Then
+    assert not outputs.effective_cost.empty, "실효 총비용이 비었습니다"
+
+
+def test_종가_계열이_없으면_거부한다(synthetic_inputs: tuple[SpotSource, ...]) -> None:
+    """
+    목적: 고를 계열이 없을 때 **조용히 기본값으로 되돌아가지 않게** 한다.
+
+    되돌아가면 지금 고친 결함이 그대로 남는다 — 저장소의 진짜 파일을 읽는다.
+
+    Given: 종가 계열이 빠진 목록
+    When: 검증을 실행한다
+    Then: `ValueError` 이고 메시지에 무엇이 들어 있었는지 담긴다
+    """
+    # Given
+    published_only = tuple(source for source in synthetic_inputs if source.key != "close")
+    assert published_only, "고시형 계열을 찾지 못했습니다"
+
+    # When / Then
+    with pytest.raises(ValueError, match="종가 계열이 없습니다"):
+        run_equivalence(sources=published_only)

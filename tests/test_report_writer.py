@@ -265,3 +265,100 @@ def test_run_summary_uses_the_declared_filename(tmp_path: Path) -> None:
 
     # Then
     assert path.name == RUN_SUMMARY_FILENAME
+
+
+class TestRunSummaryRejectsAbsolutePaths:
+    """실행 요약은 **경로가 아니라 파일 이름**을 담는다 — 저장 시점에 막는다
+
+    이 저장소는 mac·WSL 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다. 절대경로가
+    산출물에 박히면 재현·대조가 그 PC 에 묶이고, 실제로 커밋된 `summary.json` 11개에 두 PC 의
+    경로가 섞여 있었다.
+
+    **판정이 테스트에만 있으면 production 은 여전히 그 값을 쓴다.** `save_run_summary` 는
+    `summary.json` 을 쓰는 유일한 함수이므로(검증 여섯 · 매매 셋이 모두 여기를 지난다) 여기서
+    막으면 아홉 개가 한 번에 덮이고, **앞으로 만들 검증도 자동으로 덮인다.**
+    """
+
+    def test_정상_요약은_그대로_저장된다(self, tmp_path: Path) -> None:
+        """
+        목적: 가드가 멀쩡한 요약을 막지 않는다.
+
+        Given: 파일 이름만 담은 요약
+        When: 저장한다
+        Then: 예외 없이 저장된다
+        """
+        # Given
+        payload = {"track": TRACK_NAME, "datasets": [{"file": "QQQ_max.csv", "rows": 6915}]}
+
+        # When
+        path = writer.save_run_summary(tmp_path, payload)
+
+        # Then
+        assert json.loads(path.read_text(encoding="utf-8")) == payload
+
+    def test_절대경로가_있으면_저장하지_않는다(self, tmp_path: Path) -> None:
+        """
+        목적: 「조용히 저장되고 나중에 다른 PC 에서 발견되는」 경로를 닫는다.
+
+        Given: 절대경로가 든 요약
+        When: 저장한다
+        Then: `ValueError` 이고 **파일이 만들어지지 않는다**
+        """
+        # Given
+        payload = {"track": TRACK_NAME, "output_dir": "/Users/someone/verify-lab/storage/results"}
+
+        # When / Then
+        with pytest.raises(ValueError, match="절대경로"):
+            writer.save_run_summary(tmp_path, payload)
+
+        assert not (tmp_path / RUN_SUMMARY_FILENAME).exists(), "거부했는데 파일이 남았습니다"
+
+    def test_중첩_두_단계_아래도_찾는다(self, tmp_path: Path) -> None:
+        """
+        목적: 얕게 훑으면 지나가는 자리를 막는다.
+
+        실제 결함이 최상위 키에 있지 않았다 — 등가성 검증의 것은 `inputs.spot.close` 처럼
+        **두 단계 아래**에 있었다.
+
+        Given: 중첩된 자리에 절대경로가 든 요약
+        When: 저장한다
+        Then: `ValueError` 이고 **어느 자리인지** 메시지에 있다
+        """
+        # Given
+        payload = {"inputs": {"spot": {"close": "/home/user/storage/series/USDKRW_CLOSE.csv"}}}
+
+        # When / Then
+        with pytest.raises(ValueError, match=r"inputs\.spot\.close"):
+            writer.save_run_summary(tmp_path, payload)
+
+    def test_사전의_키도_본다(self, tmp_path: Path) -> None:
+        """
+        목적: 값만 보면 절반을 놓친다.
+
+        `row_counts` 는 **파일 이름으로 키잉**되므로 경로가 키 쪽에 박힐 수 있다.
+
+        Given: 키가 절대경로인 요약
+        When: 저장한다
+        Then: `ValueError`
+        """
+        # Given
+        payload = {"row_counts": {"/Users/someone/성적표.csv": 25}}
+
+        # When / Then
+        with pytest.raises(ValueError, match="절대경로"):
+            writer.save_run_summary(tmp_path, payload)
+
+    def test_목록_안도_본다(self, tmp_path: Path) -> None:
+        """
+        목적: `datasets` 는 목록이라 재귀가 목록을 안 보면 통째로 지나간다.
+
+        Given: 목록 원소에 절대경로가 든 요약
+        When: 저장한다
+        Then: `ValueError`
+        """
+        # Given
+        payload = {"datasets": [{"file": "QQQ_max.csv"}, {"file": "~/storage/market/069500_max.csv"}]}
+
+        # When / Then
+        with pytest.raises(ValueError, match="절대경로"):
+            writer.save_run_summary(tmp_path, payload)

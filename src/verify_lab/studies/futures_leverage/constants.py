@@ -384,7 +384,9 @@ DISPLAY_MAX_LEVERAGE_DAILY: Final = "매일 리밸런싱 최대 유효 레버리
 DISPLAY_MAX_LEVERAGE_MONTHLY: Final = "월 1회 최대 유효 레버리지"
 DISPLAY_WIPEOUT_COUNT: Final = "자기자본 소진 구간 수"
 DISPLAY_WINDOW_COUNT: Final = "잰 시작일 수"
-DISPLAY_PERIOD: Final = "시기"
+# **「시기」가 아니라 무엇으로 나눴는지를 이름에 담는다** — 검증 #8 과 같은 금리 경계이며,
+# 측정의 원칙 17 의 시기 구간과는 다른 축이다 (그쪽 헤더는 `report/constants.DISPLAY_PERIOD`)
+DISPLAY_RATE_REGIME: Final = "금리 환경"
 DISPLAY_EXCLUDED_REASON: Final = "제외 사유"
 DISPLAY_AS_OF_DATE: Final = "기준일"
 DISPLAY_PRICE: Final = "정산가"
@@ -401,7 +403,7 @@ OUTPUT_LABELS: Final = {
     COL_METHOD: DISPLAY_METHOD,
     COL_ROLL_RULE: DISPLAY_ROLL_RULE,
     COL_INTEREST: DISPLAY_INTEREST,
-    COL_PERIOD: DISPLAY_PERIOD,
+    COL_PERIOD: DISPLAY_RATE_REGIME,
     COL_HORIZON: DISPLAY_HORIZON,
     COL_DATE: DISPLAY_START_DATE,
     # 구간 집계

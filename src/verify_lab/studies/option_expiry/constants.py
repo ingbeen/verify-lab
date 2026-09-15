@@ -80,7 +80,6 @@ from verify_lab.report.constants import (
     DISPLAY_EXCLUDED,
     DISPLAY_EXPECTED_VALUE,
     DISPLAY_HIT_RATE,
-    DISPLAY_HORIZON,
     DISPLAY_JUDGEABLE,
     DISPLAY_MAX,
     DISPLAY_MEAN,
@@ -101,6 +100,7 @@ from verify_lab.report.constants import (
     DISPLAY_OBSERVED_MEAN,
     DISPLAY_OBSERVED_MEDIAN,
     DISPLAY_OBSERVED_UP_RATE,
+    DISPLAY_PERIOD,
     DISPLAY_POSITIVE_COUNT,
     DISPLAY_POSITIVE_MEAN,
     DISPLAY_SAMPLE_COUNT,
@@ -226,6 +226,10 @@ COL_TIME_HALF: Final = "time_half"
 # (`docs/spec/옵션_만기일_설계.md` 결정 ㉑)
 HORIZON_NEXT_WEEK_EXIT: Final = -1
 
+# 그 표지가 산출물에 나갈 때의 표시값. **`-1` 을 그대로 내보내지 않는다** — 사용자가 여는 CSV 에
+# 「보유 거래일 -1」이 찍히고, 그것이 묶음 행이라는 사실은 코드를 읽어야만 알 수 있다
+DISPLAY_HOLD_DAYS_POOLED: Final = "전체"
+
 
 # ============================================================
 # 검증 대상 시세
@@ -346,7 +350,6 @@ TRACK_NAME: Final = "option_expiry"
 # `COL_EXPIRY_MONTH_NUMBER` 는 1~12 다. 둘 다 "만기월"로 적으면 어느 축인지 알 수 없다
 DISPLAY_EXPIRY_YEAR_MONTH: Final = "만기 연월"
 
-DISPLAY_TIME_HALF: Final = "시기"
 DISPLAY_BASELINE_KIND: Final = "기준선 종류"
 DISPLAY_WEEK_REFERENCE: Final = "주 기준일"
 DISPLAY_TARGET_DATE: Final = "청산 목표일"
@@ -371,7 +374,7 @@ OUTPUT_LABELS: Final = {
     COL_EXIT_WEEKDAY: DISPLAY_EXIT_WEEKDAY,
     COL_EXPIRY_MONTH_NUMBER: DISPLAY_EXPIRY_MONTH,
     COL_EXPIRY_MONTH: DISPLAY_EXPIRY_YEAR_MONTH,
-    COL_TIME_HALF: DISPLAY_TIME_HALF,
+    COL_TIME_HALF: DISPLAY_PERIOD,
     COL_JUDGEABLE: DISPLAY_JUDGEABLE,
     COL_BASELINE_KIND: DISPLAY_BASELINE_KIND,
     # 만기일 달력
@@ -395,7 +398,7 @@ OUTPUT_LABELS: Final = {
     COL_EXCLUDED_REASON: DISPLAY_EXCLUDED_REASON,
     # 집계
     COL_BASIS: DISPLAY_BASIS,
-    COL_HORIZON: DISPLAY_HORIZON,
+    COL_HORIZON: DISPLAY_HOLD_DAYS,
     COL_SIGNAL_COUNT: DISPLAY_SIGNAL_COUNT,
     COL_EXCLUDED_COUNT: DISPLAY_EXCLUDED,
     COL_SAMPLE_COUNT: DISPLAY_SAMPLE_COUNT,

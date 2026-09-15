@@ -167,9 +167,11 @@ DISPLAY_PARAMETER: Final = "파라미터"
 DISPLAY_START_YEAR: Final = "시작연도"
 DISPLAY_DIRECTION: Final = "방향"
 
-# `report` 가 측정 구간에 "구간"을 이미 쓰므로 시대 구간은 다른 이름을 쓴다.
-# 같은 표에 두 축이 함께 실리기 때문이다
-DISPLAY_PERIOD: Final = "시대 구간"
+# `report` 가 측정 구간에 `구간`, 원칙 17 의 시기 축에 `시기` 를 이미 쓰므로 시대 구간은
+# 값도 **파이썬 이름도** 다르게 둔다. 같은 표에 두 축이 함께 실리고, 이름까지 같으면
+# **잘못된 모듈에서 가져와도 문자열이 나와 조용히 다른 축이 된다**
+# (`src/verify_lab/CLAUDE.md` — 같은 이유로 `TREND_*` 를 갈랐다)
+DISPLAY_ERA: Final = "시대 구간"
 
 DISPLAY_GROUP_SIGNAL_COUNT: Final = "신호"
 DISPLAY_EVENT_COUNT: Final = "사건"

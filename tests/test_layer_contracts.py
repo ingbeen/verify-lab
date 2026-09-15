@@ -67,8 +67,6 @@ _REPORT_CONSTANTS = "verify_lab/report/constants.py"
 # **이 목록이 비어 있지 않은 것이 정상이다.** 같은 한글 단어가 계층마다 다른 것을 가리키는 자리가
 # 실재하고, 그 사실은 `src/verify_lab/CLAUDE.md` 「매매 산출물 계약」이 이미 명시했다
 _REPORT_LABEL_COLLISIONS = {
-    # 뜻이 다르다 — `report` 는 측정 구간(`1주`·`1개월`), `strategy` 는 시기 구간(`앞 절반`·`최근 5년`)
-    "구간": frozenset({"verify_lab/strategy/constants.py"}),
     # `pykrx` 가 돌려주는 인덱스 이름이라 표시 레이블이 아니라 **데이터 소스의 사실**이다
     "날짜": frozenset({"verify_lab/data/pykrx_collector.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
     # **표마다 지시 대상이 다르다** — 역방향 성적표는 신호군 종류, 거래내역은 신호 방향,
@@ -245,8 +243,8 @@ def _files_with_literal(value: str) -> list[str]:
     """`src` 안에서 그 문자열을 **소스 어디에든 적은** 파일을 찾는다 (docstring 제외).
 
     `_files_defining` 이 「이 이름으로 정의하는가」를 보는 것과 달리 여기서는 **값**을 본다.
-    이름은 계층마다 다른데(`PERIOD_FIRST_HALF` · `DISPLAY_PERIOD_EARLY` · `DISPLAY_TIME_HALF_EARLY`)
-    산출물에 나가는 것은 값이라, 이름으로 찾으면 세 벌이 있어도 한 건도 안 걸린다.
+    **이름은 계층마다 다르고 산출물에 나가는 것은 값이다.** 이름으로 찾으면 세 벌이 있어도
+    한 건도 안 걸린다.
 
     **상수 대입만 보지 않는다.** 원칙이 요구하는 값이 되살아나는 가장 흔한 모양은 상수를 새로
     만드는 것이 아니라 **호출부에 리터럴을 바로 적는 것**이다 — 실제로 두 runner 가
@@ -902,9 +900,8 @@ class TestPrincipleThirteenOwnership:
 class TestPrincipleValueOwnership:
     """「측정의 원칙」이 요구하는 값은 공통 계층 하나가 소유한다
 
-    **이름이 아니라 값으로 검사한다.** 세 계층이 같은 문자열을 각자 다른 이름으로 들고 있었고
-    (`PERIOD_FIRST_HALF` · `DISPLAY_PERIOD_EARLY` · `DISPLAY_TIME_HALF_EARLY`), 이름으로 찾으면
-    세 벌이 있어도 한 건도 안 걸린다. 산출물에 나가는 것은 값이다.
+    **이름이 아니라 값으로 검사한다.** 세 계층이 같은 문자열을 각자 다른 이름으로 들 수 있어
+    이름으로 찾으면 세 벌이 있어도 한 건도 안 걸린다. 산출물에 나가는 것은 값이다.
     """
 
     def test_방향_표기를_한_곳에서만_정의한다(self) -> None:
@@ -1001,8 +998,8 @@ class TestDisplayLabelLiveness:
     사전에 있는데 아무 표에도 안 나오는 키는 그냥 통과한다. 양방향으로 막으면 정상 호출이
     전부 막힌다. **그 반대 방향을 여기서 본다.**
 
-    실제로 월말이 `COL_BASELINE_KIND`·`COL_CONVERGED_MONTHS` 두 쌍을 그렇게 이고 있었고,
-    **미사용 전수 스캔에도 안 잡혔다** — 사전에 키로 한 번 얹히는 것만으로 「쓰인다」가 되기 때문이다.
+    그렇게 쌓인 죽은 레이블은 **미사용 전수 스캔에도 안 잡힌다** — 사전에 키로 한 번 얹히는
+    것만으로 「쓰인다」가 되기 때문이다. 한 검증이 두 쌍을 그렇게 이고 있던 것이 실물 사례다.
     """
 
     def test_사전의_키_중_그_검증이_정의한_것은_사전_밖에서도_쓰인다(self) -> None:
@@ -1774,3 +1771,243 @@ class TestKrxCommonOwnership:
 
         # Then
         assert offenders == [], f"날짜 형식 오류 메시지를 직접 적은 모듈이 있습니다: {offenders}"
+
+
+# ============================================================
+# 산출물 레이블의 유일성과 측정 구간 축의 소유자
+# ============================================================
+
+# **이미 있는 겹침만 허용목록으로 고정하고 그 밖의 새 겹침을 막는다.** 전면 금지로 두면
+# 정당한 겹침까지 막힌다 — 아래 대부분은 `src/verify_lab/CLAUDE.md` 「어디까지가 공통이고
+# 어디부터 그 검증의 것인가」가 **일부러 뽑지 않기로 한** 달력형·배수형 어휘다(2026-09-14 결정).
+#
+# 성격은 셋이다.
+#   ㉮ 달력형 두 검증이 공유하는 어휘 — `진입 종가` · `청산 종가` · `보유 거래일` · `제외 사유`
+#   ㉯ 배수형 두 검증이 공유하는 어휘 — `배수` · `지수` · `1배 종목` · `비중첩 표본` · `시작일` · `종료일`
+#   ㉰ 같은 매매법의 «검증과 매매»가 같은 말을 쓰는 것 — `사건` · `파라미터` · `만기월` · `청산일`
+#
+# **여기 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다**(부분집합 검사) —
+# 막으면 중복을 줄이는 계획서마다 이 테스트가 실패한다.
+_KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
+    "1배 종목": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "날짜": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
+    "등락률(%)": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    # 배수형 두 검증이 **같은 금리 경계**로 가른 같은 축이다(검증 #9 가 #8 의 경계를 따른다).
+    # `배수`·`지수` 와 같은 성격이라 여기 둔다 — 값까지 같지만 공통으로 뽑지 않는 것이 결정이다
+    "금리 환경": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "만기월": frozenset(
+        {"verify_lab/strategy/option_expiry_constants.py", "verify_lab/studies/option_expiry/constants.py"}
+    ),
+    "방향": frozenset(
+        {
+            "verify_lab/report/constants.py",
+            "verify_lab/strategy/constants.py",
+            "verify_lab/studies/leverage_tracking/constants.py",
+            "verify_lab/studies/reverse/constants.py",
+        }
+    ),
+    "배당 보정분(%p)": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "배수": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "보유 거래일": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
+    "비중첩 표본": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "사건": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "사건 번호": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "수익률(%)": frozenset(
+        {
+            "verify_lab/strategy/constants.py",
+            "verify_lab/studies/futures_leverage/constants.py",
+            "verify_lab/studies/month_end/constants.py",
+            "verify_lab/studies/option_expiry/constants.py",
+        }
+    ),
+    "시작연도": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "시작일": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "신호": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "실제(%)": frozenset(
+        {"verify_lab/studies/leverage_tracking/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}
+    ),
+    "월": frozenset({"verify_lab/strategy/month_end_runner.py", "verify_lab/studies/month_end/constants.py"}),
+    "제외 사유": frozenset(
+        {
+            "verify_lab/studies/futures_leverage/constants.py",
+            "verify_lab/studies/month_end/constants.py",
+            "verify_lab/studies/option_expiry/constants.py",
+        }
+    ),
+    "종가": frozenset({"verify_lab/studies/option_expiry/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "종료일": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "종목": frozenset(
+        {
+            "verify_lab/strategy/constants.py",
+            "verify_lab/studies/option_expiry/constants.py",
+            "verify_lab/studies/reverse/constants.py",
+            "verify_lab/studies/usdkrw_equivalence/constants.py",
+        }
+    ),
+    "지수": frozenset(
+        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
+    ),
+    "진입 종가": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
+    "청산 목표일": frozenset(
+        {"verify_lab/strategy/option_expiry_constants.py", "verify_lab/studies/option_expiry/constants.py"}
+    ),
+    "청산 종가": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
+    "청산일": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/month_end/constants.py"}),
+    "파라미터": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "표본": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
+}
+
+
+@cache
+def _display_label_owners() -> dict[str, list[str]]:
+    """`src` 안의 `DISPLAY_*` 상수를 **값 → 그 값을 정의한 파일들**로 모은다.
+
+    `_files_defining_value` 는 값 하나를 받아 트리를 통째로 훑는다. 여기서는 반대 방향이
+    필요해 한 번에 모은다 — 217종을 각각 훑으면 같은 파일을 수백 번 파싱한다.
+
+    Returns:
+        레이블 값 → 저장소 상대 경로 목록 (정렬됨)
+    """
+    owners: dict[str, set[str]] = {}
+    for path in _SOURCE_ROOT.rglob("*.py"):
+        relative = str(path.relative_to(_SOURCE_ROOT.parent))
+        for name, value in _module_constants(path).items():
+            if name.startswith("DISPLAY_"):
+                owners.setdefault(value, set()).add(relative)
+
+    return {value: sorted(files) for value, files in owners.items()}
+
+
+class TestOutputLabelUniqueness:
+    """산출물 헤더로 나가는 한글 레이블은 **뜻 하나에 이름 하나**다
+
+    `TestReportLabelOwnership` 은 **`report` 가 정의한 레이블의 재정의**만 본다. 그래서
+    `report` 가 모르는 겹침은 한 건도 걸리지 않았다 — 같은 `시기` 가 한쪽에서는 측정의 원칙 17
+    의 시기 축(`앞 절반`·`최근 5년`), 다른 쪽에서는 금리 환경(`저금리(~2021)`)을 가리키는
+    상태가 그렇게 남았다. **두 뜻이 같은 파일 안에 나란히 있기도 했다** — 배수 검증의
+    `windows_*.csv` 가 4열에 측정 구간, 16열에 금리 환경을 담았고 둘 다 이름이 그 단어였다.
+    """
+
+    def test_알려진_것_말고는_같은_레이블을_두_곳에서_정의하지_않는다(self) -> None:
+        """
+        목적: 「같은 이름이 다른 것을 가리키는」 상태가 **새로 생기는 것**을 막는다.
+
+        허용목록은 **이미 있는 겹침**을 고정한다. 대부분은 달력형·배수형 어휘를 일부러 뽑지
+        않기로 한 결정의 결과이고, 그 판단의 SoT 는 `src/verify_lab/CLAUDE.md` 다.
+
+        Given: `src` 안의 모든 `DISPLAY_*` 상수
+        When: 같은 값을 두 파일 이상이 정의하는 경우를 찾는다
+        Then: 허용목록에 적힌 자리뿐이다
+        """
+        # Given
+        owners = _display_label_owners()
+        assert owners, "표시 레이블을 하나도 찾지 못했습니다"
+
+        # When — **전부 모아 한 번에 알린다.** 첫 위반에서 멈추면 고칠 때마다 다음 것이
+        # 하나씩 드러나 같은 실행을 여러 번 해야 하고, 무엇이 남았는지 한눈에 보이지 않는다
+        offenders = {
+            value: sorted(set(files) - _KNOWN_LABEL_DUPLICATES.get(value, frozenset()))
+            for value, files in owners.items()
+            if len(files) > 1 and not set(files) <= _KNOWN_LABEL_DUPLICATES.get(value, frozenset())
+        }
+
+        # Then
+        listed = "\n".join(f"  {value!r}: {files}" for value, files in sorted(offenders.items()))
+
+        assert not offenders, (
+            f"허용목록에 없는 레이블 겹침이 {len(offenders)}종 있습니다:\n{listed}\n" "뜻이 같으면 소유자를 하나로 두고, 뜻이 다르면 이름을 가르세요"
+        )
+
+    def test_허용목록이_실제_겹침만_담는다(self) -> None:
+        """
+        목적: 허용목록이 **조용히 낡는 것**을 막는다.
+
+        검사 자체는 부분집합이라 통합돼 사라진 항목이 남아 있어도 통과한다. 그러면 목록이
+        「지금 무엇이 겹쳐 있는가」의 기록 구실을 못 하게 되므로, **한 곳에서만 정의하는 값이
+        목록에 남아 있으면** 알린다.
+
+        Given: 허용목록
+        When: 각 항목의 실제 정의처 수를 센다
+        Then: 전부 둘 이상이다
+        """
+        # Given
+        owners = _display_label_owners()
+
+        # When
+        stale = sorted(value for value in _KNOWN_LABEL_DUPLICATES if len(owners.get(value, [])) < 2)
+
+        # Then
+        assert stale == [], f"겹침이 해소됐는데 허용목록에 남아 있습니다: {stale}"
+
+
+class TestHorizonLabelOwnership:
+    """측정 구간(보유 기간)의 표시 이름은 `report/constants.py` 하나가 소유한다
+
+    **공통 계층의 사전이 자기 축을 다 덮지 못하면 검증이 사본을 만든다.** 실제로 그 사전이
+    네 칸(`1·5·10·21`)뿐이라, 같은 `(5, 10, 21, 63, 126, 252, 756)` 격자를 두고
+    한 검증은 일곱 칸짜리 사본을 만들어 `1주 · 3개월 · 3년` 을 내고, 다른 검증은 라벨을 거치지
+    않아 `5 · 63 · 756` 을 그대로 냈다. **두 결과를 나란히 읽을 수 없고 예외는 나지 않는다.**
+    """
+
+    _DICT_NAME = "HORIZON_LABELS"
+
+    def test_구간_이름표가_한_곳에만_있다(self) -> None:
+        """
+        목적: 사본이 다시 생기는 것을 막는다.
+
+        Given: `src` 안의 모든 모듈
+        When: `HORIZON_LABELS` 를 **정의하는** 파일을 찾는다
+        Then: `report/constants.py` 하나다
+        """
+        # Given / When
+        definers = sorted(
+            str(path.relative_to(_SOURCE_ROOT.parent))
+            for path in _SOURCE_ROOT.rglob("*.py")
+            for names, _ in _module_assignments(ast.parse(path.read_text(encoding="utf-8")))
+            if self._DICT_NAME in names
+        )
+
+        # Then
+        assert definers == [_REPORT_CONSTANTS], f"{self._DICT_NAME} 을 정의하는 파일이 여럿입니다: {definers}"
+
+    def test_구간_축을_내는_검증은_이름표를_거친다(self) -> None:
+        """
+        목적: **원값이 그대로 나가는 경로**를 막는다.
+
+        `COL_HORIZON` 을 표시 레이블로 rename 만 하고 값을 바꾸지 않으면 사용자가 여는 CSV 에
+        거래일 수가 그대로 찍힌다. 같은 축을 다른 검증은 한글로 내므로 **두 산출물이 어긋난다.**
+
+        Given: `COL_HORIZON` 을 출력 레이블로 내보내는 검증 패키지
+        When: 그 패키지가 이름표(또는 `horizon_label`)를 쓰는지 본다
+        Then: 전부 쓴다
+        """
+        # Given
+        renamers = [
+            package
+            for package in _study_packages()
+            for path in package.rglob("*.py")
+            if "COL_HORIZON: DISPLAY_HORIZON" in path.read_text(encoding="utf-8")
+        ]
+        assert renamers, "구간 축을 내보내는 검증을 하나도 찾지 못했습니다"
+
+        # When / Then
+        for package in sorted(set(renamers), key=lambda item: item.name):
+            sources = "\n".join(path.read_text(encoding="utf-8") for path in package.rglob("*.py"))
+
+            assert (
+                self._DICT_NAME in sources or "horizon_label" in sources
+            ), f"{package.name} 이 구간 축을 이름표 없이 내보냅니다 — 거래일 수가 원값으로 나갑니다"

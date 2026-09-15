@@ -20,14 +20,13 @@
 import argparse
 
 from verify_lab.common_constants import RESULT_LAYER_STRATEGY
-from verify_lab.report.constants import DISPLAY_MEAN, DISPLAY_MIN, DISPLAY_SIGNAL_COUNT
+from verify_lab.report.constants import DISPLAY_MEAN, DISPLAY_MIN, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
-    DISPLAY_PERIOD,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     DISPLAY_TOTAL,

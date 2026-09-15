@@ -9,16 +9,24 @@
 """
 
 import math
+from types import SimpleNamespace
+from typing import cast
 
 import numpy as np
+import pandas as pd
 
-from verify_lab.measure.constants import COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
+from verify_lab.measure.constants import COL_HORIZON, COL_JUDGEABLE, JUDGEABLE_NO, JUDGEABLE_YES, MIN_SAMPLE_PER_CELL
 from verify_lab.measure.statistics import max_non_overlapping
+from verify_lab.report.constants import HORIZON_LABELS
 from verify_lab.studies.futures_leverage import constants as futures_constants
+from verify_lab.studies.futures_leverage.constants import COL_METHOD
 from verify_lab.studies.futures_leverage.runner import (
     COL_NON_OVERLAPPING,
+    SCREEN_HORIZON,
+    StudyOutputs,
     _max_effective_leverage,
     _summarize,
+    comparison_headline,
 )
 
 
@@ -219,3 +227,48 @@ class TestOutputLabelOwnership:
         # Then
         assert isinstance(labels, dict)
         assert labels
+
+
+class TestComparisonHeadline:
+    """화면에 먼저 띄울 슬라이스는 **runner 가 고른다**"""
+
+    def test_고른_보유_기간이_이름표를_거친_값과_맞는다(self) -> None:
+        """
+        목적: 축의 «값»이 바뀌어도 그 선택이 조용히 0행이 되지 않게 한다.
+
+        이 선택이 CLI 에 있을 때 실제로 그렇게 깨졌다 — 산출물의 보유 기간이 거래일 수에서
+        표시 이름으로 바뀌자 `== 252` 가 한 행도 고르지 못했고, **표가 사라진 채 실행이
+        성공했다.** `scripts/` 는 타입 검사·계약 테스트 대상이 아니라 아무도 못 봤다.
+
+        Given: 산출물 모양의 합성 집계표
+        When: 헤드라인을 고른다
+        Then: 그 보유 기간의 행만 나온다
+        """
+        # Given
+        label = HORIZON_LABELS[SCREEN_HORIZON]
+        comparison = pd.DataFrame(
+            {
+                COL_HORIZON: [label, HORIZON_LABELS[5], label],
+                COL_METHOD: ["ETF", "ETF", "선물 매일"],
+            }
+        )
+        outputs = SimpleNamespace(comparison=comparison)
+
+        # When
+        screen = comparison_headline(cast(StudyOutputs, outputs))
+
+        # Then
+        assert not screen.empty, "헤드라인이 비었습니다 — 축의 값과 필터가 어긋났습니다"
+        assert screen[COL_HORIZON].tolist() == [label, label]
+
+    def test_이름표에_없는_보유_기간을_고르지_않는다(self) -> None:
+        """
+        목적: `SCREEN_HORIZON` 이 공통 이름표에 **반드시 있어야** 함을 고정한다.
+
+        없으면 `comparison_headline` 이 `KeyError` 로 죽는데, 그 사실이 CLI 를 돌려야만 드러난다.
+
+        Given: 공통 이름표
+        When: 화면용 보유 기간을 찾는다
+        Then: 그 칸이 있다
+        """
+        assert SCREEN_HORIZON in HORIZON_LABELS, "화면용 보유 기간이 공통 이름표에 없습니다"

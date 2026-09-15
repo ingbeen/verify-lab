@@ -41,9 +41,9 @@ from verify_lab.studies.reverse.constants import (
     DATASETS,
     DEFAULT_START_YEAR,
     DISPLAY_DIRECTION,
+    DISPLAY_ERA,
     DISPLAY_EVENT_COUNT,
     DISPLAY_PARAMETER,
-    DISPLAY_PERIOD,
     DISPLAY_PRICE_BASIS,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
@@ -176,7 +176,7 @@ def _print_excerpt(outputs: StudyOutputs) -> None:
     statistics = outputs.statistics
     selected = statistics[
         (statistics[DISPLAY_START_YEAR] == DEFAULT_START_YEAR)
-        & (statistics[DISPLAY_PERIOD] == PERIOD_ALL.label)
+        & (statistics[DISPLAY_ERA] == PERIOD_ALL.label)
         & (statistics[DISPLAY_HORIZON] == EXCERPT_HORIZON)
     ]
 

@@ -11,7 +11,7 @@
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -31,6 +31,14 @@ RUN_DIRECTORY_TIME_FORMAT = "%Y%m%d_%H%M%S"
 # 폴더 이름에 쓸 수 있는 매매법 이름. **모양의 정의처는 인용 스캐너 하나다** —
 # 거기서 못 찾는 이름으로 폴더를 만들면 문서가 인용해도 「없는 것」이 되고 정리 후보로 올라간다
 VALID_TRACK_NAME = re.compile(rf"^{TRACK_NAME_PATTERN}$")
+
+# 절대경로로 읽히는 문자열의 머리. **손으로 박는다** — `BASE_DIR` 에서 파생시키면 이 PC 의
+# 경로만 보게 되어 **다른 PC 가 쓴** 경로를 못 잡는다. 실제로 커밋된 산출물에
+# mac(`/Users/`)과 WSL(`/home/`) 두 벌이 섞여 있었고 **둘 다 `/` 로 시작한다.**
+# `~/` 를 함께 보는 것은 홈 표기도 PC 를 타기 때문이다.
+# 윈도우 드라이브 문자를 넣지 않는 것은 이 저장소의 두 PC 가 모두 POSIX 이기 때문이다 —
+# 오지 않은 경우를 상상해 넣으면 `D:`·UNC 경로는 어차피 빠져 반쪽짜리 안심만 준다
+ABSOLUTE_PATH_PREFIXES = ("/", "~/")
 
 
 def create_run_directory(track_name: str, *, layer: str) -> Path:
@@ -100,11 +108,57 @@ def save_table(directory: Path, filename: str, table: pd.DataFrame) -> Path:
     return path
 
 
+def _strings_in(value: Any, trail: str = "") -> Iterator[tuple[str, str]]:
+    """중첩된 자료구조의 문자열을 **자리 표시와 함께** 편다.
+
+    [중요] **사전의 키도 값과 똑같이 본다.** `row_counts` 는 파일 이름으로 키잉되므로 경로가
+    키 쪽에 박힐 수 있고, 값만 보면 절반을 놓친다.
+
+    Args:
+        value: 검사할 값 (사전·목록·문자열이 섞인 중첩 구조)
+        trail: 지금까지의 자리 표시
+
+    Yields:
+        (자리 표시, 문자열)
+    """
+    if isinstance(value, str):
+        yield trail, value
+    elif isinstance(value, Mapping):
+        for key, inner in value.items():
+            here = f"{trail}.{key}" if trail else str(key)
+            if isinstance(key, str):
+                yield f"{here} (키)", key
+            yield from _strings_in(inner, here)
+    elif isinstance(value, list | tuple):
+        for index, inner in enumerate(value):
+            yield from _strings_in(inner, f"{trail}[{index}]")
+
+
+def absolute_paths_in(payload: Any) -> list[tuple[str, str]]:
+    """실행 요약 안의 절대경로를 **자리와 함께** 찾는다.
+
+    **중첩을 재귀로 훑는다.** 결함이 최상위 키에만 있지 않았다 — 등가성 검증의 것은
+    `inputs.spot.close` 처럼 두 단계 아래에 있어 얕게 보면 그대로 지나간다.
+
+    Args:
+        payload: 실행 요약
+
+    Returns:
+        (자리 표시, 그 문자열) 목록. 없으면 빈 목록
+    """
+    return [(trail, text) for trail, text in _strings_in(payload) if text.startswith(ABSOLUTE_PATH_PREFIXES)]
+
+
 def save_run_summary(directory: Path, payload: Mapping[str, Any]) -> Path:
     """실행 파라미터와 핵심 통계를 JSON 으로 남긴다.
 
     남기지 않으면 산출물만 보고 어떤 설정의 결과인지 재구성할 수 없다.
     난수를 쓴 계산은 **시드가 여기 남아야 재현된다.**
+
+    **절대경로가 든 요약은 거부한다.** 요약이 담는 것은 경로가 아니라 파일 이름이라는 것이
+    계약이고(`src/verify_lab/CLAUDE.md` 실행 요약), 이 함수가 `summary.json` 을 쓰는 유일한
+    자리라 여기서 막으면 검증과 매매가 한꺼번에 덮인다. 검사를 검증마다 두면 **한 곳만 빠져도
+    아무 신호가 없다** — 실제로 그렇게 커밋된 요약 11개에 mac 과 WSL 두 PC 의 경로가 섞였다.
 
     Args:
         directory: 저장할 폴더
@@ -112,7 +166,15 @@ def save_run_summary(directory: Path, payload: Mapping[str, Any]) -> Path:
 
     Returns:
         저장된 파일 경로
+
+    Raises:
+        ValueError: 요약 어딘가에 절대경로가 든 경우
     """
+    found = absolute_paths_in(payload)
+    if found:
+        listed = ", ".join(f"{trail}={text!r}" for trail, text in found)
+        raise ValueError(f"실행 요약에 절대경로가 있습니다 (파일 이름만 담으세요): {listed}")
+
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / RUN_SUMMARY_FILENAME
 

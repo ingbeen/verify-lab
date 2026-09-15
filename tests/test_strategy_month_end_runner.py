@@ -33,13 +33,12 @@ from verify_lab.common_constants import (
 )
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
-from verify_lab.report.constants import DISPLAY_EXCLUDED
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_PERIOD
 from verify_lab.strategy import month_end_runner
 from verify_lab.strategy.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_EXIT_REASON,
     DISPLAY_HOLD_DAYS,
-    DISPLAY_PERIOD,
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
     EXIT_GAP_STOP,

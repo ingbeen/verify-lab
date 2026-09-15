@@ -42,6 +42,7 @@ from verify_lab.report.constants import (
     DISPLAY_JUDGEABLE,
     DISPLAY_SAMPLE_COUNT,
     EMPTY_MARK,
+    HORIZON_LABELS,
     PERCENT_DECIMALS,
 )
 from verify_lab.report.run_summary import format_period
@@ -82,9 +83,9 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_NON_OVERLAPPING,
     DISPLAY_PATH_EFFECT,
     DISPLAY_PATH_IDEAL,
-    DISPLAY_PERIOD_AXIS,
     DISPLAY_PRODUCT_COST,
     DISPLAY_PRODUCT_TYPE,
+    DISPLAY_RATE_REGIME,
     DISPLAY_REALIZED_MULTIPLE,
     DISPLAY_REALIZED_MULTIPLE_COUNT,
     DISPLAY_START_DATE,
@@ -95,7 +96,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_VOLATILITY_AXIS,
     DISTRIBUTION_MEASURED_NO,
     DISTRIBUTION_MEASURED_YES,
-    HORIZON_LABELS,
     HORIZONS,
     OUTPUT_FILES,
     PAIRS,
@@ -120,7 +120,7 @@ AXIS_COLUMNS = (
     (COL_VOLATILITY_BUCKET, DISPLAY_VOLATILITY_AXIS),
     (COL_TREND, DISPLAY_DIRECTION_AXIS),
     (COL_BASE_RETURN_BUCKET, DISPLAY_BASE_RETURN_AXIS),
-    (COL_PERIOD, DISPLAY_PERIOD_AXIS),
+    (COL_PERIOD, DISPLAY_RATE_REGIME),
 )
 
 # 백분율로 바꿔 저장하는 집계 항목 (내부 컬럼 접미사 → 표시 이름).
@@ -380,7 +380,8 @@ def _window_block(prepared: pd.DataFrame, pair: LeveragePair) -> pd.DataFrame:
     block[DISPLAY_TARGET_TICKER] = pair.target_ticker
     block[DISPLAY_MULTIPLE] = pair.multiple
     block[DISPLAY_DATE] = valid[COL_DATE].dt.date
-    block[DISPLAY_HORIZON] = valid[COL_HORIZON].map(HORIZON_LABELS)
+    # **`map` 을 쓰지 않는다** — 같은 파일의 두 형제와 같은 이유다(위 주석)
+    block[DISPLAY_HORIZON] = [HORIZON_LABELS[int(horizon)] for horizon in valid[COL_HORIZON]]
 
     block = pd.concat([block, _to_percent(valid, WINDOW_PERCENT_COLUMNS)], axis=1)
 
@@ -388,7 +389,7 @@ def _window_block(prepared: pd.DataFrame, pair: LeveragePair) -> pd.DataFrame:
     block[DISPLAY_VOLATILITY_AXIS] = valid[COL_VOLATILITY_BUCKET]
     block[DISPLAY_DIRECTION_AXIS] = valid[COL_TREND]
     block[DISPLAY_BASE_RETURN_AXIS] = valid[COL_BASE_RETURN_BUCKET]
-    block[DISPLAY_PERIOD_AXIS] = valid[COL_PERIOD]
+    block[DISPLAY_RATE_REGIME] = valid[COL_PERIOD]
 
     return block.reset_index(drop=True)
 

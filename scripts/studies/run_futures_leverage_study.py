@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 
 from verify_lab.common_constants import RESULT_LAYER_STUDY
-from verify_lab.measure.constants import COL_HORIZON
+from verify_lab.report.constants import HORIZON_LABELS
 from verify_lab.report.tables import print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.futures_leverage.constants import (
@@ -28,7 +28,7 @@ from verify_lab.studies.futures_leverage.constants import (
     TRACK_NAME,
     WINDOWS_FILENAME_TEMPLATE,
 )
-from verify_lab.studies.futures_leverage.runner import StudyOutputs, run_study
+from verify_lab.studies.futures_leverage.runner import SCREEN_HORIZON, StudyOutputs, comparison_headline, run_study
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -37,9 +37,6 @@ logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
 KEY_META_FUTURES_LEVERAGE_STUDY = "futures_leverage_study"
-
-# 화면에 먼저 띄울 보유 기간 (거래일). 전 격자를 찍으면 화면을 넘긴다
-SCREEN_HORIZON = 252
 
 # ============================================================
 # 산출물 헤더 — 영문 계산 컬럼을 한글 레이블로 바꾼다
@@ -134,12 +131,12 @@ def main() -> int:
     # **조립은 runner 가 한다** (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」)
     save_run_summary(Path(directory), outputs.summary)
 
-    screen = outputs.comparison[outputs.comparison[COL_HORIZON] == SCREEN_HORIZON]
+    screen = comparison_headline(outputs)
     if not screen.empty:
         print_dataframe(
             _display(screen),
             logger,
-            title=f"보유 {SCREEN_HORIZON}거래일 — 방식별 성적",
+            title=f"보유 {HORIZON_LABELS[SCREEN_HORIZON]} — 방식별 성적",
         )
 
     if not outputs.breakeven.empty:

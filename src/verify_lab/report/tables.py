@@ -13,6 +13,7 @@ CSV 에서 찾지 못하고, 그러면 사용자가 직접 대조한다는 이 �
 """
 
 import logging
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any, SupportsInt
 
@@ -369,9 +370,11 @@ def horizon_label(horizon: SupportsInt) -> str:
     `SupportsInt` 로 받는다 — 둘 다 정수로 바꿀 수 있다는 사실만 요구하면 충분하다.
 
     **사전에 없는 구간을 예외로 막지 않는 것은 의도된 설계다.** 이 계층은 공통이라
-    어떤 검증이 어떤 격자를 쓸지 미리 알 수 없고, 검증마다 구간이 다르다.
-    `report/constants.HORIZON_LABELS` 가 "여기 없는 구간은 그 형태로 나가므로 등록하지 않는다"고
-    정했다 — **자기 격자를 아는 검증 계층에서는 반대로 막는다** (`leverage_tracking/runner`).
+    어떤 검증이 어떤 격자를 쓸지 미리 알 수 없다. 사전은 저장소가 쓰는 격자를 전부 덮지만,
+    달력 이름이 없는 짧은 구간(`2`·`3`)은 등록하지 않고 이 fallback 이 `2일`·`3일` 을 낸다 —
+    그 형태가 이미 그 값의 정확한 이름이다.
+    **자기 격자를 아는 검증 계층에서는 반대로 막는다**(대괄호 조회) — 그쪽은 모르는 칸이
+    들어오면 데이터가 잘못된 것이므로 조용히 넘어가면 안 된다.
 
     Args:
         horizon: 구간 (거래일)
@@ -534,6 +537,16 @@ def to_display_columns(
     unknown = [column for column in (*percent_columns, *probability_columns) if column not in table.columns]
     if unknown:
         raise ValueError(f"변환 대상 컬럼이 표에 없습니다: {unknown}")
+
+    # **두 컬럼이 같은 헤더로 접히는 것을 막는다.** pandas 는 이름이 겹쳐도 예외를 내지 않고
+    # 같은 이름의 컬럼 둘을 만들어, CSV 에 `보유 거래일,보유 거래일` 이 나간다 — 읽는 쪽은
+    # 어느 것이 무엇인지 알 수 없고 **에러도 경고도 없다.**
+    # 판정은 사전이 아니라 **결과 헤더**로 한다 — 사전에 같은 값을 가진 키가 둘 있어도
+    # 한 표에 함께 나오지 않으면 겹치지 않는다 (`Date`·`StartDate` 가 둘 다 `시작일` 이다)
+    renamed = [labels[column] for column in table.columns]
+    collisions = sorted(name for name, count in Counter(renamed).items() if count > 1)
+    if collisions:
+        raise ValueError(f"두 컬럼이 같은 헤더로 접힙니다: {collisions}")
 
     converted = table.copy()
     for column in percent_columns:

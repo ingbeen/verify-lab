@@ -4,6 +4,7 @@
 실제 시세 파일에 의존하면 데이터를 갱신할 때마다 테스트가 깨지므로 합성 데이터를 쓴다.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -11,7 +12,7 @@ import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON, COL_JUDGEABLE, JUDGEABLE_YES
-from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT
+from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT, HORIZON_LABELS
 from verify_lab.studies.leverage_tracking import runner
 from verify_lab.studies.leverage_tracking.constants import (
     COL_NON_OVERLAPPING_COUNT,
@@ -26,7 +27,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_TARGET_TICKER,
     DISTRIBUTION_MEASURED_NO,
     DISTRIBUTION_MEASURED_YES,
-    HORIZON_LABELS,
     PRODUCT_ETF,
     TAIL_QUANTILES,
     LeveragePair,
@@ -399,3 +399,25 @@ class TestDistributionMeasuredValues:
         assert f'"{DISTRIBUTION_MEASURED_YES}"' not in source, "측정 여부 값이 리터럴로 남아 있습니다"
         assert "DISTRIBUTION_MEASURED_YES" in source
         assert "DISTRIBUTION_MEASURED_NO" in source
+
+
+class TestRunSummaryPaths:
+    """실행 요약은 경로가 아니라 **파일 이름**을 담는다"""
+
+    def test_요약에_절대경로가_없다(
+        self,
+        market_dir: Path,
+        assert_no_absolute_paths: Callable[[object, str], None],
+    ) -> None:
+        """
+        목적: 두 PC 를 오가는 산출물에 그 PC 의 경로가 박히지 않게 한다.
+
+        이 검증은 `market_dir` 을 인자로 받으므로 **경로가 요약에 새기 쉬운 자리**다.
+
+        Given: 합성 시세로 돌린 산출물
+        When: 요약을 재귀로 훑는다
+        Then: 절대경로가 하나도 없다
+        """
+        outputs = run_study(pairs=TEST_PAIRS, horizons=TEST_HORIZONS, market_dir=market_dir)
+
+        assert_no_absolute_paths(outputs.summary, "레버리지 ETF 괴리 검증")

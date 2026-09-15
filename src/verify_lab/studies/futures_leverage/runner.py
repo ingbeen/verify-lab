@@ -27,7 +27,7 @@ ETF 는 롤 규칙·이자 가정과 무관하다. 그냥 곱하면 같은 값�
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 import pandas as pd
@@ -52,6 +52,7 @@ from verify_lab.measure.constants import (
 )
 from verify_lab.measure.distribution import dividend_adjustment, measure_distribution_share
 from verify_lab.measure.statistics import judgeable, max_non_overlapping
+from verify_lab.report.constants import HORIZON_LABELS
 from verify_lab.studies.futures_leverage.comparison import (
     build_interest_factor,
     build_window_table,
@@ -570,6 +571,42 @@ def _max_effective_leverage(prices: np.ndarray, multiple: float, horizon: int) -
     return max(observed) if observed else float("nan")
 
 
+def _label_horizons(table: pd.DataFrame) -> pd.DataFrame:
+    """보유 기간 컬럼의 **거래일 수를 표시 이름으로** 바꾼다.
+
+    [중요] **내부 계산이 끝난 뒤에만 부른다.** `COL_HORIZON` 은 표 사이 조인 키이고
+    `_build_breakeven` 은 그 값을 정수로 읽는다 — 먼저 바꾸면 둘 다 깨진다.
+
+    검증마다 이 변환을 빠뜨리면 **같은 격자가 산출물마다 다른 말로 나간다.** 실제로 이 검증은
+    `5·63·756` 을, 같은 격자를 쓰는 배수 검증은 `1주·3개월·3년` 을 내고 있었고 예외는 나지 않았다.
+
+    Args:
+        table: 저장 직전의 표
+
+    Returns:
+        해당 컬럼이 표시 이름으로 바뀐 새 표. 그 컬럼이 없으면 그대로
+
+    Raises:
+        ValueError: 공통 이름표에 없는 보유 기간이 들어 있는 경우
+    """
+    columns = [name for name in (COL_HORIZON, COL_BREAKEVEN_HORIZON) if name in table.columns]
+    if not columns:
+        return table
+
+    labelled = table.copy()
+    for name in columns:
+        values = labelled[name]
+        # **`map` 을 쓰지 않는다.** 사전에 없는 값을 예외 없이 NaN 으로 만들어 그 열만 빈 채
+        # 나가고 나머지 수치는 정상이라 눈으로 발견되지 않는다. 자기 격자를 아는 계층은 막는다.
+        # 잴 수 없어 비어 있는 칸(`_build_breakeven` 의 「뒤집히지 않음」)은 빈칸으로 남긴다
+        unknown = sorted({int(value) for value in values if not pd.isna(value) and int(value) not in HORIZON_LABELS})
+        if unknown:
+            raise ValueError(f"공통 이름표에 없는 보유 기간입니다: {unknown} (가능한 값: {sorted(HORIZON_LABELS)})")
+        labelled[name] = [None if pd.isna(value) else HORIZON_LABELS[int(value)] for value in values]
+
+    return labelled
+
+
 def run_study(
     index_filter: str | None = None,
     horizons: list[int] | None = None,
@@ -656,6 +693,10 @@ def run_study(
         {WINDOWS_FILENAME_TEMPLATE.format(pair=name): len(window) for name, window in windows_by_pair.items()}
     )
 
+    # **표시 이름은 마지막에 붙인다** — 위의 조인과 `_build_breakeven` 이 거래일 수를 쓴다
+    tables = {name: _label_horizons(table) for name, table in tables.items()}
+    windows_by_pair = {name: _label_horizons(window) for name, window in windows_by_pair.items()}
+
     return StudyOutputs(
         **tables,
         windows_by_pair=windows_by_pair,
@@ -669,6 +710,28 @@ def run_study(
             KEY_ROW_COUNTS: row_counts,
         },
     )
+
+
+# 화면에 먼저 띄울 보유 기간 (거래일). 전 격자를 찍으면 화면을 넘긴다
+SCREEN_HORIZON: Final = 252
+
+
+def comparison_headline(outputs: StudyOutputs) -> pd.DataFrame:
+    """화면에 먼저 띄울 보유 기간의 방식별 성적만 뽑는다.
+
+    [중요] **이 선택이 CLI 에 있으면 테스트가 덮지 못한다.** `scripts/` 는 타입 검사·계약
+    테스트 대상이 아니라, 축의 값이 바뀌어도(거래일 수 → 표시 이름) CLI 의 필터는 조용히
+    0행을 고르고 **표가 사라진 채 실행이 성공한다.** 실제로 그렇게 사라진 적이 있다.
+
+    Args:
+        outputs: 실행 산출물
+
+    Returns:
+        그 보유 기간의 행만 남긴 표. 없으면 빈 표
+    """
+    label = HORIZON_LABELS[SCREEN_HORIZON]
+
+    return outputs.comparison[outputs.comparison[COL_HORIZON] == label].reset_index(drop=True)
 
 
 def _build_breakeven(comparison: pd.DataFrame) -> pd.DataFrame:

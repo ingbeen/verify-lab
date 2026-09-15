@@ -55,11 +55,11 @@ from verify_lab.studies.reverse.constants import (
     DISPLAY_CLOSE,
     DISPLAY_DIRECTION,
     DISPLAY_DIRECTION_REVERSE_ALL,
+    DISPLAY_ERA,
     DISPLAY_EVENT_COUNT,
     DISPLAY_EVENT_ID,
     DISPLAY_GROUP_SIGNAL_COUNT,
     DISPLAY_PARAMETER,
-    DISPLAY_PERIOD,
     DISPLAY_PRICE_BASIS,
     DISPLAY_PRICE_BASIS_RAW,
     DISPLAY_RANK,
@@ -282,11 +282,11 @@ class TestSignalGroupAxes:
         Then: 시작연도가 전부 기본 시작연도다
         """
         # Given / When
-        decades = wide_outputs.statistics[wide_outputs.statistics[DISPLAY_PERIOD] != PERIOD_ALL.label]
+        decades = wide_outputs.statistics[wide_outputs.statistics[DISPLAY_ERA] != PERIOD_ALL.label]
 
         # Then
         assert set(decades[DISPLAY_START_YEAR]) == {DEFAULT_START_YEAR}
-        assert set(decades[DISPLAY_PERIOD]) == {period.label for period in DECADE_PERIODS}
+        assert set(decades[DISPLAY_ERA]) == {period.label for period in DECADE_PERIODS}
 
     def test_식별_컬럼이_네_표에_모두_앞에_붙는다(self, wide_outputs: StudyOutputs) -> None:
         """
@@ -459,7 +459,7 @@ class TestEventCount:
         """테스트 A · 시대 구간 전체 · 해당 방향의 행만 고른다."""
         return table[
             (table[DISPLAY_TEST] == DISPLAY_TEST_EXTREME)
-            & (table[DISPLAY_PERIOD] == PERIOD_ALL.label)
+            & (table[DISPLAY_ERA] == PERIOD_ALL.label)
             & (table[DISPLAY_DIRECTION] == EXTREME_DIRECTION_LABELS[direction])
         ]
 
@@ -489,7 +489,7 @@ class TestEventCount:
         """
         # Given
         signals = clustered_outputs.signals
-        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_PERIOD] == PERIOD_ALL.label)]
+        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_ERA] == PERIOD_ALL.label)]
 
         # When
         event_ids = rows.sort_values(DISPLAY_DATE)[DISPLAY_EVENT_ID].tolist()
@@ -510,7 +510,7 @@ class TestEventCount:
         """
         # Given
         signals = clustered_outputs.signals
-        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_PERIOD] == PERIOD_ALL.label)]
+        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_ERA] == PERIOD_ALL.label)]
 
         # When
         by_direction = {direction: set(group[DISPLAY_EVENT_ID]) for direction, group in rows.groupby(DISPLAY_DIRECTION)}
@@ -583,7 +583,7 @@ class TestBaselinePopulation:
         excess = wide_outputs.excess
         rows = excess[
             (excess[DISPLAY_START_YEAR] == DEFAULT_START_YEAR)
-            & (excess[DISPLAY_PERIOD] == PERIOD_ALL.label)
+            & (excess[DISPLAY_ERA] == PERIOD_ALL.label)
             & (excess[DISPLAY_BASELINE] == DISPLAY_BASELINE_ALL)
             & (excess[DISPLAY_HORIZON] == ONE_DAY_LABEL)
             & (excess[DISPLAY_DIRECTION] != DISPLAY_DIRECTION_REVERSE_ALL)
@@ -644,7 +644,7 @@ class TestPeriodFilter:
 
         # When
         by_period = {
-            label: set(extreme.loc[extreme[DISPLAY_PERIOD] == label, DISPLAY_DATE])
+            label: set(extreme.loc[extreme[DISPLAY_ERA] == label, DISPLAY_DATE])
             for label in (PERIOD_ALL.label, *(period.label for period in DECADE_PERIODS))
         }
 
@@ -664,8 +664,8 @@ class TestPeriodFilter:
         # Given
         signals = spanning_outputs.signals
         extreme = signals[signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME]
-        whole = extreme[extreme[DISPLAY_PERIOD] == PERIOD_ALL.label]
-        decade = extreme[extreme[DISPLAY_PERIOD] == "2010년대"]
+        whole = extreme[extreme[DISPLAY_ERA] == PERIOD_ALL.label]
+        decade = extreme[extreme[DISPLAY_ERA] == "2010년대"]
 
         # When
         merged = decade.merge(whole, on=[DISPLAY_DATE, DISPLAY_DIRECTION], suffixes=("_decade", "_whole"))
@@ -695,7 +695,7 @@ class TestEmptySignalGroup:
 
         # Then
         statistics = outputs.statistics
-        decade = statistics[statistics[DISPLAY_PERIOD] == "2010년대"]
+        decade = statistics[statistics[DISPLAY_ERA] == "2010년대"]
         assert decade.empty
         assert any(row[KEY_PERIOD] == "2010년대" for row in outputs.summary[KEY_EMPTY_SIGNAL_GROUPS])
 
@@ -729,7 +729,7 @@ class TestLookAhead:
             signals = _single_axis_run(dataset, rank_cuts=(max(RANK_CUTS),)).signals
             selected = signals[
                 (signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME)
-                & (signals[DISPLAY_PERIOD] == PERIOD_ALL.label)
+                & (signals[DISPLAY_ERA] == PERIOD_ALL.label)
                 & (signals[DISPLAY_DIRECTION] == EXTREME_DIRECTION_LABELS[Direction.DOWN])
             ]
 
@@ -1135,7 +1135,7 @@ class TestCandidates:
         DISPLAY_PARAMETER,
         DISPLAY_START_YEAR,
         DISPLAY_DIRECTION,
-        DISPLAY_PERIOD,
+        DISPLAY_ERA,
     ]
 
     def test_판정표가_식별_컬럼_뒤에_판정_컬럼을_갖는다(self, wide_outputs: StudyOutputs) -> None:
@@ -1235,7 +1235,7 @@ class TestReverseAllDirection:
         """테스트 A · 시대 구간 전체 · 해당 방향의 행만 고른다."""
         return table[
             (table[DISPLAY_TEST] == DISPLAY_TEST_EXTREME)
-            & (table[DISPLAY_PERIOD] == PERIOD_ALL.label)
+            & (table[DISPLAY_ERA] == PERIOD_ALL.label)
             & (table[DISPLAY_DIRECTION] == direction_label)
         ]
 
@@ -1302,7 +1302,7 @@ class TestReverseAllDirection:
         """
         # Given
         signals = clustered_outputs.signals
-        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_PERIOD] == PERIOD_ALL.label)]
+        rows = signals[(signals[DISPLAY_TEST] == DISPLAY_TEST_EXTREME) & (signals[DISPLAY_ERA] == PERIOD_ALL.label)]
         surge = rows.loc[rows[DISPLAY_DIRECTION] == "폭등", CLOSE_ONE_DAY_COLUMN]
         plunge = rows.loc[rows[DISPLAY_DIRECTION] == "폭락", CLOSE_ONE_DAY_COLUMN]
 
@@ -1436,7 +1436,7 @@ class TestReverseAllDirection:
         empty = [record for record in outputs.summary[KEY_EMPTY_SIGNAL_GROUPS] if record[KEY_PERIOD] == "2010년대"]
         statistics = outputs.statistics
         combined = statistics[
-            (statistics[DISPLAY_PERIOD] == "2010년대") & (statistics[DISPLAY_DIRECTION] == DISPLAY_DIRECTION_REVERSE_ALL)
+            (statistics[DISPLAY_ERA] == "2010년대") & (statistics[DISPLAY_DIRECTION] == DISPLAY_DIRECTION_REVERSE_ALL)
         ]
 
         # Then

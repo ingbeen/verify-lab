@@ -70,6 +70,7 @@ from verify_lab.studies.option_expiry.constants import (
     COL_TICKER,
     COL_TIME_HALF,
     DATASETS,
+    DISPLAY_HOLD_DAYS_POOLED,
     HORIZON_NEXT_WEEK_EXIT,
     MAX_OFFSET,
     OUTPUT_FILES,
@@ -735,7 +736,38 @@ def run_study(
     # 그대로 쓰면 요약이 별칭으로 키잉된다. `OUTPUT_FILES` 가 둘을 잇는다
     summary[KEY_ROW_COUNTS] = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
 
+    # **표시값은 마지막에 붙인다** — 위의 집계가 표지를 정수로 쓴다
+    tables = {name: _label_pooled_rows(table) for name, table in tables.items()}
+
     return StudyOutputs(**tables, summary=summary)
+
+
+def _label_pooled_rows(table: pd.DataFrame) -> pd.DataFrame:
+    """묶음 표지(`-1`)를 **표시값으로** 바꾼다.
+
+    이 축은 측정 구간 격자가 아니라 **그 신호가 실제로 몇 거래일 들렸는가**다 — 청산이 달력
+    기준이라 신호마다 다르고, 미국은 만기 다음 주에 휴장이 잦아 4거래일인 주가 섞인다.
+    묶음 행은 그 길이를 합친 것이라 **길이가 아니라 「전체」**다.
+
+    [중요] **`-1` 은 내부에서만 쓴다.** 실제 보유일로는 도달할 수 없는 음수라야 진짜 길이 칸과
+    섞이지 않는데(설계 결정 ㉑), 그 값이 그대로 나가면 사용자가 여는 CSV 에 `-1` 이 찍힌다.
+
+    Args:
+        table: 저장 직전의 표
+
+    Returns:
+        표지가 표시값으로 바뀐 새 표. 그 컬럼이 없으면 그대로
+    """
+    if COL_HORIZON not in table.columns:
+        return table
+
+    labelled = table.copy()
+    labelled[COL_HORIZON] = [
+        DISPLAY_HOLD_DAYS_POOLED if int(value) == HORIZON_NEXT_WEEK_EXIT else int(value)
+        for value in labelled[COL_HORIZON]
+    ]
+
+    return labelled
 
 
 def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
@@ -768,7 +800,7 @@ def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
     if summary.empty:
         return summary
 
-    return summary[summary[COL_HORIZON] == HORIZON_NEXT_WEEK_EXIT].reset_index(drop=True)
+    return summary[summary[COL_HORIZON] == DISPLAY_HOLD_DAYS_POOLED].reset_index(drop=True)
 
 
 def candidates_headline(outputs: StudyOutputs) -> pd.DataFrame:

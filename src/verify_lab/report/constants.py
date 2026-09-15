@@ -17,6 +17,14 @@ DISPLAY_DATE = "날짜"
 DISPLAY_BASIS = "기준"
 DISPLAY_HORIZON = "구간"
 
+# 측정의 원칙 17 의 시기 축(`전체`·`앞 절반`·`뒤 절반`·`최근 10년`·`최근 5년`)의 헤더.
+# **원칙이 «모든» 검증·매매법에 요구하는 축이라 소유자가 하나여야 한다** — 값(구간 이름)은
+# `measure/constants.py` 가 소유하고 헤더는 여기다. 검증 둘과 매매가 각자 정의하면
+# 같은 축이 계층마다 다른 이름으로 나가고, 실제로 검증은 `시기` 매매는 `구간` 이었다.
+# **`DISPLAY_HORIZON` 과 헷갈리지 않게 값을 가른다** — 그쪽은 보유 기간(`1주`·`1개월`)이고
+# 이쪽은 데이터의 어느 시기인가다. 한 파일에 둘이 함께 실리는 표가 실재한다
+DISPLAY_PERIOD = "시기"
+
 DISPLAY_SIGNAL_COUNT = "신호"
 DISPLAY_EXCLUDED = "제외"
 DISPLAY_SAMPLE_COUNT = "표본"
@@ -115,13 +123,25 @@ BASIS_LABELS = {
 BASIS_ORDER = {basis.value: index for index, basis in enumerate(ReturnBasis)}
 
 # 측정 구간의 표시 이름. **재는 구간의 목록이 아니라 "거래일 → 이름" 사전이다** —
-# 무엇을 재는지는 `measure.forward_return.DEFAULT_HORIZONS` 가 정한다. 여기 없는 구간은
-# `f"{days}일"` 로 나가므로(`tables.horizon_label`), 그 형태로 충분한 구간은 등록하지 않는다
+# 무엇을 재는지는 각 검증의 격자가 정한다(`measure.forward_return.DEFAULT_HORIZONS` ·
+# `leverage_tracking.HORIZONS` · `futures_leverage.HOLDING_HORIZONS`).
+#
+# **저장소가 쓰는 격자를 여기서 «전부» 덮는다.** 공통 계층이 자기 축을 다 덮지 못하면 검증이
+# 사본을 만들고, 사본은 반드시 갈라진다 — 같은 `(5,10,21,63,126,252,756)` 격자를 두고
+# 한 검증은 사본으로 `1주·3개월·3년` 을, 다른 검증은 라벨을 거치지 않아 `5·63·756` 을 냈다.
+# **두 산출물을 나란히 읽을 수 없고 예외는 나지 않는다.**
+#
+# 달력 이름이 없는 짧은 구간(`2`·`3`)은 등록하지 않는다 — `f"{days}일"` fallback 이
+# 내는 `2일`·`3일` 이 이미 그 값의 정확한 이름이다 (`tables.horizon_label`).
 HORIZON_LABELS = {
     1: "1일",
     5: "1주",
     10: "2주",
     21: "1개월",
+    63: "3개월",
+    126: "6개월",
+    252: "1년",
+    756: "3년",
 }
 
 # ============================================================

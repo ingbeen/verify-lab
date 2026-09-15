@@ -58,12 +58,12 @@ from verify_lab.studies.reverse.constants import (
     DISPLAY_CLOSE,
     DISPLAY_DIRECTION,
     DISPLAY_DIRECTION_REVERSE_ALL,
+    DISPLAY_ERA,
     DISPLAY_EVENT_COUNT,
     DISPLAY_EVENT_ID,
     DISPLAY_GROUP_SIGNAL_COUNT,
     DISPLAY_LEAN_SIDE,
     DISPLAY_PARAMETER,
-    DISPLAY_PERIOD,
     DISPLAY_RANK,
     DISPLAY_START_YEAR,
     DISPLAY_TEST,
@@ -103,7 +103,7 @@ IDENTITY_COLUMNS = (
     DISPLAY_PARAMETER,
     DISPLAY_START_YEAR,
     DISPLAY_DIRECTION,
-    DISPLAY_PERIOD,
+    DISPLAY_ERA,
 )
 
 # 집계·초과분·검정이 쓰는 수익률 기준. 익일 시가는 `signals.csv` 의 원자료로만 남고
@@ -673,7 +673,7 @@ def _window_group_records(
                 DISPLAY_PARAMETER: spec.parameter_label,
                 DISPLAY_START_YEAR: start_year,
                 DISPLAY_DIRECTION: spec.direction_labels[direction],
-                DISPLAY_PERIOD: period.label,
+                DISPLAY_ERA: period.label,
             }
         )
         for spec in specs
@@ -738,7 +738,7 @@ def _measure_spec(
             DISPLAY_PARAMETER: spec.parameter_label,
             DISPLAY_START_YEAR: start_year,
             DISPLAY_DIRECTION: spec.direction_labels[direction],
-            DISPLAY_PERIOD: period.label,
+            DISPLAY_ERA: period.label,
         }
 
         signal_count = int(signals.sum())
@@ -855,7 +855,7 @@ def _measure_reverse_all(
         DISPLAY_PARAMETER: spec.parameter_label,
         DISPLAY_START_YEAR: start_year,
         DISPLAY_DIRECTION: DISPLAY_DIRECTION_REVERSE_ALL,
-        DISPLAY_PERIOD: period.label,
+        DISPLAY_ERA: period.label,
     }
 
     # 두 방향이 **모두** 0건일 때만 이 신호군도 0건이다. 한쪽만 비면 남은 쪽으로 성립한다
@@ -1063,7 +1063,7 @@ def _empty_group_record(identity: Mapping[str, Any]) -> dict[str, Any]:
         KEY_PARAMETER: identity[DISPLAY_PARAMETER],
         KEY_START_YEAR: identity[DISPLAY_START_YEAR],
         KEY_DIRECTION: identity[DISPLAY_DIRECTION],
-        KEY_PERIOD: identity[DISPLAY_PERIOD],
+        KEY_PERIOD: identity[DISPLAY_ERA],
     }
 
 

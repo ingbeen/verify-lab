@@ -44,7 +44,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS_KRW,
 )
 from verify_lab.measure.constants import JUDGEABLE_NO
-from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, DISPLAY_SIGNAL_COUNT
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
 from verify_lab.report.run_summary import (
     KEY_DATASET_FILE,
     KEY_DATASET_LABEL,
@@ -59,7 +59,6 @@ from verify_lab.strategy.constants import (
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_LOSS_AMOUNT,
-    DISPLAY_PERIOD,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     DISPLAY_TOTAL,
@@ -104,11 +103,11 @@ from verify_lab.studies.reverse.constants import Dataset as ReverseDataset
 
 # 성적표의 공통 컬럼. **종목과 매매법 축 다음에 이 순서로 온다.**
 # 순서까지 계약이다 — 이름만 비교하면 재배열이 조용히 통과한다.
-# 앞 세 개가 식별 컬럼이고 `구간` 부터가 `periods.period_rows` 의 소유다
+# 앞 세 개가 식별 컬럼이고 `시기` 부터가 `periods.period_rows` 의 소유다
 SUMMARY_COMMON_COLUMNS = (
     "방향",
     "손절선(%)",
-    "구간",
+    "시기",
     "신호",
     "합계(%)",
     "평균(%)",
@@ -128,8 +127,8 @@ SUMMARY_COMMON_COLUMNS = (
     "장중손절",
     "평균 보유일",
     "판정가능",
-    "구간 시작일",
-    "구간 종료일",
+    "시기 시작일",
+    "시기 종료일",
 )
 
 # 거래내역의 공통 컬럼. **`청산 목표일` 이 이 목록 «안»에 끼므로**(옵션 만기일만, 진입가 다음)

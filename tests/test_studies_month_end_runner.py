@@ -12,6 +12,7 @@
 - 지수와 ETF 는 스키마가 달라도 같은 격자를 낸다
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pandas as pd
@@ -635,3 +636,24 @@ def test_empty_dataset_list_raises() -> None:
     # Given / When / Then
     with pytest.raises(ValueError, match="대상"):
         run_study((), repeats=FAST_REPEATS, seed=FIXED_SEED)
+
+
+class TestRunSummaryPaths:
+    """실행 요약은 경로가 아니라 **파일 이름**을 담는다"""
+
+    def test_요약에_절대경로가_없다(
+        self,
+        etf_outputs: StudyOutputs,
+        assert_no_absolute_paths: Callable[[object, str], None],
+    ) -> None:
+        """
+        목적: 두 PC 를 오가는 산출물에 그 PC 의 경로가 박히지 않게 한다.
+
+        `save_run_summary` 가 저장 시점에 같은 판정으로 막지만, **여기서 먼저 잡으면**
+        어느 검증이 그랬는지가 실패 메시지에 바로 나온다.
+
+        Given: 합성 데이터로 돌린 산출물
+        When: 요약을 재귀로 훑는다
+        Then: 절대경로가 하나도 없다
+        """
+        assert_no_absolute_paths(etf_outputs.summary, "월말 진입 검증")

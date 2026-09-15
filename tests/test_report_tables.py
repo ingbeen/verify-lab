@@ -972,3 +972,52 @@ class TestNullableIntegerCells:
         rendered = caplog.text
         assert "51" in rendered
         assert EMPTY_MARK in rendered
+
+
+class TestDisplayColumnsRejectDuplicateHeaders:
+    """두 컬럼이 **같은 헤더로 접히는** 것을 저장 전에 막는다
+
+    pandas 는 `rename` 으로 이름이 겹쳐도 예외를 내지 않고 **같은 이름의 컬럼 둘**을 만든다.
+    그대로 저장하면 CSV 에 `보유 거래일,보유 거래일` 이 나가고, 읽는 쪽은 어느 것이 무엇인지
+    알 수 없다. **에러도 경고도 없는 손상**이라 파일을 열어보기 전에는 발견되지 않는다.
+
+    사전에 같은 값을 가진 키가 둘 있는 것 자체는 정당하다 — 한 표에 함께 나오지 않으면
+    겹치지 않는다. 그래서 판정은 사전이 아니라 **결과 프레임의 헤더**로 한다.
+    """
+
+    def test_같은_헤더로_접히면_거부한다(self) -> None:
+        """
+        목적: 「조용히 중복 컬럼이 저장되는」 경로를 닫는다.
+
+        Given: 두 컬럼이 같은 레이블을 가리키는 표
+        When: 변환하면
+        Then: ValueError 가 나고 메시지에 겹친 헤더 이름이 담긴다
+        """
+        # Given
+        table = pd.DataFrame({"hold_days": [5], "horizon": [-1]})
+        labels = {"hold_days": "보유 거래일", "horizon": "보유 거래일"}
+
+        # When / Then
+        with pytest.raises(ValueError, match="보유 거래일"):
+            to_display_columns(table, labels)
+
+    def test_사전에_같은_값이_있어도_한_표에_없으면_통과한다(self) -> None:
+        """
+        목적: 정당한 동일값 쌍을 막지 않는다.
+
+        `futures_leverage` 의 `Date`·`StartDate` 가 둘 다 `시작일` 인데 **한 표에 같이 나오지
+        않는다.** 사전으로 판정하면 이 정상 호출이 막힌다.
+
+        Given: 같은 값을 가진 키가 둘 있지만 표에는 하나만 있는 경우
+        When: 변환하면
+        Then: 그대로 변환된다
+        """
+        # Given
+        table = pd.DataFrame({"Date": ["2026-01-02"]})
+        labels = {"Date": "시작일", "StartDate": "시작일"}
+
+        # When
+        result = to_display_columns(table, labels)
+
+        # Then
+        assert list(result.columns) == ["시작일"]

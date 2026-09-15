@@ -221,7 +221,7 @@ def run_equivalence(
 
     # 실효 총비용은 **NAV 기준**이라 시장가의 프리미엄 잡음이 섞이지 않는다.
     # 환율 계열은 확정된 종가를 쓴다 (`docs/spec/원달러_그리드_설계.md` 결정 C15)
-    cost_spot = _load_spot(SPOT_CLOSE)
+    cost_spot = _load_spot(_close_source(sources))
     cost_rows = [_effective_cost_row(target, cost_spot, krw_rate, usd_rate) for target in ETF_TARGETS]
 
     equivalence = pd.DataFrame(equivalence_rows)
@@ -272,6 +272,30 @@ def run_equivalence(
     logger.debug(f"등가성 검증 완료: 회귀 {len(equivalence)}행, 연도별 {len(drift)}행")
 
     return EquivalenceOutputs(**tables, summary=summary)
+
+
+def _close_source(sources: Sequence[SpotSource]) -> SpotSource:
+    """전달받은 계열 중 **종가 계열**을 고른다.
+
+    [중요] **모듈 상수를 직접 읽지 않는다.** 여기서 `SPOT_CLOSE` 를 그대로 쓰면 호출자가
+    넘긴 계열과 무관하게 `storage/series/` 의 실제 파일을 읽는다 — 합성 데이터로 돌리는
+    테스트가 저장소 시세를 함께 읽고 있었고, **환율을 재수집하면 실효 총비용이 조용히 바뀐다.**
+    예외도 경고도 나지 않는다 (`tests/CLAUDE.md` 파일 격리).
+
+    Args:
+        sources: 이번 실행이 쓰는 환율 계열
+
+    Returns:
+        종가 계열
+
+    Raises:
+        ValueError: 종가 계열이 목록에 없는 경우
+    """
+    for source in sources:
+        if source.key == SPOT_CLOSE.key:
+            return source
+
+    raise ValueError(f"실효 총비용에 쓸 종가 계열이 없습니다: {[source.key for source in sources]}")
 
 
 def _load_spot(source: SpotSource) -> pd.DataFrame:
