@@ -39,27 +39,6 @@ poetry run black .
 
 ---
 
-## 저장소 정리
-
-```bash
-# 목록만 보기 — 문서가 인용한 폴더와 정리 대상을 가릅니다
-poetry run python scripts/maintenance/clean_results.py
-
-# 정리 대상 삭제
-poetry run python scripts/maintenance/clean_results.py --delete
-```
-
-- **삭제 전에 문서의 조준이 최신인지 먼저 확인합니다.** 아직 산출물 폴더를 겨누지 않은 문서가
-  있으면 그 근거가 정리 대상에 섞입니다. 절차는 `/clean-results` 스킬에 있습니다
-- 인용 판정은 [result_citations.py](../src/verify_lab/utils/result_citations.py) 하나가 소유하며,
-  [test_result_citations.py](../tests/test_result_citations.py) 가 **같은 함수로**
-  「인용됐는데 없는 폴더」를 검사합니다. 인용한 폴더를 지우면 품질 검증이 실패합니다
-- **되돌릴 수 있는지가 git 추적 여부로 갈립니다.** 추적 중이던 폴더는 이력에 남아 되살릴 수 있고,
-  **미추적 폴더는 지우면 끝입니다** — 이 저장소에만 있던 마지막 사본입니다
-- 삭제는 파일 조작이라 스크립트가 하지만, **그 삭제를 이력에 남기는 커밋은 직접 하셔야 합니다**
-
----
-
 ## 데이터 수집
 
 > **AI 모델도 직접 실행합니다.** 다만 외부 서버(Yahoo Finance, KRX, ECOS, FRED)에 실제 요청을
@@ -101,8 +80,12 @@ poetry run python scripts/data/check_pykrx_etf.py
 poetry run python scripts/data/check_pykrx_etf.py --ticker 069500 --start 20021014
 ```
 
-- KRX 를 5회 호출하고, **각 결과를 받는 즉시** `storage/results/실측/<실행시각>_pykrx_etf_probe/` 에 CSV 로 남깁니다.
-  뒤쪽 호출이 실패해도 앞선 원자료는 보존됩니다
+- KRX 를 5회 호출하고, **각 결과를 받는 즉시** `storage/results/실측/pykrx_etf_probe/` 에 CSV 로 남깁니다.
+  한 실행 안에서는 뒤쪽 호출이 실패해도 앞선 원자료가 보존됩니다
+- 🔴 **재실행은 첫 호출 «전»에 그 폴더를 비웁니다.** 대상을 바꿔 돌리면 앞 대상의 원자료가
+  사라지고, 첫 호출이 실패하면 폴더가 빈 채로 남습니다. **남겨야 할 값은 `docs/spec/` 의
+  「데이터 실측 기록」에 옮긴 뒤 다음 대상을 돌립니다** — 프로브는 `summary.json` 을 내지 않아
+  **폴더만 봐서는 어느 대상의 결과인지 알 수 없습니다**
 - ⚠️ **pykrx 는 로그인 시 로그인 ID 를 표준 출력에 찍습니다**(비밀번호는 찍지 않습니다).
   실행 로그를 공유하거나 문서에 붙일 때 그 줄을 빼세요
 - **`data.krx.co.kr` 이 일시적으로 DNS 해석에 실패하는 일이 있습니다.** 코드나 계정 문제가 아니므로
@@ -122,7 +105,7 @@ poetry run python scripts/data/check_pykrx_splice.py --ends 20081231,20141231
 ```
 
 - 종료일 개수 + 1회(기준 조회) 만큼 KRX 를 호출하고, 원자료를
-  `storage/results/실측/<실행시각>_pykrx_splice_probe/` 에 CSV 로 남깁니다
+  `storage/results/실측/pykrx_splice_probe/` 에 CSV 로 남깁니다
 - 판정 기준: **겹치는 구간의 값 불일치가 0건**이면 이어붙이기가 성립합니다.
   "덮지 못한 거래일"이 남으면 `--ends` 에 더 이른 종료일을 추가해 재실행합니다
 - **모든 호출이 한 번의 실행 안에 있어야 합니다.** 수정계수는 조회 종료일이 아니라 조회 **시점** 기준이라,
@@ -302,7 +285,7 @@ poetry run python scripts/data/collect_ecos.py
 poetry run python scripts/data/collect_ecos.py --series usdkrw_close --start 19980101 --end 20261231
 ```
 
-- 프로브는 원자료를 `storage/results/실측/<실행시각>_ecos_probe/` 에 남깁니다.
+- 프로브는 원자료를 `storage/results/실측/ecos_probe/` 에 남깁니다.
   **통계표코드·항목코드는 기억이 아니라 이 프로브로 확인**하며, 확정값은
   [spec/원달러_그리드_설계.md](spec/원달러_그리드_설계.md) §3.1 에 있습니다
 - **환율은 두 계열을 받습니다.** `usdkrw_close`(종가 15:30)가 수익률 측정의 기준이고,
@@ -357,8 +340,8 @@ poetry run python scripts/studies/run_reverse_study.py --repeats 5000 --seed 42
 - **방향 축에는 폭등·폭락 외에 `역방향 전체` 가 있습니다.** 두 방향을 한
   표본으로 묶되 상승 방향 신호의 수익률에 −1 을 곱해 역방향 진입 기준으로 부호를 맞춘 신호군이며,
   집계 3파일에만 나옵니다 (`signals.csv` 에는 없습니다). 근거는 스펙 §7 결정 ㉕ 입니다
-- 산출물은 `storage/results/검증/<실행시각>_reverse/` 에 CSV **5개**(`signals`·`statistics`·`excess`·`test`·`candidates`)와
-  `summary.json` 으로 남습니다. 덮어쓰지 않고 실행 시각으로 쌓입니다
+- 산출물은 `storage/results/검증/reverse/` 에 CSV **5개**(`signals`·`statistics`·`excess`·`test`·`candidates`)와
+  `summary.json` 으로 남습니다. **재실행이 그 폴더를 비우고 다시 씁니다**
 - **순위 컷·집계 시작연도는 인자가 아닙니다.** 스펙이 확정한 목록을 전부 산출해 나란히
   보고하는 것이 이 검증의 설계이며, 값을 골라 넣는 노브로 쓰면 과최적화입니다
 - 🔴 **`candidates.csv` 는 화면에 나오지 않습니다** (2026-09-12 신설). 축은 **구간(보유일)**,
@@ -397,7 +380,7 @@ poetry run python scripts/studies/run_option_expiry_study.py --repeats 5000 --se
 - 선행 조건: `storage/market/` 에 **원본가 4개 파일**(QQQ·SPY·DIA·069500)이 있어야 합니다
 - **하나의 만기월을 고르지 않습니다.** 12달을 전부 산출해 나란히 보고하고,
   한국은 **금요일·목요일 청산 두 벌**을 냅니다
-- 산출물은 `storage/results/검증/<실행시각>_option_expiry/` 에 9개 CSV 와 `summary.json` 으로 남습니다.
+- 산출물은 `storage/results/검증/option_expiry/` 에 9개 CSV 와 `summary.json` 으로 남습니다.
   **CSV 컬럼 헤더는 한글**이고 비율은 백분율로 저장됩니다.
   신호일 원자료는 `signals.csv`(만기 창 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
 - 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
@@ -418,7 +401,7 @@ poetry run python scripts/studies/run_futures_leverage_study.py --index KOSDAQ15
   값의 SoT 는 `src/verify_lab/studies/futures_leverage/constants.py` 입니다
 - 선행 조건: `storage/market/` 에 **선물 2종**(`KRDRVFUK2I_max.csv`·`KRDRVFUKQI_max.csv`)과
   **짝이 되는 ETF·ETN 8종**, `storage/series/CD91.csv` 가 있어야 합니다
-- 산출물은 `storage/results/검증/<실행시각>_futures_leverage/` 에 남습니다
+- 산출물은 `storage/results/검증/futures_leverage/` 에 남습니다
   - `comparison.csv` — 지수 × 배수 × 방식 × 구간 집계. **가장 먼저 볼 표입니다**.
     방식은 넷이며(레버리지 ETF · 선물 매일 · 선물 월 1회 · **선물 그대로**),
     **「선물 그대로」가 「1억을 넣고 그냥 두면 같은가」에 답합니다**
@@ -446,7 +429,7 @@ poetry run python scripts/studies/run_leverage_tracking_study.py --index 나스�
   `src/verify_lab/studies/leverage_tracking/constants.py` 입니다
 - 선행 조건: `storage/market/` 에 `PAIRS` 가 정한 **전 종목의 원본가**와,
   **ETN 을 뺀 종목의 수정주가**가 있어야 합니다 (ETN 은 분배금을 지급하지 않아 수정주가가 없습니다)
-- 산출물은 `storage/results/검증/<실행시각>_leverage_tracking/` 에 남습니다
+- 산출물은 `storage/results/검증/leverage_tracking/` 에 남습니다
   - `divergence.csv` — 쌍 × 구간 집계. **가장 먼저 볼 표입니다**
   - `breakdown.csv` — 쌍 × 구간 × 축(변동성·방향·금리 환경)
   - `distribution.csv` — 분배금 몫과 **배당 보정분**. 원본가로 재서 생긴 왜곡의 크기입니다
@@ -469,7 +452,7 @@ poetry run python scripts/studies/run_usdkrw_equivalence_study.py --model usd_ra
 
 - **이상치 축은 인자가 아닙니다.** 2019-03-14 의 종가 이상치 포함·제외를 나란히 보는 것이 설계이며,
   하나만 골라 산출하면 그 선택이 결론에 섞입니다
-- 산출물은 `storage/results/검증/<실행시각>_usdkrw_equivalence/` 에 CSV 6개(`equivalence`·`annual_drift`·
+- 산출물은 `storage/results/검증/usdkrw_equivalence/` 에 CSV 6개(`equivalence`·`annual_drift`·
   `leverage`·`premium`·`effective_cost`·`daily`)와 `summary.json` 으로 남습니다
 - `effective_cost.csv` 는 **NAV 로 직접 잰 실효 총비용**입니다. 공시 총보수와 나란히 실립니다
 - `daily.csv` 는 **손으로 검산하는 원자료**입니다. 현물 변화와 이자 기여분을 따로 담아
@@ -491,7 +474,7 @@ poetry run python scripts/studies/run_month_end_study.py --repeats 2000 --seed 1
 
 - **하나의 칸을 고르지 않습니다.** 진입 달력일 15~25일 × 청산 상대 거래일 −3~+3 을 전부 산출해
   나란히 보고합니다 — 20일만 튀는지 이웃도 같은지가 오버피팅 판정의 근거입니다
-- 산출물은 `storage/results/검증/<실행시각>_month_end/` 에 CSV 8개(`trades`·`grid`·`months`·
+- 산출물은 `storage/results/검증/month_end/` 에 CSV 8개(`trades`·`grid`·`months`·
   `month_halves`·`periods`·`grid_candidates`·`month_candidates`·`execution`)와
   `summary.json` 으로 남습니다
 - **`execution.csv` 가 「실제로 매매했을 때의 수치」입니다.** 살 수 있는 ETF 넷의 행만 담고
@@ -548,7 +531,7 @@ poetry run python scripts/strategy/run_reverse_trading.py --target qqq
   `src/verify_lab/strategy/constants.py` 이고 근거는 규칙 문서 §3 입니다
 - **손절선은 -5% 하나, 보유 한도는 D+2 하나입니다.** 손절 3분할과 한도 3종을 나란히 내지
   않습니다 — 실측에서 -4%~-10% 가 평평해 분할이 고를 여지만 만듭니다 (규칙 문서 §3.1)
-- 산출물은 `storage/results/매매/<실행시각>_reverse/` 에 `거래내역.csv`(체결 내역),
+- 산출물은 `storage/results/매매/reverse/` 에 `거래내역.csv`(체결 내역),
   `성적표.csv`(대상 × 시기 집계), `summary.json` 으로 남습니다
 - `거래내역.csv` 는 **신호 하나가 한 행**이고, `성적표.csv` 는 **대상 하나가 시기 5행**입니다
 - **대상은 4종입니다** — KODEX 200 K=10·K=20, QQQ K=10·K=20, **전부 시작연도 2005**.
@@ -588,7 +571,7 @@ poetry run python scripts/strategy/run_option_expiry_trading.py --grid
 - **통계량이 낮은 칸도 빼지 않습니다.** 게이트를 넘었으면 함께 냅니다 —
   통계량으로 빼면 60칸에서 좋아 보이는 칸만 고르는 사후 선택이 됩니다 (`spec/옵션_만기일_설계.md` 결정 ㊳)
 - **미국 9월 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향**이라 독립된 세 번의 기회가 아닙니다
-- 산출물은 `storage/results/매매/<실행시각>_option_expiry/` 에 남습니다
+- 산출물은 `storage/results/매매/option_expiry/` 에 남습니다
   - 기본: `성적표.csv`(대상 칸 × 시기) · `거래내역.csv`(체결 원자료) · `summary.json`
   - `--grid`: `손절선_격자.csv`(대상 칸 × 손절선 격자 × 시기) · `거래내역.csv` · `summary.json`
 - **성적표는 구간별로 나옵니다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`.
@@ -640,7 +623,7 @@ poetry run python scripts/strategy/run_month_end_trading.py --ticker 229200
 - **두 방향을 다 냅니다.** 방향을 고르는 코드가 없으며, 어느 쪽으로 걸지는 결과를 읽는 쪽이 정합니다
 - **맨몸 성적입니다** — 수수료·슬리피지·세금을 넣지 않습니다
   (루트 [CLAUDE.md](../CLAUDE.md) 2026-09-06 확정)
-- 산출물은 `storage/results/매매/<실행시각>_month_end/` 에 남습니다
+- 산출물은 `storage/results/매매/month_end/` 에 남습니다
   - `거래내역.csv` — 체결 원자료. **청산가는 실제 체결가**라 손절이 걸린 건은 손절가(또는 갭 시가)입니다
   - `성적표.csv` — 종목 × 월 × 방향 × 손절선 × 시기 성적
   - `summary.json` — 이 절 머리의 「세 매매법의 산출물은 같은 규격입니다」가 여섯 칸을 설명합니다
