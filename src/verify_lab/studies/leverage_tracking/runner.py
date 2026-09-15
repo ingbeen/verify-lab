@@ -124,8 +124,8 @@ AXIS_COLUMNS = (
 )
 
 # 백분율로 바꿔 저장하는 집계 항목 (내부 컬럼 접미사 → 표시 이름).
-# **분위 열은 `TAIL_QUANTILES` 에서 유도한다** — 전에는 `P05`·`P95` 를 손으로 적어, 재는 쪽의
-# 분위를 바꾸면 이름이 어긋났다.
+# **분위 열은 `TAIL_QUANTILES` 에서 유도한다** — `P05`·`P95` 를 손으로 적으면 재는 쪽의
+# 분위를 바꿨을 때 이름이 어긋난다.
 #
 # [주의] **`_to_percent` 는 없는 컬럼을 조용히 건너뛴다.** 유도로 막은 것은 분위 하나뿐이고,
 # `MEAN_MEDIAN_COLUMNS` 에서 항목이 빠지는 경우는 여전히 예외 없이 열이 사라진다
@@ -163,8 +163,8 @@ AXIS_VALUE_UNAVAILABLE = "판정 불가"
 # summary.json 키
 # ============================================================
 
-# **값을 검증 #9 와 맞춘다.** 전에는 이쪽이 `"index"`, 저쪽이 `"index_filter"` 라
-# 같은 것을 다르게 불러 두 요약을 나란히 읽을 수 없었다
+# **값을 검증 #9 와 맞춘다.** 같은 것을 한쪽이 `"index"`, 다른 쪽이 `"index_filter"` 로
+# 부르면 두 요약을 나란히 읽을 수 없다
 KEY_INDEX_FILTER = "index_filter"
 KEY_PAIR_COUNT = "pair_count"
 KEY_HORIZONS = "horizons"
@@ -189,9 +189,9 @@ class StudyOutputs:
         full_period: 상장 후 전체 구간 1건씩
         windows: 티커별 시작일 원자료
         pair_count: 실제로 잰 쌍 수
-        summary: 실행 요약. **CLI 가 아니라 여기서 만든다** — 전에는 CLI 가 리터럴 키로
-            조립해 `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸렸고,
-            그 탓에 `full_period` 는 저장은 되는데 **행 수가 요약에서 통째로 빠져** 있었다
+        summary: 실행 요약. **CLI 가 아니라 여기서 만든다** — CLI 가 리터럴 키로 조립하면
+            `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸리고, 나열부라
+            표가 늘 때 **행 수가 요약에서 통째로 빠지는** 것을 아무것도 막지 못한다
     """
 
     divergence: pd.DataFrame
@@ -478,8 +478,8 @@ def run_study(
     }
 
     # **행 수의 키는 파일 이름이다** (`src/verify_lab/CLAUDE.md` 실행 요약 계약).
-    # 짝마다 따로 내는 원자료는 **파일별로** 센다 — 전에는 전부 더해 `window_rows` 한 칸이라
-    # 어느 짝이 몇 행인지 산출물만 보고는 알 수 없었다
+    # 짝마다 따로 내는 원자료는 **파일별로** 센다 — 전부 더해 한 칸으로 두면
+    # 어느 짝이 몇 행인지 산출물만 보고는 알 수 없다
     row_counts = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
     row_counts.update(
         {WINDOWS_FILENAME_TEMPLATE.format(ticker=ticker): len(window) for ticker, window in windows.items()}

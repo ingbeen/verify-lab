@@ -173,8 +173,8 @@ class StudyOutputs:
         windows_by_pair: 짝별 시작일 원자료
         pair_count: 실제로 잰 짝 수
         skipped_pairs: 데이터가 없어 건너뛴 짝과 사유
-        summary: 실행 요약. **CLI 가 아니라 여기서 만든다** — 전에는 CLI 가 리터럴 키로
-            조립해 `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸렸다
+        summary: 실행 요약. **CLI 가 아니라 여기서 만든다** — CLI 가 리터럴 키로 조립하면
+            `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸린다
     """
 
     comparison: pd.DataFrame
@@ -650,8 +650,7 @@ def run_study(
     }
 
     # **행 수의 키는 파일 이름이다** (`src/verify_lab/CLAUDE.md` 실행 요약 계약).
-    # 짝마다 따로 내는 원자료는 **파일별로** 센다 — 전에는 이름 목록만 `window_files` 로 남고
-    # 행 수가 없었다
+    # 짝마다 따로 내는 원자료는 **파일별로** 센다 — 이름 목록만 남기면 행 수가 빠진다
     row_counts = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
     row_counts.update(
         {WINDOWS_FILENAME_TEMPLATE.format(pair=name): len(window) for name, window in windows_by_pair.items()}

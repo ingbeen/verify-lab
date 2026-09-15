@@ -297,9 +297,9 @@ COL_ROLL_RULE: Final = "RollRule"
 COL_INTEREST: Final = "Interest"
 
 # 그날의 **일별 이자율(실수)**. 자기자본 곡선의 컬럼이며 위 축과 다른 것이다.
-# [중요] **한 이름으로 겸하지 않는다.** 전에는 둘 다 `COL_INTEREST` 였고 `OUTPUT_LABELS` 가
-# 그것을 `이자 가정` 으로 이름 붙여, 곡선을 저장하는 순간 실수 컬럼이 축의 레이블을 받는다.
-# 지금은 곡선이 CSV 로 나가지 않아 드러나지 않을 뿐이며, 예외도 나지 않는다
+# [중요] **한 이름으로 겸하지 않는다.** 둘을 `COL_INTEREST` 하나로 두면 `OUTPUT_LABELS` 가
+# 그것을 `이자 가정` 으로 이름 붙이므로, 곡선을 저장하는 순간 실수 컬럼이 축의 레이블을 받는다.
+# 곡선이 CSV 로 나가지 않는 동안은 드러나지 않고 **예외도 나지 않는다**
 COL_INTEREST_RATE: Final = "InterestRate"
 COL_PERIOD: Final = "Period"
 

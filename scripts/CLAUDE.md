@@ -108,7 +108,8 @@
 ### 산출물 저장
 
 - 저장 경로는 `common_constants.py` 상수를 씁니다. **하드코딩 금지**
-- 검증 산출물은 덮어쓰지 않고 `storage/results/<실행시각>_<검증명>/`에 저장합니다
+- 검증 산출물은 덮어쓰지 않고 `storage/results/{검증, 매매, 실측}/<실행시각>_<매매법>/`에 저장합니다.
+  **계층이 경로로 드러납니다** — 표기의 SoT 는 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 데이터 저장 규칙입니다
 - CSV 저장 시 반올림 규칙은 [.claude/rules/python.md](../.claude/rules/python.md)를 따릅니다
 - **신호일 전체 목록 CSV를 반드시 남깁니다.** 사용자가 차트로 직접 대조하기 위한 원자료입니다
 - **모든 CSV 컬럼 헤더는 한글입니다.** 저장 직전에 `COL_* → DISPLAY_*` 로 바꿔서 내보냅니다

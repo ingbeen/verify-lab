@@ -3,12 +3,11 @@
 `summary.json` 의 `datasets` 는 「무엇을 어느 기간으로 쟀는가」를 담는 자리이며
 **범위의 SoT** 다(`src/verify_lab/CLAUDE.md` 출력 계약). 검증도 매매도 같은 줄을 낸다.
 
-**전에는 구현이 네 벌이었다.** 매매 셋은 `strategy/run_summary.py` 하나를 공유했지만
-검증 셋은 각자 만들었다 — `studies → strategy` import 가 계층 방향을 뒤집기 때문이다.
-그래서 키를 맞춰 놓고도 **구현은 갈라진 채**였고, 한 벌만 고쳐도 예외가 나지 않았다.
-
-**`report` 가 소유하면 그 이유가 사라진다.** `studies` 도 `strategy` 도 이미 `report` 에
-의존하므로 방향이 뒤집히지 않는다. 저장은 같은 계층의 `writer.save_run_summary` 가 한다.
+**소유자가 `report` 인 이유는 계층 방향이다.** 이 줄을 매매 계층이 가지면 `studies` 가
+가져올 수 없어(`studies → strategy` 가 방향을 뒤집는다) 검증 셋이 각자 만들게 되고,
+**키를 맞춰 놓고도 구현이 갈라진 채**로 남아 한 벌만 고쳐도 예외가 나지 않는다.
+`studies` 도 `strategy` 도 이미 `report` 에 의존하므로 여기서는 방향이 뒤집히지 않는다.
+저장은 같은 계층의 `writer.save_run_summary` 가 한다.
 
 **이 모듈은 「한 줄」만 소유한다.** 요약 전체의 틀(`track`·`rule`·`cost` …)은 매매 계층의
 규칙이라 `strategy/run_summary.py` 에 남는다 — 검증은 요약 모양이 매매와 다르다.
@@ -25,9 +24,9 @@ from verify_lab.common_constants import COL_DATE
 # ============================================================
 
 # **`ticker` 는 종목코드이고 `label` 은 표시 이름이다.** 여섯 산출 지점(검증 셋·매매 셋)이
-# 같은 뜻을 쓴다 — 전에는 `studies/reverse`·`studies/option_expiry` 의 `ticker` 에
-# **표시 이름**이 들어 있어 역방향 요약이 `"ticker": "KODEX 200"` 이라고 적었다.
-# **미국 ETF 는 둘이 같아(`QQQ`) 이 충돌이 한 번도 드러나지 않았다**
+# 같은 뜻을 쓴다 — `ticker` 에 **표시 이름**을 넣으면 요약이 `"ticker": "KODEX 200"` 처럼
+# 적히고, **미국 ETF 는 둘이 같아(`QQQ`) 그 충돌이 국내에서만 드러난다.**
+# 둘 다 `str` 이라 타입 검사가 잡지 못한다
 KEY_DATASET_TICKER: Final = "ticker"
 KEY_DATASET_LABEL: Final = "label"
 KEY_DATASET_FILE: Final = "file"
@@ -36,8 +35,8 @@ KEY_DATASET_ROWS: Final = "rows"
 
 # 기간 표기. 「시작 ~ 종료」이며 `.claude/rules/docs.md` 가 결과 문서에 요구하는 형식과 같다.
 #
-# **전에는 이 상수가 매매 계층에 있어 `studies` 가 가져올 수 없었고**(계층 방향), 세 검증
-# runner 가 f-string 에 `" ~ "` 를 직접 적었다. 형식을 고정하는 것이 없어 **한 곳만
+# **이 상수가 매매 계층에 있으면 `studies` 가 가져올 수 없어**(계층 방향) 검증 runner 가
+# f-string 에 `" ~ "` 를 직접 적게 된다. 형식을 고정하는 것이 없으면 **한 곳만
 # `" - "` 로 바뀌어도 예외가 나지 않는다** — 산출물만 조용히 갈린다
 PERIOD_SEPARATOR: Final = " ~ "
 
@@ -47,7 +46,7 @@ def dataset_record(*, ticker: str, label: str, file: str, frame: pd.DataFrame) -
 
     **기간과 거래일 수를 시세에서 직접 읽는다.** 호출 측이 따로 세면 산출 지점마다 갈리고,
     결과 문서가 인용하는 「데이터 기간」이 실제 파일과 어긋나도 예외가 나지 않는다 —
-    실제로 `docs/strategy/역방향_매매_규칙.md` 의 기간이 낡은 채로 남아 있었다.
+    실측으로 `docs/strategy/역방향_매매_규칙.md` 의 기간이 낡은 채 남은 적이 있다.
 
     **자기 축을 더 붙이는 것은 호출 측의 몫이다.** 검증마다 더 담을 것이 다르므로
     (`price_basis`·`expiry_count`·`is_index`) 이 함수에 검증별 인자를 두지 않는다 —

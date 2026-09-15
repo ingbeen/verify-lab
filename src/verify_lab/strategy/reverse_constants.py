@@ -5,10 +5,10 @@
 **표본 수는 시세 기간에 묶여 있으므로 그 문서의 머리말이 기준이다** — 값을 여기 적으면
 재수집할 때마다 두 곳이 갈라진다.
 
-**이 매매법의 값만 둔다.** 전에는 셋이 `strategy/constants.py` 에 함께 있었고, 그래서
-그 공유 모듈이 `studies.reverse.constants` 를 import 했다 — **월말 매매를 돌려도 역방향의
-`DATASETS` 정의가 딸려 왔고**, 공유 체결식(`trade_fill`)의 손절선 기본값이 이 매매법의 −5% 였다.
-`tests/test_layer_contracts.py` 가 그 결합이 되살아나는 것을 막는다.
+**이 매매법의 값만 둔다.** 셋을 `strategy/constants.py` 에 함께 두면 그 공유 모듈이
+`studies.reverse.constants` 를 import 하게 되어 **월말 매매를 돌려도 역방향의 `DATASETS`
+정의가 딸려 오고**, 공유 체결식(`trade_fill`)의 손절선 기본값이 이 매매법의 −5% 가 된다.
+`tests/test_layer_contracts.py` 가 그 결합이 생기는 것을 막는다.
 """
 
 from dataclasses import dataclass

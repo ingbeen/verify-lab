@@ -2,15 +2,14 @@
 
 `summary.json` 에 담을 내용을 조립한다. 저장은 `report/writer.save_run_summary` 가 한다.
 
-**전에는 세 매매법이 세 구조였다.** 만드는 자리도 키도 달랐다 — 역방향은 runner 에서
-`strategy`/`targets`/`rule`/`row_counts`/`notes`, 옵션 만기일은 **CLI 에서**
-`cells`/`stop_levels`/`row_counts`, 월말은 runner 에서 `stop_levels`/`fixed_stop_level`/
-`cost`/`datasets`/`row_counts` 를 냈다. 그래서 세 가지가 어긋나 있었다.
+**세 매매법이 같은 틀을 쓴다 — 매매법마다 구조를 만들지 않는다.** 만드는 자리와 키가
+갈리면 세 가지가 조용히 어긋난다.
 
 - `src/verify_lab/CLAUDE.md` 가 **「범위의 SoT 는 `summary.json` 의 `datasets`」**라고
-  선언했는데 **월말만** 그 키를 가졌다. 옵션 만기일은 종목코드를 어디에도 남기지 않았다
-- `.claude/rules/strategy.md` 가 요구하는 **맨몸 성적 표기가 월말에만** 있었다
-- 옵션 만기일은 요약을 **CLI 에서** 조립해 `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸렸다
+  선언하는데 그 키를 가진 매매법과 안 가진 매매법이 갈린다 — 안 가진 쪽은 종목코드를
+  어디에도 남기지 않는다
+- `.claude/rules/strategy.md` 가 요구하는 **맨몸 성적 표기**가 한 매매법에만 실린다
+- 요약을 **CLI 에서** 조립하면 `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」에 걸린다
 
 **틀은 여섯 칸이고 그 안의 「무엇을 돌렸나」만 매매법이 채운다.**
 
@@ -29,13 +28,13 @@
 집계표는 체결이 하나도 없는 대상의 행을 갖지 않아, 전부 제외되면 몇 건이 왜 빠졌는지가
 어디에도 남지 않는다 (패키지 절대 원칙 「표본 보존」).
 
-**`row_counts` 의 키를 파일 이름으로 두는 이유**: 전에는 `"summary"`·`"performance"` 같은
-별칭이었고 스크립트가 그 문자열을 되짚었다. 작업 C 이후 `performance.csv` 라는 파일은
-존재하지 않는데 키만 남아 있었다. 파일 이름으로 키잉하면 읽는 쪽이 파일명 상수를 그대로 쓴다.
+**`row_counts` 의 키를 파일 이름으로 두는 이유**: `"summary"`·`"performance"` 같은 별칭을
+쓰면 스크립트가 그 문자열을 되짚어야 하고, **그 이름의 파일이 사라져도 키만 남는다.**
+파일 이름으로 키잉하면 읽는 쪽이 파일명 상수를 그대로 쓴다.
 
 **데이터셋 한 줄은 여기서 만들지 않는다.** `report/run_summary.dataset_record` 가 소유하며
-검증 계층도 같은 함수를 쓴다 — 전에는 이 모듈이 소유해서 `studies` 가 쓸 수 없었고
-(`studies → strategy` 는 계층 방향을 뒤집는다), 그래서 **구현이 네 벌**이었다.
+검증 계층도 같은 함수를 쓴다 — 이 모듈이 소유하면 `studies` 가 쓸 수 없어
+(`studies → strategy` 는 계층 방향을 뒤집는다) **구현이 검증마다 한 벌씩 늘어난다.**
 """
 
 from collections.abc import Mapping, Sequence

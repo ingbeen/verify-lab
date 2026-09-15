@@ -118,7 +118,7 @@ def _print_scope(cells: list[ExpiryCell], *, grid: bool) -> None:
 def _print_summary(outputs: ExpiryOutputs, *, grid: bool) -> None:
     """성적표를 화면에 보여 준다.
 
-    격자일 때는 **무손절 행만** 낸다 — 160행을 터미널에 쏟으면 읽을 수 없고, 그 행이
+    격자일 때는 **무손절 행만** 낸다 — 전 행을 터미널에 쏟으면 읽을 수 없고, 그 행이
     `docs/research/옵션_만기일.md` 12A.4 의 방향 기대값과 맞아야 두 계층이 같은 것을
     재고 있다는 뜻이기 때문이다.
 

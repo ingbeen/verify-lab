@@ -74,8 +74,8 @@ logger = get_logger(__name__)
 # `summary.json` 의 `rule` 안 — 무엇을 어떤 규칙으로 돌렸나
 # ============================================================
 
-# **전에는 요약을 CLI 가 조립했다.** 그래서 이 매매법만 규약이 갈렸고, 대상 범위도
-# 데이터 기간도 비용 표기도 없었다 — `scripts/CLAUDE.md` 의 「CLI 에 도메인 로직 금지」다
+# **요약은 CLI 가 아니라 이 모듈이 조립한다** (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」).
+# CLI 가 들면 이 매매법만 규약이 갈려 대상 범위도 데이터 기간도 비용 표기도 빠진다
 KEY_STOP_LEVELS = "stop_levels"
 KEY_CELLS = "cells"
 KEY_LABEL = "label"
@@ -92,8 +92,8 @@ NOTE_EXIT = "청산은 달력이 지목한 다음주 금요일 종가다. 이익
 class ExpiryOutputs:
     """실행 산출물
 
-    **세 매매법이 같은 이름을 쓴다** — 전에는 성적표가 매매법마다 `summary`·`grid`·
-    `performance` 라 스크립트가 매번 다른 속성을 찾아야 했다.
+    **세 매매법이 같은 이름을 쓴다** — 성적표를 매매법마다 다르게 부르면
+    (`summary`·`grid`·`performance`) 스크립트가 매번 다른 속성을 찾아야 한다.
 
     Attributes:
         trades: 체결 원자료. 사용자가 차트로 대조하는 자리 (측정의 원칙 8)
@@ -407,8 +407,8 @@ def _trade_row(
 def _identity(dataset: Dataset, cell: ExpiryCell, stop_level: float | None) -> dict[str, Any]:
     """행을 식별하는 앞 컬럼들을 만든다.
 
-    **손절선이 하나뿐일 때도 그 컬럼을 낸다.** 전에는 전 행이 같은 값이라 빼고 있었는데,
-    그 근거는 **한 파일 안에서만** 성립한다 — 파일을 여는 사람은 그 표가 무손절 성적인지
+    **손절선이 하나뿐일 때도 그 컬럼을 낸다.** 「전 행이 같은 값이라 뺀다」는 근거는
+    **한 파일 안에서만** 성립한다 — 파일을 여는 사람은 그 표가 무손절 성적인지
     −5% 성적인지 알 수 없고, 같은 매매법의 격자표와 나란히 놓으면 컬럼 구성이 달라져
     대조가 끊긴다. 세 매매법이 공유하는 계약이며 `tests/test_strategy_output_contract.py`
     가 고정한다. 확정 규칙의 손절선 값은 `EXPIRY_STOP_LEVEL` 이 SoT다.

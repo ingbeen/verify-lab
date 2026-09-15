@@ -1168,7 +1168,7 @@ class TestRunSummary:
 
     def test_row_counts_의_키가_파일_이름이다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
-        목적: `"performance"` 같은 별칭을 없앤다 — 작업 C 이후 그 이름의 파일은 존재하지 않는다
+        목적: `"performance"` 같은 별칭을 막는다 — 별칭은 그 이름의 파일이 사라져도 남는다
 
         파일 이름으로 키잉하면 스크립트가 `summary[row_counts][SUMMARY_FILENAME]` 로 읽으므로
         별칭을 따로 관리할 필요가 없어진다.
@@ -1200,9 +1200,10 @@ class TestRunSummary:
 
     def test_요약에_옛_slug_가_값으로_남아_있지_않다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
-        목적: 작업 B 가 없애려던 이름이 **데이터 값**으로 남아 있던 것을 닫는다
+        목적: 옛 slug 가 **데이터 값**으로 되살아나는 것을 막는다
 
-        역방향 요약이 `"strategy": "reverse_trading"` 이라고 적고 있었다 — 폴더는 `reverse` 다.
+        요약이 `"strategy": "reverse_trading"` 이라고 적으면 폴더 이름(`reverse`)과 갈린다 —
+        slug 의 정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME` 하나다.
 
         Given: 세 매매법의 실행 요약
         When: 요약 전체를 문자열로 봤을 때

@@ -458,9 +458,9 @@ def _blank_period_row(template: pd.DataFrame) -> pd.DataFrame:
     **행을 지우지 않고 지표만 비운다** (측정의 원칙 17). 행이 사라지면 그 구간을 못 봤다는
     사실 자체를 사용자가 모르고, **0 으로 채우는 것도 금지다**(「손실도 이익도 없었다」로 읽힌다).
 
-    **전체 스키마를 유지한다.** 전에는 두 컬럼짜리 표를 만들어 붙였는데, 그러면 그 표가 맨 앞에
-    올 때 산출물의 **컬럼 순서가 그 두 개부터** 시작한다 — 같은 원칙을 이행하는 옵션 만기일과
-    빈 행의 모양이 달랐다.
+    **전체 스키마를 유지한다 — 두 컬럼짜리 표를 만들어 붙이지 않는다.** 그러면 그 표가 맨 앞에
+    올 때 산출물의 **컬럼 순서가 그 두 개부터** 시작하고, 같은 원칙을 이행하는 옵션 만기일과
+    빈 행의 모양이 갈린다.
 
     Args:
         template: 같은 호출에서 나온 비어 있지 않은 집계. 컬럼 구성만 빌린다
@@ -712,9 +712,8 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
         )
 
     return {
-        # **공통 다섯 키가 먼저, 이 검증의 축이 뒤에 온다.** 전에는 `is_index` 가 가운데
-        # 끼고 `rows`·`period` 가 뒤집혀 있어, 같은 계약을 따른다는 여섯 요약 중 이것만
-        # 자리가 달랐다. 순서를 공통 함수가 정하면 갈릴 수 없다
+        # **공통 다섯 키가 먼저, 이 검증의 축이 뒤에 온다.** 축을 가운데 끼우면 같은 계약을
+        # 따르는 여섯 요약 중 이것만 자리가 달라진다 — 순서를 공통 함수가 정하면 갈릴 수 없다
         **dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.path.name, frame=df),
         KEY_IS_INDEX: dataset.is_index,
         **base_record,
@@ -824,9 +823,9 @@ def _execution_rows(month_candidates: pd.DataFrame, datasets: tuple[Dataset, ...
 
     selected = month_candidates[month_candidates[COL_TICKER].isin(executable)].copy()
 
-    # **두 줄이 같은 모양이다.** 전에는 시장만 종목명으로 찾는 사전(`MARKET_BY_LABEL`)을 써
-    # `.get(label, "")` 로 **조용히 빈칸**이 됐고, 바로 아래 줄은 같은 라벨로 `KeyError` 를 냈다.
-    # 시장을 대상 자신이 갖게 하니 그 비대칭이 사라졌다
+    # **두 줄이 같은 모양이어야 한다.** 한쪽만 종목명으로 찾는 사전을 쓰면 `.get(label, "")` 가
+    # **조용히 빈칸**을 내는데 바로 옆 줄은 같은 라벨로 `KeyError` 를 내 가드 강도가 정반대가 된다.
+    # 시장을 대상 자신이 가지면 그 비대칭 자체가 생기지 않는다
     selected.insert(0, COL_MARKET, selected[COL_TICKER].map(lambda label: executable[label].market))
     selected.insert(2, COL_EXECUTION_ROLE, selected[COL_TICKER].map(lambda label: executable[label].execution_role))
 

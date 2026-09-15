@@ -72,13 +72,12 @@ MIN_SAMPLE_PER_CELL = 10
 # 「절반 넘게 내렸다」를 판정하는 선 (비율, 0.5 = 50%). 측정의 원칙 13 이 요구하는
 # **평균-비율 어긋남** 판정의 임계값이며, 그 판정은 `statistics.mean_rate_conflict` 가 소유한다.
 #
-# **공통 계층이 갖는 이유**: 전에는 `studies/month_end` 와 `studies/option_expiry` 의
-# constants 에 같은 값이 한 벌씩 있었고, 두 runner 에 **docstring 까지 같은 판정 함수**가
-# 따로 있었다. 원칙이 모든 검증에 요구하는 것을 검증마다 두면 같은 원칙이 다른 답을 낸다
+# **공통 계층이 갖는 이유**: 검증마다 두면 값도 판정 함수도 한 벌씩 생긴다 —
+# 원칙이 모든 검증에 요구하는 것을 검증마다 구현하면 같은 원칙이 다른 답을 낸다
 HALF_RATE = 0.5
 
-# 그 판정이 실리는 컬럼. **임계값과 판정 함수만 올라가고 이름은 두 검증에 한 벌씩 남아 있었다** —
-# 절반만 통합된 상태에서는 한쪽 컬럼 이름이 바뀌어도 예외가 나지 않는다.
+# 그 판정이 실리는 컬럼. **임계값·판정 함수와 «함께» 올라와야 한다** —
+# 이름만 검증에 남는 절반짜리 통합에서는 한쪽 컬럼 이름이 바뀌어도 예외가 나지 않는다.
 # 한글 레이블은 표시용이라 `report/constants.py` 가 갖는다
 COL_MEAN_RATE_CONFLICT = "mean_rate_conflict"
 
@@ -89,8 +88,8 @@ COL_MEAN_RATE_CONFLICT = "mean_rate_conflict"
 # 균등 2분할의 이름. 원칙 17 이 **모든 매매법**에 요구하는 축이라 검증·매매가 같은 말을 써야 한다.
 #
 # **표시 레이블이 아니라 데이터 칸에 들어가는 값이라 여기 있다.** 위 `JUDGEABLE_YES` 와 같은
-# 성격이며, 전에는 매매 계층과 두 검증이 각자 이름을 두어 **세 벌**이었다
-# (`PERIOD_FIRST_HALF` · `DISPLAY_PERIOD_EARLY` · `DISPLAY_TIME_HALF_EARLY`).
+# 성격이며, 매매 계층과 두 검증이 각자 이름을 두면 **세 벌**이 된다
+# (`PERIOD_FIRST_HALF` · `DISPLAY_PERIOD_EARLY` · `DISPLAY_TIME_HALF_EARLY` 처럼).
 #
 # **구간 «목록»은 여기 두지 않는다.** 몇 구간을 낼지는 계층의 구성이라
 # 매매 계층의 `strategy/constants.PERIODS` 가 정한다 — 올린 것은 이름 둘뿐이다
