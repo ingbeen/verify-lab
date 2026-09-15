@@ -241,6 +241,13 @@ DISPLAY_DIVIDEND_ADJUSTMENT: Final = "배당 보정분(%p)"
 DISPLAY_DISTRIBUTION_MEASURED: Final = "측정 여부"
 DISPLAY_DISTRIBUTION_PERIOD: Final = "분배 측정 구간"
 
+# `측정 여부` 컬럼의 값. **`measure` 의 `JUDGEABLE_YES` 를 쓰지 않는다** — 그쪽은
+# 「칸당 표본이 하한을 넘어 판정할 수 있는가」이고 이것은 「분배금을 실제로 쟀는가」라,
+# 같은 `예` 라도 다른 질문이다. 거짓 쪽 값도 다르다(그쪽은 `아니오`, 여기는 이유가 붙는다).
+# 상수를 빌려 쓰면 그 구별이 사라지고, 하한을 고치는 변경이 이 열을 함께 흔든다
+DISTRIBUTION_MEASURED_YES: Final = "예"
+DISTRIBUTION_MEASURED_NO: Final = "아니오 (ETN — 분배금 없음)"
+
 DISPLAY_COMMON_DAYS: Final = "공통 거래일"
 DISPLAY_BASE_ONLY: Final = "1배에만 있는 날"
 DISPLAY_TARGET_ONLY: Final = "배수에만 있는 날"
@@ -289,6 +296,44 @@ def tail_column(quantile: float) -> str:
     # **`int()` 로 자르지 않는다.** 이진 부동소수 오차 때문에 `0.29 * 100` 이 28.999… 로 나와
     # `P28` 이 되고, 그 열은 29분위 값을 담은 채 이름만 틀린다 — 예외는 나지 않는다
     return f"{COL_TOTAL_DIVERGENCE}P{round(quantile * RATE_TO_PERCENT):02d}"
+
+
+def _reject_lossy_tail_columns(quantiles: tuple[float, ...]) -> None:
+    """컬럼 이름이 분위를 온전히 담지 못하면 즉시 멈춘다.
+
+    **이름이 소수점 아래를 버린다.** `tail_column(0.045)` 는 `TotalDivergenceP04` 이고
+    `tail_column(0.025)` 는 `TotalDivergenceP02` 다 — 파이썬 `round` 가 은행가 반올림이라
+    `round(4.5)` 가 `4` 이기 때문이다. 이 손실이 두 가지로 터진다.
+
+    | 어떻게 | 실물 |
+    | --- | --- |
+    | **두 분위가 한 이름이 된다** | `0.04` 와 `0.045` 가 둘 다 `P04` — 나중 열이 앞 열을 덮어 한 분위가 통째로 사라진다 |
+    | **이름이 값과 어긋난다** | `0.025` 하나만 넣으면 겹치지 않지만 `P02` 라는 이름이 2.5분위 값을 담는다 |
+
+    둘 다 **예외가 나지 않아** 표에는 정상으로 보이는 값이 남는다. 그래서 이름이
+    분위를 되돌려 주지 못하면 애초에 목록에 들이지 않는다.
+
+    반올림 방식 자체는 바꾸지 않는다 — 바꾸면 **지금 나가는 컬럼 이름이 달라져** 이미 발행된
+    산출물과 대조할 수 없게 된다.
+
+    Args:
+        quantiles: 집계에 쓸 분위 목록
+
+    Raises:
+        RuntimeError: 이름이 분위를 되돌려 주지 못하거나 두 분위가 한 이름을 갖는 경우
+            (내부 불변조건 위반)
+    """
+    lossy = [q for q in quantiles if round(round(q * RATE_TO_PERCENT) / RATE_TO_PERCENT, 10) != round(q, 10)]
+    if lossy:
+        raise RuntimeError(f"내부 불변조건 위반 - 컬럼 이름이 분위를 담지 못합니다: {lossy}")
+
+    names = [tail_column(quantile) for quantile in quantiles]
+    if len(set(names)) != len(names):
+        pairs = sorted(zip(names, quantiles, strict=True))
+        raise RuntimeError(f"내부 불변조건 위반 - 분위 컬럼 이름이 겹칩니다: {pairs}")
+
+
+_reject_lossy_tail_columns(TAIL_QUANTILES)
 
 
 # ============================================================

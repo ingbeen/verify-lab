@@ -8,7 +8,7 @@
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from verify_lab.common_constants import KST, META_JSON_PATH
@@ -59,7 +59,7 @@ def _add_timestamp(metadata: MetaDict) -> MetaDict:
         타임스탬프가 추가된 사본. 원본은 변경하지 않는다
     """
     result = metadata.copy()
-    result["timestamp"] = datetime.now(UTC).astimezone(KST).isoformat(timespec="seconds")
+    result["timestamp"] = datetime.now(KST).isoformat(timespec="seconds")
 
     return result
 

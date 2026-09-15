@@ -1684,3 +1684,93 @@ class TestCredentialsBeforeImport:
 
         # 검사할 함수가 하나도 없으면 위 루프가 통째로 비어 통과한다 — 그것을 막는다
         assert checked >= 1, "pykrx 를 함수 안에서 가져오는 곳을 하나도 찾지 못했습니다"
+
+
+class TestKrxCommonOwnership:
+    """KRX 공통 판정을 수집기가 다시 만들지 않는다"""
+
+    # 소유자와 검사 대상. **`scripts/data/` 까지 본다** — CLI 도 같은 규격을 상대하므로
+    # 거기 복사본이 생기면 똑같이 갈라지고, `scripts/CLAUDE.md` 가 그것을 이미 금지한다
+    _OWNER_FILE = "krx_common.py"
+    _SHARED_NAMES = ("to_numeric", "exclude_recent", "validate_krx_date")
+
+    @staticmethod
+    def _scanned_modules() -> list[Path]:
+        """검사 대상 파일 목록을 만든다.
+
+        Returns:
+            `data/` 와 `scripts/data/` 의 파이썬 파일
+        """
+        return sorted((_SOURCE_ROOT / "data").glob("*.py")) + sorted((BASE_DIR / "scripts" / "data").glob("*.py"))
+
+    def test_최근_구간_제외를_인라인으로_다시_만들지_않는다(self) -> None:
+        """
+        목적: 저장 경계가 수집기마다 갈리는 것을 막는다.
+
+        `exclude_recent` 가 한 벌이 되기 전에는 `etn`·`krx_futures` 가 **바이트 단위로 같은
+        복사본**을 갖고 `pykrx_collector` 는 같은 로직을 세 함수에 인라인으로 갖고 있었다.
+        **한 곳만 고쳐도 예외가 나지 않는다** — 저장 범위만 하루 달라진 파일이 만들어진다.
+
+        **이 검사는 한 가지 «표기»만 본다.** 공백을 바꾸거나 키워드를 빼서 다시 인라인하면
+        걸리지 않는다 — 함께 있는 정의처 검사가 그 몫을 맡는다.
+
+        Given: `data/` 와 `scripts/data/` 의 모듈들
+        When: 제외 경계를 직접 만드는 식(`DOMESTIC_RECENT_EXCLUSION_DAYS` 로 날짜를 빼는 것)을 찾는다
+        Then: 소유자인 `krx_common.py` 밖에는 없다
+        """
+        # Given
+        modules = self._scanned_modules()
+        assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
+
+        # When
+        offenders = [
+            path.name
+            for path in modules
+            if path.name != self._OWNER_FILE
+            and "timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)" in path.read_text(encoding="utf-8")
+        ]
+
+        # Then
+        assert offenders == [], f"최근 구간 제외를 직접 만드는 모듈이 있습니다: {offenders}"
+
+    def test_공통_판정의_정의처가_하나다(self) -> None:
+        """
+        목적: 같은 판정이 두 곳에서 구현되는 것을 막는다 (절대 원칙 5).
+
+        **`scripts/data/` 도 본다** — 날짜 형식 검증이 실제로 거기 네 번째 벌로 남아 있었고,
+        `data/` 만 훑는 검사는 그것을 초록으로 통과시켰다.
+
+        Given: `data/` 와 `scripts/data/` 의 모듈들
+        When: 세 함수를 **정의하는** 파일을 센다
+        Then: 각각 `krx_common.py` 하나뿐이다
+        """
+        # Given
+        modules = self._scanned_modules()
+        assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
+
+        # When · Then
+        for name in self._SHARED_NAMES:
+            definers = [path.name for path in modules if f"def {name}(" in path.read_text(encoding="utf-8")]
+            assert definers == [self._OWNER_FILE], f"`{name}` 을 정의하는 파일이 여럿입니다: {definers}"
+
+    def test_날짜_형식_오류_메시지를_다시_적지_않는다(self) -> None:
+        """
+        목적: 판정을 공유해도 **메시지를 따로 적으면** 같은 드리프트가 남는 것을 막는다.
+
+        Given: `data/` 와 `scripts/data/` 의 모듈들
+        When: 형식 오류 문장을 직접 적은 파일을 찾는다
+        Then: 소유자 밖에는 없다
+        """
+        # Given
+        modules = self._scanned_modules()
+        assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
+
+        # When
+        offenders = [
+            path.name
+            for path in modules
+            if path.name != self._OWNER_FILE and "형식이 잘못되었습니다 (YYYYMMDD" in path.read_text(encoding="utf-8")
+        ]
+
+        # Then
+        assert offenders == [], f"날짜 형식 오류 메시지를 직접 적은 모듈이 있습니다: {offenders}"

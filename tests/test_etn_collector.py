@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VALUE, COL_VOLUME
-from verify_lab.data import etn_collector
+from verify_lab.data import etn_collector, krx_common
 from verify_lab.data.etn_collector import collect_etn_history, collect_etn_indicative_value
 
 TEST_TICKER = "530107"
@@ -59,7 +59,13 @@ def stub_krx(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(etn_collector, "_resolve_isin", lambda ticker: TEST_ISIN)
     monkeypatch.setattr(etn_collector, "_fetch_daily_price", lambda isin, start, end: response)
-    # 최근 구간 제외가 테스트 실행일에 따라 달라지지 않도록 제외 폭을 0 으로 둔다
+    # 최근 구간 제외가 테스트 실행일에 따라 달라지지 않도록 제외 폭을 0 으로 둔다.
+    #
+    # **경계를 «계산하는» 모듈을 패치한다.** `exclude_recent` 가 `krx_common` 으로 옮겨간 뒤로
+    # 그 함수는 자기 모듈의 이름을 보므로, `etn_collector` 쪽만 갈아끼우면 **패치가 무동작이 되고
+    # 아무 신호가 없다** — 그 이름이 오류 메시지용으로 남아 있어 `AttributeError` 도 나지 않는다
+    # (`tests/CLAUDE.md` 「파일 격리」)
+    monkeypatch.setattr(krx_common, "DOMESTIC_RECENT_EXCLUSION_DAYS", -3_650)
     monkeypatch.setattr(etn_collector, "DOMESTIC_RECENT_EXCLUSION_DAYS", -3_650)
 
 
@@ -220,27 +226,3 @@ class TestCollectIndicativeValue:
         # When / Then
         with pytest.raises(ValueError, match="지표가치 컬럼이 없습니다"):
             collect_etn_indicative_value(TEST_TICKER, "20220101", output_dir=tmp_path)
-
-
-class TestToNumeric:
-    """숫자 변환 — 값이 없는 칸을 0 으로 채우지 않는다"""
-
-    def test_값이_없는_칸은_결측으로_남는다(self) -> None:
-        """
-        목적: `-` 를 0 으로 채우지 않는 정책을 고정한다.
-        0 으로 채우면 가격이 0 인 날이 생겨 이상치 검사를 통과해 버린다
-
-        Given: `-` 가 섞인 값
-        When: 숫자로 바꾼다
-        Then: 그 칸이 결측이다
-        """
-        # Given
-        values = pd.Series(["1,234", "-", "5,678"])
-
-        # When
-        converted = etn_collector._to_numeric(values)
-
-        # Then
-        assert converted.tolist()[0] == 1234.0
-        assert pd.isna(converted.tolist()[1])
-        assert converted.tolist()[2] == 5678.0

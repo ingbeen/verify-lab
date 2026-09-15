@@ -32,6 +32,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from verify_lab.common_constants import RESULT_LAYER_PROBE
+from verify_lab.data.constants import KRX_REQUEST_DATE_FORMAT
+from verify_lab.data.krx_common import validate_krx_date
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.report.writer import create_run_directory
 from verify_lab.utils.cli_helpers import cli_exception_handler
@@ -49,7 +51,10 @@ DEFAULT_START_DATE = "20021014"
 # 앞 구간이 상장일까지 닿지 못하면 이 인자에 종료일을 더해 3분할 이상으로 재실행한다
 DEFAULT_END_DATES = "20141231"
 
-DATE_FORMAT = "%Y%m%d"
+# 이 스크립트가 KRX 에 넣는 날짜 형식. **자기 값을 두지 않는다** —
+# `_validate_date` 가 `krx_common` 의 판정을 쓰므로, 여기에 따로 적으면
+# 검증하는 형식과 조회에 쓰는 형식이 갈릴 수 있고 그때 예외가 나지 않는다
+DATE_FORMAT = KRX_REQUEST_DATE_FORMAT
 
 # KRX 호출 간 지연 (초). 20년 넘는 구간을 훑는 무거운 질의라 간격을 둔다
 CALL_INTERVAL_SECONDS = 1.0
@@ -96,6 +101,10 @@ def _kst_now() -> datetime:
 def _validate_date(value: str, label: str) -> str:
     """YYYYMMDD 형식인지 확인하고 그대로 돌려준다.
 
+    **판정은 `data/krx_common` 이 한다** — 여기서 다시 구현하면 같은 형식 검증이 네 벌이 되고,
+    한쪽 메시지나 허용 형식만 바뀌어도 **예외가 나지 않는다**
+    (`scripts/CLAUDE.md` 「CLI 계층에 도메인 로직 금지」).
+
     Args:
         value: 검사할 날짜 문자열
         label: 오류 메시지에 쓸 인자 이름
@@ -106,10 +115,7 @@ def _validate_date(value: str, label: str) -> str:
     Raises:
         ValueError: 형식이 YYYYMMDD 가 아닌 경우
     """
-    try:
-        datetime.strptime(value, DATE_FORMAT)
-    except ValueError as error:
-        raise ValueError(f"{label} 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {value}") from error
+    validate_krx_date(label, value)
     return value
 
 

@@ -544,29 +544,6 @@ class TestSessionParsing:
         assert is_day is expected_day
 
 
-class TestNumericParsing:
-    """숫자 파싱의 계약 — `-` 를 0 으로 채우면 「가격 0」이 생긴다."""
-
-    def test_dash_becomes_missing_not_zero(self) -> None:
-        """
-        목적: 값이 없는 칸이 결측으로 남고 0 이 되지 않음을 고정한다.
-
-        Given: 쉼표가 붙은 숫자와 `-` 가 섞인 컬럼
-        When: 숫자로 바꾼다
-        Then: `-` 는 NaN 이고 나머지는 값이 된다
-        """
-        # Given
-        series = pd.Series(["1,015.00", "-", "800"])
-
-        # When
-        converted = krx_futures_collector._to_numeric(series)
-
-        # Then
-        assert converted.isna().tolist() == [False, True, False]
-        assert converted.iloc[0] == pytest.approx(1015.0)
-        assert converted.iloc[2] == pytest.approx(800.0)
-
-
 class TestSpotPrice:
     """현물가는 보조 지표라 막지 않고 세어서 알린다."""
 

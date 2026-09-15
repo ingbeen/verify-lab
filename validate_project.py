@@ -14,8 +14,41 @@ AI가 실행하고 로그를 읽어 문제를 수정할 수 있도록 명확한 
 """
 
 import argparse
+import re
 import subprocess
 import sys
+
+# 개수를 파싱하지 못했을 때의 표기.
+#
+# **「몇 개인지 모른다」와 「1개다」는 다른 사실이다.** 전에는 파싱에 실패하면 1 로 채웠고,
+# 그러면 도구 출력 형식이 바뀌어 파싱이 통째로 깨져도 「오류 1개」라는 그럴듯한 숫자가 나왔다.
+# 이 저장소가 다른 곳에서 일관되게 금지하는 패턴이다 — `measure/screening.py` 가
+# 「판정 안 함」과 「제외」를 가르고 `strategy/constants.py` 가 `무손절`·`손절불가` 를 가른 것과 같다.
+#
+# **성패 판정은 계속 종료코드로 한다.** 이 값은 표시용이며 합계에는 0 으로 들어간다
+UNKNOWN_COUNT_DISPLAY = "개수 미상"
+
+# Ruff 요약 줄 — `Found 3 errors.` / `Found 1 error.`
+RUFF_SUMMARY_PATTERN = re.compile(r"\bFound (\d+) errors?\b")
+
+# PyRight 요약 줄 — `3 errors, 1 warning, 0 informations`.
+#
+# **줄 전체의 «모양»을 잡는다.** 진단 줄에도 `warning` 이 들어가므로(`- warning: Import ...`)
+# 「errors 라는 단어에 붙은 수」만 찾으면 진단 메시지 안의 숫자를 요약으로 오인할 수 있다.
+# 세 항목이 한 줄에 순서대로 오는 것이 요약 줄의 정의다
+PYRIGHT_SUMMARY_PATTERN = re.compile(r"\b(\d+) errors?, \d+ warnings?, \d+ informations?\b")
+
+# Pytest 요약 줄 — `======= 3 failed, 1126 passed, 2 skipped in 12.34s =======`.
+# **요약 줄로 한정한다** — 전에는 `passed` 가 든 줄이면 무엇이든 봤고,
+# `-v` 출력의 테스트 «이름»에 그 단어가 들어가면 엉뚱한 수를 집는다.
+#
+# **`error` 도 함께 센다** — 수집·픽스처 실패는 `failed` 가 아니라 `errors` 로 나오는데,
+# 빼면 「1 failed, 3 errors」에서 합계가 1 이 되어 **그럴듯한 숫자가 실제 손상을 덮는다**
+PYTEST_SUMMARY_PATTERN = re.compile(r"^=+ .*\bin [\d.]+s.*=+$")
+PYTEST_COUNT_PATTERN = re.compile(r"\b(\d+) (passed|failed|skipped|errors?)\b")
+
+# 위 패턴이 `error` 와 `errors` 를 모두 잡으므로 키를 하나로 모은다
+PYTEST_ERROR_KEYS = ("error", "errors")
 
 
 def print_section(title: str) -> None:
@@ -25,12 +58,27 @@ def print_section(title: str) -> None:
     print("=" * 80 + "\n")
 
 
-def run_ruff() -> tuple[bool, int]:
+def format_count(count: int | None) -> str:
+    """개수를 사람이 읽는 표기로 바꿉니다.
+
+    **단위를 붙이지 않습니다** — `passed=1126` 처럼 단위 없이 쓰는 자리가 있고,
+    그 표기는 계획서의 품질 검증 기록에 그대로 옮겨진다.
+
+    Args:
+        count: 파싱한 개수. 파싱하지 못했으면 None
+
+    Returns:
+        `3` 또는 `개수 미상`
+    """
+    return UNKNOWN_COUNT_DISPLAY if count is None else str(count)
+
+
+def run_ruff() -> tuple[bool, int | None]:
     """
     Ruff 린트 체크를 실행합니다.
 
     Returns:
-        tuple[bool, int]: (성공 여부, 오류 개수)
+        tuple[bool, int | None]: (성공 여부, 오류 개수). 개수를 파싱하지 못했으면 None
     """
     result = subprocess.run(
         ["poetry", "run", "ruff", "check", "."],
@@ -52,36 +100,19 @@ def run_ruff() -> tuple[bool, int]:
         return True, 0
 
     # Ruff 출력에서 오류 개수 파싱: "Found X error." 또는 "Found X errors."
-    error_count = 0
-    if result.stdout:
-        for line in result.stdout.split("\n"):
-            # "Found 1 error." 또는 "Found X errors." 형식 파싱
-            if "Found" in line and "error" in line:
-                parts = line.split()
-                for i, part in enumerate(parts):
-                    if part == "Found" and i + 1 < len(parts):
-                        try:
-                            error_count = int(parts[i + 1])
-                            break
-                        except ValueError:
-                            pass
-                if error_count > 0:
-                    break
+    matched = RUFF_SUMMARY_PATTERN.search(result.stdout or "")
+    error_count = int(matched.group(1)) if matched else None
 
-    # 파싱 실패 시 기본값 1 (실패했지만 개수를 알 수 없음)
-    if error_count == 0:
-        error_count = 1
-
-    print(f"[FAIL] Ruff 체크 실패 (오류/경고: {error_count}개)")
+    print(f"[FAIL] Ruff 체크 실패 (오류/경고: {format_count(error_count)}개)")
     return False, error_count
 
 
-def run_pyright() -> tuple[bool, int]:
+def run_pyright() -> tuple[bool, int | None]:
     """
     PyRight 타입 체크를 실행합니다.
 
     Returns:
-        tuple[bool, int]: (성공 여부, 오류 개수)
+        tuple[bool, int | None]: (성공 여부, 오류 개수). 개수를 파싱하지 못했으면 None
     """
     result = subprocess.run(
         ["poetry", "run", "pyright"],
@@ -102,40 +133,33 @@ def run_pyright() -> tuple[bool, int]:
         print("[OK] PyRight 체크 통과")
         return True, 0
 
-    # PyRight 출력에서 오류 개수 파싱: "X error, Y warnings, Z informations"
-    error_count = 0
-    if result.stdout:
-        for line in result.stdout.split("\n"):
-            # "1 error, 0 warnings, 0 informations" 형식 파싱
-            if "error" in line and ("warning" in line or "information" in line):
-                parts = line.split()
-                # 첫 번째 숫자가 error 개수
-                for part in parts:
-                    try:
-                        error_count = int(part)
-                        break
-                    except ValueError:
-                        pass
-                if error_count > 0:
-                    break
+    # PyRight 출력에서 오류 개수 파싱: "X errors, Y warnings, Z informations"
+    error_count: int | None = None
+    for line in (result.stdout or "").split("\n"):
+        if "warning" in line or "information" in line:
+            matched = PYRIGHT_SUMMARY_PATTERN.search(line)
+            if matched:
+                error_count = int(matched.group(1))
+                break
 
-    # 파싱 실패 시 기본값 1 (실패했지만 개수를 알 수 없음)
-    if error_count == 0:
-        error_count = 1
-
-    print(f"[FAIL] PyRight 체크 실패 (오류: {error_count}개)")
+    print(f"[FAIL] PyRight 체크 실패 (오류: {format_count(error_count)}개)")
     return False, error_count
 
 
-def run_pytest(with_coverage: bool = False) -> tuple[bool, int, int, int]:
+def run_pytest(with_coverage: bool = False) -> tuple[bool, int | None, int | None, int | None, int | None]:
     """
     Pytest 테스트를 실행합니다.
+
+    Returns 의 넷은 **요약 줄을 찾았을 때만** 숫자입니다. 찾지 못하면 넷 다 None 이며,
+    「0건」과 「세지 못했다」가 구별됩니다. pytest 는 0인 항목을 요약에서 아예 빼므로,
+    요약을 찾은 뒤 없는 항목은 0 입니다.
 
     Args:
         with_coverage: True일 경우 커버리지 포함 실행
 
     Returns:
-        tuple[bool, int, int, int]: (성공 여부, passed 수, failed 수, skipped 수)
+        tuple[bool, int | None, int | None, int | None, int | None]:
+            (성공 여부, passed 수, failed 수, skipped 수, error 수)
     """
     if with_coverage:
         cmd = [
@@ -165,42 +189,28 @@ def run_pytest(with_coverage: bool = False) -> tuple[bool, int, int, int]:
     # Pytest는 실패가 있으면 exit code 1 반환
     success = result.returncode == 0
 
-    # Pytest 출력에서 passed/failed/skipped 파싱
-    passed = 0
-    failed = 0
-    skipped = 0
-    if result.stdout:
-        for line in result.stdout.split("\n"):
-            # "= 10 passed, 2 failed, 1 skipped in 0.50s =" 형식 파싱
-            # 또는 "= 10 passed in 0.50s =" 형식
-            if "passed" in line or "failed" in line or "skipped" in line:
-                parts = line.split()
-                i = 0
-                while i < len(parts):
-                    try:
-                        # 숫자 다음에 passed/failed/skipped가 오는 패턴 찾기
-                        if i + 1 < len(parts):
-                            num = int(parts[i])
-                            next_part = parts[i + 1].rstrip(",")
-                            if next_part == "passed":
-                                passed = num
-                            elif next_part == "failed":
-                                failed = num
-                            elif next_part == "skipped":
-                                skipped = num
-                    except ValueError:
-                        pass
-                    i += 1
-                # 유효한 파싱이 되었으면 종료
-                if passed > 0 or failed > 0 or skipped > 0:
-                    break
+    # Pytest 요약 줄에서 passed/failed/skipped 파싱.
+    # **`=` 로 둘러싸인 배너 줄만 본다** — `-v` 출력의 테스트 이름이나
+    # "short test summary info" 아래의 `FAILED ...` 줄에 그 단어가 들어가도 섞이지 않는다
+    counts: dict[str, int] | None = None
+    for line in (result.stdout or "").split("\n"):
+        if not PYTEST_SUMMARY_PATTERN.match(line.strip()):
+            continue
+        found = {keyword: int(number) for number, keyword in PYTEST_COUNT_PATTERN.findall(line)}
+        if found:
+            counts = found
 
-    if success:
-        print(f"[OK] Pytest 통과 (passed={passed}, failed={failed}, skipped={skipped})")
-    else:
-        print(f"[FAIL] Pytest 실패 (passed={passed}, failed={failed}, skipped={skipped})")
+    passed = counts.get("passed", 0) if counts is not None else None
+    failed = counts.get("failed", 0) if counts is not None else None
+    skipped = counts.get("skipped", 0) if counts is not None else None
+    errors = sum(counts.get(key, 0) for key in PYTEST_ERROR_KEYS) if counts is not None else None
 
-    return success, passed, failed, skipped
+    label = "[OK] Pytest 통과" if success else "[FAIL] Pytest 실패"
+    summary = f"passed={format_count(passed)}, failed={format_count(failed)}, skipped={format_count(skipped)}"
+    # **0건일 때는 적지 않는다** — 평상시 출력을 바꾸지 않으면서, 실제로 난 수집·픽스처 실패는 드러낸다
+    print(f"{label} ({summary})" if errors == 0 else f"{label} ({summary}, errors={format_count(errors)})")
+
+    return success, passed, failed, skipped, errors
 
 
 def parse_args() -> argparse.Namespace:
@@ -312,36 +322,45 @@ def main() -> int:
     if should_run_tests:
         print_section(f"{section_num}. Pytest 테스트")
         section_num += 1
-        pytest_success, passed, failed, skipped = run_pytest(with_coverage=args.cov)
-        results["pytest"] = (pytest_success, passed, failed, skipped)
+        pytest_success, passed, failed, skipped, errors = run_pytest(with_coverage=args.cov)
+        results["pytest"] = (pytest_success, passed, failed, skipped, errors)
 
     # 최종 결과 요약
     print_section("최종 결과")
 
     total_errors = 0
     all_success = True
+    # 세지 못한 항목이 있었는지. **합계를 그럴듯한 숫자로 내지 않기 위해** 따로 든다
+    has_unknown = False
 
     if "ruff" in results:
         ruff_success, ruff_errors = results["ruff"]
-        total_errors += ruff_errors
+        total_errors += ruff_errors or 0
+        has_unknown |= ruff_errors is None
         all_success &= ruff_success
-        print(f"Ruff:    {'[OK] 통과' if ruff_success else f'[FAIL] 실패 (오류/경고: {ruff_errors}개)'}")
+        print(f"Ruff:    {'[OK] 통과' if ruff_success else f'[FAIL] 실패 (오류/경고: {format_count(ruff_errors)}개)'}")
 
     if "pyright" in results:
         pyright_success, pyright_errors = results["pyright"]
-        total_errors += pyright_errors
+        total_errors += pyright_errors or 0
+        has_unknown |= pyright_errors is None
         all_success &= pyright_success
-        print(f"PyRight: {'[OK] 통과' if pyright_success else f'[FAIL] 실패 (오류: {pyright_errors}개)'}")
+        print(f"PyRight: {'[OK] 통과' if pyright_success else f'[FAIL] 실패 (오류: {format_count(pyright_errors)}개)'}")
 
     if "pytest" in results:
-        pytest_success, passed, failed, skipped = results["pytest"]
-        total_errors += failed
+        pytest_success, passed, failed, skipped, errors = results["pytest"]
+        # **수집·픽스처 실패(`errors`)도 더한다** — 빼면 「1 failed, 3 errors」가 합계 1 로 보인다
+        total_errors += (failed or 0) + (errors or 0)
+        has_unknown |= failed is None
         all_success &= pytest_success
-        print(
-            f"Pytest:  {'[OK] 통과' if pytest_success else '[FAIL] 실패'} (passed={passed}, failed={failed}, skipped={skipped})"
-        )
+        counts = f"passed={format_count(passed)}, failed={format_count(failed)}, skipped={format_count(skipped)}"
+        if errors != 0:
+            counts += f", errors={format_count(errors)}"
+        print(f"Pytest:  {'[OK] 통과' if pytest_success else '[FAIL] 실패'} ({counts})")
 
-    print(f"\n총 오류/경고: {total_errors}개")
+    # 세지 못한 항목이 있으면 합계를 단정하지 않는다 — 「모른다」를 숫자로 덮으면
+    # 도구 출력 형식이 바뀐 것과 실제로 그만큼인 것이 구별되지 않는다
+    print(f"\n총 오류/경고: {total_errors}개" + (f" 이상 ({UNKNOWN_COUNT_DISPLAY} 항목 있음)" if has_unknown else ""))
 
     if all_success:
         print("\n[SUCCESS] 모든 품질 검증 통과!")

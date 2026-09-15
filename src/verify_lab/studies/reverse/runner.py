@@ -214,6 +214,53 @@ class _Population:
 
 
 @dataclass(frozen=True)
+class _SpecBlocks:
+    """한 이벤트 정의가 낸 다섯 표의 조각
+
+    **필드 이름을 `StudyOutputs` 와 맞춘다.** 조각을 쌓아 만드는 것이 그 표들이므로
+    이름이 갈리면 어느 조각이 어느 표로 가는지 호출부에서 다시 대조해야 한다.
+
+    전에는 이 자리가 5-튜플이었고 호출부가 `blocks[0]`~`blocks[4]` 로 받았다.
+    **다섯이 전부 `list[pd.DataFrame]` 이라 순서가 어긋나도 타입 검사가 잡지 못하고**,
+    `signals.csv` 에 집계표가 실린 채로 실행이 성공한다.
+
+    Attributes:
+        signals: 신호일 한 줄짜리 목록
+        statistics: 신호군 × 칸별 집계
+        excess: 베이스라인 대비 초과분
+        test: 순열 검정
+        candidates: 후보 판정
+    """
+
+    signals: list[pd.DataFrame]
+    statistics: list[pd.DataFrame]
+    excess: list[pd.DataFrame]
+    test: list[pd.DataFrame]
+    candidates: list[pd.DataFrame]
+
+
+@dataclass(frozen=True)
+class _ReverseAllBlocks:
+    """`역방향 전체` 신호군이 낸 네 표의 조각
+
+    **`signals` 가 없다.** 이 방향은 집계 단계의 합성이라 신호일 목록을 내지 않는다
+    (`_measure_reverse_all` 참고) — 같은 날이 두 줄로 실리면 차트 대조를 방해한다.
+    필드가 하나 적은 것이 그 사실을 타입으로 드러낸다.
+
+    Attributes:
+        statistics: 신호군 × 칸별 집계
+        excess: 대칭 베이스라인 대비 초과분
+        test: 순열 검정
+        candidates: 후보 판정
+    """
+
+    statistics: list[pd.DataFrame]
+    excess: list[pd.DataFrame]
+    test: list[pd.DataFrame]
+    candidates: list[pd.DataFrame]
+
+
+@dataclass(frozen=True)
 class _TestSpec:
     """한 이벤트 정의와 그 파라미터
 
@@ -308,11 +355,11 @@ def run_study(
                         seed=seed,
                         empty_groups=empty_groups,
                     )
-                    signal_blocks.extend(blocks[0])
-                    statistics_blocks.extend(blocks[1])
-                    excess_blocks.extend(blocks[2])
-                    test_blocks.extend(blocks[3])
-                    candidates_blocks.extend(blocks[4])
+                    signal_blocks.extend(blocks.signals)
+                    statistics_blocks.extend(blocks.statistics)
+                    excess_blocks.extend(blocks.excess)
+                    test_blocks.extend(blocks.test)
+                    candidates_blocks.extend(blocks.candidates)
 
     signals = _stack(signal_blocks)
     statistics = _stack(statistics_blocks)
@@ -646,7 +693,7 @@ def _measure_spec(
     repeats: int,
     seed: int,
     empty_groups: list[dict[str, Any]],
-) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
+) -> _SpecBlocks:
     """한 이벤트 정의를 방향별로 재고 다섯 표의 조각을 만든다.
 
     방향은 이벤트 정의가 내는 둘에 더해 **두 방향을 합친 `역방향 전체`** 가 하나 더 있다
@@ -667,7 +714,7 @@ def _measure_spec(
         empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
 
     Returns:
-        신호일·집계·초과분·검정·판정 표의 조각 목록
+        신호일·집계·초과분·검정·판정 표의 조각
     """
     selected = {direction: spec.find(context.frame, context.ranks, direction, start) for direction in Direction}
     if end is not None:
@@ -751,12 +798,18 @@ def _measure_spec(
         seed=seed,
         empty_groups=empty_groups,
     )
-    statistics_blocks.extend(reverse_blocks[0])
-    excess_blocks.extend(reverse_blocks[1])
-    test_blocks.extend(reverse_blocks[2])
-    candidates_blocks.extend(reverse_blocks[3])
+    statistics_blocks.extend(reverse_blocks.statistics)
+    excess_blocks.extend(reverse_blocks.excess)
+    test_blocks.extend(reverse_blocks.test)
+    candidates_blocks.extend(reverse_blocks.candidates)
 
-    return signal_blocks, statistics_blocks, excess_blocks, test_blocks, candidates_blocks
+    return _SpecBlocks(
+        signals=signal_blocks,
+        statistics=statistics_blocks,
+        excess=excess_blocks,
+        test=test_blocks,
+        candidates=candidates_blocks,
+    )
 
 
 def _measure_reverse_all(
@@ -772,7 +825,7 @@ def _measure_reverse_all(
     repeats: int,
     seed: int,
     empty_groups: list[dict[str, Any]],
-) -> tuple[list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame], list[pd.DataFrame]]:
+) -> _ReverseAllBlocks:
     """두 방향을 한 표본으로 묶은 `역방향 전체` 신호군을 잰다.
 
     **이벤트 정의가 아니라 집계 단계의 합성이다.** 어느 날이 신호인지는 방향별 경로가 이미
@@ -793,7 +846,7 @@ def _measure_reverse_all(
         empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
 
     Returns:
-        집계·초과분·검정·판정 표의 조각 목록
+        집계·초과분·검정·판정 표의 조각
     """
     identity = {
         DISPLAY_TICKER: context.dataset.label,
@@ -807,7 +860,7 @@ def _measure_reverse_all(
     # 두 방향이 **모두** 0건일 때만 이 신호군도 0건이다. 한쪽만 비면 남은 쪽으로 성립한다
     if not normalized_returns:
         empty_groups.append(_empty_group_record(identity))
-        return [], [], [], []
+        return _ReverseAllBlocks(statistics=[], excess=[], test=[], candidates=[])
 
     combined = pd.concat(normalized_returns, ignore_index=True)
     combined_summary = summarize(combined)
@@ -841,7 +894,12 @@ def _measure_reverse_all(
     # 기준선도 대칭 모집단이라 「평소보다 나은가」가 같은 부호 규약에서 물어진다
     judged = _candidates_block(combined_summary, excess_tables, identity, counts)
 
-    return [statistics_block], [excess_block], [test_block], [judged]
+    return _ReverseAllBlocks(
+        statistics=[statistics_block],
+        excess=[excess_block],
+        test=[test_block],
+        candidates=[judged],
+    )
 
 
 def _reverse_normalized(returns: pd.DataFrame, direction: Direction) -> pd.DataFrame:

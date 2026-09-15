@@ -12,6 +12,7 @@ import pytest
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON, COL_JUDGEABLE, JUDGEABLE_YES
 from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT
+from verify_lab.studies.leverage_tracking import runner
 from verify_lab.studies.leverage_tracking.constants import (
     COL_NON_OVERLAPPING_COUNT,
     COL_REALIZED_MULTIPLE,
@@ -23,9 +24,14 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_NON_OVERLAPPING,
     DISPLAY_PRODUCT_TYPE,
     DISPLAY_TARGET_TICKER,
+    DISTRIBUTION_MEASURED_NO,
+    DISTRIBUTION_MEASURED_YES,
     HORIZON_LABELS,
     PRODUCT_ETF,
+    TAIL_QUANTILES,
     LeveragePair,
+    _reject_lossy_tail_columns,
+    tail_column,
 )
 from verify_lab.studies.leverage_tracking.runner import _summary_block, headline, run_study
 
@@ -305,3 +311,91 @@ class TestHorizonLabelGuard:
         # When · Then
         with pytest.raises(KeyError):
             _summary_block(summary, TEST_PAIRS[0])
+
+
+class TestTailColumnNaming:
+    """분위 컬럼 이름 — 두 분위가 한 이름이 되면 한쪽이 조용히 덮인다"""
+
+    def test_현재_분위_목록은_이름이_겹치지_않는다(self) -> None:
+        """
+        목적: 지금 쓰는 목록이 안전함을 고정한다.
+
+        Given: `TAIL_QUANTILES`
+        When: 분위마다 컬럼 이름을 만든다
+        Then: 이름이 전부 다르다
+        """
+        # Given · When
+        names = [tail_column(quantile) for quantile in TAIL_QUANTILES]
+
+        # Then
+        assert len(set(names)) == len(names)
+
+    def test_이름이_값과_어긋나는_분위는_예외다(self) -> None:
+        """
+        목적: 이름이 분위를 담지 못하는 것을 조용히 통과시키지 않는다.
+
+        `tail_column(0.025)` 는 `TotalDivergenceP02` 라 **이름만으로는 2분위로 읽히는데
+        값은 2.5분위**다. 겹치는 짝이 없어 충돌 검사로는 잡히지 않는다.
+
+        Given: 이름이 되돌려지지 않는 분위
+        When: 검사한다
+        Then: 내부 불변조건 위반으로 멈춘다
+        """
+        # Given · When · Then
+        with pytest.raises(RuntimeError, match="컬럼 이름이 분위를 담지 못합니다"):
+            _reject_lossy_tail_columns((0.025,))
+
+    def test_이름이_접히는_분위_조합은_예외다(self) -> None:
+        """
+        목적: 두 분위가 한 이름이 되는 것을 막는다.
+
+        `0.04` 와 `0.045` 는 **둘 다 `TotalDivergenceP04`** 다 — 파이썬 `round` 가 은행가
+        반올림이라 `round(4.5)` 가 `4` 이기 때문이다. 막지 않으면 나중 열이 앞 열을 덮어
+        한 분위가 통째로 사라지는데, 표에는 정상으로 보이는 값이 남는다.
+
+        Given: 이름이 접히는 분위 조합 — 둘 다 이름으로 되돌려지는 값이라
+            앞선 「담지 못함」 검사를 통과하고 충돌 검사에서만 걸린다
+        When: 검사한다
+        Then: 내부 불변조건 위반으로 멈춘다
+        """
+        # Given
+        colliding = (0.04, 0.045)
+
+        # When · Then
+        with pytest.raises(RuntimeError, match="담지 못합니다|겹칩니다"):
+            _reject_lossy_tail_columns(colliding)
+
+
+class TestDistributionMeasuredValues:
+    """측정 여부 — 판정가능(`JUDGEABLE_YES`)과 다른 질문이라 값을 빌려 쓰지 않는다"""
+
+    def test_산출물에_나가는_값을_고정한다(self) -> None:
+        """
+        목적: 사용자가 여는 열의 값이 조용히 바뀌는 것을 막는다.
+
+        Given · When · Then: 두 값이 지금 산출물에 나가는 문자열 그대로다
+        """
+        # Given · When · Then
+        assert DISTRIBUTION_MEASURED_YES == "예"
+        assert DISTRIBUTION_MEASURED_NO == "아니오 (ETN — 분배금 없음)"
+
+    def test_리터럴로_넣지_않는다(self) -> None:
+        """
+        목적: 리터럴이 되살아나는 것을 막는다.
+
+        전에는 참 쪽만 `"예"` 리터럴이라 같은 파일이 `JUDGEABLE_YES` 를 import 하는데도
+        **어느 쪽이 정본인지 보이지 않았다.** 그렇다고 그 상수를 빌리면 「표본이 하한을
+        넘는가」와 「분배금을 실제로 쟀는가」가 한 값으로 묶여, 하한을 고치는 변경이
+        이 열을 함께 흔든다.
+
+        Given: `runner` 소스
+        When: 측정 여부 값이 어떻게 들어가는지 본다
+        Then: 자기 상수를 쓰고 리터럴이 없다
+        """
+        # Given
+        source = Path(runner.__file__).read_text(encoding="utf-8")
+
+        # When · Then
+        assert f'"{DISTRIBUTION_MEASURED_YES}"' not in source, "측정 여부 값이 리터럴로 남아 있습니다"
+        assert "DISTRIBUTION_MEASURED_YES" in source
+        assert "DISTRIBUTION_MEASURED_NO" in source

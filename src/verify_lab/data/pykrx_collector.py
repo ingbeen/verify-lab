@@ -19,7 +19,7 @@ pykrx 는 KRX 웹을 감싼 라이브러리라 반환 컬럼과 dtype 이 함수
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +44,8 @@ from verify_lab.common_constants import (
     REQUIRED_COLUMNS,
     SERIES_DIR,
 )
-from verify_lab.data.constants import DOMESTIC_RECENT_EXCLUSION_DAYS, KRX_REQUEST_DATE_FORMAT
+from verify_lab.data.constants import DOMESTIC_RECENT_EXCLUSION_DAYS, KRX_REQUEST_DATE_FORMAT, START_DATE_LABEL
+from verify_lab.data.krx_common import exclude_recent, validate_krx_date
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.data.loader import validate_market_data, validate_series_data
 from verify_lab.utils.logger import get_logger
@@ -210,10 +211,7 @@ def collect_pykrx_history(
     if not symbol:
         raise ValueError("종목 코드가 비어 있습니다")
 
-    try:
-        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
-    except ValueError as error:
-        raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
+    validate_krx_date(START_DATE_LABEL, start_date)
 
     today = datetime.now(KST).date()
 
@@ -228,10 +226,7 @@ def collect_pykrx_history(
     df = _normalize(raw)
 
     # 3. 확정되지 않은 최근 구간을 제외한다. 몇 건이 빠졌는지 호출자에게 함께 돌려준다
-    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
-    total_count = len(df)
-    df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
-    excluded_recent_count = total_count - len(df)
+    df, excluded_recent_count = exclude_recent(df, today)
 
     if df.empty:
         raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 데이터가 없습니다 - 종목: {symbol}")
@@ -316,10 +311,7 @@ def collect_pykrx_nav(
     if not symbol:
         raise ValueError("종목 코드가 비어 있습니다")
 
-    try:
-        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
-    except ValueError as error:
-        raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
+    validate_krx_date(START_DATE_LABEL, start_date)
 
     today = datetime.now(KST).date()
     stock = _import_pykrx_stock()
@@ -338,10 +330,7 @@ def collect_pykrx_nav(
     df = df[[COL_DATE, COL_VALUE]]
 
     # 확정되지 않은 최근 구간을 제외한다. 시세 수집과 같은 기준을 쓴다
-    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
-    total_count = len(df)
-    df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
-    excluded_recent_count = total_count - len(df)
+    df, excluded_recent_count = exclude_recent(df, today)
 
     if df.empty:
         raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 NAV 가 없습니다 - 종목: {symbol}")
@@ -423,10 +412,7 @@ def collect_pykrx_index(
     if not symbol:
         raise ValueError("지수 코드가 비어 있습니다")
 
-    try:
-        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
-    except ValueError as error:
-        raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
+    validate_krx_date(START_DATE_LABEL, start_date)
 
     today = datetime.now(KST).date()
     stock = _import_pykrx_stock()
@@ -447,10 +433,7 @@ def collect_pykrx_index(
     df = df[[COL_DATE, COL_VALUE]]
 
     # 3. 확정되지 않은 최근 구간을 제외한다. 시세 수집과 같은 기준을 쓴다
-    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
-    total_count = len(df)
-    df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
-    excluded_recent_count = total_count - len(df)
+    df, excluded_recent_count = exclude_recent(df, today)
 
     if df.empty:
         raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 지수가 없습니다 - 지수: {symbol}")

@@ -63,11 +63,8 @@ from verify_lab.common_constants import (
     KST,
     MARKET_DIR,
 )
-from verify_lab.data.constants import (
-    DOMESTIC_RECENT_EXCLUSION_DAYS,
-    KRX_REQUEST_DATE_FORMAT,
-    KRX_RESPONSE_DATE_FORMAT,
-)
+from verify_lab.data.constants import KRX_REQUEST_DATE_FORMAT, KRX_RESPONSE_DATE_FORMAT, START_DATE_LABEL
+from verify_lab.data.krx_common import exclude_recent, to_numeric, validate_krx_date
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.data.loader import validate_futures_data
 from verify_lab.utils.logger import get_logger
@@ -252,38 +249,6 @@ def _retry_krx_call(operation: Callable[[], _T], description: str) -> _T:
     raise RuntimeError(f"내부 불변조건 위반 - 재시도 루프를 빠져나왔습니다: description={description}")
 
 
-def _to_numeric(series: pd.Series) -> pd.Series:
-    """KRX 가 문자열로 주는 숫자를 실수로 바꾼다.
-
-    천 단위 구분 쉼표가 붙어 있고, 값이 없는 칸은 `-` 로 온다. 쉼표만 떼고 숫자로 바꾸며
-    **`-` 는 결측으로 남긴다** — 0 으로 채우면 거래가 없던 날이 「가격 0」이 되어
-    이상치 검사를 통과해 버린다.
-
-    Args:
-        series: KRX 반환값의 한 컬럼
-
-    Returns:
-        실수 Series. 변환할 수 없는 칸은 NaN
-    """
-    return pd.to_numeric(series.astype(str).str.replace(",", "", regex=False), errors="coerce")
-
-
-def _validate_date_format(label: str, value: str) -> None:
-    """조회 날짜 형식을 검증한다.
-
-    Args:
-        label: 예외 메시지에 쓸 인자 이름
-        value: 검사할 날짜 문자열 (YYYYMMDD)
-
-    Raises:
-        ValueError: 형식이 잘못된 경우
-    """
-    try:
-        datetime.strptime(value, KRX_REQUEST_DATE_FORMAT)
-    except ValueError as error:
-        raise ValueError(f"{label} 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {value}") from error
-
-
 def _strip_session(value: str) -> tuple[str, bool]:
     """세션 표기가 붙은 문자열에서 표기를 떼고 주간 여부를 함께 돌려준다.
 
@@ -348,8 +313,8 @@ def collect_contract_catalog(product_id: str, start_date: str, end_date: str) ->
     Raises:
         ValueError: 날짜 형식이 잘못됐거나, 한 계약도 찾지 못한 경우
     """
-    _validate_date_format("훑기 시작일", start_date)
-    _validate_date_format("훑기 종료일", end_date)
+    validate_krx_date("훑기 시작일", start_date)
+    validate_krx_date("훑기 종료일", end_date)
 
     snapshot_class, _ = _import_krx_client()
 
@@ -493,7 +458,7 @@ def _normalize_contract(raw: pd.DataFrame, isin: str, name: str) -> tuple[pd.Dat
 
     # 2. 숫자 변환. `-` 는 결측으로 남긴다
     for column in FUTURES_COLUMN_MAP.values():
-        df[column] = _to_numeric(df[column])
+        df[column] = to_numeric(df[column])
 
     df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=KRX_RESPONSE_DATE_FORMAT).dt.date
     df[COL_CONTRACT] = isin
@@ -528,23 +493,6 @@ def _exclude_dormant(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     return df.loc[~dormant].reset_index(drop=True), dormant_count
 
 
-def _exclude_recent(df: pd.DataFrame, today: date) -> tuple[pd.DataFrame, int]:
-    """확정되지 않은 최근 구간을 제외하고 빠진 행 수를 함께 돌려준다.
-
-    Args:
-        df: 날짜 컬럼을 가진 DataFrame
-        today: 기준일
-
-    Returns:
-        (제외 후 DataFrame, 제외된 행 수)
-    """
-    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
-    total_count = len(df)
-    trimmed = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
-
-    return trimmed, total_count - len(trimmed)
-
-
 def collect_futures_history(
     product_id: str,
     start_date: str | None = None,
@@ -576,7 +524,7 @@ def collect_futures_history(
     reference_day = today or datetime.now(KST).date()
     first_trading_day = PRODUCT_FIRST_TRADING_DAY[product_id]
     scan_start = start_date or first_trading_day
-    _validate_date_format("조회 시작일", scan_start)
+    validate_krx_date(START_DATE_LABEL, scan_start)
 
     scan_end = reference_day.strftime(KRX_REQUEST_DATE_FORMAT)
     catalog = collect_contract_catalog(product_id, scan_start, scan_end)
@@ -612,7 +560,7 @@ def collect_futures_history(
     merged = merged.sort_values(FUTURES_ROW_KEY).reset_index(drop=True)
 
     awake, excluded_dormant = _exclude_dormant(merged)
-    trimmed, excluded_recent = _exclude_recent(awake, reference_day)
+    trimmed, excluded_recent = exclude_recent(awake, reference_day)
     if trimmed.empty:
         raise ValueError(f"최근 구간을 제외하니 남는 행이 없습니다 - 상품: {product_id}")
 

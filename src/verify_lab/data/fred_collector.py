@@ -26,6 +26,7 @@ from typing import Final
 import pandas as pd
 
 from verify_lab.common_constants import COL_DATE, COL_VALUE, SERIES_DIR
+from verify_lab.data.constants import SERIES_NOT_FOUND_TEMPLATE
 from verify_lab.data.loader import validate_series_data
 from verify_lab.utils.logger import get_logger
 
@@ -110,7 +111,7 @@ def find_series(key: str) -> FredSeries:
         if series.key == key:
             return series
 
-    raise ValueError(f"알 수 없는 시계열입니다: {key} (가능한 값: {[s.key for s in FRED_SERIES]})")
+    raise ValueError(SERIES_NOT_FOUND_TEMPLATE.format(key=key, available=[s.key for s in FRED_SERIES]))
 
 
 def request_fred_csv(series_id: str) -> str:

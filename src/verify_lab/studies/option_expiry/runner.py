@@ -653,9 +653,10 @@ def _record_trade_cell(
         seed: 순열 검정 시드
     """
     # 1. 묶음 — 이 매매 하나의 성적이다
-    accumulator.trade_summary.append(_identify(summarize(sliced), **row_identity))
+    pooled_summary = summarize(sliced)
+    accumulator.trade_summary.append(_identify(pooled_summary, **row_identity))
 
-    pooled_excess = excess(summarize(sliced), summarize(weekly_baseline))
+    pooled_excess = excess(pooled_summary, summarize(weekly_baseline))
     accumulator.trade_excess.append(_identify(pooled_excess, **{**row_identity, COL_BASELINE_KIND: BASELINE_WEEKLY}))
 
     pooled_test = permutation_test(sliced, weekly_baseline, repeats=repeats, seed=seed)
@@ -669,8 +670,9 @@ def _record_trade_cell(
     lengths = sorted({int(value) for value in per_length[COL_HORIZON]})
     length_baseline = _matched_length_baseline(market, lengths)
 
-    accumulator.trade_summary.append(_identify(summarize(per_length), **row_identity))
-    length_excess = excess(summarize(per_length), summarize(length_baseline))
+    length_summary = summarize(per_length)
+    accumulator.trade_summary.append(_identify(length_summary, **row_identity))
+    length_excess = excess(length_summary, summarize(length_baseline))
     accumulator.trade_excess.append(
         _identify(length_excess, **{**row_identity, COL_BASELINE_KIND: BASELINE_MATCHED_LENGTH})
     )

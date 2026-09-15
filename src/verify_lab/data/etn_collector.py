@@ -23,7 +23,7 @@ ETN 은 ETF 와 달리 NAV 가 아니라 **증권당 지표가치(Indicative Val
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +48,9 @@ from verify_lab.data.constants import (
     DOMESTIC_RECENT_EXCLUSION_DAYS,
     KRX_REQUEST_DATE_FORMAT,
     KRX_RESPONSE_DATE_FORMAT,
+    START_DATE_LABEL,
 )
+from verify_lab.data.krx_common import exclude_recent, to_numeric, validate_krx_date
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.data.loader import validate_market_data, validate_series_data
 from verify_lab.utils.logger import get_logger
@@ -210,21 +212,6 @@ def _fetch_daily_price(isin: str, start_date: str, end_date: str) -> pd.DataFram
     return ETN개별종목시세().fetch(start_date, end_date, isin)
 
 
-def _to_numeric(series: pd.Series) -> pd.Series:
-    """KRX 가 문자열로 주는 숫자를 실수로 바꾼다.
-
-    천 단위 구분 쉼표가 붙어 있고, 값이 없는 칸은 `-` 로 온다. 쉼표만 떼고 숫자로 바꾸며
-    **`-` 는 결측으로 남긴다** — 0 으로 채우면 가격이 0인 날이 생겨 이상치 검사를 통과해 버린다.
-
-    Args:
-        series: KRX 반환값의 한 컬럼
-
-    Returns:
-        실수 Series. 변환할 수 없는 칸은 NaN
-    """
-    return pd.to_numeric(series.astype(str).str.replace(",", "", regex=False), errors="coerce")
-
-
 def _normalize(raw: pd.DataFrame) -> pd.DataFrame:
     """KRX 반환값을 공통 시세 스키마로 정규화한다.
 
@@ -248,43 +235,11 @@ def _normalize(raw: pd.DataFrame) -> pd.DataFrame:
     df = raw.rename(columns={ETN_DATE_COLUMN: COL_DATE, **ETN_COLUMN_MAP})
 
     for column in INTEGER_COLUMNS:
-        df[column] = _to_numeric(df[column])
+        df[column] = to_numeric(df[column])
 
     df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=KRX_RESPONSE_DATE_FORMAT).dt.date
 
     return df.sort_values(COL_DATE).reset_index(drop=True)[REQUIRED_COLUMNS]
-
-
-def _exclude_recent(df: pd.DataFrame, today: date) -> tuple[pd.DataFrame, int]:
-    """확정되지 않은 최근 구간을 제외하고 빠진 행 수를 함께 돌려준다.
-
-    Args:
-        df: 날짜 컬럼을 가진 DataFrame
-        today: 기준일
-
-    Returns:
-        (제외 후 DataFrame, 제외된 행 수)
-    """
-    cutoff_date = today - timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)
-    total_count = len(df)
-    trimmed = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
-
-    return trimmed, total_count - len(trimmed)
-
-
-def _validated_start_date(start_date: str) -> None:
-    """조회 시작일 형식을 검증한다.
-
-    Args:
-        start_date: 조회 시작일 (YYYYMMDD)
-
-    Raises:
-        ValueError: 형식이 잘못된 경우
-    """
-    try:
-        datetime.strptime(start_date, KRX_REQUEST_DATE_FORMAT)
-    except ValueError as error:
-        raise ValueError(f"조회 시작일 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {start_date}") from error
 
 
 def collect_etn_history(
@@ -318,7 +273,7 @@ def collect_etn_history(
     if not symbol:
         raise ValueError("종목 코드가 비어 있습니다")
 
-    _validated_start_date(start_date)
+    validate_krx_date(START_DATE_LABEL, start_date)
 
     today = datetime.now(KST).date()
 
@@ -335,7 +290,7 @@ def collect_etn_history(
     df = _normalize(raw)
 
     # 4. 확정되지 않은 최근 구간을 제외한다
-    df, excluded_recent_count = _exclude_recent(df, today)
+    df, excluded_recent_count = exclude_recent(df, today)
 
     if df.empty:
         raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 데이터가 없습니다 - 종목: {symbol}")
@@ -395,7 +350,7 @@ def collect_etn_indicative_value(
     if not symbol:
         raise ValueError("종목 코드가 비어 있습니다")
 
-    _validated_start_date(start_date)
+    validate_krx_date(START_DATE_LABEL, start_date)
 
     today = datetime.now(KST).date()
     isin = _resolve_isin(symbol)
@@ -409,10 +364,10 @@ def collect_etn_indicative_value(
 
     df = raw.rename(columns={ETN_DATE_COLUMN: COL_DATE, ETN_INDICATIVE_VALUE_COLUMN: COL_VALUE})
     df[COL_DATE] = pd.to_datetime(df[COL_DATE], format=KRX_RESPONSE_DATE_FORMAT).dt.date
-    df[COL_VALUE] = _to_numeric(df[COL_VALUE]).round(INDICATIVE_VALUE_DECIMALS)
+    df[COL_VALUE] = to_numeric(df[COL_VALUE]).round(INDICATIVE_VALUE_DECIMALS)
     df = df.sort_values(COL_DATE).reset_index(drop=True)[[COL_DATE, COL_VALUE]]
 
-    df, excluded_recent_count = _exclude_recent(df, today)
+    df, excluded_recent_count = exclude_recent(df, today)
 
     if df.empty:
         raise ValueError(f"최근 {DOMESTIC_RECENT_EXCLUSION_DAYS}일 제외 후 남는 지표가치가 없습니다 - 종목: {symbol}")

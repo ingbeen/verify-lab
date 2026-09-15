@@ -1,0 +1,175 @@
+{
+  "index_filter": null,
+  "pair_count": 22,
+  "horizons": [
+    5,
+    10,
+    21,
+    63,
+    126,
+    252,
+    756
+  ],
+  "pairs": [
+    {
+      "index": "KOSPI200",
+      "base": "069500",
+      "target": "122630",
+      "multiple": 2.0
+    },
+    {
+      "index": "KOSPI200",
+      "base": "069500",
+      "target": "114800",
+      "multiple": -1.0
+    },
+    {
+      "index": "KOSPI200",
+      "base": "069500",
+      "target": "252670",
+      "multiple": -2.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "233740",
+      "multiple": 2.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "251340",
+      "multiple": -1.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "530107",
+      "multiple": -2.0
+    },
+    {
+      "index": "KOSDAQ150",
+      "base": "229200",
+      "target": "520057",
+      "multiple": -2.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SSO",
+      "multiple": 2.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "UPRO",
+      "multiple": 3.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SH",
+      "multiple": -1.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SDS",
+      "multiple": -2.0
+    },
+    {
+      "index": "S&P500",
+      "base": "SPY",
+      "target": "SPXU",
+      "multiple": -3.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "QLD",
+      "multiple": 2.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "TQQQ",
+      "multiple": 3.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "PSQ",
+      "multiple": -1.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "QID",
+      "multiple": -2.0
+    },
+    {
+      "index": "나스닥100",
+      "base": "QQQ",
+      "target": "SQQQ",
+      "multiple": -3.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "DDM",
+      "multiple": 2.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "UDOW",
+      "multiple": 3.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "DOG",
+      "multiple": -1.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "DXD",
+      "multiple": -2.0
+    },
+    {
+      "index": "다우",
+      "base": "DIA",
+      "target": "SDOW",
+      "multiple": -3.0
+    }
+  ],
+  "row_counts": {
+    "divergence.csv": 154,
+    "breakdown.csv": 2553,
+    "distribution.csv": 154,
+    "full_period.csv": 22,
+    "windows_122630.csv": 27250,
+    "windows_114800.csv": 28006,
+    "windows_252670.csv": 15847,
+    "windows_233740.csv": 17142,
+    "windows_251340.csv": 16036,
+    "windows_530107.csv": 5410,
+    "windows_520057.csv": 5410,
+    "windows_SSO.csv": 34299,
+    "windows_UPRO.csv": 28993,
+    "windows_SH.csv": 34299,
+    "windows_SDS.csv": 34194,
+    "windows_SPXU.csv": 28993,
+    "windows_QLD.csv": 34334,
+    "windows_TQQQ.csv": 27915,
+    "windows_PSQ.csv": 34327,
+    "windows_QID.csv": 34222,
+    "windows_SQQQ.csv": 27915,
+    "windows_DDM.csv": 34306,
+    "windows_UDOW.csv": 27887,
+    "windows_DOG.csv": 34306,
+    "windows_DXD.csv": 34201,
+    "windows_SDOW.csv": 27887
+  }
+}

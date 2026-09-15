@@ -52,7 +52,12 @@ def expanding_rank(df: pd.DataFrame) -> pd.DataFrame:
     surge = np.full(len(rates), np.nan)
     plunge = np.full(len(rates), np.nan)
 
-    # 판정일까지 누적된 구간만 본다. 첫 행은 등락률이 없어 순위 대상에서 빠지므로 1부터 센다
+    # 판정일까지 누적된 구간만 본다. 첫 행은 등락률이 없어 순위 대상에서 빠지므로 1부터 센다.
+    #
+    # **이 루프를 벡터화하지 않는다.** 길이의 제곱에 비례해 보이지만 실측이 그 규모가 아니다 —
+    # QQQ 6,915행 0.030초 · KODEX 200 5,898행 0.023초 [실측] 2026-09-15. 얻을 것이 없는 반면
+    # 바꾸면 **동률 처리가 경계에서 흔들릴 수 있고**(위 docstring 의 순위 정의), 그러면 신호
+    # 집합이 달라져 이 검증의 결과가 통째로 무효가 된다. 다시 재지 않는다
     for position in range(1, len(rates)):
         accumulated = rates[1 : position + 1]
         surge[position] = 1 + int((accumulated > rates[position]).sum())

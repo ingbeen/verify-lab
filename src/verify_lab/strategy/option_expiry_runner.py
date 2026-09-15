@@ -283,6 +283,11 @@ def collect_entries(dataset: Dataset, cell: ExpiryCell) -> Entries:
     Raises:
         RuntimeError: 진입일·청산일이 시세의 거래일에 없는 경우 (내부 불변조건 위반)
     """
+    # **칸마다 다시 읽는 것을 종목 단위로 묶지 않는다.** 한 종목이 여러 칸에 걸쳐 있어
+    # 시세·만기 달력·청산 일정이 겹쳐 만들어지지만, 실측으로 그 몫이 없다 —
+    # 7칸 합계 0.081초 중 중복 3칸이 0.026초이고 **매매 실행 전체가 0.097초**다
+    # [실측] 2026-09-15. 묶으면 `Entries` 를 칸들이 나눠 갖게 되어 한 칸의 수정이 다른 칸에
+    # 새는 길이 생기는데, 그 위험이 0.026초보다 크다
     df = load_market_csv(MARKET_DIR / dataset.file_name)
     trading_days = pd.DatetimeIndex(df[COL_DATE])
     expiries = monthly_expiry_dates(trading_days, dataset.rule)

@@ -93,6 +93,8 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_TARGET_TICKER,
     DISPLAY_TOTAL_DIVERGENCE,
     DISPLAY_VOLATILITY_AXIS,
+    DISTRIBUTION_MEASURED_NO,
+    DISTRIBUTION_MEASURED_YES,
     HORIZON_LABELS,
     HORIZONS,
     OUTPUT_FILES,
@@ -345,7 +347,9 @@ def _distribution_rows(
         row[DISPLAY_DIVIDEND_ADJUSTMENT] = round(
             dividend_adjustment(base_share, target_share, pair.multiple, horizon) * RATE_TO_PERCENT, PERCENT_DECIMALS
         )
-        row[DISPLAY_DISTRIBUTION_MEASURED] = "예" if target_share.measured else "아니오 (ETN — 분배금 없음)"
+        row[DISPLAY_DISTRIBUTION_MEASURED] = (
+            DISTRIBUTION_MEASURED_YES if target_share.measured else DISTRIBUTION_MEASURED_NO
+        )
 
         # 잰 구간을 밝힌다 — 국내는 수정주가 창이 짧아 원본가 전 기간을 못 덮는다
         if base_share.start_date is None or base_share.end_date is None:

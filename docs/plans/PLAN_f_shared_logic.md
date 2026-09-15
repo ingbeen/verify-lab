@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🟡 Draft
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-09-14 12:05
-**마지막 업데이트**: 2026-09-14 12:05
+**마지막 업데이트**: 2026-09-15 08:59
 **관련 범위**: data(수집기 4종), studies/reverse, studies/option_expiry, utils, validate_project
 **관련 문서**: `src/verify_lab/CLAUDE.md`, `scripts/CLAUDE.md`, 전역 `~/.claude/rules/python.md`
 
@@ -42,11 +42,12 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: **KRX 수집기 3종에 흩어진 같은 로직**을 한 벌로 만든다 (판정식 단일화)
-- [ ] 목표 2: **위치 인덱싱 튜플**처럼 조용히 틀릴 수 있는 조립 형태를 이름 있는 자료구조로 바꾼다
-- [ ] 목표 3: **재는 값이 같은데 두 번 계산하는 곳**을 줄인다 — 단, **먼저 재고 나서 고친다**
-- [ ] 목표 4: **거짓 숫자를 만들어 내는 fallback** 을 없앤다
-- [ ] 목표 5: **산출물의 값은 하나도 바뀌지 않는다**
+- [x] 목표 1: **KRX 수집기 3종에 흩어진 같은 로직**을 한 벌로 만든다 (판정식 단일화)
+- [x] 목표 2: **위치 인덱싱 튜플**처럼 조용히 틀릴 수 있는 조립 형태를 이름 있는 자료구조로 바꾼다
+- [x] 목표 3: **재는 값이 같은데 두 번 계산하는 곳**을 줄인다 — 단, **먼저 재고 나서 고친다**
+      → 재 보니 셋 중 둘이 문턱의 1/33 이라 **`summarize` 중복 호출 하나만** 고쳤다 (Phase 0 표)
+- [x] 목표 4: **거짓 숫자를 만들어 내는 fallback** 을 없앤다
+- [x] 목표 5: **산출물의 값은 하나도 바뀌지 않는다**
 
 ## 2) 비목표(Non-Goals)
 
@@ -140,20 +141,21 @@ if error_count == 0:
 
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/impl-plan` 스킬)
 
-- [ ] **선행 계획서(A~E) 복기 완료** — 상태와 「후속 계획서 인계」 절을 읽고,
+- [x] **선행 계획서(A~E) 복기 완료** — 상태와 「후속 계획서 인계」 절을 읽고,
       이 계획서의 대상과 「공통 조각을 둘 자리」가 여전히 유효한지 판정해 진행 로그에 적었다
-- [ ] Phase 0 재판단 게이트를 F-1 ~ F-6 전 항목에 실행하고 「한다 / 안 한다」와 근거를 진행 로그에 표로 남겼다
-- [ ] F-4 의 **성능 측정치**(변경 전/후 초)를 진행 로그에 적었다. 재지 않고 고치지 않았다
-- [ ] 「한다」로 판정된 항목이 전부 구현됐다
-- [ ] `tests/test_layer_contracts.py` 의 **pykrx import 순서 검사가 여전히 통과**한다
-- [ ] **산출물 값 불변 확인** — Phase 4 대조 결과를 진행 로그에 적었다
-- [ ] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
-- [ ] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
-- [ ] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
-- [ ] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 여부 명시 — 예상: 변경 없음)
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
-      (「pykrx import 순서를 지키는 진입점은 하나다」를 `src/verify_lab/CLAUDE.md` 원시 시세 저장 규칙에 남긴다)
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] Phase 0 재판단 게이트를 F-1 ~ F-6 전 항목에 실행하고 「한다 / 안 한다」와 근거를 진행 로그에 표로 남겼다
+- [x] F-4 의 **성능 측정치**(변경 전/후 초)를 진행 로그에 적었다. 재지 않고 고치지 않았다
+- [x] 「한다」로 판정된 항목이 전부 구현됐다
+- [x] `tests/test_layer_contracts.py` 의 **pykrx import 순서 검사가 여전히 통과**한다
+- [x] **산출물 값 불변 확인** — Phase 4 대조 결과를 진행 로그에 적었다
+- [x] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
+- [x] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
+- [x] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
+- [x] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 여부 명시 — 예상: 변경 없음)
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다
+      (**합치지 않기로 했으므로** 「진입점을 셋으로 두는 이유」와 `krx_common.py` 의 소유 범위를
+      `src/verify_lab/CLAUDE.md` 원시 시세 저장 규칙에 남겼다)
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -188,7 +190,7 @@ if error_count == 0:
 
 **작업 내용**:
 
-- [ ] 🔴 **선행 계획서 복기 (이 Phase 의 첫 작업)**:
+- [x] 🔴 **선행 계획서 복기 (이 Phase 의 첫 작업)**:
 
   ```bash
   for f in docs/plans/PLAN_[a-g]_*.md; do
@@ -205,7 +207,7 @@ if error_count == 0:
   - **A 의 인계 절**: `trade_fill` 에 들어간 가드 — F 가 그 파일을 손대지 않지만 확인한다
   - 전제가 깨졌으면 Scope 를 조정하고 무엇이 왜 달라졌는지 적는다
 
-- [ ] **F-1 재판단**:
+- [x] **F-1 재판단**:
 
   ```bash
   grep -n "_exclude_recent\|_to_numeric\|_import_krx_client\|_import_pykrx_stock\|_validated_start_date\|_validate_date_format" \
@@ -223,15 +225,15 @@ if error_count == 0:
     공통 부분만 뽑고 import 문 자체는 각자 함수에 남기는 편이 정확할 수 있다.
     `tests/test_layer_contracts.py` 의 **「함수 본문에 pykrx import 가 있다」 검사가 계속 통과하는지**가 판정 기준이다
 
-- [ ] **F-2 재판단**: `grep -n "def find_series" -A16 src/verify_lab/data/ecos_collector.py src/verify_lab/data/fred_collector.py`
+- [x] **F-2 재판단**: `grep -n "def find_series" -A16 src/verify_lab/data/ecos_collector.py src/verify_lab/data/fred_collector.py`
   - **한다**: 두 구현이 여전히 같을 때
   - ⚠️ 두 함수는 **각자의 모듈에서 public 이름**이다. 합치면 import 경로가 바뀌므로
     스크립트·테스트를 함께 본다: `grep -rn "find_series" scripts tests`
 
-- [ ] **F-3 재판단**: `grep -n "blocks\[0\]\|blocks\[1\]\|reverse_blocks\[" src/verify_lab/studies/reverse/runner.py`
+- [x] **F-3 재판단**: `grep -n "blocks\[0\]\|blocks\[1\]\|reverse_blocks\[" src/verify_lab/studies/reverse/runner.py`
   - **한다**: 위치 인덱싱이 남아 있을 때
 
-- [ ] 🔴 **F-4 재판단 — 먼저 «잰다»**:
+- [x] 🔴 **F-4 재판단 — 먼저 «잰다»**:
 
   ```bash
   poetry run python -c "
@@ -258,14 +260,14 @@ if error_count == 0:
     (성능이 아니라 「같은 것을 두 번 적지 않는다」가 이유다)
   - 측정치를 진행 로그에 **초 단위로** 적는다. 「빨라 보였다」는 근거가 아니다
 
-- [ ] **F-5 재판단**: `sed -n '54,76p' validate_project.py` · `sed -n '105,127p' validate_project.py`
+- [x] **F-5 재판단**: `sed -n '54,76p' validate_project.py` · `sed -n '105,127p' validate_project.py`
   - **한다**: 「파싱 실패 시 기본값 1」이 남아 있을 때
   - ⚠️ 계획서 E 가 `validate_project.py` 를 타입 검사에 넣기로 했다면 **E 를 먼저** 하거나,
     여기서 고친 뒤 E 가 검사에 넣는다. 순서를 진행 로그에 적는다
 
-- [ ] **F-6 재판단**: `grep -rn "datetime.now(" src/verify_lab/`
+- [x] **F-6 재판단**: `grep -rn "datetime.now(" src/verify_lab/`
 
-- [ ] 항목별 판정을 **진행 로그에 표로** 남긴다 (`항목 | 한다/안 한다 | 근거 · 측정치`)
+- [x] 항목별 판정을 **진행 로그에 표로** 남긴다 (`항목 | 한다/안 한다 | 근거 · 측정치`)
 
 ---
 
@@ -275,14 +277,14 @@ if error_count == 0:
 
 **작업 내용**:
 
-- [ ] **F-1 테스트** — 공통 조각을 옮긴 뒤에도
+- [x] **F-1 테스트** — 공통 조각을 옮긴 뒤에도
   - `_exclude_recent` 가 세 수집기에서 **같은 경계**를 쓴다 (`DOMESTIC_RECENT_EXCLUSION_DAYS`)
   - `_to_numeric` 이 `-` 를 **결측으로** 남긴다 (0 으로 채우지 않는다)
   - 기존 수집기 테스트(`tests/test_pykrx_collector.py`·`test_etn_collector.py`·`test_krx_futures_collector.py`)가
     **그대로 통과**한다 — 이것이 주 방어선이다
-- [ ] **F-3 테스트** — `_measure_spec` 이 낸 표들이 **이름으로** 꺼내진다
+- [x] **F-3 테스트** — `_measure_spec` 이 낸 표들이 **이름으로** 꺼내진다
   (자료구조를 도입하면 순서 뒤바뀜이 타입 오류가 되므로, 테스트는 「필드 이름이 맞다」만 고정)
-- [ ] 🔴 **F-4a 테스트 (벡터화를 「한다」로 판정한 경우에만)** — **전 구간 동일성**
+- [x] 🔴 **F-4a 테스트** — **하지 않음.** Phase 0 이 벡터화를 「안 한다」로 판정했다(0.030초)
   - 현재 구현을 `_expanding_rank_reference` 로 복사해 테스트 파일에 두고,
     **실제 시세 두 파일 전 구간**에서 새 구현과 `assert_frame_equal` (동률 포함)
   - 합성 데이터로 **동률이 실제로 생기는 입력**(같은 등락률 반복)을 따로 만든다 —
@@ -295,22 +297,22 @@ if error_count == 0:
 
 **작업 내용**:
 
-- [ ] **F-1** KRX 공통 조각을 Phase 0 에서 고른 자리로
+- [x] **F-1** KRX 공통 조각을 Phase 0 에서 고른 자리로
   - `_exclude_recent` — 한 벌. **`pykrx_collector` 의 인라인 3곳도 이것을 쓰게 한다**
   - `_to_numeric` — 한 벌
   - 조회 시작일 형식 검증 — 한 벌. 메시지 문구를 하나로 맞춘다
     (지금 `etn` 은 「조회 시작일 형식이…」, `futures` 는 「`{label}` 형식이…」로 다르다)
   - `_import_*` — Phase 0 의 판단대로. **합치더라도 `tests/test_layer_contracts.py` 의
     「함수 본문에 pykrx import」 검사가 통과해야 한다.** 통과하지 않으면 합치지 않는다
-- [ ] **F-2** `find_series` 한 벌
+- [x] **F-2** `find_series` 한 벌
   - 두 모듈이 그 이름을 계속 노출하려면 **재노출이 아니라 얇은 래퍼**도 피한다 —
     호출처(`scripts/data/collect_ecos.py`·`collect_fred.py`)가 공통 함수를 직접 부르게 한다
     (재노출 금지는 계획서 C 가 세운 원칙이다)
-- [ ] **F-3** `studies/reverse/runner.py` 의 튜플 → `@dataclass(frozen=True)`
+- [x] **F-3** `studies/reverse/runner.py` 의 튜플 → `@dataclass(frozen=True)`
   - 다섯 표를 담는 이름 있는 자료구조 하나(예: `_SpecBlocks`)와 네 표짜리 하나
   - `run_study` 의 `blocks[0]`~`[4]`, `_measure_reverse_all` 의 `[0]`~`[3]` 을 필드 이름으로
   - **다섯 리스트 이름은 `StudyOutputs` 의 필드명과 맞춘다** (`signals`·`statistics`·`excess`·`test`·`candidates`)
-- [ ] **F-6** `utils/meta_manager.py:62` 를 `datetime.now(KST)` 로
+- [x] **F-6** `utils/meta_manager.py:62` 를 `datetime.now(KST)` 로
   - 값은 같다. **관용을 하나로** 하는 것이 목적이다
   - `tests/test_meta_manager.py` 가 `freezegun` 을 쓰면 그 고정 방식이 계속 통하는지 본다
 
@@ -320,17 +322,17 @@ if error_count == 0:
 
 **작업 내용**:
 
-- [ ] **F-4c** `studies/option_expiry/runner._record_trade_cell` — `summarize` 결과를 변수로 받아 재사용
+- [x] **F-4c** `studies/option_expiry/runner._record_trade_cell` — `summarize` 결과를 변수로 받아 재사용
       (`:656,658` 과 `:672,673`). **시간과 무관하게 한다** — 같은 것을 두 번 적지 않는다
-- [ ] **F-4b** (Phase 0 에서 「한다」인 경우) `strategy/option_expiry_runner.collect_entries` 중복 I/O 제거
+- [x] **F-4b** — **하지 않음.** Phase 0 측정: 중복 3칸이 0.026초, 매매 전체가 0.097초
   - 종목별로 「시세 + 만기 달력 + 청산 일정」을 **한 번만** 만들고 칸이 그것을 나눠 쓴다
   - 🔴 **`Entries` 는 지금 `@dataclass`(가변)이고 public 이다.** 공유하려면 `frozen=True` 로 바꾸는 것이 안전하다 —
     한 칸이 고치면 다른 칸이 함께 바뀐다
   - `collect_entries` 는 `__all__` 에 있어 **외부 계약**이다. 시그니처를 바꾸면 테스트를 함께 본다
-- [ ] **F-4a** (Phase 0 에서 「한다」인 경우) `expanding_rank` 벡터화
+- [x] **F-4a** — **하지 않음.** Phase 0 측정: QQQ 0.030초 · KODEX 200 0.023초 (문턱 1초)
   - **Phase 1 의 동일성 테스트가 그린일 때만 채택**한다. 하나라도 어긋나면 되돌린다
   - 주석에 **「왜 이 방식인가」와 「동률을 어떻게 유지하는가」**를 적는다 — 순위 정의가 이 검증의 핵심이다
-- [ ] **F-5** `validate_project.py` 의 파싱 fallback
+- [x] **F-5** `validate_project.py` 의 파싱 fallback
   - 「파싱 실패 시 1」을 없애고 **「개수를 알 수 없음」을 그대로 표시**한다 (예: `-` 또는 `개수 미상`)
   - `run_pyright` 의 「첫 정수 채택」을 **`N error(s)` 패턴을 직접 잡는 정규식**으로 바꾼다
   - 🔴 **성패 판정은 계속 종료코드로 한다.** 개수는 표시용이며, 이 변경으로
@@ -338,19 +340,31 @@ if error_count == 0:
   - `run_pytest` 의 파싱도 같은 문제가 있다(`-v` 출력에 `passed` 를 포함한 이름이 있으면 오파싱).
     **pytest 요약 줄(`=== N passed … ===`)만 잡도록** 좁힌다
 
+**계획서 D 가 넘긴 2건** — 2026-09-15 사용자 승인으로 범위에 넣는다 (근거는 §8 Notes)
+
+- [x] **D ⑤** `studies/leverage_tracking/constants.tail_column` — `round()` 가 **은행가 반올림**이라
+      `0.045` 와 `0.04` 를 함께 넣으면 **둘 다 `P04` 로 충돌해 한 열이 조용히 덮인다.**
+      지금 분위 목록(`0.05`·`0.95`)에는 충돌이 없어 **잠재 결함**이다
+  - 이름이 겹치면 **예외를 던진다**(전역 `python.md` 「불가능 조건 처리」). 조용히 덮는 것을 막는 것이 목적이고,
+    반올림 방식을 바꾸는 것이 아니다 — 방식을 바꾸면 **기존 컬럼 이름이 달라져 산출물이 바뀐다**
+- [x] **D ⑥** `studies/leverage_tracking/runner.py:348` 의 `"예"` 리터럴 —
+      같은 파일이 `JUDGEABLE_YES` 를 import 하는데 한 자리만 리터럴이라 **어느 쪽이 정본인지 안 보인다.**
+      D 가 적은 대로 **`JUDGEABLE_YES` 를 쓰지 않는다**(`DISPLAY_DISTRIBUTION_MEASURED` 는 다른 질문이라
+      잘못된 결합이 된다). `leverage_tracking` **자기 상수**를 둔다
+
 ---
 
 ### Phase 4 — 값 불변 대조
 
 **작업 내용**:
 
-- [ ] 다섯 검증 + 세 매매를 인자 없이 돌린다 (**재수집하지 않는다** — 수집기를 고쳤지만 실행하지 않는다)
-- [ ] 새 산출물의 CSV·`summary.json` 을 직전 산출물과 기계로 대조한다. **전 셀 동일**이어야 한다
-- [ ] 🔴 `expanding_rank` 를 고쳤다면 **`signals.csv` 의 `당시 순위` 열을 특히 본다**
-- [ ] **수집기는 실행하지 않는다.** 외부 서버에 요청하지 않고, 대신 기존 수집기 테스트로 판정한다
+- [x] **여섯** 검증 + 세 매매를 인자 없이 돌린다 (**재수집하지 않는다** — 수집기를 고쳤지만 실행하지 않는다)
+- [x] 새 산출물의 CSV·`summary.json` 을 직전 산출물과 기계로 대조한다. **전 셀 동일**이어야 한다
+- [x] `expanding_rank` 를 고치지 않았으므로 해당 없음. `signals.csv` 는 전 셀 대조에 포함됐다
+- [x] **수집기는 실행하지 않는다.** 외부 서버에 요청하지 않고, 대신 기존 수집기 테스트로 판정한다
       (루트 `CLAUDE.md` 「같은 데이터를 이유 없이 다시 받지 않습니다」)
-- [ ] F-4 측정치(변경 전/후)를 진행 로그에 적는다
-- [ ] 새 폴더는 커밋하지 않고 `/clean-results` 로 정리한다
+- [x] F-4 측정치(변경 전/후)를 진행 로그에 적는다
+- [x] **정리는 건너뛴다** (사용자 지시 2026-09-15). 새 폴더 9개가 E 가 넘긴 40개 위에 쌓였고 인용 0건이다
 
 ---
 
@@ -358,25 +372,24 @@ if error_count == 0:
 
 **작업 내용**
 
-- [ ] `src/verify_lab/CLAUDE.md` 「계층 간 계약」의 원시 시세 저장 규칙에 한 줄 —
-      「**pykrx import 순서를 지키는 진입점은 하나다**」(F-1 을 합쳤다면). 합치지 않았다면
-      **왜 셋으로 두는지**를 적는다 — 어느 쪽이든 다음 사람이 판단을 반복하지 않게 한다
-- [ ] `docs/COMMANDS.md`: 변경 여부 확정해 적는다 (예상: 변경 없음)
-- [ ] 자동 포맷 적용: `poetry run black .`
-- [ ] 🔴 **「후속 계획서 인계」 절을 채운다** (§8 Notes) — **G 가 알아야 할 것**을 적는다:
-      새로 생긴 공통 모듈과 옮긴 함수, **`validate_project.py` 의 출력 형식이 바뀌었는지**
-      (G 의 품질 검증 기록에 영향), 지운 주석, **F-4 를 「안 한다」로 판정했다면 그 근거**
-      (G 가 성능 관련 주석을 고칠 때 본다). **비워 두면 다음 계획서가 낡은 전제로 시작한다**
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] `src/verify_lab/CLAUDE.md` 「계층 간 계약」의 원시 시세 저장 규칙에 **두 줄** —
+      합치지 않았으므로 **왜 셋으로 두는지**를 적었고, 새로 생긴 `krx_common.py` 의 소유 범위도 함께 적었다
+- [x] `docs/COMMANDS.md`: **변경 없음** — 실행 명령·CLI 옵션이 바뀌지 않았다.
+      `check_pykrx_splice.py` 는 내부 구현만 바뀌고 인자가 그대로다
+- [x] 자동 포맷 적용: `poetry run black .`
+- [x] 🔴 **「후속 계획서 인계」 절을 채웠다** (§8 Notes) — 새 모듈·옮긴 이름·
+      **`validate_project.py` 출력 형식 변화**·F-4 측정치와 「안 한다」 근거·남긴 것 하나
+- [x] 변경 기능 및 전체 플로우 최종 검증 — 여섯 검증 + 세 매매 재실행,
+      **CSV 73장 · 11,296,716칸 전 셀 일치**
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
 
 **Validation**:
 
 > 순서를 지킨다 — 리뷰에서 고치면 코드가 바뀌므로 품질 검증이 마지막 관문이어야 한다.
 
-- [ ] `/code-review xhigh` (발견 \_\_건 · 조치: \_\_)
-- [ ] `poetry run python validate_project.py` (passed=\_\_, failed=\_\_, skipped=\_\_)
+- [x] `/code-review xhigh` (발견 **10건** · 조치: **10건 전부 반영**)
+- [x] `poetry run python validate_project.py` (passed=1177, failed=0, skipped=0)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 
@@ -384,7 +397,11 @@ if error_count == 0:
 > 계획서를 쓰는 시점에는 diff 가 없어 여기 적는 것은 전부 추측이고,
 > **추측으로 적은 줄은 그대로 나간다.** 형식·문체 규칙은 `/commit` 이 정한다.
 
-(비어 있음 — `/commit` 으로 채운다)
+1. `수집 / KRX 공통 판정 한 벌화와 거짓 개수 fallback 제거`
+2. `수집 / 세 수집기의 최근 구간 제외·숫자 변환·날짜 검증을 krx_common 으로 통합`
+3. `수집 / 복사본이 조용히 갈라지던 네 자리 통합과 위치 인덱싱 튜플 제거`
+4. `수집 / 판정식 단일화 — 공통 모듈 신설, 성능 3건은 실측 후 미적용`
+5. `수집 / 같은 로직 여러 벌 정리와 회귀 테스트 30개 추가 (산출물 값 불변)`
 
 ## 7) 리스크(Risks)
 
@@ -405,6 +422,18 @@ if error_count == 0:
   `pykrx_collector` 는 같은 로직을 **세 함수에 인라인**으로 갖는다
 - F-4 는 **재고 나서 고치는 항목**이다. 측정치 없이 「고쳤다」로 넘어가면 이 계획서의 취지가 무너진다
 
+### 착수 후 바뀐 것 (2026-09-15, 사용자 승인)
+
+> `/impl-plan` 의 「이미 생성된 계획서 수정 규칙」에 따라 **무엇이 왜 달라졌는지**를 남긴다.
+
+| 무엇이 | 왜 |
+| --- | --- |
+| **F-2 를 「함수 통합」에서 「메시지 상수만 공유」로 좁혔다** | 반환 타입을 좁히려면 `Protocol`+`TypeVar` 기계가 8줄 생겨 **없애는 중복(4줄 × 2)과 크기가 같다.** Non-Goals 가 「4줄 루프를 위해 공통 유틸을 만들지 않는다」로 이미 같은 판단을 했고, 그 논리가 같은 계층 두 벌에도 적용된다. **조용히 갈라지는 것은 예외 메시지 형식 하나**라 그것만 올린다 |
+| **F-1 의 `_import_*` 통합을 하지 않는다** | 계획서가 세운 판정 기준(`test_layer_contracts` 통과)이 「합치면 깨진다」를 가리킨다. Phase 0 표 참고 |
+| **F-4a·F-4b 를 하지 않는다** | 실측이 문턱의 1/33 이다. Phase 0 표 참고 |
+| **계획서 D 가 넘긴 2건을 Phase 3 에 넣었다** | D 의 인계 절이 두 건의 목적지를 **「F」로 지목**했고, 성격이 F 와 같다(같은 로직 여러 벌 · 조용히 틀리는 자리). 넣지 않으면 **인계가 끊겨 다음 세션이 같은 조사를 반복한다** |
+| **`/clean-results` 를 돌리지 않는다** | 사용자 지시. Phase 4 의 마지막 항목에서 뺀다. E 가 넘긴 40개에 이번 대조분이 더 쌓이며, **인용 0건이라 품질 검증에는 영향이 없다** |
+
 ### 후속 계획서 인계 (이 계획서를 끝낸 뒤 채운다)
 
 > **G 가 실행 전에 이 절을 읽는다.** 이 계획서로 바뀐 것 중 **그쪽 전제에 영향을 주는 것만** 적는다.
@@ -414,8 +443,68 @@ if error_count == 0:
 > 다음 세션이 같은 성능 항목을 다시 재고 다시 고민한다.
 > 아무것도 안 바뀌었으면 **「없음」이라고 적는다**.
 
-(비어 있음 — 마지막 Phase 에서 채운다)
+| 무엇이 | 어떻게 바뀌었나 | 어느 계획서가 영향받나 |
+| --- | --- | --- |
+| 🔴 **새 모듈 하나 — `src/verify_lab/data/krx_common.py`** | KRX 세 수집기의 공통 판정 셋을 소유한다: `to_numeric`·`exclude_recent`·`validate_krx_date`. **전부 public 이름**이며 `data/__init__.py` 에는 올리지 않았다(부르는 계층이 `data/` 안쪽뿐) | **G**(문서 갱신) · 수집기를 손대는 계획서 |
+| 🔴 **`_import_*` 를 «합치지 않았다» — 그 이유가 계약에 올라갔다** | `src/verify_lab/CLAUDE.md` 원시 시세 저장 규칙에 두 줄이 늘었다. 셋이 서로 다른 pykrx 클래스를 가져와 공통 부분이 `load_krx_credentials()` 한 줄뿐이고, 순서 검사가 **같은 함수 본문 안**을 보므로 뽑으면 세 수집기가 모두 계약을 잃는다. **다시 합치려 들기 전에 그 절을 읽는다** | 전부 |
+| **옮겨간 이름** | `etn_collector._to_numeric`·`_exclude_recent`·`_validated_start_date` / `krx_futures_collector._to_numeric`·`_exclude_recent`·`_validate_date_format` → **전부 사라지고** `krx_common` 의 셋으로. `pykrx_collector` 의 인라인 6곳(형식 검증 3 · 최근 구간 제외 3)도 그 셋을 부른다 | **G** |
+| **새 상수 둘** | `data/constants.py` 에 `START_DATE_LABEL`(`"조회 시작일"` — 5곳이 쓴다) · `SERIES_NOT_FOUND_TEMPLATE`(`ecos`·`fred` 가 쓴다). **`find_series` 함수 자체는 두 벌 그대로다** — 통합하지 않은 근거는 위 「착수 후 바뀐 것」 | **G** |
+| **`leverage_tracking/constants.py` 에 상수 둘 · 가드 하나** | `DISTRIBUTION_MEASURED_YES`/`_NO` (리터럴 제거) · `_reject_lossy_tail_columns` (모듈 로드 시점에 `TAIL_QUANTILES` 를 검사). **분위 목록에 `0.025` 나 `0.045` 를 더하면 이제 import 가 `RuntimeError` 로 죽는다** — 전에는 이름이 값과 어긋나거나 한 열이 조용히 덮였다 | 분위를 늘리는 계획서 |
+| **`studies/reverse/runner.py` 에 비공개 자료구조 둘** | `_SpecBlocks`(5필드) · `_ReverseAllBlocks`(4필드). 필드 이름이 `StudyOutputs` 와 같다. **`signals` 가 없는 쪽이 「역방향 전체는 신호일 목록을 내지 않는다」를 타입으로 드러낸다** | 역방향 runner 를 손대는 계획서 |
+| 🔴 **`validate_project.py` 의 출력 형식이 바뀌었다** | ① 개수를 파싱하지 못하면 숫자 대신 **`개수 미상`** 이 나오고 합계 줄에 `이상 (개수 미상 항목 있음)` 이 붙는다 ② pytest 요약에 **`errors=N` 이 0건이 아닐 때만** 덧붙는다. **평상시(전부 통과) 출력은 그대로**이므로 `passed=…, failed=0, skipped=0` 표기는 유지된다 | **G**(품질 검증 기록을 옮길 때) |
+| **`scripts/data/check_pykrx_splice.py` 가 공통 판정을 쓴다** | 그 파일의 `_validate_date` 가 **네 번째 벌**이었다(메시지까지 동일). 이제 `validate_krx_date` 를 부르고 `DATE_FORMAT` 도 `KRX_REQUEST_DATE_FORMAT` 을 가리킨다. **계획서 Scope 밖이었으나 코드 리뷰가 잡아 함께 고쳤다** — 외부 요청 없이 `--help` 와 `_parse_end_dates` 로만 확인했고 KRX 호출 경로는 돌리지 않았다 | **G** |
+| **계약 테스트가 늘었다** (1,147 → **1,177**) | 새 파일 둘 — `tests/test_krx_common.py`(10) · `tests/test_validate_project.py`(14). `test_layer_contracts.py` 에 `TestKrxCommonOwnership`(3) — **`scripts/data/` 까지 훑는다.** `test_studies_leverage_runner.py` +5. 옮긴 `_to_numeric` 테스트 2개는 원래 파일에서 뺐다 | 테스트 수를 세는 계획서 |
+| ⚠️ **`tests/test_etn_collector.py` 의 `stub_krx` 가 패치 대상을 하나 더 든다** | `exclude_recent` 가 `krx_common` 으로 옮겨가자 `etn_collector.DOMESTIC_RECENT_EXCLUSION_DAYS` 패치가 **무동작이 됐다** — 그 이름이 오류 메시지용으로 남아 있어 `AttributeError` 도 안 났다. 코드 리뷰가 잡았다. **함수를 옮길 때는 그 함수가 읽는 모듈 전역을 패치하는 테스트를 함께 본다** | 함수를 모듈 사이로 옮기는 계획서 전부 |
+| 🔴 **F-4(성능)를 «전부 안 했다» — 측정치는 «코드»에 남겼다** | `expanding_rank` **QQQ 6,915행 0.030초 · KODEX 200 5,898행 0.023초**(문턱 1초). `collect_entries` 중복 3칸 **0.026초**, `run_option_expiry_trading` 전체 **0.097초**. **다시 재지 않는다** — 벡터화는 동률 순위가 흔들릴 위험만 사고 이득이 없다. **계획서가 지워져도 남도록 두 자리의 주석에 옮겼다** — `studies/reverse/extreme_move.expanding_rank` 의 루프 위와 `strategy/option_expiry_runner.collect_entries` 머리. 유혹이 생기는 자리가 거기다 | **G**(성능 관련 주석을 고칠 때) |
+| **산출물은 한 셀도 바뀌지 않았다** | 여섯 검증 + 세 매매 재실행 대조 — **CSV 73장 · 11,296,716칸 전 셀 일치**, `summary.json` 9개 모두 일치(실행 시각·경로 제외). **리뷰 반영 후 한 번 더 돌려 같은 결과**였다. 따라서 **G 는 「F 때문에 수치가 달라졌다」를 의심하지 않아도 된다** | 전부 |
+| 🔴 **넘긴 것 — 산출물 폴더가 58개로 늘었다** | 사용자 지시로 **`/clean-results` 를 건너뛰었다**(2026-09-15). E 가 넘긴 40개에 이번 대조분 18개(8:29 실행 9개 + 8:48 실행 9개)가 쌓였다. **인용 0건이라 품질 검증에는 영향이 없고 남은 것은 용량뿐**이다. 그 스킬은 모델이 호출할 수 없어 사용자가 직접 돌린다 | 없음 (작업 항목) |
+| ⚠️ **손대지 않은 것 하나** | `scripts/data/check_pykrx_splice.py:96` 의 `_kst_now()` 가 `datetime.now(UTC).astimezone(ZoneInfo("Asia/Seoul"))` 로 **F-6 이 통일한 관용의 세 번째 벌**이고 `common_constants.KST` 를 쓰지 않는다. F 의 Scope 는 `src/` 였고 코드 리뷰도 지목하지 않아 **일부러 남겼다** | **G** 또는 별도 |
 
 ### 진행 로그 (KST)
 
 - 2026-09-14 12:05: 계획서 작성. 감사의 「리팩토링」·「불필요한 fallback」을 F 로 묶음
+- 2026-09-15 08:07: **Phase 0 착수.** A~E 전부 ✅ Done 확인. 사용자 지시로 **`/clean-results` 는 건너뛴다**
+- 2026-09-15 08:10: **Phase 0 판정 완료.** 항목별 판정과 측정치는 아래 표
+
+#### Phase 0 — 항목별 재판단
+
+| 항목 | 한다/안 한다 | 근거 · 측정치 |
+| --- | --- | --- |
+| F-1 `_exclude_recent` | **한다** | etn ≡ futures **461자 바이트 동일**. `pykrx_collector` 는 세 함수(`:231-234`·`:341-344`·`:450-453`)에 인라인 3벌 |
+| F-1 `_to_numeric` | **한다** | 본문 동일, docstring 만 다름(etn 398자 · futures 410자). 계획서가 「바이트 단위 동일」이라 적은 것은 **본문 기준**이었다 |
+| F-1 `_import_*` | 🔴 **안 한다** | `tests/test_layer_contracts.py:1679-1682` 가 `load_krx_credentials()` 와 `from pykrx` 가 **같은 함수 본문 안에** 있는지를 `ast.unparse` 문자열로 본다. 공통 부분은 그 한 줄뿐이라 뽑으면 **계약 검사가 세 곳 모두 깨진다.** 계획서가 세운 판정 기준(`검사가 계속 통과하는지`)이 그대로 「합치지 않는다」를 가리킨다 |
+| F-1 시작일 형식 검증 | **한다** | 3형태 5곳 그대로 |
+| F-2 `find_series` | **한다 — 단, 메시지 상수만** | 두 구현이 여전히 같다. **함수를 합치지 않는다**(사용자 결정 2026-09-15): 반환 타입을 좁히려면 `Protocol`+`TypeVar` 기계가 8줄 생겨 **없애는 중복(4줄 × 2)과 크기가 같다.** Non-Goals 의 「4줄 루프를 위해 공통 유틸을 만들지 않는다」와 같은 논리다. 조용히 갈라질 수 있는 것은 **예외 메시지 형식** 하나이므로 그것만 `data/constants.py` 로 올린다 |
+| F-3 위치 인덱싱 | **한다** | `blocks[0]~[4]`(`:311-315`) · `reverse_blocks[0]~[3]`(`:754-757`) 그대로 |
+| **F-4a `expanding_rank` 벡터화** | 🔴 **안 한다** | **QQQ 6,915행 0.030초 · KODEX 200 5,898행 0.023초.** 계획서 문턱이 「1초 미만이면 하지 않는다」이고 실측이 그 **1/33** 이다. 값이 바뀔 위험(동률 순위)만 사고 이득이 없다 |
+| **F-4b `collect_entries` 중복 I/O** | 🔴 **안 한다** | **7칸 합계 0.081초, 중복 3칸 ≈ 0.026초.** `run_option_expiry_trading` **전체가 0.097초**다. 계획서 전제가 틀렸다 — 「종목 3종, 4번 중복」이 아니라 **4종(dia·kodex200·spy·qqq), 3번 중복**이다 |
+| F-4c `summarize` 중복 호출 | **한다** | 시간과 무관. 「같은 것을 두 번 적지 않는다」가 이유 |
+| F-5 파싱 fallback | **한다** | `validate_project.py:72-73`·`122-124` 그대로. E 가 이 파일을 **PyRight 검사에 넣었으므로**(`pyrightconfig.json` `include`) 수정 후 타입 오류가 나지 않는지 본다 |
+| F-6 시각 관용 | **한다** | `meta_manager.py:62` 하나만 `datetime.now(UTC).astimezone(KST)`. 나머지 8곳은 전부 `datetime.now(KST)` |
+
+#### Phase 0 — 선행 계획서 복기 결과
+
+| 인계 항목 | 상태 |
+| --- | --- |
+| **B ① `" ~ "` 네 벌** | ✅ **이미 닫혔다.** E 가 `report/run_summary.py` 로 옮겼고(`PERIOD_SEPARATOR:42`), `tests/test_layer_contracts.py:1606` 이 그 사실을 명시한다. `studies` 에 리터럴 0건 |
+| **D ④ `_absolute_module` 의 `relative_to` 위험** | ✅ **이미 닫혔다.** `tests/test_layer_contracts.py:430` 에 `not path.is_relative_to(_SOURCE_ROOT)` 가드가 있다 |
+| **D ⑤ `tail_column` 은행가 반올림** | 🔴 **F 범위에 넣는다** (사용자 승인 2026-09-15) |
+| **D ⑥ `leverage_tracking/runner.py` 의 `"예"` 리터럴** | 🔴 **F 범위에 넣는다** (사용자 승인 2026-09-15). 위치가 `:320` → **`:348`** 로 옮겨져 있다 |
+| **E `validate_project.py` 타입 검사 편입** | ✅ 확인. F-5 를 고친 뒤 PyRight 를 통과해야 한다 |
+| **A `resolve_positions`** | 확인. F 는 `trade_fill.py` 를 건드리지 않는다 |
+| **C `find_series`** | C 는 이 이름을 손대지 않았다. 두 벌 그대로 |
+
+- 2026-09-15 08:29 · 08:48: **Phase 4 대조 두 차례.** 앞은 Phase 1~3 직후, 뒤는 코드 리뷰 반영 후.
+  두 번 모두 **CSV 73장 · 11,296,716칸 전 셀 일치**, `summary.json` 9개 일치(실행 시각·경로 제외)
+- 2026-09-15 08:52: **`/code-review xhigh` 10건 전부 반영.** 중대한 둘 —
+  ① Ruff `I001` 로 **품질 게이트가 실제로 깨져 있었다**(새 상수 두 개의 import 정렬)
+  ② `exclude_recent` 를 옮기자 `tests/test_etn_collector.py` 의 `stub_krx` 픽스처가 패치하던
+  `etn_collector.DOMESTIC_RECENT_EXCLUSION_DAYS` 가 **무동작이 됐다** — 그 이름이 오류 메시지용으로
+  남아 있어 `AttributeError` 도 안 났고, 픽스처 날짜가 옛날이라 테스트는 그냥 통과했다.
+  나머지 여덟은 파서 정밀화(PyRight 진단 줄 오인 · pytest `errors` 누락) · 계약 테스트의 공허 통과 ·
+  `scripts/data/check_pykrx_splice.py` 의 **네 번째 벌** · 분위 이름 손실 · 상수 배치 · 불변성 테스트 강화
+- 2026-09-15 08:55: 품질 검증 통과 (passed=1177, failed=0, skipped=0)
+- 2026-09-15 08:59: **Done 처리 전 계획서 검증.** 기계 6항목(미완료 0 · Validation 기록 ·
+  §0 원문 동일 · 커밋 후보 명사형 · 필수 8절) 통과. **근거 승격에서 구멍 하나를 찾아 메웠다** —
+  F-4 의 측정치와 「안 한다」 판정이 **계획서에만** 있어 삭제되면 다음 세션이 다시 잰다.
+  `expanding_rank` 루프 위와 `collect_entries` 머리에 실측치와 함께 옮겼다
