@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """pykrx ETF 사전 실측
 
-`docs/spec/역방향_설계.md` §9 가 요구하는 KODEX 200 미확인 항목을
+`docs/매매/역방향/설계.md` §9 가 요구하는 KODEX 200 미확인 항목을
 **한 번의 실행으로** 확인한다. KRX 호출은 5회이며 각 호출 결과를 받는 즉시 CSV 로 남기므로,
 뒤쪽 호출이 실패해도 앞선 원자료는 보존된다.
 
@@ -19,7 +19,6 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from verify_lab.common_constants import RESULT_LAYER_PROBE
 from verify_lab.data.krx_credentials import load_krx_credentials
 from verify_lab.report.writer import create_run_directory
 from verify_lab.utils.cli_helpers import cli_exception_handler
@@ -307,7 +306,7 @@ def main() -> int:
     from pykrx import stock
 
     end_date = _kst_now().strftime("%Y%m%d")
-    output_dir = create_run_directory(PROBE_NAME, layer=RESULT_LAYER_PROBE)
+    output_dir = create_run_directory(PROBE_NAME)
     logger.debug(f"실측 시작: {args.ticker}, {args.start} ~ {end_date}")
 
     # 3. KRX 조회. 받는 즉시 저장해 뒤쪽 호출이 실패해도 원자료가 남게 한다

@@ -13,7 +13,7 @@
   두 문자열이 갈려 있어야 **한 컬럼만으로** 한 손절선으로 고정한 행을 고를 수 있다
 - 역방향 성적표의 `방향` 은 **`역방향 전체` 한 값**이다 — 그 행이 폭등·폭락을 합친 성적이다
 - 역방향 성적표도 **구간 5행**이고, 표본이 하한에 못 미쳐도 행이 남는다 (측정의 원칙 17)
-- `사건` 은 **구간별**로 나오고 구간 분할은 `strategy/periods.py` 하나가 소유한다
+- `사건` 은 **구간별**로 나오고 구간 분할은 `execution/periods.py` 하나가 소유한다
 - **구현 못하는 칸은 `0` 이 아니라 빈칸**이다 — 0 은 「손절이 걸리지 않았다」로 읽힌다
 
 **기대 컬럼 목록을 손으로 박아 둔다.** 프로덕션 상수를 import 해서 비교하면 그 상수를 고치는
@@ -43,17 +43,8 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
-from verify_lab.measure.constants import JUDGEABLE_NO
-from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
-from verify_lab.report.run_summary import (
-    KEY_DATASET_FILE,
-    KEY_DATASET_LABEL,
-    KEY_DATASET_PERIOD,
-    KEY_DATASET_ROWS,
-    KEY_DATASET_TICKER,
-)
-from verify_lab.strategy import month_end_runner, option_expiry_runner, periods
-from verify_lab.strategy.constants import (
+from verify_lab.execution import periods
+from verify_lab.execution.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_EVENT_COUNT,
     DISPLAY_GAP_STOP_COUNT,
@@ -69,33 +60,52 @@ from verify_lab.strategy.constants import (
     STOP_NOT_MEASURABLE_LABEL,
     TRADES_FILENAME,
 )
-from verify_lab.strategy.month_end_runner import KEY_EXCLUDED_COUNT, TradingOutputs, run_month_end_trading
-from verify_lab.strategy.month_end_runner import KEY_TARGETS as MONTH_END_KEY_TARGETS
-from verify_lab.strategy.option_expiry_constants import ExpiryCell
-from verify_lab.strategy.option_expiry_runner import KEY_CELLS as EXPIRY_KEY_CELLS
-from verify_lab.strategy.option_expiry_runner import ExpiryOutputs, run_option_expiry_trading
-from verify_lab.strategy.periods import period_rows
-from verify_lab.strategy.reverse_constants import Target
-from verify_lab.strategy.reverse_runner import KEY_TARGETS as REVERSE_KEY_TARGETS
-from verify_lab.strategy.reverse_runner import StrategyOutputs, run_reverse_trading
-from verify_lab.strategy.run_summary import (
+from verify_lab.execution.periods import period_rows
+from verify_lab.execution.run_summary import (
     COST_NOTE,
     KEY_COST,
     KEY_DATASETS,
     KEY_NOTES,
     KEY_ROW_COUNTS,
     KEY_RULE,
+)
+from verify_lab.measure.constants import JUDGEABLE_NO
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
+from verify_lab.report.run_summary import (
+    KEY_DATASET_FILE,
+    KEY_DATASET_LABEL,
+    KEY_DATASET_PERIOD,
+    KEY_DATASET_ROWS,
+    KEY_DATASET_TICKER,
     KEY_TRACK,
 )
 from verify_lab.studies.month_end.constants import DATASETS as MONTH_END_DATASETS
-from verify_lab.studies.month_end.constants import EXECUTION_ROLE_NONE, EXECUTION_ROLE_UP, MARKET_KOSDAQ
+from verify_lab.studies.month_end.constants import (
+    DISPLAY_MONTH_NUMBER,
+    EXECUTION_ROLE_NONE,
+    EXECUTION_ROLE_UP,
+    KEY_EXCLUDED_COUNT,
+    MARKET_KOSDAQ,
+)
 from verify_lab.studies.month_end.constants import Dataset as MonthEndDataset
+from verify_lab.studies.month_end.trading import KEY_TARGETS as MONTH_END_KEY_TARGETS
+from verify_lab.studies.month_end.trading import TradingOutputs, run_month_end_trading
+from verify_lab.studies.option_expiry import trading as option_expiry_runner
 from verify_lab.studies.option_expiry.constants import DATASETS as EXPIRY_DATASETS
-from verify_lab.studies.option_expiry.constants import FRIDAY, US_MONTHLY_EXPIRY
+from verify_lab.studies.option_expiry.constants import EXPIRY_STOP_LEVEL, FRIDAY, US_MONTHLY_EXPIRY, ExpiryCell
 from verify_lab.studies.option_expiry.constants import Dataset as ExpiryDataset
+from verify_lab.studies.option_expiry.trading import KEY_CELLS as EXPIRY_KEY_CELLS
+from verify_lab.studies.option_expiry.trading import ExpiryOutputs, run_option_expiry_trading
 from verify_lab.studies.reverse.constants import DATASETS as REVERSE_DATASETS
-from verify_lab.studies.reverse.constants import DISPLAY_DIRECTION_REVERSE_ALL, EXTREME_DIRECTION_LABELS
+from verify_lab.studies.reverse.constants import (
+    DISPLAY_DIRECTION_REVERSE_ALL,
+    EXTREME_DIRECTION_LABELS,
+    STOP_LOSS_LEVEL,
+    Target,
+)
 from verify_lab.studies.reverse.constants import Dataset as ReverseDataset
+from verify_lab.studies.reverse.trading import KEY_TARGETS as REVERSE_KEY_TARGETS
+from verify_lab.studies.reverse.trading import StrategyOutputs, run_reverse_trading
 
 # ============================================================
 # 계약 — 손으로 박아 둔 기대 컬럼
@@ -114,7 +124,7 @@ SUMMARY_COMMON_COLUMNS = (
     "승률(%)",
     "손익비",
     "손익분기 승률(%)",
-    # **손익비 바로 뒤에 그 분자·분모를 둔다.** `docs/strategy/투자금_결정.md` §1.2 가
+    # **손익비 바로 뒤에 그 분자·분모를 둔다.** `docs/공유/투자금_결정.md` §1.2 가
     # 이 두 값의 출처를 성적표로 적어 두었는데 실제로는 없었다. `이길 때(%)` 는 양수,
     # `질 때(%)` 는 **음수**다 — `최악(%)` 과 같은 관용이고 그 문서의 예시와도 부호가 맞는다
     "이길 때(%)",
@@ -303,7 +313,7 @@ def reverse_outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs
     """합성 시세로 돈 역방향 매매 결과."""
     directory = tmp_path_factory.mktemp("reverse")
 
-    return run_reverse_trading([_reverse_target(_write_market(directory, "SYN"))])
+    return run_reverse_trading([_reverse_target(_write_market(directory, "SYN"))], stop_levels=(STOP_LOSS_LEVEL,))
 
 
 @pytest.fixture(scope="module")
@@ -328,8 +338,11 @@ def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryO
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(option_expiry_runner, "MARKET_DIR", directory)
         patch.setattr(option_expiry_runner, "DATASETS", (dataset,))
+        # **한 손절선으로 고정한다.** 격자 배수가 붙으면 구조 계약(구간 5행·신호마다 한 행)이
+        # 손절선 수만큼 늘어나 무엇을 재는지 흐려진다 — 격자 자체는 별도 테스트가 본다
         yield run_option_expiry_trading(
-            [ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False)]
+            [ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False)],
+            stop_levels=(EXPIRY_STOP_LEVEL,),
         )
 
 
@@ -604,7 +617,7 @@ class TestStopLevelFormat:
         Then: 음수 실수 · 무손절 · 손절불가가 나온다
         """
         # Given
-        from verify_lab.strategy.constants import stop_level_value
+        from verify_lab.execution.constants import stop_level_value
 
         # When / Then
         assert stop_level_value(0.05, measurable=True) == -5.0
@@ -623,7 +636,7 @@ class TestStopLevelFormat:
         Then: `RuntimeError` 를 던진다
         """
         # Given
-        from verify_lab.strategy.constants import stop_level_value
+        from verify_lab.execution.constants import stop_level_value
 
         # When / Then
         with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
@@ -688,7 +701,7 @@ class TestReversePeriods:
         target = _reverse_target(_write_market(tmp_path / "sparse", "SYN", EARLY_SIGNAL_POSITIONS))
 
         # When
-        summary = run_reverse_trading([target]).performance
+        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
 
         # Then
         assert summary[DISPLAY_PERIOD].tolist() == list(PERIODS)
@@ -765,7 +778,7 @@ class TestReversePeriods:
         target = _reverse_target(_write_market(tmp_path / "early", "SYN", EARLY_SIGNAL_POSITIONS))
 
         # When
-        summary = run_reverse_trading([target]).performance
+        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
         empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
 
         # Then
@@ -818,19 +831,20 @@ class TestEventCount:
 
         복제하면 구간 분할이 두 벌이 되어 같은 원칙이 다른 답을 낸다 (절대 원칙 5).
 
-        Given: 매매 계층의 runner 소스
+        Given: 매매법마다 하나씩인 매매 실행 모듈 소스
         When: 구간 경계를 만드는 표현을 찾았을 때
         Then: `periods.py` 밖에는 없다
         """
         # Given
-        runners = sorted((BASE_DIR / "src" / "verify_lab" / "strategy").glob("*_runner.py"))
-        assert runners, "runner 파일을 찾지 못했습니다"
+        runners = sorted((BASE_DIR / "src" / "verify_lab" / "studies").glob("*/trading.py"))
+        assert runners, "매매 실행 모듈을 찾지 못했습니다"
 
         # When / Then
         for runner in runners:
             source = runner.read_text(encoding="utf-8")
-            assert "DateOffset" not in source, f"{runner.name} 이 최근 N년 경계를 직접 만듭니다"
-            assert "PERIOD_FIRST_HALF" not in source, f"{runner.name} 이 절반 분할을 직접 만듭니다"
+            where = f"{runner.parent.name}/{runner.name}"
+            assert "DateOffset" not in source, f"{where} 이 최근 N년 경계를 직접 만듭니다"
+            assert "PERIOD_FIRST_HALF" not in source, f"{where} 이 절반 분할을 직접 만듭니다"
 
 
 class TestSingleColumnStopFilter:
@@ -855,7 +869,7 @@ class TestSingleColumnStopFilter:
         """
         # Given
         table = month_end_outputs.performance
-        cells = [DISPLAY_TICKER, month_end_runner.DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_PERIOD]
+        cells = [DISPLAY_TICKER, DISPLAY_MONTH_NUMBER, DISPLAY_DIRECTION, DISPLAY_PERIOD]
 
         # When
         picked = table[table[DISPLAY_STOP_LEVEL].isin([self.FIXED_LEVEL, STOP_NOT_MEASURABLE_LABEL])]
@@ -878,7 +892,7 @@ class TestSingleColumnStopFilter:
         """
         # Given
         table = month_end_outputs.performance
-        cells = [DISPLAY_TICKER, month_end_runner.DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_PERIOD]
+        cells = [DISPLAY_TICKER, DISPLAY_MONTH_NUMBER, DISPLAY_DIRECTION, DISPLAY_PERIOD]
 
         # When
         naive = table[table[DISPLAY_STOP_LEVEL].isin([self.FIXED_LEVEL, STOP_NOT_MEASURABLE_LABEL, NO_STOP_LABEL])]
@@ -917,12 +931,11 @@ class TestFilenames:
         Then: 세 이름이 한글로 정의돼 있다
         """
         # Given
-        from verify_lab.strategy.constants import STOP_GRID_FILENAME, SUMMARY_FILENAME, TRADES_FILENAME
+        from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
 
         # When / Then
         assert SUMMARY_FILENAME == "성적표.csv"
         assert TRADES_FILENAME == "거래내역.csv"
-        assert STOP_GRID_FILENAME == "손절선_격자.csv"
 
     def test_매매_스크립트에_csv_문자열이_없다(self) -> None:
         """
@@ -930,12 +943,12 @@ class TestFilenames:
 
         정의만 하고 두면 규칙을 지킨 것이 아니다 (`src/verify_lab/CLAUDE.md` 상수 관리).
 
-        Given: `scripts/strategy/` 의 실행 스크립트
+        Given: `scripts/` 의 실행 스크립트
         When: 소스에서 `.csv` 를 찾았을 때
         Then: 하나도 없다
         """
         # Given
-        scripts = sorted((BASE_DIR / "scripts" / "strategy").glob("run_*.py"))
+        scripts = sorted((BASE_DIR / "scripts").glob("run_*.py"))
         assert scripts, "매매 스크립트를 찾지 못했습니다"
 
         # When / Then
@@ -950,7 +963,7 @@ class TestPayoffAmountColumns:
         """
         목적: 두 열의 부호를 계약으로 고정한다.
 
-        **`최악(%)` 이 음수인 것과 같은 관용**이고 `docs/strategy/투자금_결정.md` §1.2 의
+        **`최악(%)` 이 음수인 것과 같은 관용**이고 `docs/공유/투자금_결정.md` §1.2 의
         예시(`0.0138` · `-0.0133`)와도 부호가 맞는다. 둘 다 절대값으로 내면 표를 읽는 사람이
         어느 쪽이 손실인지 이름으로만 판단해야 한다.
 
@@ -1077,7 +1090,7 @@ class TestIntegerCounts:
         """
         # Given
         target = _reverse_target(_write_market(tmp_path / "early", "SYN", EARLY_SIGNAL_POSITIONS))
-        summary = run_reverse_trading([target]).performance
+        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
         empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
         assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다 — 신호 위치를 앞으로 옮기세요"
         assert empty[DISPLAY_GAP_STOP_COUNT].isna().all()
@@ -1185,7 +1198,7 @@ class TestRunSummary:
 
     def test_비용_표기가_세_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
-        목적: `.claude/rules/strategy.md` 의 맨몸 성적 표기를 월말만 갖고 있던 것을 닫는다
+        목적: `.claude/rules/trading.md` 의 맨몸 성적 표기를 월말만 갖고 있던 것을 닫는다
 
         빠뜨린 것과 일부러 뺀 것을 구별할 수 없으면 다음 사람이 다시 계산한다.
 
@@ -1228,13 +1241,13 @@ class TestRunSummary:
         Then: 조립부가 없다
         """
         # Given
-        script = BASE_DIR / "scripts" / "strategy" / "run_option_expiry_trading.py"
+        script = BASE_DIR / "scripts" / "run_option_expiry.py"
 
         # When
         source = script.read_text(encoding="utf-8")
 
         # Then — **`save_run_summary` 에 사전 리터럴을 넘기지 않는다.** 조립부의 흔적이다
-        assert "save_run_summary(directory, outputs.summary)" in source, "요약을 runner 에서 받지 않습니다"
+        assert "merge_run_summary(study.summary, trading.summary)" in source, "요약을 runner 에서 받지 않습니다"
         assert "save_run_summary(\n" not in source, "CLI 가 요약을 조립합니다"
 
 

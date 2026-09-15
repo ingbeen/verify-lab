@@ -38,7 +38,7 @@ from verify_lab.measure.statistics import (
     summarize,
 )
 from verify_lab.report.constants import BASIS_LABELS, DISPLAY_HORIZON, PERCENT_DECIMALS
-from verify_lab.report.run_summary import KEY_DATASET_LABEL, dataset_record
+from verify_lab.report.run_summary import KEY_DATASET_LABEL, KEY_TRACK, dataset_record
 from verify_lab.report.tables import (
     build_candidates_table,
     build_excess_table,
@@ -72,6 +72,7 @@ from verify_lab.studies.reverse.constants import (
     DISPLAY_ZSCORE,
     EVENT_GAP_DAYS,
     EXTREME_DIRECTION_LABELS,
+    KEY_START_YEAR,
     OUTPUT_FILES,
     PARAMETER_PREFIX_RANK_CUT,
     PERIOD_ALL,
@@ -107,7 +108,7 @@ IDENTITY_COLUMNS = (
 )
 
 # 집계·초과분·검정이 쓰는 수익률 기준. 익일 시가는 `signals.csv` 의 원자료로만 남고
-# 평균·승률로 집계되지 않는다 (docs/spec/역방향_설계.md §7 결정 ㉓).
+# 평균·승률로 집계되지 않는다 (docs/매매/역방향/설계.md §7 결정 ㉓).
 # 그래서 세 표의 `기준` 이 상수가 되고, 컬럼 대신 실행 요약이 그 기록을 든다
 AGGREGATED_BASIS = ReturnBasis.CLOSE
 
@@ -116,7 +117,6 @@ AGGREGATED_BASIS = ReturnBasis.CLOSE
 # ============================================================
 
 KEY_AGGREGATED_BASIS = "aggregated_basis"
-KEY_STUDY = "study"
 KEY_DATASETS = "datasets"
 KEY_PARAMETERS = "parameters"
 KEY_PERMUTATION = "permutation"
@@ -136,7 +136,6 @@ KEY_SMA_UNDETERMINED = "sma_undetermined_count"
 
 KEY_TEST = "test"
 KEY_PARAMETER = "parameter"
-KEY_START_YEAR = "start_year"
 KEY_DIRECTION = "direction"
 
 # 신호군의 **시대 구간 이름**(`전체`·`2010년대`)이다. **데이터 기간의 `period` 와 이름이 같지만
@@ -376,7 +375,7 @@ def run_study(
     }
 
     summary = {
-        KEY_STUDY: TRACK_NAME,
+        KEY_TRACK: TRACK_NAME,
         KEY_DATASETS: dataset_records,
         KEY_PARAMETERS: {
             "rank_cuts": list(rank_cuts),
@@ -977,7 +976,7 @@ def _event_ids(frame: pd.DataFrame, selected: Mapping[Direction, pd.Series]) -> 
     **합치는 것이 결론을 만든다.** 급락과 급반등은 같은 충격에서 나오므로 합쳐야
     "7건 = 사건 3개"가 나오고, 나누면 결정 ③ 이 드러내려던 비독립성이 숨는다.
     합집합 사건이 최장 29일이라 "한 충격"이 성립한다는 실측이 근거다
-    (`docs/spec/역방향_설계.md` §7 결정 ⑫).
+    (`docs/매매/역방향/설계.md` §7 결정 ⑫).
 
     Args:
         frame: 시세

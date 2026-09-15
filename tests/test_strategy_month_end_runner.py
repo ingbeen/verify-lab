@@ -1,7 +1,7 @@
 """월말 매매의 손절 격자 조립을 고정한다 (코스피·코스닥 8대상).
 
-**판정식은 이미 있다** — `strategy/trade_fill.simulate_scheduled_trade` 가 시가 → 장중 순서와
-갭손절을 담당하고, `strategy/periods.period_rows` 가 구간별 성적을 낸다.
+**판정식은 이미 있다** — `execution/trade_fill.simulate_scheduled_trade` 가 시가 → 장중 순서와
+갭손절을 담당하고, `execution/periods.period_rows` 가 구간별 성적을 낸다.
 이 파일이 검사하는 것은 **그 둘을 조립하는 부분**이다.
 
 고정하는 계약은 여덟이다.
@@ -31,11 +31,7 @@ from verify_lab.common_constants import (
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS_KRW,
 )
-from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
-from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
-from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_PERIOD
-from verify_lab.strategy import month_end_runner
-from verify_lab.strategy.constants import (
+from verify_lab.execution.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_EXIT_REASON,
     DISPLAY_HOLD_DAYS,
@@ -48,23 +44,27 @@ from verify_lab.strategy.constants import (
     PERIODS,
     STOP_NOT_MEASURABLE_LABEL,
 )
-from verify_lab.strategy.month_end_runner import (
-    DISPLAY_MONTH,
+from verify_lab.execution.run_summary import KEY_RULE
+from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
+from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_PERIOD
+from verify_lab.studies.month_end import trading as month_end_runner
+from verify_lab.studies.month_end.constants import (
+    COL_EXIT_DATE,
+    DISPLAY_MONTH_NUMBER,
+    EXECUTION_ROLE_NONE,
+    EXECUTION_ROLE_UP,
     KEY_EXCLUDED_COUNT,
+    MARKET_KOSDAQ,
+    Dataset,
+)
+from verify_lab.studies.month_end.schedule import MonthExitSchedule, month_exit_schedule
+from verify_lab.studies.month_end.trading import (
     KEY_TARGETS,
     MONTH_END_STOP_LEVELS,
     TradingOutputs,
     run_month_end_trading,
 )
-from verify_lab.strategy.run_summary import KEY_RULE
-from verify_lab.studies.month_end.constants import (
-    COL_EXIT_DATE,
-    EXECUTION_ROLE_NONE,
-    EXECUTION_ROLE_UP,
-    MARKET_KOSDAQ,
-    Dataset,
-)
-from verify_lab.studies.month_end.schedule import MonthExitSchedule, month_exit_schedule
 
 # 합성 시세 구간. 12개월이 다 차려면 몇 해가 필요하다
 SYNTHETIC_START = "2018-01-01"
@@ -121,7 +121,7 @@ def _write_market(directory: Path, ticker: str, days: pd.DatetimeIndex | None = 
 def _write_index(directory: Path, ticker: str) -> Dataset:
     """합성 지수 계열을 만든다.
 
-    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/spec/월말_진입_설계.md` §7.6),
+    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/매매/월말_진입/설계.md` §7.6),
     그래서 장중 손절을 잴 수 없다.
 
     Args:
@@ -189,7 +189,7 @@ class TestGridAxis:
         목적: 손절선 격자가 **8종 + 무손절 = 9행**임을 고정한다.
 
         무손절이 빠지면 「손절이 무엇을 막았는가」를 잴 기준이 없어진다
-        (`.claude/rules/strategy.md`).
+        (`.claude/rules/trading.md`).
 
         Given: 합성 ETF 하나
         When: 격자를 돌린다
@@ -213,7 +213,7 @@ class TestGridAxis:
         Then: 월 축이 1~12 전부다
         """
         # Given / When
-        months = set(outputs.performance[DISPLAY_MONTH])
+        months = set(outputs.performance[DISPLAY_MONTH_NUMBER])
 
         # Then
         assert months == set(range(1, 13))
@@ -274,7 +274,7 @@ class TestStopLoss:
         목적: 손절이 걸린 체결의 손실이 **손절선 이하**임을 고정한다.
 
         **갭손절은 예외다** — 시가가 이미 손절선 아래로 열리면 그 시가에 나가므로 더 잃는다.
-        손절선이 막아주는 것은 장중에 밀리는 손실뿐이다 (`.claude/rules/strategy.md`).
+        손절선이 막아주는 것은 장중에 밀리는 손실뿐이다 (`.claude/rules/trading.md`).
 
         Given: 손절선 −5% 로 잡은 체결
         When: 갭손절이 아닌 체결만 본다
@@ -301,8 +301,8 @@ class TestStopLoss:
         Then: 성적표에 갭손절 컬럼이 있고 표본이 있는 행은 비어 있지 않다
         """
         # Given / When
+        from verify_lab.execution.constants import DISPLAY_GAP_STOP_COUNT
         from verify_lab.report.constants import DISPLAY_SIGNAL_COUNT
-        from verify_lab.strategy.constants import DISPLAY_GAP_STOP_COUNT
 
         counted = outputs.performance[outputs.performance[DISPLAY_SIGNAL_COUNT] > 0]
 
@@ -329,7 +329,7 @@ class TestStopLoss:
         Then: −10% 쪽이 더 적거나 같다
         """
         # Given
-        from verify_lab.strategy.constants import (
+        from verify_lab.execution.constants import (
             DISPLAY_GAP_STOP_COUNT,
             DISPLAY_INTRADAY_STOP_COUNT,
             PERIOD_ALL,
@@ -341,7 +341,7 @@ class TestStopLoss:
         ]
 
         def _total_stops(level: float) -> pd.Series:
-            sliced = overall[overall[DISPLAY_STOP_LEVEL] == level].set_index(DISPLAY_MONTH)
+            sliced = overall[overall[DISPLAY_STOP_LEVEL] == level].set_index(DISPLAY_MONTH_NUMBER)
 
             return sliced[DISPLAY_GAP_STOP_COUNT] + sliced[DISPLAY_INTRADAY_STOP_COUNT]
 
@@ -424,9 +424,9 @@ class TestSamplePreservation:
         Then: −3% 의 보유일이 무손절보다 길지 않다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_ENTRY_DATE
+        from verify_lab.execution.constants import DISPLAY_ENTRY_DATE
 
-        keys = [DISPLAY_MONTH, DISPLAY_DIRECTION, DISPLAY_ENTRY_DATE]
+        keys = [DISPLAY_MONTH_NUMBER, DISPLAY_DIRECTION, DISPLAY_ENTRY_DATE]
         no_stop = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL].set_index(keys)
         tight = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == -3.0].set_index(keys)
 
@@ -449,7 +449,7 @@ class TestLookAhead:
         Then: 겹치는 진입일의 수익률이 같다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_ENTRY_DATE
+        from verify_lab.execution.constants import DISPLAY_ENTRY_DATE
 
         full = pd.read_csv(dataset.path)
         short_path = tmp_path / MARKET_FILE_TEMPLATE.format(ticker="999901")
@@ -561,7 +561,7 @@ class TestIndexDataset:
         """
         목적: ETF 는 **대조축 `무손절` 행을 갖고** 「손절불가」는 쓰지 않음을 고정한다.
 
-        무손절 대조는 `.claude/rules/strategy.md` 가 요구한다 — 손절의 실질 효용은 수익이
+        무손절 대조는 `.claude/rules/trading.md` 가 요구한다 — 손절의 실질 효용은 수익이
         아니라 최악 통제라, 대조 없이는 무엇을 막았는지 보이지 않는다.
 
         Given: 합성 ETF 하나
@@ -602,7 +602,7 @@ class TestDatasetLabel:
         Then: 두 표의 종목 컬럼에 숫자만인 값이 없다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_TICKER
+        from verify_lab.execution.constants import DISPLAY_TICKER
 
         # When / Then
         for table in (outputs.performance, outputs.trades):
@@ -622,8 +622,8 @@ class TestDatasetLabel:
         Then: 요약의 데이터셋 항목에 코드와 종목명이 모두 있다
         """
         # Given
+        from verify_lab.execution.run_summary import KEY_DATASETS
         from verify_lab.report.run_summary import KEY_DATASET_LABEL, KEY_DATASET_TICKER
-        from verify_lab.strategy.run_summary import KEY_DATASETS
 
         # When
         entries = outputs.summary[KEY_DATASETS]
@@ -654,7 +654,7 @@ class TestFromYear:
         Then: 진입일이 전부 2021 년 이후이고 2021 년 진입이 실제로 있다
         """
         # Given / When
-        from verify_lab.strategy.constants import DISPLAY_ENTRY_DATE
+        from verify_lab.execution.constants import DISPLAY_ENTRY_DATE
 
         trades = run_month_end_trading((dataset,), from_year=2021).trades
         years = pd.to_datetime(trades[DISPLAY_ENTRY_DATE]).dt.year
@@ -675,7 +675,7 @@ class TestFromYear:
         Then: 수익률·보유일·청산 사유가 모두 같다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_ENTRY_DATE
+        from verify_lab.execution.constants import DISPLAY_ENTRY_DATE
 
         sliced = run_month_end_trading((dataset,), from_year=2021).trades
         keys = [DISPLAY_STOP_LEVEL, DISPLAY_DIRECTION, DISPLAY_ENTRY_DATE]
@@ -703,7 +703,7 @@ class TestFromYear:
         Then: 같다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_PERIOD_END, PERIOD_RECENT_5Y
+        from verify_lab.execution.constants import DISPLAY_PERIOD_END, PERIOD_RECENT_5Y
 
         def _recent_end(performance: pd.DataFrame) -> set[str]:
             recent = performance[performance[DISPLAY_PERIOD] == PERIOD_RECENT_5Y]
@@ -763,7 +763,7 @@ class TestFromYear:
         # When
         overall = run_month_end_trading((dataset,), from_year=2021).performance
         overall = overall[overall[DISPLAY_PERIOD] == PERIOD_ALL]
-        counts = overall.groupby(DISPLAY_MONTH)[DISPLAY_SIGNAL_COUNT].max()
+        counts = overall.groupby(DISPLAY_MONTH_NUMBER)[DISPLAY_SIGNAL_COUNT].max()
 
         # Then
         assert counts[12] == 2
@@ -784,7 +784,7 @@ class TestFromYear:
         performance = run_month_end_trading((dataset,), from_year=2021).performance
 
         # Then
-        assert set(performance[DISPLAY_MONTH]) == set(range(1, 13))
+        assert set(performance[DISPLAY_MONTH_NUMBER]) == set(range(1, 13))
         assert len(set(performance[DISPLAY_STOP_LEVEL])) == len(MONTH_END_STOP_LEVELS) + 1
         assert set(performance[DISPLAY_PERIOD]) == set(PERIODS)
 
@@ -800,8 +800,8 @@ class TestFromYear:
         Then: 요약의 규칙에 2021 이 들어 있다
         """
         # Given
-        from verify_lab.strategy.month_end_runner import KEY_FROM_YEAR
-        from verify_lab.strategy.run_summary import KEY_RULE
+        from verify_lab.execution.run_summary import KEY_RULE
+        from verify_lab.studies.month_end.trading import KEY_FROM_YEAR
 
         # When
         summary = run_month_end_trading((dataset,), from_year=2021).summary
@@ -820,8 +820,8 @@ class TestFromYear:
         Then: 시작 연도가 None 이다
         """
         # Given
-        from verify_lab.strategy.month_end_runner import KEY_FROM_YEAR
-        from verify_lab.strategy.run_summary import KEY_RULE
+        from verify_lab.execution.run_summary import KEY_RULE
+        from verify_lab.studies.month_end.trading import KEY_FROM_YEAR
 
         # When / Then
         assert outputs.summary[KEY_RULE][KEY_FROM_YEAR] is None

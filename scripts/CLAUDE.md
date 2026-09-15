@@ -14,8 +14,7 @@
 | 폴더 | 역할 | 실행 주체 |
 | --- | --- | --- |
 | `data/` | 데이터 수집·품질 점검 | AI 모델 직접 실행 가능 (외부 서버 요청 — 불필요한 재수집 금지) |
-| `studies/` | 검증 실행 | AI 모델 직접 실행 가능 |
-| `strategy/` | 매매 규칙 실행 | AI 모델 직접 실행 가능 |
+| `run_<매매법>.py` | **측정과 체결을 한 번에** 실행 | AI 모델 직접 실행 가능 |
 
 실행 규칙과 **재수집이 기존 결과를 바꾼다는 점**은 루트 [CLAUDE.md](../CLAUDE.md)
 "스크립트 실행 규칙"이 SoT입니다.
@@ -29,6 +28,7 @@
 3. **비즈니스 로직 호출** — 도메인 모듈 선택, 파라미터 전달, 결과 수령
 4. **결과 표시** — 성공/실패 메시지, 요약 통계, `TableLogger` 기반 표 출력
 5. **메타데이터 관리** — 결과 파일 생성 시 `meta_manager.save_metadata(타입, 메타)` 호출.
+   **타입은 매매법당 하나**입니다 — 실행이 하나이므로 측정·체결로 가르면 같은 실행이 두 줄로 남습니다.
    ISO 8601 타임스탬프(KST), 실행 파라미터, 핵심 통계를 자동 기록하며 최근 N개만 순환 저장합니다.
    **신규 메타 타입은 스크립트 구현 시 정의하고 이 문서의 목록에 추가합니다**
 6. **예외 처리** — `@cli_exception_handler` 데코레이터 사용
@@ -43,24 +43,21 @@
 | `kodex_distribution_probe` | `data/check_kodex_distribution.py` | 실측한 종목, 원본가·수정주가 행 수, 수정주가가 덮지 못한 거래일 수, 만기일 수, 분배락 건수와 **만기 창 안 건수**, 창 크기 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
 | `krx_futures_collect` | `data/collect_krx_futures.py` | 수집한 상품·조회 시작일, 저장 경로·행 수·계약 수·기간, **제외 건수 세 종류**(야간·미개시·최근), 스냅숏에서 찾은 계약 수, 시세가 없던 계약 수, 현물가 결측 행 수 |
-| `futures_leverage_study` | `studies/run_futures_leverage_study.py` | 결과 폴더, 지수 필터, 쌍 수, 표별 산출 행 수, 시작일 원자료 파일 목록, **선물 시세가 없어 건너뛴 쌍과 사유** |
+| `futures_leverage` | `run_futures_leverage.py` | 결과 폴더, 지수 필터, 쌍 수, 표별 산출 행 수, 시작일 원자료 파일 목록, **선물 시세가 없어 건너뛴 쌍과 사유** |
 | `etn_collect` | `data/collect_etn.py` | 수집한 ETN 종목·ISIN·조회 시작일, 시세 또는 지표가치의 저장 경로·행 수·기간·최근 제외 건수 |
-| `leverage_tracking_study` | `studies/run_leverage_tracking_study.py` | 결과 폴더, 실행한 지수 필터, 쌍 수와 쌍 목록, 보유 기간 격자, 표별 산출 행 수 |
+| `leverage_tracking` | `run_leverage_tracking.py` | 결과 폴더, 실행한 지수 필터, 쌍 수와 쌍 목록, 보유 기간 격자, 표별 산출 행 수 |
 | `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
-| `usdkrw_equivalence_study` | `studies/run_usdkrw_equivalence_study.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
-| `option_expiry_study` | `studies/run_option_expiry_study.py` | 결과 폴더, 검증한 종목, 만기 창 범위, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 **매매의 진입·제외 건수·보유 거래일수 분포**도 남는다 |
-| `reverse_study` | `studies/run_reverse_study.py` | 결과 폴더, 검증한 시세 목록, 신호군 수와 **신호 0건이라 빠진 신호군 수**, 산출물 행 수, 순열 검정 반복 수·시드 |
-| `reverse_trading` | `strategy/run_reverse_trading.py` | 실행한 대상과 순위 컷, 손절선·보유 한도, 결과 폴더 |
-| `option_expiry_trading` | `strategy/run_option_expiry_trading.py` | 대상 칸과 손절선, 성적표·체결 원자료의 행 수, 결과 폴더 |
+| `usdkrw_equivalence` | `run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
+| `option_expiry` | `run_option_expiry.py` | 결과 폴더, 대상 종목과 **체결 대상 칸**, 만기 창 범위, **손절선 종 수**, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 진입·제외 건수·보유 거래일수 분포도 남는다 |
+| `reverse` | `run_reverse.py` | 결과 폴더, 대상 시세 목록과 **체결 대상(종목 × 순위 컷)**, 신호군 수와 **신호 0건이라 빠진 신호군 수**, **손절선 격자·보유 한도**, 산출물 행 수, 순열 검정 반복 수·시드 |
 | `expiry_dividend_probe` | `data/check_expiry_dividend.py` | 칸별로 보유 구간에 배당락이 걸린 건수와 그 규모 |
-| `month_end_trading` | `strategy/run_month_end_trading.py` | 결과 폴더, 매매한 종목, **손절선 목록(무손절 포함)**, **시작 연도**(안 걸렀으면 `null`), **비용 미반영 표기**, 표별 산출 행 수 |
-| `month_end_study` | `studies/run_month_end_study.py` | 결과 폴더, 측정한 대상, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |
+| `month_end` | `run_month_end.py` | 결과 폴더, 측정 대상과 **체결 대상**(인버스가 빠져 갈린다), **시작 연도**(안 걸렀으면 `null`), 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |
 
 > **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —
 > 그리드는 채택되지 않아 구현을 지웠고 기록하는 스크립트가 없다.
-> 기각 근거는 [docs/strategy/원달러_그리드.md](../docs/strategy/원달러_그리드.md) §2.8 에 있다.
+> 기각 근거는 [docs/조사/원달러_그리드/규칙.md](../docs/조사/원달러_그리드/규칙.md) §2.8 에 있다.
 
 ---
 
@@ -107,7 +104,7 @@
 ### 산출물 저장
 
 - 저장 경로는 `common_constants.py` 상수를 씁니다. **하드코딩 금지**
-- 검증 산출물은 `storage/results/{검증, 매매, 실측}/<매매법>/`에 저장합니다. **매매법당 한 폴더이고
+- 산출물은 `storage/results/{검증, 매매, 조사}/<매매법>/`에 저장합니다. **등급은 `tracks.py` 가 정하고 매매법당 한 폴더이고
   재실행이 그 자리를 덮습니다** — 표기의 SoT 는 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 데이터 저장 규칙입니다
 - 🔴 **좁혀 돌린 실행이 전체 실행을 덮습니다.** `--ticker QQQ` 처럼 대상을 줄이면 그 결과가 같은
   자리에 쓰여 **8대상 표가 1대상 표가 되고 예외는 나지 않습니다.** 무엇을 돌렸는지는
@@ -143,7 +140,7 @@
   그 둘만 `row_counts` 가 별칭이었고, `full_period` 는 **저장은 되는데 행 수가 요약에서
   통째로 빠져** 있었습니다. 나열부는 표가 늘 때 조용히 빠지는 자리입니다
 - **파일 이름을 CLI 가 들면** 요약의 키와 실제 파일을 잇는 것이 사람의 기억이 됩니다 —
-  `run_usdkrw_equivalence_study.py` 가 `[EQUIVALENCE_FILENAME, counts['equivalence']]` 로
+  `run_usdkrw_equivalence.py` 가 `[EQUIVALENCE_FILENAME, counts['equivalence']]` 로
   손수 짝지었고, 한쪽만 고치면 화면 표가 엉뚱한 숫자를 보여줍니다
 
 > 🔴 **`scripts/` 는 테스트 대상이 아닙니다.** 이 저장소의 테스트는 `src` 모듈에 붙으므로

@@ -18,12 +18,16 @@ import pandas as pd
 import pytest
 
 from verify_lab import common_constants
-from verify_lab.common_constants import RESULT_LAYER_PROBE, RESULT_LAYER_STRATEGY, RESULT_LAYER_STUDY
 from verify_lab.report import writer
 from verify_lab.report.constants import RUN_SUMMARY_FILENAME, SIGNALS_FILENAME
+from verify_lab.tracks import GRADE_SURVEY, GRADE_TRADING, grade_of
 
 TRACK_NAME = "reverse"
 OTHER_TRACK_NAME = "month_end"
+
+# 등급이 다른 매매법. **같은 등급 둘만으로는 「등급이 상위 폴더가 된다」를 고정할 수 없다** —
+# 부모가 늘 같아 규칙이 깨져도 통과한다
+SURVEY_TRACK_NAME = "leverage_tracking"
 
 
 @pytest.fixture
@@ -54,7 +58,7 @@ def test_directory_name_is_the_track_name(mock_results_dir: Path) -> None:
     Then: 폴더 이름이 그 매매법 이름과 정확히 같다
     """
     # When
-    directory = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
+    directory = writer.create_run_directory(TRACK_NAME)
 
     # Then
     assert directory.name == TRACK_NAME
@@ -72,8 +76,8 @@ def test_same_track_reuses_the_same_directory(mock_results_dir: Path) -> None:
     Then: 두 경로가 같다
     """
     # When
-    first = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
-    second = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
+    first = writer.create_run_directory(TRACK_NAME)
+    second = writer.create_run_directory(TRACK_NAME)
 
     # Then
     assert first == second
@@ -83,8 +87,8 @@ def test_previous_files_are_cleared(mock_results_dir: Path) -> None:
     """
     목적: 쓰기 전에 그 폴더를 **비운다**를 고정한다.
 
-    덮어쓰기는 파일 단위라 이번 실행이 내지 않는 파일은 그대로 남는다. 옵션 만기일의
-    `손절선_격자.csv` 가 `--grid` 실행에서만 나오므로, 비우지 않으면 **한 폴더에 두 실행의
+    덮어쓰기는 파일 단위라 이번 실행이 내지 않는 파일은 그대로 남는다. 대상을 좁혀 돌리면
+    이번에 내지 않는 대상의 파일이 남으므로, 비우지 않으면 **한 폴더에 두 실행의
     파일이 섞이고 예외는 나지 않는다.**
 
     Given: 옛 실행의 파일이 남아 있는 결과 폴더
@@ -92,12 +96,12 @@ def test_previous_files_are_cleared(mock_results_dir: Path) -> None:
     Then: 그 파일이 사라진다
     """
     # Given
-    directory = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
-    stale = directory / "손절선_격자.csv"
+    directory = writer.create_run_directory(TRACK_NAME)
+    stale = directory / "옛_산출물.csv"
     stale.write_text("옛 실행의 파일", encoding="utf-8")
 
     # When
-    writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
+    writer.create_run_directory(TRACK_NAME)
 
     # Then
     assert not stale.exists()
@@ -116,55 +120,54 @@ def test_clearing_keeps_other_tracks_in_the_layer(mock_results_dir: Path) -> Non
     Then: 다른 매매법의 파일이 그대로 있다
     """
     # Given
-    other = writer.create_run_directory(OTHER_TRACK_NAME, layer=RESULT_LAYER_STUDY)
+    other = writer.create_run_directory(OTHER_TRACK_NAME)
     kept = other / SIGNALS_FILENAME
     kept.write_text("다른 매매법의 산출물", encoding="utf-8")
 
     # When
-    writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
+    writer.create_run_directory(TRACK_NAME)
 
     # Then
     assert kept.exists()
 
 
-@pytest.mark.parametrize("layer", [RESULT_LAYER_STUDY, RESULT_LAYER_STRATEGY, RESULT_LAYER_PROBE])
-def test_layer_becomes_the_parent_folder(mock_results_dir: Path, layer: str) -> None:
+@pytest.mark.parametrize("track_name", [TRACK_NAME, SURVEY_TRACK_NAME])
+def test_grade_becomes_the_parent_folder(mock_results_dir: Path, track_name: str) -> None:
     """
-    목적: 계층이 **경로**로 드러나는 것을 고정한다 (결정 3).
+    목적: 등급이 **경로**로 드러나는 것을 고정한다.
 
-    같은 매매법의 측정과 매매가 같은 이름을 쓰므로, 둘을 가르는 것은 상위 폴더뿐이다.
-    이 계약이 무너지면 두 계층의 산출물이 한 자리에 섞여 폴더 목록만 봐서는 구별되지 않는다.
+    등급은 폴더 이름에 접미사로 붙이지 않고 상위 폴더가 말한다. 이 계약이 무너지면
+    등급이 다른 산출물이 한 자리에 섞여 폴더 목록만 봐서는 구별되지 않는다.
 
-    Given: 계층 이름
+    Given: 레지스트리에 등록된 매매법 이름
     When: 결과 폴더를 만든다
-    Then: 산출물 루트 바로 아래 그 계층 폴더가 부모다
+    Then: 산출물 루트 바로 아래 **그 매매법의 등급 폴더**가 부모다
     """
     # When
-    directory = writer.create_run_directory(TRACK_NAME, layer=layer)
+    directory = writer.create_run_directory(track_name)
 
     # Then
-    assert directory.parent == mock_results_dir / layer
+    assert directory.parent == mock_results_dir / grade_of(track_name)
 
 
-def test_same_track_splits_by_layer(mock_results_dir: Path) -> None:
+def test_grade_comes_from_the_registry_not_the_caller(mock_results_dir: Path) -> None:
     """
-    목적: **같은 slug 가 두 계층에서 충돌하지 않는다** (목표 1 의 집행).
+    목적: **등급을 호출 측이 고를 수 없음**을 고정한다 (승격이 한 줄로 끝나는 근거).
 
-    매매법 이름을 하나로 통일한 결과 측정과 매매가 같은 문자열을 넘긴다. 계층 폴더가
-    갈라주지 않으면 두 실행이 한 폴더를 공유하는데, **이제는 뒤에 돈 쪽이 앞의 산출물을
-    지우기까지 한다** — 폴더를 비우기 때문이다.
+    호출 측이 등급을 넘길 수 있으면 레지스트리가 SoT 가 아니게 되고, 폴더를 손으로 옮겨도
+    다음 실행이 원래 자리에 다시 만든다. 그래서 `create_run_directory` 는 이름만 받는다.
 
-    Given: 같은 매매법 이름과 서로 다른 두 계층
+    Given: 등급이 다른 두 매매법
     When: 각각 결과 폴더를 만든다
-    Then: 이름은 같고 경로는 다르다
+    Then: 부모 폴더가 각자의 등급이고 서로 다르다
     """
     # When
-    study = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
-    strategy = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STRATEGY)
+    trading = writer.create_run_directory(TRACK_NAME)
+    survey = writer.create_run_directory(SURVEY_TRACK_NAME)
 
     # Then
-    assert study.name == strategy.name
-    assert study != strategy
+    assert trading.parent.name == GRADE_TRADING
+    assert survey.parent.name == GRADE_SURVEY
 
 
 def test_directory_is_created(mock_results_dir: Path) -> None:
@@ -176,7 +179,7 @@ def test_directory_is_created(mock_results_dir: Path) -> None:
     Then: 디렉터리가 존재한다
     """
     # When
-    directory = writer.create_run_directory(TRACK_NAME, layer=RESULT_LAYER_STUDY)
+    directory = writer.create_run_directory(TRACK_NAME)
 
     # Then
     assert directory.is_dir()
@@ -194,7 +197,7 @@ def test_rejects_blank_track_name(mock_results_dir: Path) -> None:
     Then: ValueError
     """
     with pytest.raises(ValueError, match="매매법"):
-        writer.create_run_directory("   ", layer=RESULT_LAYER_STUDY)
+        writer.create_run_directory("   ")
 
 
 @pytest.mark.parametrize("bad_name", ["month_end_v2", "QQQ_expiry", "month-end", "월말", "../escape", "a/b", "."])
@@ -215,10 +218,10 @@ def test_rejects_track_name_outside_the_slug_shape(mock_results_dir: Path, bad_n
     """
     # When / Then
     with pytest.raises(ValueError, match="영소문자"):
-        writer.create_run_directory(bad_name, layer=RESULT_LAYER_STUDY)
+        writer.create_run_directory(bad_name)
 
     # 검사가 «비우기보다 먼저» 일어나야 한다 — 나중이면 거부해도 이미 지운 뒤다
-    assert not (mock_results_dir / RESULT_LAYER_STUDY).exists()
+    assert not mock_results_dir.exists(), "거부했는데 산출물 루트가 만들어졌습니다"
 
 
 def test_accepts_every_real_track_name() -> None:
@@ -254,19 +257,22 @@ def test_accepts_every_real_track_name() -> None:
     assert unmatched == [], f"실제 매매법 이름이 폴더 이름 검사를 통과하지 못합니다: {unmatched}"
 
 
-def test_rejects_unknown_layer(mock_results_dir: Path) -> None:
+def test_rejects_unregistered_track_name(mock_results_dir: Path) -> None:
     """
-    목적: 선언되지 않은 계층으로 폴더를 파지 못하게 한다 (경계 조건).
+    목적: 레지스트리에 없는 매매법으로 폴더를 파지 못하게 한다 (경계 조건).
 
-    오타 하나를 통과시키면 **예외 없이 새 상위 폴더가 생긴다.** 산출물이 선언된 세 계층
-    밖으로 조용히 흩어지고, 그 자리는 아무도 보지 않는다.
+    **모양만 맞으면 통과하던 자리다.** 오타 하나가 통과하면 등급을 정할 수 없는데도
+    폴더가 생기고, 산출물이 선언된 등급 밖으로 조용히 흩어진다.
 
-    Given: 목록에 없는 계층 이름
+    Given: slug 모양은 맞지만 등록되지 않은 이름
     When: 결과 폴더를 만든다
-    Then: ValueError
+    Then: ValueError 이고, 산출물 루트가 만들어지지 않았다
     """
-    with pytest.raises(ValueError, match="계층"):
-        writer.create_run_directory(TRACK_NAME, layer="연구")
+    # When / Then
+    with pytest.raises(ValueError, match="등록되지 않은"):
+        writer.create_run_directory("unregistered_track")
+
+    assert not mock_results_dir.exists(), "거부했는데 산출물 루트가 만들어졌습니다"
 
 
 def test_table_is_saved_without_index(tmp_path: Path) -> None:

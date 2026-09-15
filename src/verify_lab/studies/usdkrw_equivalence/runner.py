@@ -1,7 +1,7 @@
 """등가성 검증 실행 — 축을 순회해 산출물을 조립한다
 
 이 모듈은 **판정하지 않는다.** 합격선 대비 통과 여부만 표에 담고, "대체 가능한가"라는 결론은
-사람이 `docs/research/원달러_ETF_등가성.md` 에 쓴다.
+사람이 `docs/조사/원달러_ETF_등가성/결과.md` 에 쓴다.
 
 두 축을 모두 돌린다.
 
@@ -22,6 +22,7 @@ import pandas as pd
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_VALUE, RATE_TO_PERCENT
 from verify_lab.data.loader import load_market_csv, load_series_csv
 from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.report.run_summary import KEY_TRACK
 from verify_lab.studies.usdkrw_equivalence.alignment import align_to_etf_calendar, to_market_dates
 from verify_lab.studies.usdkrw_equivalence.constants import (
     ALPHA_REFERENCE,
@@ -94,6 +95,7 @@ from verify_lab.studies.usdkrw_equivalence.constants import (
     RATIO_DECIMALS,
     SPOT_CLOSE,
     SPOT_SOURCES,
+    TRACK_NAME,
     TRACKING_ERROR_MAX,
     USD_RATE_PATH,
     EtfTarget,
@@ -109,7 +111,6 @@ from verify_lab.utils.logger import get_logger
 logger = get_logger(__name__)
 
 # summary.json 키
-KEY_STUDY = "study"
 KEY_INPUTS = "inputs"
 KEY_ALIGNMENT = "alignment"
 KEY_ROW_COUNTS = "row_counts"
@@ -123,7 +124,7 @@ NOTE_ALPHA = "알파의 합격 판정을 붙이지 않았다. 사양서 §16.2 �
 NOTE_RATE = "이자는 직전 거래일의 금리를 달력일 ÷ 365 로 일할한 값이다. 구간이 끝난 뒤 고시된 금리를 쓰면 미래를 참조한다"
 NOTE_LP = "사양서 §16.4 의 LP 호가 스프레드는 일별 데이터로 측정할 수 없어 산출하지 않았다"
 NOTE_COST = "실효 총비용은 분배금을 조정한 NAV 를 노출 배수 기준선에 회귀한 절편이다. 두 보정 중 하나라도 빠지면 값이 크게 틀린다"
-NOTE_TER = "공시 총보수는 판정 기준이 아니라 측정값의 교차확인용이다. 출처와 조회 시점은 docs/spec/원달러_그리드_설계.md 에 있다"
+NOTE_TER = "공시 총보수는 판정 기준이 아니라 측정값의 교차확인용이다. 출처와 조회 시점은 docs/조사/원달러_그리드/설계.md 에 있다"
 
 
 @dataclass(frozen=True)
@@ -220,7 +221,7 @@ def run_equivalence(
     premium_rows = [_premium_frame(target) for target in ETF_TARGETS]
 
     # 실효 총비용은 **NAV 기준**이라 시장가의 프리미엄 잡음이 섞이지 않는다.
-    # 환율 계열은 확정된 종가를 쓴다 (`docs/spec/원달러_그리드_설계.md` 결정 C15)
+    # 환율 계열은 확정된 종가를 쓴다 (`docs/조사/원달러_그리드/설계.md` 결정 C15)
     cost_spot = _load_spot(_close_source(sources))
     cost_rows = [_effective_cost_row(target, cost_spot, krw_rate, usd_rate) for target in ETF_TARGETS]
 
@@ -241,7 +242,6 @@ def run_equivalence(
     }
 
     summary = {
-        KEY_STUDY: "usdkrw_equivalence",
         # **경로가 아니라 파일 이름을 담는다.** 절대경로는 PC 마다 달라 산출물이 갈리는데,
         # 이 저장소는 두 PC 전제이고 `storage/results/` 를 git 으로 동기화한다.
         # 폴더는 `data/` 계층의 상수가 정하므로 이름만으로 어느 파일인지 특정된다
@@ -265,6 +265,7 @@ def run_equivalence(
         # **행 수의 키는 파일 이름이고, 목록은 `OUTPUT_FILES` 를 돈다.** 손으로 나열하면
         # 표가 늘 때 조용히 빠진다 — 실제로 검증 #8 의 `full_period` 가 저장은 되면서
         # 요약에서 통째로 빠져 있었다
+        KEY_TRACK: TRACK_NAME,
         KEY_ROW_COUNTS: {OUTPUT_FILES[name]: len(table) for name, table in tables.items()},
         KEY_NOTES: [NOTE_MODELS, NOTE_OUTLIER, NOTE_ALPHA, NOTE_RATE, NOTE_LP, NOTE_COST, NOTE_TER],
     }

@@ -1,0 +1,22 @@
+{
+  "index_filter": null,
+  "pair_count": 6,
+  "skipped_pairs": [],
+  "wipeout_window_total": 2814,
+  "track": "futures_leverage",
+  "row_counts": {
+    "comparison.csv": 546,
+    "decomposition.csv": 84,
+    "roll_events.csv": 328,
+    "breakeven.csv": 24,
+    "wipeouts.csv": 252,
+    "leverage_drift.csv": 84,
+    "integer_contracts.csv": 24,
+    "windows_KOSPI200_122630.csv": 28483,
+    "windows_KOSPI200_114800.csv": 29239,
+    "windows_KOSPI200_252670.csv": 17080,
+    "windows_KOSDAQ150_233740.csv": 18375,
+    "windows_KOSDAQ150_251340.csv": 17269,
+    "windows_KOSDAQ150_530107.csv": 6643
+  }
+}

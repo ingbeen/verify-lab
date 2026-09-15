@@ -29,7 +29,7 @@ Python 3.12 · pandas · scipy · yfinance · pykrx · Poetry · PyRight(strict)
 
 ## 관련 문서
 
-- 이 프로젝트가 시작된 이유와 현재 운용 상태 → [docs/context/](docs/context/)
+- 이 프로젝트가 시작된 이유와 현재 운용 상태 → [docs/context/](docs/context)
 - 실행 명령어 → [docs/COMMANDS.md](docs/COMMANDS.md)
 - 프로젝트 규칙 → [CLAUDE.md](CLAUDE.md)
-- 검증 결과 → [docs/research/](docs/research/)
+- 검증 결과 → [docs/매매/](docs/매매)

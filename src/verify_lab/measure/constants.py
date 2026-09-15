@@ -92,6 +92,6 @@ COL_MEAN_RATE_CONFLICT = "mean_rate_conflict"
 # 달라지므로 **이름으로 찾으면 세 벌이 있어도 한 건도 안 걸린다.** 산출물에 나가는 것은 값이다.
 #
 # **구간 «목록»은 여기 두지 않는다.** 몇 구간을 낼지는 계층의 구성이라
-# 매매 계층의 `strategy/constants.PERIODS` 가 정한다 — 올린 것은 이름 둘뿐이다
+# 매매 계층의 `execution/constants.PERIODS` 가 정한다 — 올린 것은 이름 둘뿐이다
 PERIOD_FIRST_HALF = "앞 절반"
 PERIOD_SECOND_HALF = "뒤 절반"

@@ -53,6 +53,7 @@ from verify_lab.measure.constants import (
 from verify_lab.measure.distribution import dividend_adjustment, measure_distribution_share
 from verify_lab.measure.statistics import judgeable, max_non_overlapping
 from verify_lab.report.constants import HORIZON_LABELS
+from verify_lab.report.run_summary import KEY_TRACK
 from verify_lab.studies.futures_leverage.comparison import (
     build_interest_factor,
     build_window_table,
@@ -112,6 +113,7 @@ from verify_lab.studies.futures_leverage.constants import (
     REBALANCE_MONTHLY,
     REBALANCE_NONE,
     ROLL_RULES,
+    TRACK_NAME,
     WINDOWS_FILENAME_TEMPLATE,
     FuturesPair,
 )
@@ -488,7 +490,7 @@ def _integer_contract_table(pair: FuturesPair, series: pd.DataFrame) -> pd.DataF
 
     기준일은 **데이터의 마지막 거래일**이고 가격은 그날의 **원본 정산가**다.
     비율 조정 계열을 쓰면 가격 수준이 실제 체결가가 아니라 명목금액이 어긋난다
-    (`docs/spec/선물_대_레버리지_ETF_설계.md` §4 ③).
+    (`docs/조사/선물_대_레버리지_ETF/설계.md` §4 ③).
 
     Args:
         pair: 선물과 배수 상품의 짝
@@ -707,6 +709,7 @@ def run_study(
             KEY_PAIR_COUNT: len(comparison_parts),
             KEY_SKIPPED_PAIRS: [{KEY_SKIPPED_TICKER: ticker, KEY_SKIPPED_REASON: reason} for ticker, reason in skipped],
             KEY_WIPEOUT_WINDOW_TOTAL: int(tables["wipeouts"][COL_WIPEOUT_COUNT].sum()),
+            KEY_TRACK: TRACK_NAME,
             KEY_ROW_COUNTS: row_counts,
         },
     )

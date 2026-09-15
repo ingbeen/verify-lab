@@ -45,7 +45,7 @@ from verify_lab.report.constants import (
     HORIZON_LABELS,
     PERCENT_DECIMALS,
 )
-from verify_lab.report.run_summary import format_period
+from verify_lab.report.run_summary import KEY_TRACK, format_period
 from verify_lab.studies.leverage_tracking.breakdown import attach_axes, summarize_by_axis, summarize_by_horizon
 from verify_lab.studies.leverage_tracking.constants import (
     COL_ACTUAL,
@@ -104,6 +104,7 @@ from verify_lab.studies.leverage_tracking.constants import (
     SUFFIX_MEDIAN,
     TAIL_DISPLAY_LABELS,
     TAIL_QUANTILES,
+    TRACK_NAME,
     WINDOWS_FILENAME_TEMPLATE,
     LeveragePair,
     tail_column,
@@ -503,6 +504,7 @@ def run_study(
                 }
                 for pair in selected
             ],
+            KEY_TRACK: TRACK_NAME,
             KEY_ROW_COUNTS: row_counts,
         },
     )

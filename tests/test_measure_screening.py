@@ -11,9 +11,11 @@
 핵심 계약은 다섯이다.
 - 게이트 두 축**만** 가른다 — 기준선 대비 차이가 0 이어도, 우연확률이 1 이어도 후보로 남는다
 - 방향 기대값은 **방향 부호를 적용한 평균**이다 — 「아래」 칸은 평균이 양수면 기대값이 음수다
-- 방향은 **절대 비율이 아니라 기준선과의 거리**로 정한다 (측정의 원칙 11)
+- 방향은 **두 방향 비율 중 큰 쪽**이다. 기준선은 표시만 하고 방향에도 게이트에도 쓰지 않는다
+  (2026-09-15 개편 — 기준선 방식은 156칸에서 **더해 주는 칸 0개**에 5칸을 빼기만 했다)
 - **표본이 1건이어도 판정한다** — 과대평가 가능성은 표본 수를 보고 사용자가 판단한다
-- **살 수 없는 대상(지수)은 판정하지 않는다** — 값은 내되 「판정 안 함」으로 남는다
+- **참고용 대상은 판정하지 않는다** — 지수(살 수 없다)와 인버스 실물(1배 롱이 같은 질문에
+  이미 답한다). 값은 내되 「판정 안 함」으로 남는다
 """
 
 import pandas as pd
@@ -419,15 +421,18 @@ class TestDirectionSymmetry:
         assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
 
-    def test_방향은_기준선에서_멀어진_쪽으로_정해진다(self) -> None:
+    def test_방향은_두_비율_중_큰_쪽이다(self) -> None:
         """
-        목적: **절대 비율로 정하면 안 된다.** 주식은 원래 자주 올라 오른 비율이 절반을 넘는
-              칸이 흔하므로, 절대 비율로 정하면 기준선보다 «낮은» 칸까지 「위」가 된다.
-              실측: 옵션 만기일 60칸 중 12칸이 두 방식에서 방향이 갈렸다.
+        목적: **기준선이 방향을 정하지 않는다** (2026-09-15 개편).
 
-        Given: 오른 비율(62.5%)이 내린 비율(37.5%)보다 큰데 기준선 대비로는 내린 쪽이 멀어진 칸
+              기준선 대비 초과분으로 정하면 **칸마다 다른 허들**이 서고(월말 기준선
+              24.9~73.2%), 기준선이 높은 칸에서 멀쩡한 우위가 뒤집힌다. 실측으로 두 검증
+              156칸에서 기준선 방식이 **더해 주는 칸은 0개**이고 5칸을 빼기만 했다.
+
+        Given: 오른 비율(62.5%)이 내린 비율(37.5%)보다 크지만 기준선(66.3%)보다는 «낮은» 칸
+               — 옵션 만기일 KODEX 200 12월의 실물 모양이다
         When: 판정하면
-        Then: 방향이 「아래」다
+        Then: 방향이 「위」이고 후보다
         """
         # Given
         summary = _summary(
@@ -442,7 +447,96 @@ class TestDirectionSymmetry:
         result = screen_candidates(summary, axis_column=AXIS, tradable=True)
 
         # Then
+        assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
+        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+
+    def test_기준선보다_낮아도_적중률이_높으면_후보다(self) -> None:
+        """
+        목적: **「그냥 들고 있는 것보다 못하다」가 탈락 사유가 아니다.**
+
+              이벤트형 매매는 자본이 99% 이상 놀고 있어 비교 대상이 상시 보유가 아니라
+              현금이다. 기준선은 그 사실을 **보여 주는 표시 컬럼**으로만 남는다.
+
+        Given: 월말 KODEX 코스닥150 8월의 실물 모양 — 오른 63.6% · 기준선 66.2% · 회당 +2.11%
+        When: 판정하면
+        Then: 후보이고, 기준선 대비 차이가 음수로 그대로 실린다
+        """
+        # Given
+        summary = _summary(
+            win_rate=0.636,
+            loss_rate=0.364,
+            win_excess=-0.026,
+            loss_excess=0.026,
+            mean=0.0211,
+            sample=11,
+        )
+
+        # When
+        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        # Then
+        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
+        assert result[COL_BASELINE_GAP].iloc[0] == pytest.approx(-0.026, abs=EXACT_TOLERANCE)
+
+    def test_보합이_커도_여집합으로_방향을_정하지_않는다(self) -> None:
+        """
+        목적: 두 방향 비율은 여집합이 아니다 — 보합이 어느 쪽에도 들어가지 않는다.
+              실측으로 월말에 두 비율의 합이 90.0% 인 칸이 있다(보합 10.00%p).
+              「오른 비율 40% 아래면 아래」로 쓰면 그 칸에서 답이 갈린다.
+
+        Given: 오른 40% · 내린 50% · 보합 10% 인 칸
+        When: 판정하면
+        Then: 방향은 큰 쪽인 「아래」이고, 적중률이 «내린 비율 그대로»(50%)라
+              60% 게이트를 못 넘어 제외된다
+        """
+        # Given
+        summary = _summary(
+            win_rate=0.40,
+            loss_rate=0.50,
+            win_excess=-0.05,
+            loss_excess=0.05,
+            mean=-0.004,
+        )
+
+        # When
+        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        # Then
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
+        assert result[COL_HIT_RATE].iloc[0] == pytest.approx(0.50, abs=EXACT_TOLERANCE)
+        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
+
+    def test_자주_맞아도_걸면_손실인_칸은_기대값이_거른다(self) -> None:
+        """
+        목적: **비율만으로는 못 거르는 칸이 실재한다.** 적중률 게이트만 두면 통과한다.
+
+              실물: SPY 3월 만기 34회 — 내린 비율 64.71% 라 「아래」로 걸면 자주 맞지만,
+              맞을 때 +1.27% · 틀릴 때 −3.22% 라 합계가 −10.70%(회당 −0.315%)다.
+              손익분기 승률이 71.7% 인데 64.7% 만 맞는다.
+
+        Given: 내린 비율 64.71% 인데 평균이 «양수»인 칸
+        When: 판정하면
+        Then: 방향은 「아래」이고 적중률은 게이트를 넘지만, 기대값이 음수라 제외된다
+        """
+        # Given
+        summary = _summary(
+            win_rate=0.3529,
+            loss_rate=0.6471,
+            win_excess=-0.10,
+            loss_excess=0.10,
+            mean=0.00315,
+            sample=34,
+        )
+
+        # When
+        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        # Then
+        assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
+        assert result[COL_HIT_RATE].iloc[0] >= MIN_HIT_RATE
+        assert result[COL_EXPECTED_VALUE].iloc[0] == pytest.approx(-0.00315, abs=EXACT_TOLERANCE)
+        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
 
 
 class TestAxisIndependence:

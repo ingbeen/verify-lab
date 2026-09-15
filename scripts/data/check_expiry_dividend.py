@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """옵션 만기일 매매의 보유 구간에 배당락·분배락이 걸리는지 실측
 
-`.claude/rules/strategy.md` 는 **배당·분배락을 보유 구간에 실제로 걸릴 때만 재고, 걸리지
+`.claude/rules/trading.md` 는 **배당·분배락을 보유 구간에 실제로 걸릴 때만 재고, 걸리지
 않으면 「0건 확인」만 적도록** 요구한다. 안 걸리는데 계산에 넣으면 없는 왜곡을 만들기 때문이다.
 
 **방법은 같은 진입·청산 날짜로 원본가와 수정주가의 수익률을 각각 계산해 빼는 것이다.**
@@ -35,9 +35,8 @@ from verify_lab.common_constants import (
 )
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
-from verify_lab.strategy.option_expiry_constants import EXPIRY_CELLS, ExpiryCell
-from verify_lab.strategy.option_expiry_runner import collect_entries
-from verify_lab.studies.option_expiry.constants import DATASETS, Dataset
+from verify_lab.studies.option_expiry.constants import DATASETS, EXPIRY_CELLS, Dataset, ExpiryCell
+from verify_lab.studies.option_expiry.trading import collect_entries
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger

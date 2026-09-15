@@ -15,15 +15,7 @@
 import pandas as pd
 import pytest
 
-from verify_lab.measure.constants import (
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
-    MIN_SAMPLE_PER_CELL,
-    PERIOD_FIRST_HALF,
-    PERIOD_SECOND_HALF,
-)
-from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
-from verify_lab.strategy.constants import (
+from verify_lab.execution.constants import (
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
     EXIT_INTRADAY_STOP,
@@ -32,7 +24,15 @@ from verify_lab.strategy.constants import (
     PERIOD_RECENT_5Y,
     PERIODS,
 )
-from verify_lab.strategy.periods import period_rows
+from verify_lab.execution.periods import period_rows
+from verify_lab.measure.constants import (
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
+    MIN_SAMPLE_PER_CELL,
+    PERIOD_FIRST_HALF,
+    PERIOD_SECOND_HALF,
+)
+from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
 
 
 def _dates(years: list[int]) -> pd.DatetimeIndex:
@@ -371,7 +371,7 @@ class TestPeriodSpan:
         Then: 전체는 2016~2025, 앞 절반은 2016~2020, 뒤 절반은 2021~2025 다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
+        from verify_lab.execution.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
 
         years = list(range(2016, 2026))
         entry_dates = _dates(years)
@@ -400,7 +400,7 @@ class TestPeriodSpan:
         Then: 최근 5년 행의 기간이 비어 있다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
+        from verify_lab.execution.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
 
         years = list(range(2000, 2010))
         entry_dates = _dates(years)
@@ -425,7 +425,7 @@ class TestPeriodSpan:
         Then: 표본이 있는 모든 구간이 전체 범위 안에 있다
         """
         # Given
-        from verify_lab.strategy.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
+        from verify_lab.execution.constants import DISPLAY_PERIOD_END, DISPLAY_PERIOD_START
 
         years = list(range(2016, 2026))
 

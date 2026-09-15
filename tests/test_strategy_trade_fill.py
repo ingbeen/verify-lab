@@ -16,14 +16,14 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.strategy.constants import (
+from verify_lab.execution.constants import (
     EXIT_GAP_STOP,
     EXIT_INTRADAY_STOP,
     EXIT_LIMIT,
     EXIT_PROFIT,
 )
-from verify_lab.strategy.reverse_constants import HOLD_LIMIT, STOP_LOSS_LEVEL
-from verify_lab.strategy.trade_fill import simulate_signal
+from verify_lab.execution.trade_fill import simulate_signal
+from verify_lab.studies.reverse.constants import HOLD_LIMIT, STOP_LOSS_LEVEL
 
 # 손계산을 쉽게 하려고 진입가를 100 으로 둔다
 ENTRY_PRICE = 100.0
@@ -487,3 +487,74 @@ class TestTakeProfitSwitch:
         assert result is not None
         assert result.reason == EXIT_GAP_STOP
         assert result.return_rate == pytest.approx(-0.08, abs=RATE_TOLERANCE)
+
+
+class TestNoStop:
+    """무손절(`stop_level=None`) 경로
+
+    `.claude/rules/trading.md` 가 **「손절이 무엇을 막았는가」의 대조축으로 무손절 성적을
+    요구**한다. 그것을 낼 수 없으면 규칙이 인용한 실측(무손절 최악 -17.45%)을 코드로
+    재현할 방법이 없고, 손절선 격자에 기준이 되는 행이 빠진다.
+
+    **달력형 진입점은 이미 `None` 을 받았다** — 두 진입점의 손절선 타입이 갈려 있으면
+    같은 격자를 매매법마다 다르게 내게 된다.
+    """
+
+    def test_갭이_열려도_손절하지_않는다(self) -> None:
+        """
+        목적: 무손절이면 1단계(시가 갭)를 건너뛴다.
+
+        Given: 시가가 -8% 로 열렸다가 종가가 회복된 다음날
+        When: `stop_level=None` 으로 체결했을 때
+        Then: 갭 청산이 아니라 **종가 기준 이익 청산**이다
+        """
+        # Given
+        frame = _frame([_signal_day(), (92.0, 102.0, 90.0, 101.0), (101.0, 103.0, 100.0, 102.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=HOLD_LIMIT, stop_level=None)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_PROFIT
+        assert result.return_rate == pytest.approx(0.01, abs=RATE_TOLERANCE)
+
+    def test_장중에_크게_밀려도_한도까지_끈다(self) -> None:
+        """
+        목적: 무손절이면 2단계(장중 손절)도 건너뛰고 한도일 종가로 청산한다.
+
+        **이것이 무손절 최악이 손절선보다 깊어지는 이유다** — 역방향 실측에서
+        무손절 최악 -17.45% 대 -5% 손절 최악 -5.00% 였다.
+
+        Given: 장중 -20% 까지 밀리고 종가도 손실인 이틀
+        When: `stop_level=None` 으로 체결했을 때
+        Then: 한도일 청산이며 한도일 **종가** 수익률이다
+        """
+        # Given
+        frame = _frame([_signal_day(), (99.0, 99.5, 80.0, 90.0), (90.0, 92.0, 85.0, 88.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=None)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_LIMIT
+        assert result.return_rate == pytest.approx(-0.12, abs=RATE_TOLERANCE)
+
+    def test_손절선이_0이면_거부한다(self) -> None:
+        """
+        목적: **`0` 을 무손절로 읽지 않는다** (경계 조건).
+
+        무손절은 `None` 이고 `0` 은 「진입가에 닿으면 손절」이라 뜻이 다르다. 한 값이 둘을
+        겸하면 성적표의 `손절선(%)` 이 어느 쪽인지 구별되지 않는다.
+
+        Given: 손절선 0
+        When: 체결했을 때
+        Then: ValueError
+        """
+        # Given
+        frame = _frame([_signal_day(), (99.0, 101.0, 98.0, 100.5), (100.5, 102.0, 100.0, 101.0)])
+
+        # When / Then
+        with pytest.raises(ValueError, match="양수"):
+            simulate_signal(frame, 0, upward=False, hold_limit=HOLD_LIMIT, stop_level=0.0)

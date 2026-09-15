@@ -161,7 +161,7 @@ NOTE_TOO_FEW_SAMPLES = "표본 부족으로 검정 불가"
 NOTE_POPULATION_NOT_LARGER = "모집단이 표본보다 크지 않아 검정 불가"
 
 # 유효 표본이 하한에 못 미치는 칸에는 검정을 붙이지 않는다
-# (docs/spec/역방향_설계.md §6). 백분위도 함께 비운다 —
+# (docs/매매/역방향/설계.md §6). 백분위도 함께 비운다 —
 # 백분위는 사실상 검정 통계량이라 남겨두면 유의성으로 읽힌다.
 # **하한은 `measure/constants.py` 가 소유한다** — 축을 쪼갤 때 쓰는 것과 같은 값이다
 
@@ -272,7 +272,7 @@ def mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:
 class PayoffProfile(NamedTuple):
     """손익비와 그 값을 읽는 데 필요한 것.
 
-    **분자와 분모도 함께 낸다.** `docs/strategy/투자금_결정.md` §1.2 가 그 두 값을
+    **분자와 분모도 함께 낸다.** `docs/공유/투자금_결정.md` §1.2 가 그 두 값을
     성적표의 입력으로 적어 두었는데 실제 표에는 없었다. 여기서 이미 구한 값이라
     내보내기만 하면 되고, 부르는 쪽이 다시 계산하면 **산식이 두 벌**이 된다.
 

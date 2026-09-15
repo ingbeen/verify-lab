@@ -1,92 +1,249 @@
 {
   "track": "option_expiry",
-  "datasets": [
-    {
-      "ticker": "DIA",
-      "label": "DIA",
-      "file": "DIA_max.csv",
-      "period": "1998-01-20 ~ 2026-08-26",
-      "rows": 7195
-    },
-    {
-      "ticker": "069500",
-      "label": "KODEX 200",
-      "file": "069500_max.csv",
-      "period": "2002-10-14 ~ 2026-09-04",
-      "rows": 5898
-    },
-    {
-      "ticker": "SPY",
-      "label": "SPY",
-      "file": "SPY_max.csv",
-      "period": "1993-01-29 ~ 2026-08-25",
-      "rows": 8450
-    },
-    {
-      "ticker": "QQQ",
-      "label": "QQQ",
-      "file": "QQQ_max.csv",
-      "period": "1999-03-10 ~ 2026-09-03",
-      "rows": 6915
-    }
-  ],
-  "rule": {
-    "stop_levels": [
-      -5.0
-    ],
-    "cells": [
+  "row_counts": {
+    "expiries.csv": 1362,
+    "signals.csv": 27022,
+    "weekly_trade_signals.csv": 1648,
+    "weekly_trade_summary.csv": 19,
+    "weekly_trade_excess.csv": 19,
+    "weekly_trade_permutation.csv": 19,
+    "weekly_trade_by_month.csv": 60,
+    "weekly_trade_by_month_halves.csv": 120,
+    "candidates.csv": 60,
+    "거래내역.csv": 3980,
+    "성적표.csv": 700
+  },
+  "cost": "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)",
+  "measure": {
+    "max_offset": 10,
+    "permutation_repeats": 1000,
+    "permutation_seed": 0,
+    "datasets": [
       {
-        "label": "DIA",
-        "expiry_month": 12,
-        "direction": "위",
-        "excluded_count": 0
+        "ticker": "QQQ",
+        "label": "QQQ",
+        "file": "QQQ_max.csv",
+        "period": "1999-03-10 ~ 2026-09-03",
+        "rows": 6915,
+        "expiry_count": 330,
+        "advanced_count": 8,
+        "inside_window_days": 6573,
+        "expiry_weekdays": {
+          "목요일": 8,
+          "금요일": 322
+        },
+        "weekly_trade": [
+          {
+            "exit_weekday": "금요일",
+            "entry_count": 330,
+            "excluded_count": 0,
+            "hold_days": {
+              "4": 78,
+              "5": 252
+            },
+            "baseline_entry_count": 1385
+          }
+        ]
       },
       {
+        "ticker": "SPY",
+        "label": "SPY",
+        "file": "SPY_max.csv",
+        "period": "1993-01-29 ~ 2026-08-25",
+        "rows": 8450,
+        "expiry_count": 403,
+        "advanced_count": 8,
+        "inside_window_days": 8024,
+        "expiry_weekdays": {
+          "목요일": 8,
+          "금요일": 395
+        },
+        "weekly_trade": [
+          {
+            "exit_weekday": "금요일",
+            "entry_count": 403,
+            "excluded_count": 1,
+            "hold_days": {
+              "4": 93,
+              "5": 309
+            },
+            "baseline_entry_count": 1692
+          }
+        ]
+      },
+      {
+        "ticker": "DIA",
+        "label": "DIA",
+        "file": "DIA_max.csv",
+        "period": "1998-01-20 ~ 2026-08-26",
+        "rows": 7195,
+        "expiry_count": 343,
+        "advanced_count": 8,
+        "inside_window_days": 6828,
+        "expiry_weekdays": {
+          "목요일": 8,
+          "금요일": 335
+        },
+        "weekly_trade": [
+          {
+            "exit_weekday": "금요일",
+            "entry_count": 343,
+            "excluded_count": 1,
+            "hold_days": {
+              "4": 81,
+              "5": 261
+            },
+            "baseline_entry_count": 1439
+          }
+        ]
+      },
+      {
+        "ticker": "069500",
         "label": "KODEX 200",
-        "expiry_month": 9,
-        "direction": "위",
-        "excluded_count": 0
-      },
-      {
-        "label": "SPY",
-        "expiry_month": 9,
-        "direction": "아래",
-        "excluded_count": 0
-      },
-      {
-        "label": "DIA",
-        "expiry_month": 9,
-        "direction": "아래",
-        "excluded_count": 0
-      },
-      {
-        "label": "SPY",
-        "expiry_month": 12,
-        "direction": "위",
-        "excluded_count": 0
-      },
-      {
-        "label": "QQQ",
-        "expiry_month": 9,
-        "direction": "아래",
-        "excluded_count": 0
-      },
-      {
-        "label": "QQQ",
-        "expiry_month": 12,
-        "direction": "위",
-        "excluded_count": 0
+        "file": "069500_max.csv",
+        "period": "2002-10-14 ~ 2026-09-04",
+        "rows": 5898,
+        "expiry_count": 286,
+        "advanced_count": 7,
+        "inside_window_days": 5597,
+        "expiry_weekdays": {
+          "월요일": 1,
+          "화요일": 1,
+          "수요일": 4,
+          "목요일": 280
+        },
+        "weekly_trade": [
+          {
+            "exit_weekday": "금요일",
+            "entry_count": 286,
+            "excluded_count": 0,
+            "hold_days": {
+              "3": 5,
+              "4": 4,
+              "5": 42,
+              "6": 235
+            },
+            "baseline_entry_count": 1190
+          },
+          {
+            "exit_weekday": "목요일",
+            "entry_count": 286,
+            "excluded_count": 0,
+            "hold_days": {
+              "2": 2,
+              "3": 6,
+              "4": 40,
+              "5": 238
+            },
+            "baseline_entry_count": 1190
+          }
+        ]
       }
     ]
   },
-  "row_counts": {
-    "거래내역.csv": 199,
-    "성적표.csv": 35
-  },
-  "cost": "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)",
-  "notes": [
-    "진입은 만기일 종가다. 만기일이 휴장이면 직전 거래일로 앞당긴다",
-    "청산은 달력이 지목한 다음주 금요일 종가다. 이익이어도 중간에 팔지 않는다",
-    "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
-  ]
+  "trade": {
+    "datasets": [
+      {
+        "ticker": "DIA",
+        "label": "DIA",
+        "file": "DIA_max.csv",
+        "period": "1998-01-20 ~ 2026-08-26",
+        "rows": 7195
+      },
+      {
+        "ticker": "069500",
+        "label": "KODEX 200",
+        "file": "069500_max.csv",
+        "period": "2002-10-14 ~ 2026-09-04",
+        "rows": 5898
+      },
+      {
+        "ticker": "SPY",
+        "label": "SPY",
+        "file": "SPY_max.csv",
+        "period": "1993-01-29 ~ 2026-08-25",
+        "rows": 8450
+      },
+      {
+        "ticker": "QQQ",
+        "label": "QQQ",
+        "file": "QQQ_max.csv",
+        "period": "1999-03-10 ~ 2026-09-03",
+        "rows": 6915
+      }
+    ],
+    "rule": {
+      "stop_levels": [
+        "무손절",
+        -1.0,
+        -1.5,
+        -2.0,
+        -2.5,
+        -3.0,
+        -3.5,
+        -4.0,
+        -4.5,
+        -5.0,
+        -5.5,
+        -6.0,
+        -6.5,
+        -7.0,
+        -7.5,
+        -8.0,
+        -8.5,
+        -9.0,
+        -9.5,
+        -10.0
+      ],
+      "cells": [
+        {
+          "label": "DIA",
+          "expiry_month": 12,
+          "direction": "위",
+          "excluded_count": 0
+        },
+        {
+          "label": "KODEX 200",
+          "expiry_month": 9,
+          "direction": "위",
+          "excluded_count": 0
+        },
+        {
+          "label": "SPY",
+          "expiry_month": 9,
+          "direction": "아래",
+          "excluded_count": 0
+        },
+        {
+          "label": "DIA",
+          "expiry_month": 9,
+          "direction": "아래",
+          "excluded_count": 0
+        },
+        {
+          "label": "SPY",
+          "expiry_month": 12,
+          "direction": "위",
+          "excluded_count": 0
+        },
+        {
+          "label": "QQQ",
+          "expiry_month": 9,
+          "direction": "아래",
+          "excluded_count": 0
+        },
+        {
+          "label": "QQQ",
+          "expiry_month": 12,
+          "direction": "위",
+          "excluded_count": 0
+        }
+      ]
+    },
+    "notes": [
+      "진입은 만기일 종가다. 만기일이 휴장이면 직전 거래일로 앞당긴다",
+      "청산은 달력이 지목한 다음주 금요일 종가다. 이익이어도 중간에 팔지 않는다",
+      "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
+    ]
+  }
 }

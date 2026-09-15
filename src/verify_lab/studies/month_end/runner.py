@@ -3,7 +3,7 @@
 **계산하지 않는다.** 이벤트 정의(`schedule`)와 측정(`measure`)을 조합해 돌리고, 어느 행이
 어떤 설정의 결과인지를 붙여 쌓기만 한다.
 
-**축을 동시에 쪼개지 않는다** (`docs/spec/월말_진입_설계.md` §3.7). 집계는 세 층이다.
+**축을 동시에 쪼개지 않는다** (`docs/매매/월말_진입/설계.md` §3.7). 집계는 세 층이다.
 
 1. **격자** — 진입 달력일 11칸 × 청산 상대 거래일 7칸. 월별 분해 없음
 2. **월별** — 원 매매법 칸(20일 → 말일) **하나만** 12개월로 쪼갠다
@@ -54,7 +54,7 @@ from verify_lab.measure.statistics import (
     summarize,
 )
 from verify_lab.report.constants import DISPLAY_HIT_RATE, DISPLAY_SCREEN
-from verify_lab.report.run_summary import dataset_record
+from verify_lab.report.run_summary import KEY_TRACK, dataset_record
 from verify_lab.report.tables import build_candidates_table, to_display_columns
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
@@ -82,14 +82,18 @@ from verify_lab.studies.month_end.constants import (
     DISPLAY_TICKER,
     ENTRY_CALENDAR_DAYS,
     EXECUTION_ROLE_NONE,
+    EXECUTION_ROLE_UP,
     EXIT_OFFSETS,
     GRID_CELL_TEMPLATE,
     GRID_EXIT_MONTH_END,
     GRID_EXIT_RELATIVE,
+    KEY_ENTRY_COUNT,
+    KEY_EXCLUDED_COUNT,
     OUTPUT_FILES,
     PERCENT_COLUMNS,
     PROBABILITY_COLUMNS,
     RECENT_WINDOWS_YEARS,
+    TRACK_NAME,
     Dataset,
 )
 from verify_lab.studies.month_end.constants import COL_EXIT_OFFSET as COL_OFFSET
@@ -113,8 +117,6 @@ KEY_ROW_COUNTS = "row_counts"
 # 데이터셋 한 줄의 공통 다섯 키는 **`report/run_summary.py` 가 소유한다.** 여기서 다시
 # 정의하지 않는다 — 이름을 한 벌 더 두면 옛 경로가 살아남아 소유자를 옮겨도 검사가 통과한다
 KEY_IS_INDEX = "is_index"
-KEY_ENTRY_COUNT = "entry_count"
-KEY_EXCLUDED_COUNT = "excluded_count"
 KEY_HOLD_DAYS = "hold_days"
 KEY_BASELINE_ENTRY_COUNT = "baseline_entry_count"
 KEY_CONVERGED = "converged_with_neighbour_months"
@@ -185,7 +187,7 @@ def _load(dataset: Dataset) -> pd.DataFrame:
     """대상의 가격 데이터를 읽는다.
 
     **ETF 와 지수는 로더가 다르다.** 지수는 종가 계열이라 시세 판정(0 이하 가격·급등락)을
-    걸 수 없다 (`docs/spec/월말_진입_설계.md` §7.6).
+    걸 수 없다 (`docs/매매/월말_진입/설계.md` §7.6).
 
     Args:
         dataset: 검증 대상 정의
@@ -327,6 +329,32 @@ def _judgeable(sample_counts: pd.Series) -> pd.Series:
         「예」/「아니오」 문자열 Series
     """
     return sample_counts.map(lambda count: judgeable(int(count)))
+
+
+def _is_judged(dataset: Dataset) -> bool:
+    """이 대상으로 후보 판정을 하는가.
+
+    **판정은 「살 수 있는 1배 롱」에만 건다** (2026-09-15 개편). 나머지 둘은 값을 그대로 내되
+    `1차 판정` 이 「판정 안 함」이 되며, 빼는 것이 아니라 **참고용으로 남긴다.**
+
+    | 빠지는 대상 | 왜 |
+    | --- | --- |
+    | 지수 | 살 수 없다. 그 결과로 「우위가 있다」를 주장하면 **집행할 수 없는 성적이 근거**가 된다 (측정의 원칙 9) |
+    | 인버스 실물 | 1배 롱이 **같은 질문에 이미 답한다.** 둘 다 판정하면 같은 달이 두 번 판정되고 **방향이 반대로 나온다** — 실측으로 8월이 롱 「아래」·인버스 「위」였고 둘 다 제외였다 |
+
+    **인버스 행을 지우지 않는 이유**는 그 성적이 일일 리밸런싱과 총보수가 든 실제 값이라
+    분배락 교차검증의 재료이기 때문이다 (`.claude/rules/trading.md`).
+
+    **판정식을 두 곳에 두지 않는다** — 격자 축과 월별 축이 갈리면 같은 대상이 한 표에서는
+    판정되고 다른 표에서는 안 된다.
+
+    Args:
+        dataset: 검증 대상
+
+    Returns:
+        판정 대상이면 True
+    """
+    return dataset.execution_role == EXECUTION_ROLE_UP
 
 
 def _identify(frame: pd.DataFrame, **values: Any) -> pd.DataFrame:
@@ -690,11 +718,9 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
         if not cell_periods.empty:
             accumulator.periods.append(_identify(cell_periods, **identity))
 
-        # **살 수 없는 대상은 판정하지 않는다** (측정의 원칙 9). 지수는 긴 시계열을 참고하려고
-        # 재지만 그 결과로 「우위가 있다」를 주장하면 집행할 수 없는 성적이 근거가 된다
         accumulator.grid_candidates.append(
             _identify(
-                screen_candidates(grid, axis_column=COL_GRID_CELL, tradable=not dataset.is_index),
+                screen_candidates(grid, axis_column=COL_GRID_CELL, tradable=_is_judged(dataset)),
                 **identity,
             )
         )
@@ -764,7 +790,7 @@ def _run_base_cell(
         accumulator.months.append(_identify(by_month, **identity))
         accumulator.month_candidates.append(
             _identify(
-                screen_candidates(by_month, axis_column=COL_MONTH_NUMBER, tradable=not dataset.is_index),
+                screen_candidates(by_month, axis_column=COL_MONTH_NUMBER, tradable=_is_judged(dataset)),
                 **identity,
             )
         )
@@ -866,6 +892,7 @@ def run_study(
             KEY_ENTRY_DAYS: list(ENTRY_CALENDAR_DAYS),
             KEY_EXIT_OFFSETS: list(EXIT_OFFSETS),
         },
+        KEY_TRACK: TRACK_NAME,
         KEY_DATASETS: dataset_summaries,
     }
 

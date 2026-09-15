@@ -5,7 +5,7 @@ forward return·통계·후보 판정(`measure`)이 이미 있으므로, 하는 
 사람이 읽을 형태로 쌓는 것이다.
 
 **만기 창의 거래일을 하나도 빼지 않고 원자료로 남긴다.** 사용자가 차트로 직접 대조하는
-산출물이므로 창을 좁혀 내지 않는다 (`docs/spec/옵션_만기일_설계.md` 결정 ②).
+산출물이므로 창을 좁혀 내지 않는다 (`docs/매매/옵션_만기일/설계.md` 결정 ②).
 
 **가격 기준은 원본가 하나다.** 사용자가 증권앱·차트에서 보는 가격이 곧 신호를 판정하고 주문을
 거는 가격이기 때문이다 (루트 `CLAUDE.md` 측정의 원칙 14).
@@ -53,7 +53,7 @@ from verify_lab.measure.statistics import (
     permutation_test,
     summarize,
 )
-from verify_lab.report.run_summary import dataset_record
+from verify_lab.report.run_summary import KEY_TRACK, dataset_record
 from verify_lab.studies.option_expiry.constants import (
     BASELINE_SUFFIX,
     COL_ADVANCED_DAYS,
@@ -72,8 +72,10 @@ from verify_lab.studies.option_expiry.constants import (
     DATASETS,
     DISPLAY_HOLD_DAYS_POOLED,
     HORIZON_NEXT_WEEK_EXIT,
+    KEY_EXCLUDED_COUNT,
     MAX_OFFSET,
     OUTPUT_FILES,
+    TRACK_NAME,
     WEEKDAY_LABELS,
     Dataset,
 )
@@ -107,7 +109,6 @@ KEY_WEEKLY_TRADE = "weekly_trade"
 
 KEY_EXIT_WEEKDAY = "exit_weekday"
 KEY_ENTRY_COUNT = "entry_count"
-KEY_EXCLUDED_COUNT = "excluded_count"
 KEY_HOLD_DAYS = "hold_days"
 KEY_BASELINE_ENTRY_COUNT = "baseline_entry_count"
 
@@ -291,7 +292,7 @@ def _run_dataset(
 # ============================================================
 
 # 어느 기준선과 견줬는지 밝히는 이름. 둘은 묻는 질문이 다르다
-# (`docs/spec/옵션_만기일_설계.md` §3.7)
+# (`docs/매매/옵션_만기일/설계.md` §3.7)
 BASELINE_WEEKLY = "같은 요일 주간 보유"
 BASELINE_MATCHED_LENGTH = "같은 길이 단순 보유"
 
@@ -306,7 +307,7 @@ def _weekly_trade_frames(
 
     베이스라인은 **만기 규칙 요일에 해당하는 모든 거래일**(미국 금요일·한국 목요일)에서 같은
     달력 규칙으로 청산한 것이다. 보유 길이 분포가 신호와 같은 달력 구조에서 나오므로
-    묶음 비교에 가중치를 지어낼 필요가 없다 (`docs/spec/옵션_만기일_설계.md` 결정 ㉑).
+    묶음 비교에 가중치를 지어낼 필요가 없다 (`docs/매매/옵션_만기일/설계.md` 결정 ㉑).
 
     Args:
         df: 날짜 오름차순 시세
@@ -389,7 +390,7 @@ def _aggregate_by_month(
 
     같은 달 베이스라인이 반드시 필요하다 — 만기월별로 쪼개면 미국 세 ETF 모두 9월이 크게
     음수인데, 9월 약세는 옵션 만기와 무관하게 알려진 계절성이라 **같은 달과 견주지 않으면
-    만기 효과와 가를 수 없다** (`docs/spec/옵션_만기일_설계.md` 결정 ㉓).
+    만기 효과와 가를 수 없다** (`docs/매매/옵션_만기일/설계.md` 결정 ㉓).
 
     **검정을 함께 붙인다.** 이 축은 칸이 12개이고 칸당 표본이 수십 건이라, p 값 없이 내면
     가장 큰 칸을 골라 읽게 된다. 귀무분포는 **같은 달의 베이스라인**에서 뽑으므로 검정이
@@ -639,7 +640,7 @@ def _record_trade_cell(
 ) -> None:
     """매매 하나의 집계·기준선 대비 차이·검정을 쌓는다.
 
-    **묶음 비교와 길이별 비교의 베이스라인이 다르다** (`docs/spec/옵션_만기일_설계.md` 결정 ㉑).
+    **묶음 비교와 길이별 비교의 베이스라인이 다르다** (`docs/매매/옵션_만기일/설계.md` 결정 ㉑).
     묶음은 「같은 요일 주간 보유」와만 견준다 — 보유 길이가 섞인 묶음을 길이 매칭 베이스라인과
     견주려면 표본 수를 부풀리는 가중이 필요한데, 그러면 보고되는 베이스라인 표본 수가 거짓이 된다.
     길이 매칭은 **길이별 칸에서만** 정확히 성립한다.
@@ -715,6 +716,7 @@ def run_study(
         KEY_MAX_OFFSET: MAX_OFFSET,
         KEY_PERMUTATION_REPEATS: repeats,
         KEY_PERMUTATION_SEED: seed,
+        KEY_TRACK: TRACK_NAME,
         KEY_DATASETS: dataset_summaries,
     }
 

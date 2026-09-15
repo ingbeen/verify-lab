@@ -10,7 +10,7 @@
 저장은 같은 계층의 `writer.save_run_summary` 가 한다.
 
 **이 모듈은 「한 줄」만 소유한다.** 요약 전체의 틀(`track`·`rule`·`cost` …)은 매매 계층의
-규칙이라 `strategy/run_summary.py` 에 남는다 — 검증은 요약 모양이 매매와 다르다.
+규칙이라 `execution/run_summary.py` 에 남는다 — 검증은 요약 모양이 매매와 다르다.
 """
 
 from typing import Any, Final
@@ -18,6 +18,19 @@ from typing import Any, Final
 import pandas as pd
 
 from verify_lab.common_constants import COL_DATE
+
+# ============================================================
+# 실행 요약의 최상위 키 — 계층을 가리지 않는다
+# ============================================================
+
+# 매매법 이름(slug). **값의 정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME`** 이고
+# 여기는 키 이름만 소유한다.
+#
+# [중요] **`execution` 이 아니라 여기 둔다.** 신호가 없는 조사 검증(등가성·배수·선물)은
+# 체결 계층을 쓰지 않는데, 키 하나 때문에 `execution` 을 import 하면 **쓰지도 않는 계층에
+# 의존**하게 된다. `dataset_record` 를 이 모듈에 둔 것과 같은 이유다 —
+# `studies` 도 `execution` 도 이미 `report` 에 의존한다
+KEY_TRACK: Final = "track"
 
 # ============================================================
 # 데이터셋 한 줄의 키
@@ -46,7 +59,7 @@ def dataset_record(*, ticker: str, label: str, file: str, frame: pd.DataFrame) -
 
     **기간과 거래일 수를 시세에서 직접 읽는다.** 호출 측이 따로 세면 산출 지점마다 갈리고,
     결과 문서가 인용하는 「데이터 기간」이 실제 파일과 어긋나도 예외가 나지 않는다 —
-    실측으로 `docs/strategy/역방향_매매_규칙.md` 의 기간이 낡은 채 남은 적이 있다.
+    실측으로 `docs/매매/역방향/규칙.md` 의 기간이 낡은 채 남은 적이 있다.
 
     **자기 축을 더 붙이는 것은 호출 측의 몫이다.** 검증마다 더 담을 것이 다르므로
     (`price_basis`·`expiry_count`·`is_index`) 이 함수에 검증별 인자를 두지 않는다 —

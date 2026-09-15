@@ -32,19 +32,9 @@ SERIES_DIR: Final = STORAGE_DIR / "series"
 # diff 가 「재실행이 숫자를 바꿨는가」를 알려주는 유일한 신호이기 때문이다
 RESULTS_DIR: Final = STORAGE_DIR / "results"
 
-# 산출물의 계층 폴더. **경로가 계층을 말하므로 폴더 이름에 접미사를 붙이지 않는다** —
-# 같은 매매법의 측정과 매매가 `검증/reverse` 와 `매매/reverse` 로 갈린다.
-#
-# **한글인 이유**: 루트 `CLAUDE.md` 가 실제로 쓰는 말이다(「검증 #1·#7·#10」). 영문 후보였던
-# `measure` 는 `src/verify_lab/measure/` 와 겹쳐 기각했고, `research` 는 `docs/research/`
-# (결과 «문서»)와 뜻이 어긋나 기각했다.
-#
-# **`report`(폴더 생성)와 `scripts`(어느 계층인지 지정)가 함께 쓰므로 공통 계층에 둔다.**
-RESULT_LAYER_STUDY: Final = "검증"
-RESULT_LAYER_STRATEGY: Final = "매매"
-RESULT_LAYER_PROBE: Final = "실측"
-
-RESULT_LAYERS: Final = (RESULT_LAYER_STUDY, RESULT_LAYER_STRATEGY, RESULT_LAYER_PROBE)
+# 산출물의 등급 폴더 이름은 여기 두지 않는다 — **`tracks.py` 가 등급과 그 값을 함께 소유**한다.
+# 여기 두면 「어떤 등급이 있는가」와 「이 매매법은 어느 등급인가」가 두 파일로 갈리고,
+# 그러면 등급을 호출 측이 골라 넘기게 되어 레지스트리가 SoT 가 아니게 된다.
 
 # 실행 이력. 최근 N개만 순환 저장한다 (개수는 `utils/meta_manager.py` 가 소유)
 META_JSON_PATH: Final = RESULTS_DIR / "meta.json"
@@ -110,7 +100,7 @@ FUTURES_ROW_KEY: Final = [COL_DATE, COL_CONTRACT]
 
 # 값 컬럼. 환율은 원, 금리는 백분율처럼 **단위가 소스마다 다르므로 중립적인 이름을 쓴다** —
 # `Close` 나 `Rate` 로 두면 그 이름이 맞지 않는 소스가 들어올 때 컬럼을 다시 갈라야 한다.
-# 단위와 자릿수는 각 수집기가 소유하고 `docs/spec/` 의 데이터 스펙이 기록한다
+# 단위와 자릿수는 각 수집기가 소유하고 그 매매법의 `설계.md` 가 기록한다
 COL_VALUE: Final = "Value"
 
 # 단일 값 시계열 파일이 반드시 가져야 하는 컬럼과 그 순서
@@ -140,7 +130,7 @@ NAV_FILE_TEMPLATE: Final = "{ticker}_NAV.csv"
 
 # 지수는 시세가 아니라 **종가 하나짜리 계열**로 저장해 `SERIES_DIR` 에 둔다.
 # 살 수 없어 시가 집행이 불가능하므로 OHLCV 를 들고 있을 이유가 없고, 코스닥150 지수는
-# 소급 산출 구간에 시가·고가·저가가 아예 0 이다 (`docs/spec/월말_진입_설계.md` §7.4)
+# 소급 산출 구간에 시가·고가·저가가 아예 0 이다 (`docs/매매/월말_진입/설계.md` §7.4)
 INDEX_FILE_TEMPLATE: Final = "{ticker}_index.csv"
 
 # ============================================================

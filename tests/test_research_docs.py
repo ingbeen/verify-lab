@@ -1,4 +1,4 @@
-"""검증 결과 문서(`docs/research/`)의 「모양」 계약을 검사한다.
+"""결과 문서(`docs/<등급>/<이름>/결과.md`)의 「모양」 계약을 검사한다.
 
 결과 문서는 이 저장소의 최종 산출물이자 그 검증의 진입점이다. 계획서가 삭제되고 산출물 폴더가
 비워져도 이 문서 하나로 "무엇을 어떻게 재서 어떤 결론이 나왔는지"가 재구성돼야 한다.
@@ -25,7 +25,15 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RESEARCH_DIR = PROJECT_ROOT / "docs" / "research"
+DOCS_DIR = PROJECT_ROOT / "docs"
+
+# 결과 문서가 놓이는 등급 폴더. **등급은 분류일 뿐이라 결과 문서의 규칙은 같다** —
+# 매매로 승격해도 그 문서가 규칙을 덜 지켜도 되는 것이 아니다.
+# `공유/` 는 신호도 보유 구간도 없어 「결과」가 없으므로 빠진다
+RESULT_GRADE_DIRS = ("검증", "매매", "조사")
+
+# 결과 문서의 파일 이름. **폴더가 매매법을 말하므로 파일 이름은 종류만 말한다**
+RESULT_FILENAME = "결과.md"
 
 # 마크다운 링크에서 경로를 뽑는다: [텍스트](경로)
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -58,7 +66,7 @@ PLAN_REFERENCE = re.compile(r"docs/plans|plans/PLAN_")
 GLOB_CHARS = "*?["
 
 # 검사 대상 결과 문서
-RESULT_DOCS = sorted(RESEARCH_DIR.glob("*.md"))
+RESULT_DOCS = sorted(path for grade in RESULT_GRADE_DIRS for path in (DOCS_DIR / grade).glob(f"*/{RESULT_FILENAME}"))
 
 
 def _front_matter(text: str) -> str:
@@ -208,19 +216,20 @@ def _document_id(path: Path) -> str:
     Returns:
         str: 파일명
     """
-    return path.name
+    # **파일 이름이 전부 `결과.md` 라 폴더 이름이 식별자다**
+    return f"{path.parent.parent.name}/{path.parent.name}"
 
 
 def test_research_documents_exist() -> None:
     """
     목적: 검사 대상이 비어 있지 않음을 고정한다 (조용한 통과 차단).
 
-    Given: docs/research/ 폴더
+    Given: 등급 폴더들
     When: 결과 문서 목록을 만든다
-    Then: 폴더가 존재하고 결과 문서가 하나 이상 있다
+    Then: 결과 문서가 하나 이상 있다
     """
-    assert RESEARCH_DIR.is_dir(), f"결과 문서 폴더가 없습니다: {RESEARCH_DIR}"
-    assert RESULT_DOCS, "docs/research/ 에 결과 문서가 하나도 없습니다"
+    listed = ", ".join(f"docs/{grade}/*/{RESULT_FILENAME}" for grade in RESULT_GRADE_DIRS)
+    assert RESULT_DOCS, f"결과 문서가 하나도 없습니다 (찾은 자리: {listed})"
 
 
 @pytest.mark.parametrize("doc", RESULT_DOCS, ids=_document_id)
@@ -446,9 +455,9 @@ def test_dead_inline_path_is_detected(fake_root: Path) -> None:
     When: 실재를 확인한다
     Then: 죽은 경로로 보고된다
     """
-    section = "| 실행 스크립트 | `scripts/studies/run_sample.py` 로 돌립니다 |"
+    section = "| 실행 스크립트 | `scripts/run_sample.py` 로 돌립니다 |"
 
-    assert _missing_inline_paths(section, fake_root) == ["scripts/studies/run_sample.py"]
+    assert _missing_inline_paths(section, fake_root) == ["scripts/run_sample.py"]
 
 
 def test_tombstone_row_is_exempt(fake_root: Path) -> None:
@@ -465,7 +474,7 @@ def test_tombstone_row_is_exempt(fake_root: Path) -> None:
     section = "\n".join(
         [
             "| 이벤트 정의 | **없음(제거됨)** - `src/verify_lab/studies/sample/gone.py` 였다 |",
-            "| 실행 스크립트 | **삭제됨** (2026-08-30) - `scripts/studies/run_gone.py` 였습니다 |",
+            "| 실행 스크립트 | **삭제됨** (2026-08-30) - `scripts/run_gone.py` 였습니다 |",
             "| 테스트 | **없음(제거됨)** - `tests/test_gone_*.py` 였다 |",
         ]
     )
@@ -495,7 +504,7 @@ def test_non_path_inline_code_is_ignored(fake_root: Path) -> None:
     When: 검사 대상을 고른다
     Then: 하나도 고르지 않는다
     """
-    section = "| 데이터 수집 | `--series usdkrw_close` · `docs/spec/<검증명>.md` |"
+    section = "| 데이터 수집 | `--series usdkrw_close` · `docs/<등급>/<매매법>/설계.md` |"
 
     assert _inline_path_candidates(section) == []
 

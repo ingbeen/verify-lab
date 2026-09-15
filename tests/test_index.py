@@ -47,7 +47,7 @@ REMOVED_DOCUMENTS = (
     "docs/ROADMAP.md",
     "docs/HANDS_ON.md",
     "다음세션_프롬프트.md",
-    "docs/research/CLAUDE.md",
+    "docs/research/CLAUDE.md",  # 옛 자리. 되살아나면 규칙이 두 벌이 된다
 )
 
 
@@ -221,7 +221,5 @@ def test_removed_documents_stay_removed(removed: str) -> None:
     """
     target = PROJECT_ROOT / removed
     assert not target.exists(), (
-        f"걷어낸 문서가 되살아났습니다: {removed}\n"
-        "  진행 상태와 계획은 남기지 않습니다. 결과는 docs/research/, "
-        "설계는 docs/spec/, 규칙은 .claude/rules/ 에 둡니다"
+        f"걷어낸 문서가 되살아났습니다: {removed}\n" "  진행 상태와 계획은 남기지 않습니다. 결과와 설계는 docs/<등급>/<매매법>/ 에, " "규칙은 .claude/rules/ 에 둡니다"
     )

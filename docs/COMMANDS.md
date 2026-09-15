@@ -61,7 +61,7 @@ poetry run python scripts/data/collect_yfinance.py --adjusted
 
 - 전 기간(`period="max"`)을 받아 `storage/market/<종목>_max.csv` 에 저장합니다. 기존 파일은 덮어씁니다
 - **기본은 원본가(배당 미조정)입니다.** 사용자가 결과를 차트와 직접 대조하는 것이 전제이고
-  보통의 차트는 배당 미포함이기 때문입니다 ([spec/역방향_설계.md](spec/역방향_설계.md) "가격 처리").
+  보통의 차트는 배당 미포함이기 때문입니다 ([매매/역방향/설계.md](매매/역방향/설계.md) "가격 처리").
   `--adjusted` 를 붙이면 수정주가로 받으며 **`storage/market/<종목>_adjusted_max.csv` 에 따로 저장**되므로
   원본가 파일을 덮어쓰지 않습니다 (`pykrx` 쪽과 같은 규칙)
 - **확정되지 않은 최근 며칠은 저장하지 않습니다.** 제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
@@ -80,10 +80,10 @@ poetry run python scripts/data/check_pykrx_etf.py
 poetry run python scripts/data/check_pykrx_etf.py --ticker 069500 --start 20021014
 ```
 
-- KRX 를 5회 호출하고, **각 결과를 받는 즉시** `storage/results/실측/pykrx_etf_probe/` 에 CSV 로 남깁니다.
+- KRX 를 5회 호출하고, **각 결과를 받는 즉시** `storage/results/조사/pykrx_etf_probe/` 에 CSV 로 남깁니다.
   한 실행 안에서는 뒤쪽 호출이 실패해도 앞선 원자료가 보존됩니다
 - 🔴 **재실행은 첫 호출 «전»에 그 폴더를 비웁니다.** 대상을 바꿔 돌리면 앞 대상의 원자료가
-  사라지고, 첫 호출이 실패하면 폴더가 빈 채로 남습니다. **남겨야 할 값은 `docs/spec/` 의
+  사라지고, 첫 호출이 실패하면 폴더가 빈 채로 남습니다. **남겨야 할 값은 `docs/<등급>/<매매법>/설계.md` 의
   「데이터 실측 기록」에 옮긴 뒤 다음 대상을 돌립니다** — 프로브는 `summary.json` 을 내지 않아
   **폴더만 봐서는 어느 대상의 결과인지 알 수 없습니다**
 - ⚠️ **pykrx 는 로그인 시 로그인 ID 를 표준 출력에 찍습니다**(비밀번호는 찍지 않습니다).
@@ -105,7 +105,7 @@ poetry run python scripts/data/check_pykrx_splice.py --ends 20081231,20141231
 ```
 
 - 종료일 개수 + 1회(기준 조회) 만큼 KRX 를 호출하고, 원자료를
-  `storage/results/실측/pykrx_splice_probe/` 에 CSV 로 남깁니다
+  `storage/results/조사/pykrx_splice_probe/` 에 CSV 로 남깁니다
 - 판정 기준: **겹치는 구간의 값 불일치가 0건**이면 이어붙이기가 성립합니다.
   "덮지 못한 거래일"이 남으면 `--ends` 에 더 이른 종료일을 추가해 재실행합니다
 - **모든 호출이 한 번의 실행 안에 있어야 합니다.** 수정계수는 조회 종료일이 아니라 조회 **시점** 기준이라,
@@ -127,7 +127,7 @@ poetry run python scripts/data/check_kodex_distribution.py --ticker 069500
 - **외부 서버에 요청하지 않습니다.** `<종목>_max.csv`(원본가)와 `<종목>_adjusted_max.csv`(수정주가)를
   읽으므로 두 파일이 모두 있어야 합니다
 - 판정 기준: **만기 창 안 분배락이 0건**이면 원본가로 재도 만기 측정에 편향이 없습니다.
-  실측 결과와 해석은 [spec/옵션_만기일_설계.md](spec/옵션_만기일_설계.md) §7.5 에 있습니다
+  실측 결과와 해석은 [매매/옵션_만기일/설계.md](매매/옵션_만기일/설계.md) §7.5 에 있습니다
 
 #### 만기 매매 보유 구간의 배당락 실측 (검증 #7 의 전 칸)
 
@@ -140,11 +140,11 @@ poetry run python scripts/data/check_expiry_dividend.py
 ```
 
 - **외부 서버에 요청하지 않습니다.** 원본가와 수정주가 파일이 종목마다 둘 다 있어야 합니다
-- **칸 목록의 SoT 는 `strategy/option_expiry_constants.py` 의 `EXPIRY_CELLS`** 입니다 —
+- **칸 목록의 SoT 는 `studies/option_expiry/constants.py` 의 `EXPIRY_CELLS`** 입니다 —
   스크립트가 그것을 그대로 돌므로 여기에 칸 수를 적지 않습니다
 - 「아래」 칸에서 차이가 **양수면 원본가 성적이 그만큼 과대평가**돼 있습니다 —
   원본가에서 보이는 그 하락은 배당락이 만든 것이라 인버스로도 공매도로도 못 먹습니다
-- 실측 결과는 [research/옵션_만기일.md](research/옵션_만기일.md) §3.2.1 에 있습니다.
+- 실측 결과는 [매매/옵션_만기일/결과.md](매매/옵션_만기일/결과.md) §3.2.1 에 있습니다.
   **걸리는 칸과 그 건수는 시세 기간에 묶여 있으므로** 그 문서에서 봅니다
 
 #### KODEX 200 수집
@@ -171,8 +171,8 @@ poetry run python scripts/data/collect_pykrx.py --ticker 261250 --start 20161227
 - **기본은 원본가입니다.** 기존 파일은 덮어씁니다
   - `storage/market/<종목>_max.csv` — **원본가**, 상장일부터 전 기간
   - `storage/market/<종목>_adjusted_max.csv` — **수정주가** (`--adjusted`). 파일명이 달라 원본가를 덮어쓰지 않습니다
-- 검증 #1 이 원본가를 쓰는 근거는 [spec/역방향_설계.md](spec/역방향_설계.md) "가격 처리" 에 있습니다.
-  원달러 그리드가 수정 종가를 쓰는 근거는 [spec/원달러_그리드_설계.md](spec/원달러_그리드_설계.md) §2 에 있습니다
+- 검증 #1 이 원본가를 쓰는 근거는 [매매/역방향/설계.md](매매/역방향/설계.md) "가격 처리" 에 있습니다.
+  원달러 그리드가 수정 종가를 쓰는 근거는 [조사/원달러_그리드/설계.md](조사/원달러_그리드/설계.md) §2 에 있습니다
 - **확정되지 않은 당일은 저장하지 않습니다.** 장중에도 당일 행이 반환되기 때문이며,
   제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다
@@ -196,7 +196,7 @@ poetry run python scripts/data/collect_pykrx.py --index --ticker 1028 --start 19
 - **`storage/series/<지수>_index.csv` 에 종가 하나짜리 계열로 저장합니다.** 시세가 아닙니다 —
   지수는 살 수 없어 시가에 집행할 수 없고, **네 계열 모두 소급 산출 구간의 시가·고가·저가가
   전부 0** 이라 시세 스키마로는 전 구간이 막힙니다.
-  근거는 [spec/월말_진입_설계.md](spec/월말_진입_설계.md) §7.6·§7.11 에 있습니다
+  근거는 [매매/월말_진입/설계.md](매매/월말_진입/설계.md) §7.6·§7.11 에 있습니다
 - **값을 정수화하지 않습니다.** ETF 원화 가격과 달리 지수는 소수 둘째 자리까지 있는 계산된 값입니다
 - `--index` 는 ETF 와 **기본 티커가 다릅니다** — 인자 없이 주면 코스닥 종합(`2001`)을 받습니다
 - **시작일을 직접 줍니다.** 기본값은 코스닥 종합의 산출 시작일이라 다른 지수에 그대로 쓰면
@@ -216,7 +216,7 @@ poetry run python scripts/data/check_month_end_dividend.py
 - **「확인 불가」는 「없음」과 다릅니다.** pykrx 가 수정주가를 최근 3,000거래일만 주므로
   KODEX 200 은 앞 12년을 못 잽니다. 그 건수를 함께 냅니다
 - 「아래」로 걸면 원본가 성적이 그만큼 **과대평가**돼 있습니다 — 인버스는 그만큼 오르지 않습니다.
-  실측 결과는 `docs/research/월말_진입.md` §10 에 있습니다
+  실측 결과는 `docs/매매/월말_진입/결과.md` §10 에 있습니다
 
 ### 국내 선물 (코스피200·코스닥150 계약별 시세 — 검증 #9 용)
 
@@ -235,7 +235,7 @@ poetry run python scripts/data/collect_krx_futures.py --product KRDRVFUKQI
   요청이 몰려 KRX 가 JSON 이 아닌 응답을 돌려주고 수집이 통째로 끊깁니다(실측). 하나씩 돌립니다
 - **`MDCSTAT12601`(개별종목 시세 추이)** 를 직접 부릅니다. 이름이 비슷한 `MDCSTAT12701` 은
   「최근월물 시세 추이」라 **하루 한 행만** 주고 원월물이 통째로 빠집니다.
-  근거와 통계 코드 표는 [spec/선물_대_레버리지_ETF_설계.md](spec/선물_대_레버리지_ETF_설계.md) §5.2 에 있습니다
+  근거와 통계 코드 표는 [조사/선물_대_레버리지_ETF/설계.md](조사/선물_대_레버리지_ETF/설계.md) §5.2 에 있습니다
 - 저장은 **상품마다 파일 하나**(`<상품코드>_max.csv`)이고 `Contract` 컬럼으로 계약을 가릅니다.
   **읽을 때 `load_futures_csv` 를 씁니다** — 공통 `load_market_csv` 는 날짜 기준 중복 제거가
   같은 날짜의 계약을 첫 개만 남기고 지웁니다(경고만 뜨고 예외가 없습니다)
@@ -259,7 +259,7 @@ poetry run python scripts/data/collect_etn.py --ticker 530107 --start 20221017 -
 - **pykrx 는 ETN 에 시세 함수를 주지 않습니다.** `get_etn_ticker_list`·`get_etn_ticker_name` 둘뿐이고
   ETF·주식용 조회에 ETN 코드를 넣으면 **예외 없이 빈 결과**가 돌아옵니다. 이 수집기는 pykrx 의 KRX
   클라이언트만 재사용해 **`MDCSTAT06601`(ETN 개별종목 시세 추이)** 를 직접 부릅니다.
-  근거와 통계 코드 표는 [spec/레버리지_ETF_괴리_설계.md](spec/레버리지_ETF_괴리_설계.md) §6.1 에 있습니다
+  근거와 통계 코드 표는 [조사/레버리지_ETF_괴리/설계.md](조사/레버리지_ETF_괴리/설계.md) §6.1 에 있습니다
 - **ETN 은 가격 기준이 하나뿐입니다** — 분배금을 지급하지 않으므로 `--adjusted` 에 해당하는 인자가 없습니다
 - **조회는 티커가 아니라 ISIN 으로 나갑니다.** 변환표는 KRX 기본종목 조회가 주며 수집기가 알아서 처리합니다
 - **수집 시작일은 기억이 아니라 `LIST_DD` 로 확인하세요.** 실제로 251340 을 상장일보다 늦게 요청해
@@ -285,12 +285,12 @@ poetry run python scripts/data/collect_ecos.py
 poetry run python scripts/data/collect_ecos.py --series usdkrw_close --start 19980101 --end 20261231
 ```
 
-- 프로브는 원자료를 `storage/results/실측/ecos_probe/` 에 남깁니다.
+- 프로브는 원자료를 `storage/results/조사/ecos_probe/` 에 남깁니다.
   **통계표코드·항목코드는 기억이 아니라 이 프로브로 확인**하며, 확정값은
-  [spec/원달러_그리드_설계.md](spec/원달러_그리드_설계.md) §3.1 에 있습니다
+  [조사/원달러_그리드/설계.md](조사/원달러_그리드/설계.md) §3.1 에 있습니다
 - **환율은 두 계열을 받습니다.** `usdkrw_close`(종가 15:30)가 수익률 측정의 기준이고,
   `usdkrw`(매매기준율)는 환전 스프레드의 기준입니다. 매매기준율은 전영업일 가중평균이라 하루 늦고
-  스무딩돼 있어 수익률 측정에 쓸 수 없습니다 ([spec/원달러_그리드_설계.md](spec/원달러_그리드_설계.md) §3.4)
+  스무딩돼 있어 수익률 측정에 쓸 수 없습니다 ([조사/원달러_그리드/설계.md](조사/원달러_그리드/설계.md) §3.4)
 - 수집 결과는 `storage/series/<이름>.csv` 에 `Date,Value` 스키마로 저장됩니다. 기존 파일은 덮어씁니다
 - **기간을 잘라 저장하지 않습니다.** 기본 시작일이 두 시계열의 실제 시작보다 이른 이유입니다
 - ⚠️ **ECOS 는 인증키를 URL 경로에 넣습니다.** 실행 로그의 요청 URL 은 키가 마스킹된 형태로 나오지만,
@@ -308,29 +308,51 @@ poetry run python scripts/data/collect_fred.py
 - `storage/series/DTB3.csv` 에 저장합니다. 기존 파일은 덮어씁니다
 - **미국 시장 휴일은 행이 있고 값만 비어 있습니다.** 수집기는 그 행을 제외하고 제외 건수를 보고하며,
   전일값 이월은 하지 않습니다 — 이월은 측정 계층의 판단입니다
-  ([spec/원달러_그리드_설계.md](spec/원달러_그리드_설계.md) §3.2)
+  ([조사/원달러_그리드/설계.md](조사/원달러_그리드/설계.md) §3.2)
 
 ---
 
-## 검증 실행
+## 매매법·조사 실행
 
 > AI 모델이 직접 실행할 수 있습니다. 파라미터를 바꿔가며 반복 실행하는 것이 검증의 본질입니다.
+>
+> 🔴 **매매법당 스크립트가 하나입니다.** 한 번 돌리면 **측정 표와 체결 산출물이 한 폴더에**
+> 함께 나옵니다 — 등급(검증·매매·조사)은 분류일 뿐이라 실행을 가르지 않습니다.
+> 어느 등급 폴더에 쌓일지는 [../src/verify_lab/tracks.py](../src/verify_lab/tracks.py) 가 정합니다.
+>
+> 둘로 나누면 같은 시세를 두 번 읽고 같은 신호를 두 번 계산하는데, **산출물 폴더가 매매법당
+> 하나라 나중에 돈 쪽이 앞의 산출물을 지웁니다**(쓰기 전에 비우기 때문이고 예외는 나지 않습니다).
+
+> ### 세 매매법의 산출물은 같은 규격입니다
+>
+> 파일 이름은 **`성적표.csv` · `거래내역.csv`** 이고 공통 컬럼이 같은 순서로 옵니다.
+> 규격의 SoT 는 [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 「매매 산출물 계약」입니다.
+>
+> - **`이길 때(%)` 는 양수, `질 때(%)` 는 음수**입니다 — 손익비의 분자와 분모이며
+>   `docs/공유/투자금_결정.md` §1.2 의 계산기 입력이 여기서 옵니다
+> - **건수 컬럼은 정수로 나갑니다.** 잴 수 없는 칸은 **빈칸**이고 `0` 이 아닙니다 —
+>   `0` 은 「손절이 걸리지 않았다」로 읽히는데 실제로는 「잰 적이 없다」입니다
+> - **`summary.json` 도 세 매매법이 같은 여섯 칸**입니다 —
+>   `track`(매매법 이름) · `datasets`(**대상 범위와 데이터 기간**) · `rule`(무엇을 어떤 규칙으로
+>   돌렸나 · 제외 건수) · `row_counts`(**파일 이름** → 행 수) · `cost`(맨몸 성적 표기) · `notes`
+> - **종목 컬럼은 종목명이고 종목코드는 `datasets` 에 있습니다**
+
 
 ### 검증 #1 — 역방향
 
 ```bash
 # 전 조합 실행 (기본값) — 검증 대상 시세를 한 번에
-poetry run python scripts/studies/run_reverse_study.py
+poetry run python scripts/run_reverse.py
 
 # 특정 시세만
-poetry run python scripts/studies/run_reverse_study.py --dataset qqq
+poetry run python scripts/run_reverse.py --dataset qqq
 
 # 순열 검정 설정을 바꿔 재현성 확인
-poetry run python scripts/studies/run_reverse_study.py --repeats 5000 --seed 42
+poetry run python scripts/run_reverse.py --repeats 5000 --seed 42
 ```
 
 - **강건성 조합을 한 실행에서 전부 산출합니다.** 신호군은 파라미터 × 시작연도 × 방향 ×
-  시대 구간 × 데이터셋의 곱이며, 각 축의 값은 `docs/spec/역방향_설계.md` 와
+  시대 구간 × 데이터셋의 곱이며, 각 축의 값은 `docs/매매/역방향/설계.md` 와
   `studies/reverse/constants.py` 가 정합니다. **실제 개수와 실행 시간은 실행 결과의
   마지막 줄과 `summary.json` 에 나옵니다**
 - **데이터셋끼리 나란히 놓고 보려면 같은 실행에서 계산해야 합니다.** 대조의 전제가
@@ -340,32 +362,53 @@ poetry run python scripts/studies/run_reverse_study.py --repeats 5000 --seed 42
 - **방향 축에는 폭등·폭락 외에 `역방향 전체` 가 있습니다.** 두 방향을 한
   표본으로 묶되 상승 방향 신호의 수익률에 −1 을 곱해 역방향 진입 기준으로 부호를 맞춘 신호군이며,
   집계 3파일에만 나옵니다 (`signals.csv` 에는 없습니다). 근거는 스펙 §7 결정 ㉕ 입니다
-- 산출물은 `storage/results/검증/reverse/` 에 CSV **5개**(`signals`·`statistics`·`excess`·`test`·`candidates`)와
+- 산출물은 `storage/results/매매/reverse/` 에 CSV **5개**(`signals`·`statistics`·`excess`·`test`·`candidates`)와
   `summary.json` 으로 남습니다. **재실행이 그 폴더를 비우고 다시 씁니다**
 - **순위 컷·집계 시작연도는 인자가 아닙니다.** 스펙이 확정한 목록을 전부 산출해 나란히
   보고하는 것이 이 검증의 설계이며, 값을 골라 넣는 노브로 쓰면 과최적화입니다
 - 🔴 **`candidates.csv` 는 화면에 나오지 않습니다** (2026-09-12 신설). 축은 **구간(보유일)**,
   기준선은 **단순 보유**이고 전 칸이 그대로 들어 있습니다. **후보만 뽑아 화면에 찍지 않는 것이
   의도**입니다 — 이 검증의 신호군은 파라미터 스윕이라 그 순간 「고를 목록」이 됩니다
-  (측정의 원칙 1 · `spec/역방향_설계.md` §7 결정 ㉖)
+  (측정의 원칙 1 · `매매/역방향/설계.md` §7 결정 ㉖)
 - **`거는 방향` 과 `방향` 은 다른 컬럼입니다** — 앞은 게이트가 가리키는 쪽(위·아래),
   뒤는 신호군의 종류(폭등·폭락·역방향 전체)입니다
+
+#### 체결 — 손절선 격자
+
+- **손절선·보유 한도·대상 목록은 인자가 아닙니다.** 확정된 규칙을 그대로 적용하는 것이 설계이며,
+  값을 골라 넣는 노브로 쓰면 표본에 맞춘 튜닝이 됩니다. 값의 SoT 는
+  `studies/reverse/constants.py` 이고 근거는 규칙 문서 §3 입니다
+- **손절선은 격자가 기본입니다** — 무손절 + −2%~−10%(1%p 간격). 보유 한도는 D+2 하나이며,
+  확정 손절선(−5%) 한 행은 `손절선(%)` 한 컬럼 필터로 골라냅니다.
+  **무손절 행이 「손절이 무엇을 막았는가」의 대조축입니다** — 실측 최악 −17.45% 대 −5.00%
+- 산출물은 `storage/results/매매/reverse/` 에 `거래내역.csv`(체결 내역),
+  `성적표.csv`(대상 × 시기 집계), `summary.json` 으로 남습니다
+- `거래내역.csv` 는 **신호 하나가 한 행**이고, `성적표.csv` 는 **대상 하나가 시기 5행**입니다
+- **대상은 4종입니다** — KODEX 200 K=10·K=20, QQQ K=10·K=20, **전부 시작연도 2005**.
+  `--dataset kodex200` 처럼 종목으로 고르면 그 종목의 **두 컷이 함께** 돌아갑니다
+  (인자는 종목 단위라 순위 컷을 따로 못 고릅니다)
+- **백테스트 구간은 2005 하나로 통일돼 있습니다.** 성적이 아니라 표본 근거로 고른 값이며
+  근거는 규칙 문서 §3.3 입니다. **QQQ 는 2005·2008 의 신호 집합이 완전히 같아** 통일해도 성적이 같습니다
+- **KODEX 200 K=20 은 확정 규칙이 아니라 비교축입니다.** 확정 대상은 규칙 문서 §1.1 이 정하며,
+  K=20 을 함께 내는 것은 두 컷을 나란히 놓고 판단하기 위해서입니다
+- 실행 시간은 순열 검정이 없어 **수 초**입니다
+
 
 ### 검증 #7 — 옵션 만기일
 
 ```bash
 # 전 조합 실행 (기본값) — 종목 4개(원본가) × 만기월 1~12
 # 「만기일 매수 → 다음주 금요일 매도」 매매를 재고 만기월별로 후보 판정한다
-poetry run python scripts/studies/run_option_expiry_study.py
+poetry run python scripts/run_option_expiry.py
 
 # 종목 하나만 (qqq · spy · dia · kodex200)
-poetry run python scripts/studies/run_option_expiry_study.py --dataset kodex200
+poetry run python scripts/run_option_expiry.py --dataset kodex200
 
 # 순열 검정 반복 수를 줄여 빠르게 확인
-poetry run python scripts/studies/run_option_expiry_study.py --repeats 200
+poetry run python scripts/run_option_expiry.py --repeats 200
 
 # 무작위 뽑기 대조의 시드를 바꿔 재현성을 확인
-poetry run python scripts/studies/run_option_expiry_study.py --repeats 5000 --seed 42
+poetry run python scripts/run_option_expiry.py --repeats 5000 --seed 42
 ```
 
 - **산출물은 9개 CSV 이고, 가장 먼저 볼 것은 `candidates.csv`** 입니다 — 전 칸의 1차 판정과
@@ -380,20 +423,55 @@ poetry run python scripts/studies/run_option_expiry_study.py --repeats 5000 --se
 - 선행 조건: `storage/market/` 에 **원본가 4개 파일**(QQQ·SPY·DIA·069500)이 있어야 합니다
 - **하나의 만기월을 고르지 않습니다.** 12달을 전부 산출해 나란히 보고하고,
   한국은 **금요일·목요일 청산 두 벌**을 냅니다
-- 산출물은 `storage/results/검증/option_expiry/` 에 9개 CSV 와 `summary.json` 으로 남습니다.
+- 산출물은 `storage/results/매매/option_expiry/` 에 9개 CSV 와 `summary.json` 으로 남습니다.
   **CSV 컬럼 헤더는 한글**이고 비율은 백분율로 저장됩니다.
   신호일 원자료는 `signals.csv`(만기 창 거래일)와 `weekly_trade_signals.csv`(매매)이며 차트 대조용입니다
-- 결과와 판정은 [research/옵션_만기일.md](research/옵션_만기일.md), 확정 설계는
-  [spec/옵션_만기일_설계.md](spec/옵션_만기일_설계.md) 입니다
+- 결과와 판정은 [매매/옵션_만기일/결과.md](매매/옵션_만기일/결과.md), 확정 설계는
+  [매매/옵션_만기일/설계.md](매매/옵션_만기일/설계.md) 입니다
+
+#### 체결 — 손절선 격자
+
+**아직 확정된 규칙이 아닙니다.** 손절선을 고르기 위한 재료를 내는 스크립트이며,
+값 선택은 격자를 본 사용자가 합니다 (루트 `CLAUDE.md` 측정의 원칙 1).
+
+
+- **손절선 값은 인자가 아닙니다.** 확정값 **−5%** 를 그대로 적용하며, 값을 골라 넣는
+  노브로 쓰면 표본에 맞춘 튜닝이 됩니다. 값의 SoT 는
+  `studies/option_expiry/constants.py` 의 `EXPIRY_STOP_LEVEL` 이고
+  고른 근거는 `매매/옵션_만기일/설계.md` 결정 ㊴ 입니다
+- **`손절선(%)` 컬럼은 전 행이 같은 값이어도 나옵니다** — 없으면 그 표가 무손절 성적인지
+  −5% 성적인지 산출물만 봐서는 판별되지 않습니다
+- **격자가 기본입니다.** 무손절 + −1.0%~−10.0%(0.5%p 간격)를 전부 내며, 확정 손절선 한 행은
+  `손절선(%)` **한 컬럼 필터**로 골라냅니다 — **전부 내는 것은 고르는 것이 아닙니다**
+- 대상은 **7칸**이고 SoT 는
+  `studies/option_expiry/constants.py` 의 `EXPIRY_CELLS` 입니다
+- **통계량이 낮은 칸도 빼지 않습니다.** 게이트를 넘었으면 함께 냅니다 —
+  통계량으로 빼면 60칸에서 좋아 보이는 칸만 고르는 사후 선택이 됩니다 (`매매/옵션_만기일/설계.md` 결정 ㊳)
+- **미국 9월 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향**이라 독립된 세 번의 기회가 아닙니다
+- 산출물은 `storage/results/매매/option_expiry/` 에 남습니다
+  - `성적표.csv`(대상 칸 × 손절선 × 시기) · `거래내역.csv`(체결 원자료) · `summary.json`
+  - 그 옆에 **측정 표 9개**가 함께 있습니다 — 가장 먼저 볼 것은 `candidates.csv` 입니다
+- **성적표는 구간별로 나옵니다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`.
+  **표본이 10건 미만인 구간도 행이 남고** `판정가능` 이 `아니오` 로 찍힙니다
+  (루트 [CLAUDE.md](../CLAUDE.md) 측정의 원칙 17). **최근 구간은 표본이 얇아 판정용이 아닙니다** —
+  판정은 앞뒤 절반으로 하고 최근 구간은 「식고 있는가」를 보는 데만 씁니다
+- **「최근 N년」은 데이터 마지막 거래일 기준**입니다. 실행 시각과 무관하므로 같은 데이터면 같은 결과입니다
+- **종목 컬럼은 종목코드가 아니라 종목명입니다.** 코드는 `summary.json` 의 `datasets` 에 있습니다
+- **성적표의 무손절 행이 판정표(`candidates.csv`)의 방향 기대값과 맞는지** 확인하세요.
+  안 맞으면 측정과 체결 두 계층 중 하나가 틀린 것입니다 — **같은 폴더에 나란히 있어 바로 대조됩니다**
+- ⚠️ **CSV 를 Excel 로 열어 저장하지 마세요.** 날짜에서 앞 0 이 지워지고(`2021-09-17` →
+  `2021.9.17`) 소수 끝자리가 잘려 재분석·대조가 깨집니다. 값 자체는 안 바뀝니다
+- 실행 시간은 순열 검정이 없어 **수 초**입니다
+
 
 ### 검증 #9 — 선물 대 레버리지 ETF
 
 ```bash
 # 전 조합 실행 (기본값) — 6쌍 × 3방식 × 7격자 × 롤 규칙 2벌 × 이자 가정 2벌
-poetry run python scripts/studies/run_futures_leverage_study.py
+poetry run python scripts/run_futures_leverage.py
 
 # 특정 지수만 (KOSPI200 · KOSDAQ150)
-poetry run python scripts/studies/run_futures_leverage_study.py --index KOSDAQ150
+poetry run python scripts/run_futures_leverage.py --index KOSDAQ150
 ```
 
 - **인자는 지수로 좁히는 것 하나뿐입니다.** 배수·격자·리밸런싱 주기·롤 규칙은 상수로 고정돼
@@ -412,16 +490,16 @@ poetry run python scripts/studies/run_futures_leverage_study.py --index KOSDAQ15
   - `wipeouts.csv` · `leverage_drift.csv`
   - `windows_<지수>_<종목>.csv` — 시작일 전체 목록. 차트 대조용입니다
 - **CSV 헤더는 한글**이고 비율은 백분율 2자리로 저장됩니다
-- 확정 설계는 [spec/선물_대_레버리지_ETF_설계.md](spec/선물_대_레버리지_ETF_설계.md) 입니다
+- 확정 설계는 [조사/선물_대_레버리지_ETF/설계.md](조사/선물_대_레버리지_ETF/설계.md) 입니다
 
 ### 검증 #8 — 레버리지 ETF 괴리
 
 ```bash
 # 전 조합 실행 (기본값) — 22쌍 × 보유 기간 7격자 × 축 3종
-poetry run python scripts/studies/run_leverage_tracking_study.py
+poetry run python scripts/run_leverage_tracking.py
 
 # 특정 지수만 (KOSDAQ150 · KOSPI200 · S&P500 · 나스닥100 · 다우)
-poetry run python scripts/studies/run_leverage_tracking_study.py --index 나스닥100
+poetry run python scripts/run_leverage_tracking.py --index 나스닥100
 ```
 
 - **보유 기간·임계값은 인자가 아닙니다.** 확정된 격자를 전부 산출해 나란히 보고하는 것이 설계이며,
@@ -437,17 +515,17 @@ poetry run python scripts/studies/run_leverage_tracking_study.py --index 나스�
   - `windows_<티커>.csv` — 쌍마다 하나씩 나오는 시작일 원자료. 차트 대조용이며 **합계가 수십 MB** 입니다
 - **순열 검정이 없어 난수를 쓰지 않습니다.** 같은 데이터면 항상 같은 결과가 나옵니다. 실행 시간은 수 초입니다
 - **3년 칸은 비중첩 표본이 한 자릿수**라 통계가 아니라 사례에 가깝습니다.
-  결과와 판정은 [research/레버리지_ETF_괴리.md](research/레버리지_ETF_괴리.md), 확정 설계는
-  [spec/레버리지_ETF_괴리_설계.md](spec/레버리지_ETF_괴리_설계.md) 입니다
+  결과와 판정은 [조사/레버리지_ETF_괴리/결과.md](조사/레버리지_ETF_괴리/결과.md), 확정 설계는
+  [조사/레버리지_ETF_괴리/설계.md](조사/레버리지_ETF_괴리/설계.md) 입니다
 
 ### 검증 #5 — 원달러 ETF 등가성
 
 ```bash
 # 전 조합 실행 (기본값) — 환율 계열 2종 × 이론값 2종 × 이상치 포함·제외
-poetry run python scripts/studies/run_usdkrw_equivalence_study.py
+poetry run python scripts/run_usdkrw_equivalence.py
 
 # 이론값 모형을 하나만
-poetry run python scripts/studies/run_usdkrw_equivalence_study.py --model usd_rate
+poetry run python scripts/run_usdkrw_equivalence.py --model usd_rate
 ```
 
 - **이상치 축은 인자가 아닙니다.** 2019-03-14 의 종가 이상치 포함·제외를 나란히 보는 것이 설계이며,
@@ -457,24 +535,24 @@ poetry run python scripts/studies/run_usdkrw_equivalence_study.py --model usd_ra
 - `effective_cost.csv` 는 **NAV 로 직접 잰 실효 총비용**입니다. 공시 총보수와 나란히 실립니다
 - `daily.csv` 는 **손으로 검산하는 원자료**입니다. 현물 변화와 이자 기여분을 따로 담아
   이론값이 어떻게 만들어졌는지 그대로 따라갈 수 있습니다
-- 결과와 판정은 [research/원달러_ETF_등가성.md](research/원달러_ETF_등가성.md) 에 있습니다
+- 결과와 판정은 [조사/원달러_ETF_등가성/결과.md](조사/원달러_ETF_등가성/결과.md) 에 있습니다
 
 ### 검증 #10 — 월말 진입 (코스피·코스닥)
 
 ```bash
 # 전 대상 실행 (기본값) — 두 시장의 ETF 4종 + 지수 4종, 진입 11칸 × 청산 7칸
-poetry run python scripts/studies/run_month_end_study.py
+poetry run python scripts/run_month_end.py
 
 # 대상을 골라서 (여러 번 줄 수 있습니다)
-poetry run python scripts/studies/run_month_end_study.py --ticker 069500 --ticker 1001
+poetry run python scripts/run_month_end.py --ticker 069500 --ticker 1001
 
 # 무작위 뽑기 대조의 반복 수·시드 (기본값 1000 / 0)
-poetry run python scripts/studies/run_month_end_study.py --repeats 2000 --seed 1
+poetry run python scripts/run_month_end.py --repeats 2000 --seed 1
 ```
 
 - **하나의 칸을 고르지 않습니다.** 진입 달력일 15~25일 × 청산 상대 거래일 −3~+3 을 전부 산출해
   나란히 보고합니다 — 20일만 튀는지 이웃도 같은지가 오버피팅 판정의 근거입니다
-- 산출물은 `storage/results/검증/month_end/` 에 CSV 8개(`trades`·`grid`·`months`·
+- 산출물은 `storage/results/매매/month_end/` 에 CSV 8개(`trades`·`grid`·`months`·
   `month_halves`·`periods`·`grid_candidates`·`month_candidates`·`execution`)와
   `summary.json` 으로 남습니다
 - **`execution.csv` 가 「실제로 매매했을 때의 수치」입니다.** 살 수 있는 ETF 넷의 행만 담고
@@ -482,122 +560,15 @@ poetry run python scripts/studies/run_month_end_study.py --repeats 2000 --seed 1
   들어가 있습니다. **격자에서 골라낸 행이지 다시 계산한 값이 아닙니다**
 - **`trades.csv` 는 원 매매법 칸(20일 → 말일)의 신호일 원자료**입니다. 진입일·청산일·진입가·청산가·
   보유일이 전부 들어 있어 차트로 직접 대조할 수 있습니다.
-  **`검증/` 폴더 안은 영문 파일명 그대로입니다** — 한글로 통일한 것은 `매매/` 쪽뿐입니다
+  **측정 표는 영문 파일명, 체결 산출물은 한글입니다** — 등급이 아니라 답하는 질문이 갈라 놓습니다
 - **월별 분해는 원 매매법 칸에만 겁니다.** 격자 전체를 쪼개면 1,848칸이 되어 다중 비교가 폭발합니다
 - 선행 조건은 **ETF 네 파일과 지수 네 파일**입니다. 지수는 위 「지수 수집」으로 받습니다
-- 결과와 판정은 `docs/research/월말_진입.md`, 확정 설계는
-  [spec/월말_진입_설계.md](spec/월말_진입_설계.md) 입니다
+- 결과와 판정은 `docs/매매/월말_진입/결과.md`, 확정 설계는
+  [매매/월말_진입/설계.md](매매/월말_진입/설계.md) 입니다
 
 ---
 
-## 매매 규칙 실행
-
-> ### 세 매매법의 산출물은 같은 규격입니다
->
-> 파일 이름은 **`성적표.csv` · `거래내역.csv`** 이고 공통 컬럼이 같은 순서로 옵니다.
-> 규격의 SoT 는 [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 「매매 산출물 계약」입니다.
->
-> - **`이길 때(%)` 는 양수, `질 때(%)` 는 음수**입니다 — 손익비의 분자와 분모이며
->   `docs/strategy/투자금_결정.md` §1.2 의 계산기 입력이 여기서 옵니다
-> - **건수 컬럼은 정수로 나갑니다.** 잴 수 없는 칸은 **빈칸**이고 `0` 이 아닙니다 —
->   `0` 은 「손절이 걸리지 않았다」로 읽히는데 실제로는 「잰 적이 없다」입니다
-> - **`summary.json` 도 세 매매법이 같은 여섯 칸**입니다 —
->   `track`(매매법 이름) · `datasets`(**대상 범위와 데이터 기간**) · `rule`(무엇을 어떤 규칙으로
->   돌렸나 · 제외 건수) · `row_counts`(**파일 이름** → 행 수) · `cost`(맨몸 성적 표기) · `notes`
-> - **종목 컬럼은 종목명이고 종목코드는 `datasets` 에 있습니다**
-
-> AI 모델이 직접 실행할 수 있습니다.
-> **이것은 측정이 아니라 측정 결과로부터 도출한 매매 규칙**이며, 규칙과 확정 근거는
-> [strategy/역방향_매매_규칙.md](strategy/역방향_매매_규칙.md) 가 SoT입니다.
-
-### 원달러 그리드 — 코드 삭제됨 (2026-08-30)
-
-**실행할 스크립트가 없다.** 그리드는 채택되지 않았고 구현을 지웠다.
-규칙·성적과 **기각 근거(§2.8)** 는 [strategy/원달러_그리드.md](strategy/원달러_그리드.md),
-확정 설계는 [spec/원달러_그리드_설계.md](spec/원달러_그리드_설계.md) 에 있다.
-
-### 역방향 매매 규칙
-
-```bash
-# 전 조합 실행 (기본값) — 대상 전부 × 보유 한도 전부
-poetry run python scripts/strategy/run_reverse_trading.py
-
-# 특정 종목만
-poetry run python scripts/strategy/run_reverse_trading.py --target qqq
-```
-
-- **손절선·보유 한도·대상 목록은 인자가 아닙니다.** 확정된 규칙을 그대로 적용하는 것이 설계이며,
-  값을 골라 넣는 노브로 쓰면 표본에 맞춘 튜닝이 됩니다. 값의 SoT 는
-  `src/verify_lab/strategy/constants.py` 이고 근거는 규칙 문서 §3 입니다
-- **손절선은 -5% 하나, 보유 한도는 D+2 하나입니다.** 손절 3분할과 한도 3종을 나란히 내지
-  않습니다 — 실측에서 -4%~-10% 가 평평해 분할이 고를 여지만 만듭니다 (규칙 문서 §3.1)
-- 산출물은 `storage/results/매매/reverse/` 에 `거래내역.csv`(체결 내역),
-  `성적표.csv`(대상 × 시기 집계), `summary.json` 으로 남습니다
-- `거래내역.csv` 는 **신호 하나가 한 행**이고, `성적표.csv` 는 **대상 하나가 시기 5행**입니다
-- **대상은 4종입니다** — KODEX 200 K=10·K=20, QQQ K=10·K=20, **전부 시작연도 2005**.
-  `--target kodex200` 처럼 종목으로 고르면 그 종목의 **두 컷이 함께** 돌아갑니다
-  (인자는 종목 단위라 순위 컷을 따로 못 고릅니다)
-- **백테스트 구간은 2005 하나로 통일돼 있습니다.** 성적이 아니라 표본 근거로 고른 값이며
-  근거는 규칙 문서 §3.3 입니다. **QQQ 는 2005·2008 의 신호 집합이 완전히 같아** 통일해도 성적이 같습니다
-- **KODEX 200 K=20 은 확정 규칙이 아니라 비교축입니다.** 확정 대상은 규칙 문서 §1.1 이 정하며,
-  K=20 을 함께 내는 것은 두 컷을 나란히 놓고 판단하기 위해서입니다
-- 실행 시간은 순열 검정이 없어 **수 초**입니다
-
-### 옵션 만기일 매매 — 손절 격자
-
-**아직 확정된 규칙이 아닙니다.** 손절선을 고르기 위한 재료를 내는 스크립트이며,
-값 선택은 격자를 본 사용자가 합니다 (루트 `CLAUDE.md` 측정의 원칙 1).
-
-```bash
-# 확정 규칙 (기본값) — 손절 -5%
-poetry run python scripts/strategy/run_option_expiry_trading.py
-
-# 특정 종목만
-poetry run python scripts/strategy/run_option_expiry_trading.py --ticker qqq
-
-# 손절선 격자 — 손절선을 다시 고를 때만
-poetry run python scripts/strategy/run_option_expiry_trading.py --grid
-```
-
-- **손절선 값은 인자가 아닙니다.** 확정값 **−5%** 를 그대로 적용하며, 값을 골라 넣는
-  노브로 쓰면 표본에 맞춘 튜닝이 됩니다. 값의 SoT 는
-  `src/verify_lab/strategy/constants.py` 의 `EXPIRY_STOP_LEVEL` 이고
-  고른 근거는 `spec/옵션_만기일_설계.md` 결정 ㊴ 입니다
-- **기본 산출물에는 `손절선(%)` 컬럼이 없습니다** — 전 행이 같은 값이라 자리만 차지합니다
-- **`--grid` 는 값을 고르는 옵션이 아니라 전부 내는 옵션입니다.** 무손절 + −1.0%~−10.0%
-  (0.5%p 간격)를 내며 **시세를 재수집해 「평평한 구간」을 다시 찾아야 할 때** 씁니다
-- 대상은 **7칸**이고 SoT 는
-  `src/verify_lab/strategy/constants.py` 의 `EXPIRY_CELLS` 입니다
-- **통계량이 낮은 칸도 빼지 않습니다.** 게이트를 넘었으면 함께 냅니다 —
-  통계량으로 빼면 60칸에서 좋아 보이는 칸만 고르는 사후 선택이 됩니다 (`spec/옵션_만기일_설계.md` 결정 ㊳)
-- **미국 9월 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향**이라 독립된 세 번의 기회가 아닙니다
-- 산출물은 `storage/results/매매/option_expiry/` 에 남습니다
-  - 기본: `성적표.csv`(대상 칸 × 시기) · `거래내역.csv`(체결 원자료) · `summary.json`
-  - `--grid`: `손절선_격자.csv`(대상 칸 × 손절선 격자 × 시기) · `거래내역.csv` · `summary.json`
-- **성적표는 구간별로 나옵니다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`.
-  **표본이 10건 미만인 구간도 행이 남고** `판정가능` 이 `아니오` 로 찍힙니다
-  (루트 [CLAUDE.md](../CLAUDE.md) 측정의 원칙 17). **최근 구간은 표본이 얇아 판정용이 아닙니다** —
-  판정은 앞뒤 절반으로 하고 최근 구간은 「식고 있는가」를 보는 데만 씁니다
-- **「최근 N년」은 데이터 마지막 거래일 기준**입니다. 실행 시각과 무관하므로 같은 데이터면 같은 결과입니다
-- **종목 컬럼은 종목코드가 아니라 종목명입니다.** 코드는 `summary.json` 의 `datasets` 에 있습니다
-- **`--grid` 의 무손절 행이 결과 문서 12A.4 의 방향 기대값과 맞는지** 확인하세요.
-  안 맞으면 `measure` 와 `strategy` 두 계층 중 하나가 틀린 것입니다
-- ⚠️ **CSV 를 Excel 로 열어 저장하지 마세요.** 날짜에서 앞 0 이 지워지고(`2021-09-17` →
-  `2021.9.17`) 소수 끝자리가 잘려 재분석·대조가 깨집니다. 값 자체는 안 바뀝니다
-- 실행 시간은 순열 검정이 없어 **수 초**입니다
-
-### 월말 매매 — 손절 격자
-
-```bash
-# 코스피·코스닥 6대상 (매매 기본값 · 인버스 제외) — 12개월 × 두 방향 × (손절선 8종 + 무손절)
-poetry run python scripts/strategy/run_month_end_trading.py
-
-# 2000년 이후 진입만 — 「2000년 이전 시장은 다르다」 대조용
-poetry run python scripts/strategy/run_month_end_trading.py --from-year 2000
-
-# 대상을 골라서
-poetry run python scripts/strategy/run_month_end_trading.py --ticker 229200
-```
+#### 체결 — 손절선 격자
 
 - 🔴 **매매 기본 대상은 6개이고 검증은 8개입니다** (2026-09-12). 매매는 코스피 셋
   (`069500`·`1028`·`1001`)과 코스닥 셋(`229200`·`2203`·`2001`)이며, **인버스 둘
@@ -605,11 +576,11 @@ poetry run python scripts/strategy/run_month_end_trading.py --ticker 229200
   0.01~0.08%p 로 잡음이고 실제 집행은 2배 인버스입니다.
   **검증에는 그대로 둡니다** — `execution.csv` 가 「아래」를 **인버스 실물로 재는 표**이고,
   그것이 4월 분배락 과대평가(+18.63% 대 +10.44%)를 잡아내는 자리이기 때문입니다
-  (`docs/spec/월말_진입_설계.md` §7.16). **매매에서도 `--ticker 114800` 로 지목하면 돕니다**
+  (`docs/매매/월말_진입/설계.md` §7.16). **매매에서도 `--ticker 114800` 로 지목하면 돕니다**
 - **게이트 판정을 받는 것은 살 수 있는 1배 ETF 둘뿐입니다** — 지수 넷은 판정표의 `1차 판정` 이
   「판정 안 함」이며 긴 시계열을 참고하는 용도입니다 (루트 `CLAUDE.md` 「후보 판정 기준」)
 - **지수도 받습니다. 다만 한 줄로 강등됩니다.** 장중 손절에 고가·저가가 필요한데
-  지수 네 계열은 종가만 저장돼 있습니다 (`spec/월말_진입_설계.md` §7.6).
+  지수 네 계열은 종가만 저장돼 있습니다 (`매매/월말_진입/설계.md` §7.6).
   **거부하지 않고 넣는 것은 ETF 로는 볼 수 없는 기간(코스피 종합 46년 · 코스닥 종합 30년)이
   거기 있기 때문**이며, 그 행의 `손절선(%)` 에 `손절불가` 가 적힙니다 —
   ETF 의 `무손절`(대조축으로 **걸지 않은** 것)과 다른 값입니다
@@ -628,7 +599,7 @@ poetry run python scripts/strategy/run_month_end_trading.py --ticker 229200
   - `성적표.csv` — 종목 × 월 × 방향 × 손절선 × 시기 성적
   - `summary.json` — 이 절 머리의 「세 매매법의 산출물은 같은 규격입니다」가 여섯 칸을 설명합니다
 - **손절선 하나로 고정한 표를 보려면 `손절선(%)` 을 거릅니다** — 그 값(권고안은 `-5.0`,
-  `strategy/월말_진입_매매_규칙.md` §1 은 **아직 사용자 확정 전**입니다)과 `손절불가` 를
+  `매매/월말_진입/규칙.md` §1 은 **아직 사용자 확정 전**입니다)과 `손절불가` 를
   **함께** 고르면 여덟 대상이 한 장에 들어가 지수 16~46년과 ETF 10~24년을 나란히 볼 수
   있습니다(960행). **다만 지수 넷의 길이가 제각각입니다** — 코스피 종합 46년 · 코스피200 36년 ·
   코스닥 종합 30년 · **코스닥150 16년**.
@@ -641,5 +612,15 @@ poetry run python scripts/strategy/run_month_end_trading.py --ticker 229200
 - **성적표는 구간별로 나옵니다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`.
   표본이 10건 미만인 구간도 행이 남고 `판정가능` 이 `아니오` 로 찍힙니다
 - **난수를 쓰지 않습니다.** 같은 데이터면 언제나 같은 결과이며 실행 시간은 수 초입니다
-- 규칙과 성적은 `docs/strategy/월말_진입_매매_규칙.md`, 신호의 통계적 근거는
-  `docs/research/월말_진입.md` 입니다
+- 규칙과 성적은 `docs/매매/월말_진입/규칙.md`, 신호의 통계적 근거는
+  `docs/매매/월말_진입/결과.md` 입니다
+
+---
+
+## 코드가 없는 트랙
+
+### 원달러 그리드 — 코드 삭제됨 (2026-08-30)
+
+**실행할 스크립트가 없다.** 그리드는 채택되지 않았고 구현을 지웠다.
+규칙·성적과 **기각 근거(§2.8)** 는 [조사/원달러_그리드/규칙.md](조사/원달러_그리드/규칙.md),
+확정 설계는 [조사/원달러_그리드/설계.md](조사/원달러_그리드/설계.md) 에 있다.

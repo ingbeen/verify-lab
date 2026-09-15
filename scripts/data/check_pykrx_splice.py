@@ -2,7 +2,7 @@
 """pykrx 수정주가 구간 이어붙이기 실측
 
 `get_market_ohlcv(adjusted=True)` 는 분배락을 조정하지만 **한 번에 3,000행까지만** 돌려준다
-(`docs/spec/역방향_설계.md` §8 결론 2). 상장일부터 전 기간을 얻으려면 조회를 나눠
+(`docs/매매/역방향/설계.md` §8 결론 2). 상장일부터 전 기간을 얻으려면 조회를 나눠
 이어붙여야 하는데, **나눠 받은 구간들이 같은 가격 축 위에 있는지는 확인된 적이 없다.**
 이 스크립트는 그것 하나를 잰다.
 
@@ -31,7 +31,6 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from verify_lab.common_constants import RESULT_LAYER_PROBE
 from verify_lab.data.constants import KRX_REQUEST_DATE_FORMAT
 from verify_lab.data.krx_common import validate_krx_date
 from verify_lab.data.krx_credentials import load_krx_credentials
@@ -404,7 +403,7 @@ def main() -> int:
     #    최상단 import 는 순서를 구조로 보장하지 못한다 — 누군가 줄을 옮기면 조용히 깨진다
     from pykrx import stock
 
-    output_dir = create_run_directory(PROBE_NAME, layer=RESULT_LAYER_PROBE)
+    output_dir = create_run_directory(PROBE_NAME)
     logger.debug(f"이어붙이기 실측 시작: {ticker}, 시작일 {start_date}, 종료일 {end_dates}")
 
     # 3. 종료일만 바꿔가며 수정주가를 받는다. 받는 즉시 저장해 뒤쪽 호출이 실패해도 원자료가 남게 한다.

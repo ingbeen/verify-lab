@@ -22,8 +22,8 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.strategy.constants import EXIT_GAP_STOP, EXIT_INTRADAY_STOP, EXIT_LIMIT
-from verify_lab.strategy.trade_fill import resolve_positions, simulate_scheduled_trade
+from verify_lab.execution.constants import EXIT_GAP_STOP, EXIT_INTRADAY_STOP, EXIT_LIMIT
+from verify_lab.execution.trade_fill import resolve_positions, simulate_scheduled_trade
 
 # 손계산을 쉽게 하려고 진입가를 100 으로 둔다
 ENTRY_PRICE = 100.0
@@ -301,7 +301,7 @@ class TestNoStop:
         """
         목적: 무손절 행이 실제로 손절을 안 한다는 계약을 고정한다
 
-        `.claude/rules/strategy.md` 가 **무손절 성적을 함께 산출하도록** 요구한다 —
+        `.claude/rules/trading.md` 가 **무손절 성적을 함께 산출하도록** 요구한다 —
         손절의 실질 효용은 수익이 아니라 최악 통제이므로 대조가 없으면 보일 수 없다.
 
         Given: 중간에 -20% 까지 밀렸다가 청산일에 -6% 로 끝난 시세

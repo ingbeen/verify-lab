@@ -16,7 +16,7 @@
 verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있는지 재는 측정소**입니다.
 백테스트 도구도, 전략 개발 도구도 아닙니다. 이 구분이 모든 판단의 기준입니다.
 
-### 왜 시작됐는가 — [docs/context/](docs/context/) 를 먼저 읽으세요
+### 왜 시작됐는가 — [docs/context/](docs/context) 를 먼저 읽으세요
 
 `docs/context/`의 두 문서는 **사용자의 현재 투자 상태를 나타내는 가장 중요한 문서**이며,
 이 프로젝트의 출발점입니다. 작업 전에 반드시 읽습니다.
@@ -45,10 +45,11 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | 베이스라인 대비 초과분 계산 | 수익 곡선 최적화 |
 | 사용자가 차트로 대조할 수 있는 원자료 제공 | 매매 규칙 구현 |
 
-> **예외는 `strategy/` 하나입니다.** `docs/strategy/`·`src/verify_lab/strategy/`·`scripts/strategy/`는
-> 측정 결과로부터 도출한 **매매 규칙**을 다루며, 오른쪽 열이 적용되지 않습니다.
-> 경계는 폴더 단위이고 허용 범위와 제약은 [.claude/rules/strategy.md](.claude/rules/strategy.md)가 SoT입니다.
-> **그 폴더 밖에서는 여전히 금지**이며, 새 검증은 왼쪽 열만 합니다.
+> **예외가 하나 있고, 경계는 폴더가 아니라 «행위»입니다** (2026-09-15 개정).
+> **격자를 전부 산출하는 것**(손절선·진입일·청산일 후보를 빠짐없이 내기)은 어디서나 허용됩니다 —
+> 고르지 않으므로 과최적화가 아닙니다. **값 하나를 확정하는 것**만
+> `docs/매매/<매매법>/규칙.md` 에서 허용되며, 코드는 볼 목록을 내고 사람이 고릅니다.
+> 허용 범위와 제약은 [.claude/rules/trading.md](.claude/rules/trading.md)가 SoT입니다.
 
 ### 측정의 원칙 (모든 검증에 공통 적용)
 
@@ -228,7 +229,7 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 - 전문 통계 용어보다 일상어를 씁니다. 꼭 필요한 용어는 한 줄 정의를 붙입니다.
 - 추상적 지표보다 **구체적인 날짜·가격·계산 과정을 표로** 보여줍니다.
 - 결론을 먼저 말하고 근거를 뒤에 붙입니다.
-- 모든 검증 결과는 `docs/research/<검증명>.md`에 남깁니다. 형식은 `.claude/rules/research.md` 참고.
+- 모든 검증 결과는 `docs/<등급>/<매매법>/결과.md`에 남깁니다. 형식은 `.claude/rules/research.md` 참고.
 - **국내 종목은 코드가 아니라 종목명으로 부릅니다.** 대화에서 표를 낼 때도, 문서를 쓸 때도
   `229200` 이 아니라 `KODEX 코스닥150` 입니다. 코드는 이름 뒤에 괄호로 덧붙일 수 있지만
   **코드만 적지 않습니다** — 국내 코드는 전부 숫자라 어느 것이 인버스이고 어느 것이
@@ -255,12 +256,12 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) | 패키지 코드 작업 — 계층 분리, 상수 관리, 절대 원칙 | 자동 |
 | [scripts/CLAUDE.md](scripts/CLAUDE.md) | CLI 스크립트 작업 | 자동 |
 | [tests/CLAUDE.md](tests/CLAUDE.md) | 테스트 작성·수정 | 자동 |
-| [.claude/rules/research.md](.claude/rules/research.md) | 검증 결과 문서 작성 | 자동 |
+| [.claude/rules/research.md](.claude/rules/research.md) | 결과 문서 작성 (`docs/<등급>/<매매법>/결과.md`) | 자동 |
 | [.claude/rules/python.md](.claude/rules/python.md) | 파이썬 파일 작업 — 코딩 표준·반올림·로깅 | 자동 |
 | [.claude/rules/docs.md](.claude/rules/docs.md) | `docs/` 파일 작업 | 자동 |
 | [.claude/rules/reference.md](.claude/rules/reference.md) | `reference/` 파일을 열었을 때 — 읽기 전용 4금지 | 자동 |
 | [.claude/rules/context.md](.claude/rules/context.md) | `docs/context/` 파일을 열었을 때 — 사용자 소유 문서 보호 | 자동 |
-| [.claude/rules/strategy.md](.claude/rules/strategy.md) | `strategy/` 경로 작업 — 매매 규칙 계층의 예외 규정과 제약 | 자동 |
+| [.claude/rules/trading.md](.claude/rules/trading.md) | 매매 규칙·체결 코드 작업 — 예외 규정(경계는 폴더가 아니라 행위)과 제약 | 자동 |
 | `/impl-plan` 스킬 (전역) | 계획서 작성·갱신 | 호출 |
 
 @docs/MEMORY.md
@@ -337,8 +338,8 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 | 옮길 것 | 목적지 |
 | --- | --- |
-| 데이터 소스 실측 결과, 설계 결정과 탈락안 | `docs/spec/` |
-| 측정 결과와 판정 | `docs/research/` |
+| 데이터 소스 실측 결과, 설계 결정과 탈락안 | `docs/<등급>/<매매법>/설계.md` |
+| 측정 결과와 판정 | `docs/<등급>/<매매법>/결과.md` |
 | 계층 간 계약 | [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) 「계층 간 계약」 |
 | 실행 명령어 | [docs/COMMANDS.md](docs/COMMANDS.md) |
 
@@ -350,8 +351,9 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | --- | --- |
 | `src/verify_lab/data/` | `수집 / ` |
 | `measure/` · `report/` | `측정 / ` |
-| `studies/` | `검증 / ` |
-| `strategy/` | `매매 / ` |
+| `studies/<매매법>/runner.py` 와 이벤트 정의 | `검증 / ` |
+| `studies/<매매법>/trading.py` · `execution/` | `매매 / ` |
+| `tracks.py` (등급 승격·강등) | `등급 / ` |
 | 문서 | `문서 / ` |
 | `.claude/` · 설정 파일 | `하네스 / ` |
 
@@ -395,8 +397,8 @@ SessionStart 훅(`.claude/settings.json`)이 세션 머리에서 같은 곳을 �
 
 verify-lab은 떠도는 매매법이 실제로 통계적 우위를 갖는지 검증하는 프로젝트입니다.
 
-- **개별 검증의 확정 설계**: `docs/spec/` (검증마다 한 개)
-- **검증 결과**: `docs/research/<검증명>.md`
+- **개별 검증의 확정 설계**: `docs/<등급>/<매매법>/설계.md` (검증마다 한 개)
+- **검증 결과**: `docs/<등급>/<매매법>/결과.md`
 
 기술 환경:
 
@@ -417,29 +419,34 @@ verify-lab/
 │                            # (계획서 훅·스킬은 전역 `~/.claude/` 에 있다)
 ├── src/verify_lab/
 │   ├── common_constants.py  # 공통 상수 (경로, 컬럼명 등)
+│   ├── tracks.py            # 매매법 이름표와 «등급» — 산출물이 어디 쌓이는지의 SoT
 │   ├── data/                # 시장별 데이터 로더 (yfinance, pykrx)
-│   ├── measure/             # forward return·베이스라인·통계 — 검증 공통 계층
-│   ├── report/              # 표·CSV·마크다운 출력 — 검증 공통 계층
-│   ├── studies/             # 개별 검증의 이벤트 정의 (검증마다 한 모듈)
-│   ├── strategy/            # 측정 결과로 도출한 매매 규칙 (예외 계층)
+│   ├── measure/             # forward return·베이스라인·통계 — 매매법이 바뀌어도 안 바뀜
+│   ├── report/              # 표·CSV 출력 — 매매법이 바뀌어도 안 바뀜
+│   ├── execution/           # 체결 판정식·시기별 성적·실행 요약 — 매매법 이름이 없는 공유 계층
+│   ├── studies/<매매법>/     # 매매법 하나의 전부 — 이벤트 정의·측정(runner)·체결(trading)
 │   └── utils/               # 공통 유틸리티 (로거, 포맷팅, CLI 헬퍼, 메타 관리)
 ├── scripts/                 # CLI 스크립트 (상세: scripts/CLAUDE.md)
-│   ├── data/                # 데이터 수집 스크립트
-│   ├── studies/             # 검증 실행 스크립트
-│   └── strategy/            # 매매 규칙 실행 스크립트
+│   ├── data/                # 데이터 수집·실측 스크립트
+│   └── run_<매매법>.py       # 매매법당 하나. 측정과 체결을 한 번에 돈다
 ├── tests/                   # 테스트 코드 (상세: tests/CLAUDE.md)
 ├── docs/
 │   ├── COMMANDS.md          # 실행 명령어 단일 관리
 │   ├── context/             # 사용자의 현재 운용 상태와 프로젝트 배경 (필독)
-│   ├── spec/                # 개별 검증의 확정 설계
-│   ├── research/            # 검증 결과 문서 (상세: .claude/rules/research.md)
-│   ├── strategy/            # 매매 규칙과 그 성적 (예외 계층)
+│   ├── 검증/<매매법>/         # 재 보는 중 — 설계.md · 결과.md
+│   ├── 매매/<매매법>/         # 실제로 거는 것 — 설계.md · 결과.md · 규칙.md
+│   ├── 조사/<이름>/           # 신호가 없는 성질 조사 · 채택 안 된 것
+│   ├── 공유/                 # 매매법에 묶이지 않는 규칙 (투자금 결정 등)
 │   └── plans/               # 작업 계획서 (임시 산출물, 주기적으로 비움)
 ├── reference/               # 참고용 원본 코드·문서 (읽기 전용, 상세: reference/README.md)
 └── storage/
     ├── market/              # 수집한 원시 시세 (git 동기화)
-    └── results/             # 검증 실행 결과 (git 동기화, meta.json 만 제외)
+    └── results/<등급>/<매매법>/  # 실행 결과 (git 동기화, meta.json 만 제외)
 ```
+
+> **등급(검증·매매·조사)은 분류일 뿐이라 코드를 가르지 않습니다.** 승격·강등은
+> `tracks.py` 의 한 줄을 바꾸는 것이고, 산출물 폴더와 문서 폴더가 그 값을 따릅니다 —
+> **성적 계산은 그대로**입니다.
 
 ### reference 폴더
 
@@ -450,16 +457,18 @@ verify-lab/
 
 **이 프로젝트는 저장소 밖의 경로를 참조하지 않습니다.** 참고할 것은 전부 안에 있습니다.
 
-### 공통 계층과 개별 검증의 경계 (CRITICAL)
+### 공통 계층과 개별 매매법의 경계 (CRITICAL)
 
-검증마다 새로 쓰는 것은 **이벤트 정의 하나뿐**입니다. 나머지는 공통 계층을 그대로 씁니다.
+매매법마다 새로 쓰는 것은 **이벤트 정의와 그 매매법의 파라미터**뿐입니다.
+나머지는 공통 계층을 그대로 씁니다.
 
 | 계층 | 매매법이 바뀌면 |
 | --- | --- |
 | `data/` | 자산군이 늘 때만 어댑터 추가 |
-| **`studies/` 의 이벤트 정의** | **매번 새로 작성** |
+| **`studies/<매매법>/` 의 이벤트 정의·파라미터** | **매번 새로 작성** |
 | `measure/` | 바뀌지 않음 |
 | `report/` | 바뀌지 않음 |
+| `execution/` (체결·시기별 성적·실행 요약) | 바뀌지 않음 |
 
 **공통 계층은 「검증 중」이 아니라 「확정 후」에 만듭니다.**
 
@@ -490,8 +499,7 @@ verify-lab/
 | 대상 | 실행 주체 |
 | --- | --- |
 | `scripts/data/` (데이터 수집·실측) | AI 모델이 직접 실행 가능 |
-| `scripts/studies/` (검증 실행) | AI 모델이 직접 실행 가능 |
-| `scripts/strategy/` (매매 규칙 실행) | AI 모델이 직접 실행 가능 |
+| `scripts/run_<매매법>.py` (측정과 체결을 한 번에) | AI 모델이 직접 실행 가능 |
 | `validate_project.py` | AI 모델이 직접 실행 가능 |
 
 수집 스크립트는 yfinance·KRX·ECOS·FRED 외부 서버에 **실제 요청**을 보냅니다. 실행은 자유롭되
@@ -516,8 +524,8 @@ verify-lab/
 ### 재수집은 이미 나온 결과를 바꿉니다
 
 수집기는 **같은 파일명에 덮어씁니다.** 기간이 늘면 신호 수와 성적이 달라져
-`docs/research/` 와 `docs/strategy/` 의 수치가 그 시점부터 재현되지 않습니다
-(실물 사례: `docs/strategy/역방향_매매_규칙.md` §5.3 — 44건 신호와 성적표가 시세 기간에 묶여 있습니다).
+`docs/<등급>/<매매법>/결과.md` 와 `docs/매매/<매매법>/규칙.md` 의 수치가 그 시점부터 재현되지 않습니다
+(실물 사례: `docs/매매/역방향/규칙.md` §5.3 — 44건 신호와 성적표가 시세 기간에 묶여 있습니다).
 
 **막지는 않되 흔적을 남깁니다.** 덮어쓴 뒤에는 새 데이터 기준일과 무엇이 달라졌는지를
 해당 결과 문서에 적습니다.

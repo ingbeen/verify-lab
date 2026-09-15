@@ -4,13 +4,16 @@
 결과가 바이트 단위로 같으므로, 실행마다 폴더를 새로 만들면 **내용이 같고 이름만 다른 사본**이
 무한히 쌓인다. 어느 실행의 값인지는 폴더 이름이 아니라 `summary.json` 의 `datasets`·`rule` 이 말한다.
 
-[주의] **`실측` 계층에는 그 요약이 없다.** 프로브 스크립트는 `save_run_summary` 를 부르지 않아
+[주의] **실측 프로브에는 그 요약이 없다.** 프로브 스크립트는 `save_run_summary` 를 부르지 않아
 CSV 만 남으므로, **폴더만 봐서는 어느 대상을 잰 것인지 알 수 없다.** 남겨야 할 값은
-`docs/spec/` 의 「데이터 실측 기록」이 담는다.
+설계 문서의 「데이터 실측 기록」이 담는다.
 
-폴더 생성과 저장을 이 계층이 소유한다. 검증 스크립트마다 같은 코드를 두면 경로 규칙이 조용히
-갈라지고, 나중에 그 결과들이 같은 검증의 산출물인지 알 수 없게 된다. **스크립트가 폴더 이름을
-직접 조립하면 경로 규칙을 바꿀 때 그 스크립트만 옛 자리에 남는다** — 계층 폴더를 도입할 때
+**등급 폴더는 `tracks.py` 가 정하고 이 모듈이 묻는다.** 호출 측이 등급을 넘기면 레지스트리가
+SoT 가 아니게 되어, 폴더를 손으로 옮겨도 다음 실행이 원래 자리에 다시 만든다.
+
+폴더 생성과 저장을 이 계층이 소유한다. 스크립트마다 같은 코드를 두면 경로 규칙이 조용히
+갈라지고, 나중에 그 결과들이 같은 매매법의 산출물인지 알 수 없게 된다. **스크립트가 폴더 이름을
+직접 조립하면 경로 규칙을 바꿀 때 그 스크립트만 옛 자리에 남는다** — 등급 폴더를 도입할 때
 실측 스크립트 둘이 그 상태였다.
 """
 
@@ -23,8 +26,9 @@ from typing import Any
 
 import pandas as pd
 
-from verify_lab.common_constants import RESULT_LAYERS, RESULTS_DIR
+from verify_lab.common_constants import RESULTS_DIR
 from verify_lab.report.constants import CSV_ENCODING, RUN_SUMMARY_FILENAME
+from verify_lab.tracks import grade_of
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -46,28 +50,31 @@ VALID_TRACK_NAME = re.compile(rf"^{TRACK_NAME_PATTERN}$")
 ABSOLUTE_PATH_PREFIXES = ("/", "~/")
 
 
-def create_run_directory(track_name: str, *, layer: str) -> Path:
-    """`storage/results/<계층>/<매매법>/` 을 **비우고** 만든다.
+def create_run_directory(track_name: str) -> Path:
+    """`storage/results/<등급>/<매매법>/` 을 **비우고** 만든다.
 
-    **계층은 경로가 말하고 폴더 이름에는 넣지 않는다.** 매매법 이름이 측정과 매매에서 같아야
+    **등급은 경로가 말하고 폴더 이름에는 넣지 않는다.** 매매법 이름이 등급이 달라도 같아야
     한다는 것이 이 저장소의 규약이므로, 둘을 가르는 것은 상위 폴더뿐이다. 이름에 접미사를
-    또 붙이면 중복이고, 접미사가 계층마다 갈리면 **같은 매매법이 두 이름으로 불려** 사용자가
+    또 붙이면 중복이고, 접미사가 등급마다 갈리면 **같은 매매법이 두 이름으로 불려** 사용자가
     두 산출물 폴더를 옛것/새것으로 오해한다.
 
+    [중요] **등급을 인자로 받지 않는다.** 호출 측이 넘기면 `tracks.py` 가 SoT 가 아니게 되고,
+    폴더를 손으로 옮겨도 다음 실행이 원래 자리에 다시 만든다. 승격·강등이 레지스트리 한 줄로
+    끝나려면 등급을 묻는 자리가 여기 하나여야 한다.
+
     [중요] **비우는 이유**: 덮어쓰기는 파일 단위라 이번 실행이 내지 않는 파일은 남는다.
-    옵션 만기일의 손절선 격자가 `--grid` 실행에서만 나오므로, 비우지 않으면 **한 폴더에 두
-    실행의 파일이 섞이고 예외는 나지 않는다.** 비우는 범위는 이 매매법 폴더 안뿐이다 —
-    계층 폴더까지 비우면 검증 여섯을 잇달아 돌릴 때 **마지막 하나만 남는다.**
+    손절선 격자처럼 옵션에서만 나오는 파일이 있으므로, 비우지 않으면 **한 폴더에 두 실행의
+    파일이 섞이고 예외는 나지 않는다.** 비우는 범위는 이 매매법 폴더 안뿐이다 —
+    등급 폴더까지 비우면 여럿을 잇달아 돌릴 때 **마지막 하나만 남는다.**
 
     Args:
         track_name: 매매법 이름(slug). `studies/<slug>/constants.py` 의 `TRACK_NAME` 을 넘긴다
-        layer: 산출물 계층. `common_constants.RESULT_LAYERS` 의 값 하나여야 한다
 
     Returns:
         만들어진 빈 폴더 경로
 
     Raises:
-        ValueError: 매매법 이름이 비어 있거나 모양이 맞지 않거나, 선언되지 않은 계층인 경우
+        ValueError: 매매법 이름이 비어 있거나, 모양이 맞지 않거나, 레지스트리에 없는 경우
     """
     name = track_name.strip()
     if not name:
@@ -78,12 +85,11 @@ def create_run_directory(track_name: str, *, layer: str) -> Path:
     if not VALID_TRACK_NAME.match(name):
         raise ValueError(f"매매법 이름은 영소문자와 밑줄로만 이루어져야 합니다: {name}")
 
-    # 오타를 통과시키면 **예외 없이 새 상위 폴더가 생긴다.** 산출물이 선언된 세 계층 밖으로
-    # 조용히 흩어지고, 그 자리는 아무도 보지 않는다
-    if layer not in RESULT_LAYERS:
-        raise ValueError(f"알 수 없는 산출물 계층입니다: {layer} (가능한 값: {list(RESULT_LAYERS)})")
+    # 등록되지 않은 이름을 통과시키면 **예외 없이 새 상위 폴더가 생긴다.** 산출물이 선언된
+    # 등급 밖으로 조용히 흩어지고, 그 자리는 아무도 보지 않는다
+    grade = grade_of(name)
 
-    directory = RESULTS_DIR / layer / name
+    directory = RESULTS_DIR / grade / name
 
     # 심볼릭 링크는 `rmtree` 가 거부하고, 끊어진 링크는 `exists()` 가 False 라 아래 `mkdir` 에서
     # 죽는다. 링크 자체만 지우면 둘 다 평범한 「자리 비우기」가 된다
@@ -92,7 +98,7 @@ def create_run_directory(track_name: str, *, layer: str) -> Path:
     elif directory.exists():
         shutil.rmtree(directory)
 
-    # `exist_ok` 는 **계층 폴더 때문에 필요하다** — 같은 계층의 다른 매매법이 동시에 돌면
+    # `exist_ok` 는 **등급 폴더 때문에 필요하다** — 같은 등급의 다른 매매법이 동시에 돌면
     # 상위 폴더 생성이 겹친다. 매매법 폴더 자체는 바로 위에서 비워 두었다
     directory.mkdir(parents=True, exist_ok=True)
     logger.debug(f"결과 폴더 준비: {directory}")

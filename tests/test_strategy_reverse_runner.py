@@ -27,8 +27,7 @@ from verify_lab.common_constants import (
     COL_VOLUME,
     PRICE_DECIMALS,
 )
-from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
-from verify_lab.strategy.constants import (
+from verify_lab.execution.constants import (
     DISPLAY_ENTRY_DATE,
     DISPLAY_MEAN_HOLD,
     DISPLAY_RETURN,
@@ -38,18 +37,18 @@ from verify_lab.strategy.constants import (
     PERIODS,
     stop_level_value,
 )
-from verify_lab.strategy.reverse_constants import HOLD_LIMIT, START_YEAR, STOP_LOSS_LEVEL, TARGETS, Target
-from verify_lab.strategy.reverse_runner import (
+from verify_lab.execution.run_summary import KEY_NOTES, KEY_RULE
+from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
+from verify_lab.studies.reverse.constants import HOLD_LIMIT, START_YEAR, STOP_LOSS_LEVEL, TARGETS, Dataset, Target
+from verify_lab.studies.reverse.trading import (
     IDENTITY_COLUMNS,
     KEY_EXCLUDED_COUNT,
     KEY_HOLD_LIMIT,
-    KEY_STOP_LEVEL,
+    KEY_STOP_LEVELS,
     KEY_TARGETS,
     StrategyOutputs,
     run_reverse_trading,
 )
-from verify_lab.strategy.run_summary import KEY_NOTES, KEY_RULE
-from verify_lab.studies.reverse.constants import Dataset
 
 # 합성 시세를 만드는 난수 시드. 시드 없는 난수는 금지다
 SYNTHETIC_SEED = 20260823
@@ -157,7 +156,7 @@ def _target(
 @pytest.fixture(scope="module")
 def outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs:
     """합성 시세로 돈 실행 결과 (모듈 안에서 한 번만 만든다)."""
-    return run_reverse_trading([_target(tmp_path_factory.mktemp("strategy"))])
+    return run_reverse_trading([_target(tmp_path_factory.mktemp("strategy"))], stop_levels=(STOP_LOSS_LEVEL,))
 
 
 def _overall(summary: pd.DataFrame) -> pd.Series:
@@ -292,8 +291,12 @@ class TestSignalOwnership:
         Then: 넓은 컷의 신호 수가 좁은 컷보다 많거나 같다
         """
         # Given
-        narrow = run_reverse_trading([_target(tmp_path / "narrow", rank_cut=5, ticker="좁은컷")])
-        wide = run_reverse_trading([_target(tmp_path / "wide", rank_cut=20, ticker="넓은컷")])
+        narrow = run_reverse_trading(
+            [_target(tmp_path / "narrow", rank_cut=5, ticker="좁은컷")], stop_levels=(STOP_LOSS_LEVEL,)
+        )
+        wide = run_reverse_trading(
+            [_target(tmp_path / "wide", rank_cut=20, ticker="넓은컷")], stop_levels=(STOP_LOSS_LEVEL,)
+        )
 
         # When
         narrow_count = int(narrow.performance[DISPLAY_SIGNAL_COUNT].iloc[0])
@@ -332,7 +335,7 @@ class TestSignalOwnership:
                 ),
                 rank_cut=10,
             )
-            results.append(run_reverse_trading([target]).trades)
+            results.append(run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).trades)
 
         # When
         merged = results[1].merge(results[0], on=[DISPLAY_ENTRY_DATE], suffixes=("_cut", "_whole"))
@@ -399,8 +402,8 @@ class TestTargetsInvariant:
         late = replace(early, start_year=SYNTHETIC_START_YEAR)
 
         # When
-        early_dates = set(run_reverse_trading([early]).trades[DISPLAY_ENTRY_DATE])
-        late_dates = set(run_reverse_trading([late]).trades[DISPLAY_ENTRY_DATE])
+        early_dates = set(run_reverse_trading([early], stop_levels=(STOP_LOSS_LEVEL,)).trades[DISPLAY_ENTRY_DATE])
+        late_dates = set(run_reverse_trading([late], stop_levels=(STOP_LOSS_LEVEL,)).trades[DISPLAY_ENTRY_DATE])
 
         # Then — 늦은 쪽이 비어 있으면 진부분집합이 공짜로 성립하므로 함께 고정한다
         assert late_dates
@@ -424,7 +427,7 @@ class TestTargetsInvariant:
         expected = {MARKET_START_YEAR, SYNTHETIC_START_YEAR}
 
         # When
-        result = run_reverse_trading([early, late])
+        result = run_reverse_trading([early, late], stop_levels=(STOP_LOSS_LEVEL,))
 
         # Then
         assert set(result.performance[DISPLAY_START_YEAR]) == expected
@@ -487,9 +490,7 @@ class TestTargetsInvariant:
         rule = outputs.summary[KEY_RULE]
 
         # Then
-        assert rule[KEY_STOP_LEVEL] == pytest.approx(
-            stop_level_value(STOP_LOSS_LEVEL, measurable=True), abs=RATE_TOLERANCE
-        )
+        assert rule[KEY_STOP_LEVELS] == [stop_level_value(STOP_LOSS_LEVEL, measurable=True)]
         assert rule[KEY_HOLD_LIMIT] == HOLD_LIMIT
 
     def test_규칙에는_기계값만_담고_산문은_notes_가_담는다(self, outputs: StrategyOutputs) -> None:
@@ -538,6 +539,24 @@ class TestTargetsInvariant:
         assert any("보유 한도" in note and "청산" in note for note in notes), f"청산 규칙이 없습니다: {notes}"
 
 
+def _excluded(record: dict[str, object]) -> int:
+    """대상 기록에서 **확정 손절선의** 제외 건수를 읽는다.
+
+    **제외 건수는 손절선마다 다르다** — 데이터 끝에 걸린 신호는 무손절이면 한도일을 못 채워
+    제외되지만, 손절선이 있으면 갭으로 나가 체결이 만들어진다. 그래서 요약은 손절선 표기를
+    키로 한 사전을 담고, 이 헬퍼가 그중 한 칸을 고른다.
+
+    Args:
+        record: `summary.json` 의 `rule.targets` 한 줄
+
+    Returns:
+        그 손절선에서 체결을 만들지 못한 신호 수
+    """
+    by_stop: dict[str, int] = record[KEY_EXCLUDED_COUNT]  # type: ignore[assignment]
+
+    return int(by_stop[str(stop_level_value(STOP_LOSS_LEVEL, measurable=True))])
+
+
 class TestSamplePreservation:
     """표본 보존 — 데이터 끝을 넘어가 버려진 신호가 건수로 남는다 (tests/CLAUDE.md 필수)."""
 
@@ -552,7 +571,7 @@ class TestSamplePreservation:
         last_offset = SIGNAL_PLACEMENTS[-1][0]
         rows = _accumulation_index(1_400) + last_offset + 2
 
-        return run_reverse_trading([_target(directory, rows=rows)])
+        return run_reverse_trading([_target(directory, rows=rows)], stop_levels=(STOP_LOSS_LEVEL,))
 
     def test_체결하지_못한_신호가_제외_건수로_남는다(self, tmp_path: Path) -> None:
         """
@@ -570,7 +589,7 @@ class TestSamplePreservation:
         outputs = self._trimmed_outputs(tmp_path)
 
         # Then
-        assert int(outputs.summary[KEY_RULE][KEY_TARGETS][0]["excluded_count"]) >= 1
+        assert _excluded(outputs.summary[KEY_RULE][KEY_TARGETS][0]) >= 1
 
     def test_신호_수와_제외_수의_합이_전체_신호_수다(self, tmp_path: Path) -> None:
         """
@@ -586,7 +605,7 @@ class TestSamplePreservation:
 
         # Then
         record = outputs.summary[KEY_RULE][KEY_TARGETS][0]
-        counted = int(_overall(outputs.performance)[DISPLAY_SIGNAL_COUNT]) + int(record["excluded_count"])
+        counted = int(_overall(outputs.performance)[DISPLAY_SIGNAL_COUNT]) + _excluded(record)
         assert counted == int(record["signal_count"])
 
     def test_전부_체결되면_제외가_0이다(self, outputs: StrategyOutputs) -> None:
@@ -598,7 +617,7 @@ class TestSamplePreservation:
         Then: 요약의 제외 건수가 0 이다
         """
         # Given / When / Then
-        assert int(outputs.summary[KEY_RULE][KEY_TARGETS][0]["excluded_count"]) == 0
+        assert _excluded(outputs.summary[KEY_RULE][KEY_TARGETS][0]) == 0
 
     def test_성적표에는_제외_컬럼이_없다(self, outputs: StrategyOutputs) -> None:
         """
@@ -626,7 +645,7 @@ class TestInputValidation:
         """
         # Given / When / Then
         with pytest.raises(ValueError, match="대상"):
-            run_reverse_trading([])
+            run_reverse_trading([], stop_levels=(STOP_LOSS_LEVEL,))
 
 
 class TestAllSignalsExcluded:
@@ -649,7 +668,7 @@ class TestAllSignalsExcluded:
         rows = _accumulation_index(1_400) + first_offset + 2
 
         # When
-        outputs = run_reverse_trading([_target(tmp_path, rows=rows)])
+        outputs = run_reverse_trading([_target(tmp_path, rows=rows)], stop_levels=(STOP_LOSS_LEVEL,))
 
         # Then
         assert outputs.trades.empty, "이 시세에서는 체결이 만들어지지 않아야 검사가 성립합니다"

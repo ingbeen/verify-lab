@@ -9,7 +9,7 @@
 
 `runner` 는 이 정의를 강건성 조합만큼 순회해 공통 계층에 넘기고 산출물을 조립한다.
 
-확정 설계는 `docs/spec/역방향_설계.md` 가 SoT 다.
+확정 설계는 `docs/매매/역방향/설계.md` 가 SoT 다.
 """
 
 from .annotations import assign_event_ids, reference_zscore

@@ -12,8 +12,8 @@
 | --- | --- | --- |
 | `판정가능` 과 그 값 | `measure/constants.py` | 측정의 원칙 17이 모든 검증에 요구한다 |
 | 칸당 표본 하한 | `measure/constants.py` | 원칙 12·17이 같은 하한을 쓰므로 소유자가 하나다. 값은 `MIN_SAMPLE_PER_CELL` 이 갖는다 |
-| 체결 판정식 | `strategy/trade_fill.py` | 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오고, 두 곳에 두면 그 함정을 두 번 관리한다 |
-| 구간별 성적 산식 | `strategy/periods.py` | 구간 5행은 세 매매법에 공통이다 (측정의 원칙 17) |
+| 체결 판정식 | `execution/trade_fill.py` | 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오고, 두 곳에 두면 그 함정을 두 번 관리한다 |
+| 구간별 성적 산식 | `execution/periods.py` | 구간 5행은 세 매매법에 공통이다 (측정의 원칙 17) |
 | 평균-비율 어긋남 판정과 그 임계값 | `measure/statistics.py` · `measure/constants.py` | 원칙 13이 모든 검증에 요구한다. **실제로 두 검증에 docstring까지 같은 함수가 두 벌 있었다** |
 | 판정가능 «식» | `measure/statistics.py` | 값(하한)만 공통이고 식은 다섯 곳에 있었다 — 하한을 바꿔도 한 곳이 안 따라오면 드러나지 않는다 |
 
@@ -48,7 +48,11 @@ _OWNER = Path(measure_constants.__file__).resolve()
 _DATA_CONSTANTS = "verify_lab/data/constants.py"
 
 # 매매 계층의 공유 로직을 소유한 모듈. 매매법 모듈은 여기서만 가져온다
-_STRATEGY_SHARED = ("trade_fill", "periods", "constants", "run_summary")
+_EXECUTION_SHARED = ("trade_fill", "periods", "constants", "run_summary")
+
+# 측정과 체결의 요약을 합치는 공유 함수. **이 함수에서 온 이름만 허용한다** —
+# 「`summary` 라는 이름이면 통과」로 두면 사전 리터럴을 그 이름에 담는 우회가 열린다
+_MERGE_FUNCTION = "merge_run_summary"
 
 # 평균-비율 어긋남 판정과 판정가능 식을 소유한 파일. `_files_defining` 은 `_OWNER` 하나만
 # 빼므로 이 이름이 결과에 그대로 남는 것이 정상이다
@@ -73,7 +77,7 @@ _REPORT_LABEL_COLLISIONS = {
     # 배수 검증은 기초지수가 오른 날인지다. 계약 표가 이 갈림을 의도로 적어 두었다
     "방향": frozenset(
         {
-            "verify_lab/strategy/constants.py",
+            "verify_lab/execution/constants.py",
             "verify_lab/studies/leverage_tracking/constants.py",
             "verify_lab/studies/reverse/constants.py",
         }
@@ -120,78 +124,57 @@ def _study_packages() -> list[Path]:
     return sorted(path for path in (_SOURCE_ROOT / "studies").iterdir() if (path / "constants.py").is_file())
 
 
-def _study_scripts() -> list[Path]:
-    """검증 실행 스크립트를 모은다.
-
-    Returns:
-        `scripts/studies/run_*_study.py` 목록 (정렬됨)
-    """
-    return sorted((BASE_DIR / "scripts" / "studies").glob("run_*_study.py"))
-
-
 def _runner_scripts() -> list[Path]:
-    """검증과 매매의 실행 스크립트를 함께 모은다.
+    """매매법·조사의 실행 스크립트를 모은다.
 
-    **매매 쪽을 빼면 안 된다.** 「흩어진 파일명 문자열」의 원래 사고가 그쪽이었다 —
-    같은 뜻의 성적표가 **매매 스크립트 세 곳에서** 세 이름으로 갈렸다
-    (`src/verify_lab/CLAUDE.md` 「매매 산출물 계약」).
-
-    Returns:
-        두 폴더의 실행 스크립트 목록 (정렬됨)
-    """
-    return _study_scripts() + sorted((BASE_DIR / "scripts" / "strategy").glob("run_*_trading.py"))
-
-
-def _strategy_runner_modules() -> list[Path]:
-    """매매법 하나씩에 대응하는 실행 모듈을 찾는다.
+    **매매법당 하나다.** 등급(검증·매매)은 분류일 뿐이라 실행을 가르지 않으므로, 한 스크립트가
+    측정 표와 체결 산출물을 함께 낸다 — 둘로 나누면 같은 시세를 두 번 읽고 **나중에 돈 쪽이
+    앞의 산출물을 지운다**(산출물 폴더가 매매법당 하나다).
 
     Returns:
-        `strategy/*_runner.py` 목록 (정렬됨)
+        `scripts/run_*.py` 목록 (정렬됨)
     """
-    return sorted((_SOURCE_ROOT / "strategy").glob("*_runner.py"))
+    return sorted((BASE_DIR / "scripts").glob("run_*.py"))
 
 
-def _imported_strategy_modules(path: Path) -> set[str]:
-    """그 파일이 `strategy` 안에서 가져오는 모듈 이름을 모은다.
+def _merged_summary_names(path: Path) -> set[str]:
+    """그 스크립트에서 **합치기 함수의 반환값을 받은** 지역변수 이름을 모은다.
 
-    **네 가지 import 형태를 모두 본다.** 한 형태만 보면 다른 형태로 쓴 코드가 검사를 통과하며,
-    그때 계약은 초록인데 사슬은 되살아난다.
-
-    | 형태 | 예 |
-    | --- | --- |
-    | 절대 `from ... import` | `from verify_lab.strategy.periods import period_rows` |
-    | 패키지에서 모듈을 | `from verify_lab.strategy import periods` |
-    | 모듈 `import` | `import verify_lab.strategy.periods` |
-    | 상대 `from` | `from .periods import period_rows` |
+    **이름만 보고 허용하면 우회가 열린다** — `summary = {...}` 로 사전을 조립해 같은 이름에
+    담으면 「CLI 가 요약을 조립하지 않는다」는 계약이 이름 하나로 뚫린다. 그래서 그 이름이
+    실제로 `merge_run_summary(...)` 에서 왔는지를 AST 로 본다.
 
     Args:
-        path: 검사할 소스 파일
+        path: 검사할 실행 스크립트
 
     Returns:
-        모듈 이름 집합 (`verify_lab.strategy.` 접두어를 뗀 것)
+        허용되는 지역변수 이름 집합
     """
     tree = ast.parse(path.read_text(encoding="utf-8"))
-    package = "verify_lab.strategy"
-    prefix = f"{package}."
-    found: set[str] = set()
+    names: set[str] = set()
 
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            module = node.module or ""
-            if node.level:
-                # 상대 import — `from .periods import x` 는 같은 패키지의 모듈을 가리킨다.
-                # 모듈명이 비면(`from . import x`) 가져온 이름 자체가 모듈이다
-                found.update({alias.name for alias in node.names} if not module else {module.split(".")[0]})
-            elif module == package:
-                found.update(alias.name for alias in node.names)
-            elif module.startswith(prefix):
-                found.add(module[len(prefix) :].split(".")[0])
-        elif isinstance(node, ast.Import):
-            found.update(
-                alias.name[len(prefix) :].split(".")[0] for alias in node.names if alias.name.startswith(prefix)
-            )
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        called = node.value.func
+        label = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", "")
+        if label != _MERGE_FUNCTION:
+            continue
+        names.update(target.id for target in node.targets if isinstance(target, ast.Name))
 
-    return found
+    return names
+
+
+def _trading_modules() -> list[Path]:
+    """매매법 하나씩에 대응하는 실행 모듈을 찾는다.
+
+    **매매법 코드는 그 매매법의 검증 패키지 안에 있다.** 등급(검증·매매)은 분류일 뿐이라
+    코드를 가르지 않으므로, 승격해도 파일이 움직이지 않는다.
+
+    Returns:
+        `studies/<slug>/trading.py` 목록 (정렬됨)
+    """
+    return sorted((_SOURCE_ROOT / "studies").glob("*/trading.py"))
 
 
 def _functions_importing_pykrx(path: Path) -> list[ast.FunctionDef]:
@@ -882,7 +865,7 @@ class TestPrincipleThirteenOwnership:
         목적: 하한(값)만 공통이고 **식**은 다섯 곳에 있던 것을 닫는다.
 
         `JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO` 가
-        `month_end`·`option_expiry`·`leverage_tracking`·`futures_leverage`·`strategy/periods`
+        `month_end`·`option_expiry`·`leverage_tracking`·`futures_leverage`·`execution/periods`
         다섯 곳에 있었다. 하한을 바꿔도 한 곳이 안 따라오면 **예외 없이** 두 산출물의
         `판정가능` 이 다른 기준으로 찍힌다.
 
@@ -1117,7 +1100,7 @@ class TestCommonLayerReexport:
     소유자가 바뀌어도 통과하는 상태였다.
 
     [중요] **`__all__` 을 지우는 것으로는 옛 경로가 닫히지 않는다.** `__all__` 은 `import *` 에만
-    걸리고 `from verify_lab.strategy.constants import PERIOD_FIRST_HALF` 는 그대로 동작한다.
+    걸리고 `from verify_lab.execution.constants import PERIOD_FIRST_HALF` 는 그대로 동작한다.
     그래서 선언이 아니라 **실제 import 문**을 본다.
     """
 
@@ -1130,14 +1113,14 @@ class TestCommonLayerReexport:
         `measure.statistics` 로 옮겨간 뒤에도 그 테스트는 통과했고, 그래서 이동이 실제로
         일어났는지 확인할 방법이 없었다.
 
-        Given: `studies/`·`strategy/` 가 공통 계층에서 가져온 이름
+        Given: `studies/`·`execution/` 가 공통 계층에서 가져온 이름
         When: `src`·`tests`·`scripts` 전체에서 그 이름을 **그 모듈에서** 가져오는 곳을 찾는다
         Then: 한 곳도 없다
         """
         # Given
         passthrough = {
             f"verify_lab.{'.'.join(path.relative_to(_SOURCE_ROOT).with_suffix('').parts)}": _passthrough_names(path)
-            for folder in ("studies", "strategy")
+            for folder in ("studies", "execution")
             for path in (_SOURCE_ROOT / folder).rglob("*.py")
         }
         assert any(passthrough.values()), "공통 계층에서 이름을 가져오는 모듈을 하나도 찾지 못했습니다"
@@ -1164,12 +1147,12 @@ class TestCommonLayerReexport:
         **그런데 `__all__` 에 이름을 얹으면 그 검사가 꺼진다** — 전에 네 모듈이 정확히
         그 상태였다. 두 장치가 함께 있어야 통과 경로가 다시 열리지 않는다.
 
-        Given: `studies/`·`strategy/` 의 모든 소스 파일
+        Given: `studies/`·`execution/` 의 모든 소스 파일
         When: `__all__` 과 공통 계층에서 가져온 이름을 겹쳐 본다
         Then: 겹치는 이름이 없다
         """
         # Given
-        modules = sorted(path for folder in ("studies", "strategy") for path in (_SOURCE_ROOT / folder).rglob("*.py"))
+        modules = sorted(path for folder in ("studies", "execution") for path in (_SOURCE_ROOT / folder).rglob("*.py"))
         assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
 
         # When / Then
@@ -1218,78 +1201,37 @@ class TestDataConstantsOwnership:
         assert offenders == [_DATA_CONSTANTS], f"KRX 날짜 포맷을 자체 정의한 파일이 있습니다: {offenders}"
 
 
-class TestStrategyLayerComposition:
-    """매매 계층은 공유 로직을 중립 모듈에 두고 매매법끼리 서로를 모른다"""
+class TestExecutionLayerComposition:
+    """공유 실행 계층은 매매법을 모르고, 매매법마다 실행 모듈이 하나다
 
-    def test_매매법_모듈이_서로를_가져오지_않는다(self) -> None:
-        """
-        목적: 월말 → 옵션 만기일 → 역방향 사슬로 되돌아가지 않게 한다.
+    **등급(검증·매매)은 분류일 뿐이라 코드를 가르지 않는다.** 승격해도 파일이 움직이지
+    않으므로, 매매법 코드는 그 매매법의 검증 패키지 안에 함께 있고 공유 로직만
+    `execution/` 에 남는다.
+    """
 
-        사슬이 생기면 **공유 함수가 특정 매매법 파일의 소유가 되고**, 그 매매법 사정으로
-        고칠 때 빌려 쓰는 쪽이 조용히 함께 바뀐다. 실제로 그 상태에서 월말은 자기 체결
-        로직이 하나도 없었고, 초안 계획서는 그것을 「체결 모듈이 없다」고 잘못 읽었다.
-
-        **자기 이름의 상수 모듈은 허용한다** — `reverse_runner.py` 가 `reverse_constants` 를
-        가져오는 것은 사슬이 아니라 자기 파라미터를 읽는 것이다. 남의 것을 가져오면 걸린다.
-
-        Given: `strategy/*_runner.py` 전부
-        When: 각 파일이 `strategy` 안에서 가져오는 모듈을 본다
-        Then: 공유 모듈과 자기 상수 모듈만 가져온다
-        """
-        # Given
-        runners = _strategy_runner_modules()
-        assert runners, "매매 실행 모듈을 하나도 찾지 못했습니다"
-
-        # When / Then
-        for path in runners:
-            slug = path.name.removesuffix("_runner.py")
-            allowed = set(_STRATEGY_SHARED) | {f"{slug}_constants"}
-            borrowed = _imported_strategy_modules(path) - allowed
-            assert borrowed == set(), f"{path.name} 가 다른 매매법의 모듈을 가져옵니다: {sorted(borrowed)}"
-
-    def test_공유_모듈이_매매법별_상수를_가져오지_않는다(self) -> None:
+    def test_공유_모듈이_매매법을_가져오지_않는다(self) -> None:
         """
         목적: 매매법-중립 모듈이 특정 매매법의 값을 알게 되는 것을 막는다.
 
-        **`trade_fill.simulate_signal` 의 `stop_level` 기본값이 역방향의 −5% 였다.** 옵션
-        만기일·월말은 자기 값을 넘기므로 드러나지 않았지만, 인자를 빠뜨리는 순간 **다른
+        **`trade_fill.simulate_signal` 의 `stop_level` 기본값이 역방향의 −5% 였다.** 다른
+        매매법은 자기 값을 넘기므로 드러나지 않았지만, 인자를 빠뜨리는 순간 **다른
         매매법의 손절선이 조용히 적용된다** — 예외가 나지 않고 성적만 달라진다.
+        공유 `constants.py` 가 `studies.reverse.constants` 를 가져오던 시절에는
+        **월말 매매를 돌려도 역방향의 `DATASETS` 정의가 딸려 왔다.**
 
-        **이름 목록을 박지 않고 「매매법 이름이 붙은 상수 모듈」 전체를 금지한다.** 상수를
-        하나씩 적으면 새 매매법이 생길 때마다 이 목록을 따라 고쳐야 하고, 빠뜨리면 통과한다.
+        **매매 파라미터가 검증 패키지 안으로 들어가면서 두 금지가 하나가 됐다** — 전에는
+        「매매법별 상수 모듈」과 「검증 패키지」를 따로 막아야 했는데, 이제 후자 하나로 닫힌다.
 
-        Given: 매매법 이름이 없는 공유 모듈
-        When: 각 파일이 `strategy` 안에서 가져오는 모듈을 본다
-        Then: `*_constants` 를 하나도 가져오지 않는다
-        """
-        # Given
-        shared = [(_SOURCE_ROOT / "strategy" / f"{name}.py") for name in _STRATEGY_SHARED]
-
-        # When / Then
-        for path in shared:
-            borrowed = {name for name in _imported_strategy_modules(path) if name.endswith("_constants")}
-            assert borrowed == set(), f"{path.name} 가 매매법별 상수를 가져옵니다: {sorted(borrowed)}"
-
-    def test_공유_모듈이_검증_패키지를_가져오지_않는다(self) -> None:
-        """
-        목적: 공유 constants 를 **경유한** 매매법 결합을 끊는다.
-
-        `strategy/constants.py` 가 `studies.reverse.constants` 를 가져와서, **월말 매매를
-        돌리면 역방향의 `DATASETS` 정의가 딸려 왔다.** 계약이 금지한 「매매법끼리 import」를
-        파일 이름으로는 피했지만 사실상 이어져 있었다.
-
-        **`strategy → studies` 자체는 허용 방향이다**(이벤트 구동). 금지하는 것은
-        **매매법 이름이 없는 모듈**이 특정 검증을 아는 것이며, `<slug>_constants.py` 는 걸리지 않는다.
-
-        Given: 매매법 이름이 없는 공유 모듈
+        Given: 매매법 이름이 없는 공유 실행 모듈
         When: 각 파일이 가져오는 검증 패키지를 본다
         Then: 하나도 없다
         """
         # Given
-        shared = [(_SOURCE_ROOT / "strategy" / f"{name}.py") for name in _STRATEGY_SHARED]
+        shared = [(_SOURCE_ROOT / "execution" / f"{name}.py") for name in _EXECUTION_SHARED]
 
         # When / Then
         for path in shared:
+            assert path.is_file(), f"공유 실행 모듈이 없습니다: {path}"
             borrowed = _imported_study_packages(path)
             assert borrowed == set(), f"{path.name} 가 검증 패키지를 가져옵니다: {sorted(borrowed)}"
 
@@ -1297,16 +1239,16 @@ class TestStrategyLayerComposition:
         """
         목적: 「기본값을 두지 않는다」를 `trade_fill` 에도 건다.
 
-        `measure.screening.screen_candidates` 의 `tradable` 과 `strategy.constants.
-        stop_level_value` 의 `measurable` 이 **같은 이유로 이미 기본값을 두지 않는다** —
+        `measure.screening.screen_candidates` 의 `tradable` 과
+        `execution.constants.stop_level_value` 의 `measurable` 이 **같은 이유로 이미 기본값을 두지 않는다** —
         기본이 있으면 인자를 빠뜨린 호출이 조용히 틀린 성적을 낸다. 그 관용을 따른다.
 
-        Given: `strategy/trade_fill.py`
+        Given: `execution/trade_fill.py`
         When: 두 진입점의 손절선 인자를 본다
         Then: 기본값이 없다
         """
         # Given
-        tree = ast.parse((_SOURCE_ROOT / "strategy" / "trade_fill.py").read_text(encoding="utf-8"))
+        tree = ast.parse((_SOURCE_ROOT / "execution" / "trade_fill.py").read_text(encoding="utf-8"))
         entries = {"simulate_signal", "simulate_scheduled_trade"}
 
         # When
@@ -1332,18 +1274,18 @@ class TestStrategyLayerComposition:
         """
         목적: 매매법 이름을 알면 파일 이름을 알 수 있게 고정한다 (목표 1·2).
 
-        **이름에 slug 가 없던 `runner.py` 가 문제의 출발점이었다.** 폴더 목록만 봐서는
-        어느 매매법의 것인지 알 수 없었다.
+        **파일 이름이 아니라 «폴더»가 매매법을 말한다.** 매매 코드가 그 매매법의 검증
+        패키지 안에 있으므로 `studies/<slug>/trading.py` 하나이고, 승격해도 움직이지 않는다.
 
-        Given: `strategy/` 폴더
-        When: 실행 모듈 이름을 본다
+        Given: `studies/` 폴더
+        When: 실행 모듈이 든 패키지 이름을 본다
         Then: 확정 이름표의 세 매매법이 각각 하나씩 있다
         """
         # When
-        names = {path.name for path in _strategy_runner_modules()}
+        slugs = {path.parent.name for path in _trading_modules()}
 
         # Then
-        assert names == {"reverse_runner.py", "option_expiry_runner.py", "month_end_runner.py"}
+        assert slugs == {"reverse", "option_expiry", "month_end"}
 
     def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
         """
@@ -1354,13 +1296,13 @@ class TestStrategyLayerComposition:
 
         Given: `src/verify_lab` 전체
         When: 체결 결과 타입을 직접 정의하는 파일을 찾는다
-        Then: `strategy/trade_fill.py` 말고는 하나도 없다
+        Then: `execution/trade_fill.py` 말고는 하나도 없다
         """
         # When
         offenders = _files_defining(r"^\s*class\s+TradeResult\b")
 
         # Then
-        assert offenders == ["verify_lab/strategy/trade_fill.py"], f"체결 결과 타입을 자체 정의한 파일이 있습니다: {offenders}"
+        assert offenders == ["verify_lab/execution/trade_fill.py"], f"체결 결과 타입을 자체 정의한 파일이 있습니다: {offenders}"
 
 
 class TestDatasetRecordKeys:
@@ -1388,9 +1330,9 @@ class TestDatasetRecordKeys:
             "verify_lab/studies/reverse/runner.py",
             "verify_lab/studies/option_expiry/runner.py",
             "verify_lab/studies/month_end/runner.py",
-            "verify_lab/strategy/reverse_runner.py",
-            "verify_lab/strategy/option_expiry_runner.py",
-            "verify_lab/strategy/month_end_runner.py",
+            "verify_lab/studies/reverse/trading.py",
+            "verify_lab/studies/option_expiry/trading.py",
+            "verify_lab/studies/month_end/trading.py",
         }
 
         # When
@@ -1438,7 +1380,7 @@ class TestRunSummaryOwnership:
     스크립트로 넓힐 때 이 클래스가 그 자리다.
     """
 
-    def test_옵션_만기일_검증_CLI_가_요약에_값을_끼워_넣지_않는다(self) -> None:
+    def test_CLI_가_요약에_값을_끼워_넣지_않는다(self) -> None:
         """
         목적: 요약의 소유자를 runner 하나로 되돌린다 (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」).
 
@@ -1446,49 +1388,50 @@ class TestRunSummaryOwnership:
         그 값이 **이 PC 의 절대경로**였다. `output_dir` 은 그 파일이 놓인 폴더 자신이라
         값 자체가 잉여이기도 하다 — `meta.json` 쪽은 「최근 실행이 어디 있나」를 찾는 용도라 남긴다.
 
-        **두 줄로 검사하는 것은 매매 쪽 쌍둥이 테스트와 같은 관용이다**
-        (`tests/test_strategy_output_contract.py`) — 넘기는 줄이 맞는지와, 사전 리터럴을
-        조립한 흔적이 없는지를 함께 본다.
-
-        Given: 옵션 만기일 검증 실행 스크립트
+        Given: 실행 스크립트 전부
         When: 요약을 저장하는 줄을 봤을 때
-        Then: runner 가 낸 요약을 그대로 넘기고 조립부가 없다
+        Then: 사전 리터럴을 조립한 흔적이 없다
         """
         # Given
-        script = BASE_DIR / "scripts" / "studies" / "run_option_expiry_study.py"
+        scripts = _runner_scripts()
+        assert scripts, "실행 스크립트를 하나도 찾지 못했습니다"
 
-        # When
-        source = script.read_text(encoding="utf-8")
+        # When / Then
+        for path in scripts:
+            source = path.read_text(encoding="utf-8")
+            assert "save_run_summary(\n" not in source, f"{path.name} 가 요약을 조립합니다"
 
-        # Then
-        assert "save_run_summary(directory, outputs.summary)" in source, "CLI 가 요약을 runner 에서 받지 않습니다"
-        assert "save_run_summary(\n" not in source, "CLI 가 요약을 조립합니다"
-
-    def test_여섯_검증_CLI_가_요약을_runner_에서_그대로_받는다(self) -> None:
+    def test_CLI_가_요약을_runner_에서_그대로_받는다(self) -> None:
         """
-        목적: 「CLI 에 도메인 로직 금지」를 **검증 계층 전체**로 넓힌다.
+        목적: 「CLI 에 도메인 로직 금지」를 **실행 스크립트 전체**로 넓힌다.
 
-        위 테스트는 옵션 만기일 한 곳만 본다. 실제로는 배수 검증 둘이 `run_info`·`summary` 를
-        **CLI 에서 리터럴 키로 조립**하고 있었고, 그래서 그 둘만 `row_counts` 가 별칭이었다.
+        실제로 배수 검증 둘이 `run_info`·`summary` 를 **CLI 에서 리터럴 키로 조립**하고
+        있었고, 그래서 그 둘만 `row_counts` 가 별칭이었다.
 
         **문자열이 아니라 AST 로 본다.** 소스 문자열 검사는 앞줄에 한 칸을 끼워 넣는 것으로
         우회되는데(`summary["output_dir"] = ...`), 넘기는 «값의 모양»을 보면 그 우회가 막힌다.
 
-        Given: 검증 실행 스크립트 전부
+        **매매법 셋은 한 실행이 측정과 체결을 함께 내므로 요약도 합쳐 넘긴다.** 합치는 것은
+        CLI 가 아니라 공유 모듈(`execution/run_summary.merge_run_summary`)이 하며, 그 이름을
+        거친 지역변수만 허용한다 — 사전 리터럴을 조립하면 이름이 달라 걸린다.
+
+        Given: 실행 스크립트 전부
         When: `save_run_summary` 호출의 두 번째 인자를 본다
-        Then: runner 산출물의 속성 하나를 그대로 넘긴다
+        Then: runner 산출물의 속성이거나, 공유 모듈이 합친 요약이다
         """
         # Given
-        scripts = _study_scripts()
-        assert scripts, "검증 실행 스크립트를 하나도 찾지 못했습니다"
+        scripts = _runner_scripts()
+        assert scripts, "실행 스크립트를 하나도 찾지 못했습니다"
 
         # When / Then
         for path in scripts:
             payloads = _run_summary_payloads(path)
+            merged = _merged_summary_names(path)
 
             assert payloads, f"{path.name} 가 요약을 저장하지 않습니다"
             for payload in payloads:
-                assert payload.endswith(".summary"), f"{path.name} 가 요약을 조립해 넘깁니다: {payload}"
+                allowed = payload.endswith(".summary") or payload in merged
+                assert allowed, f"{path.name} 가 요약을 조립해 넘깁니다: {payload}"
 
 
 class TestStudyOutputFiles:
@@ -1532,7 +1475,7 @@ class TestStudyOutputFiles:
         """
         목적: 파일 이름이 CLI 로 흩어지는 것을 막는다 (`scripts/CLAUDE.md`).
 
-        매매 계층은 이미 `strategy/constants.py` 가 네 이름을 소유한다. 전에는 **매매
+        매매 계층은 이미 `execution/constants.py` 가 네 이름을 소유한다. 전에는 **매매
         스크립트 세 곳에 흩어진 문자열**이었고 그래서 같은 뜻의 표가 세 이름으로 갈렸다.
 
         Given: 검증 실행 스크립트 전부
@@ -1793,19 +1736,16 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
     "날짜": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
-    "등락률(%)": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "등락률(%)": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     # 배수형 두 검증이 **같은 금리 경계**로 가른 같은 축이다(검증 #9 가 #8 의 경계를 따른다).
     # `배수`·`지수` 와 같은 성격이라 여기 둔다 — 값까지 같지만 공통으로 뽑지 않는 것이 결정이다
     "금리 환경": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "만기월": frozenset(
-        {"verify_lab/strategy/option_expiry_constants.py", "verify_lab/studies/option_expiry/constants.py"}
-    ),
     "방향": frozenset(
         {
             "verify_lab/report/constants.py",
-            "verify_lab/strategy/constants.py",
+            "verify_lab/execution/constants.py",
             "verify_lab/studies/leverage_tracking/constants.py",
             "verify_lab/studies/reverse/constants.py",
         }
@@ -1820,17 +1760,17 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "비중첩 표본": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "사건": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
-    "사건 번호": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "사건": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "사건 번호": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "수익률(%)": frozenset(
         {
-            "verify_lab/strategy/constants.py",
+            "verify_lab/execution/constants.py",
             "verify_lab/studies/futures_leverage/constants.py",
             "verify_lab/studies/month_end/constants.py",
             "verify_lab/studies/option_expiry/constants.py",
         }
     ),
-    "시작연도": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "시작연도": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "시작일": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
@@ -1838,7 +1778,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "실제(%)": frozenset(
         {"verify_lab/studies/leverage_tracking/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}
     ),
-    "월": frozenset({"verify_lab/strategy/month_end_runner.py", "verify_lab/studies/month_end/constants.py"}),
     "제외 사유": frozenset(
         {
             "verify_lab/studies/futures_leverage/constants.py",
@@ -1852,7 +1791,7 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     ),
     "종목": frozenset(
         {
-            "verify_lab/strategy/constants.py",
+            "verify_lab/execution/constants.py",
             "verify_lab/studies/option_expiry/constants.py",
             "verify_lab/studies/reverse/constants.py",
             "verify_lab/studies/usdkrw_equivalence/constants.py",
@@ -1862,12 +1801,9 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
     "진입 종가": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
-    "청산 목표일": frozenset(
-        {"verify_lab/strategy/option_expiry_constants.py", "verify_lab/studies/option_expiry/constants.py"}
-    ),
     "청산 종가": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
-    "청산일": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/month_end/constants.py"}),
-    "파라미터": frozenset({"verify_lab/strategy/constants.py", "verify_lab/studies/reverse/constants.py"}),
+    "청산일": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/month_end/constants.py"}),
+    "파라미터": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "표본": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
 }
 
