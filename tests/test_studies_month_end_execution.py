@@ -32,6 +32,13 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
+from verify_lab.measure.screening import (
+    COL_DIRECTION,
+    COL_EXPECTED_VALUE,
+    COL_HIT_RATE,
+    COL_SCREEN,
+    direction_profile,
+)
 from verify_lab.studies.month_end.constants import (
     COL_MONTH_NUMBER,
     COL_TICKER,
@@ -307,26 +314,60 @@ class TestExecutionTable:
         assert "합성 ETF 999900" in labels, "「위 집행」 상품이 빠졌습니다"
         assert "합성 ETF 999901" in labels, "「아래 집행」 상품이 빠졌습니다"
 
-    def test_execution_rows_are_selected_from_month_candidates(self, mixed_outputs: StudyOutputs) -> None:
+    def test_집행_축_표에_1차_판정_컬럼이_없다(self, mixed_outputs: StudyOutputs) -> None:
         """
-        목적: 집행 축 표가 월별 판정표에서 **골라낸 행**이지 다시 계산한 값이 아님을 고정한다
+        목적: **판정의 자리는 성적표 하나다** (2026-09-16 통합).
 
-        Given: 월별 판정표와 집행 축 표
-        When: 집행 축의 각 행을 (종목, 월) 로 월별 판정표와 맞춘다
+              이 표는 「아래」를 인버스 실물로 재는 **값 표**다 — 성적표에는 인버스가 없어
+              그 값이 여기에만 있다. 그런데 판정까지 담으면 같은 판정이 두 파일에 놓이고,
+              실제로 이 표의 절반(아래 집행 = 인버스)은 애초에 「판정 안 함」이라
+              컬럼을 빼도 **잃는 판정이 0건**이다.
+
+        Given: ETF·인버스·지수가 섞인 실행 결과
+        When: 집행 축 표의 컬럼을 봤을 때
+        Then: 1차 판정 컬럼이 없고 방향·적중률·기대값은 그대로 있다
+        """
+        # Given
+        execution = mixed_outputs.execution
+        assert not execution.empty, "집행 축 표가 비어 있어 계약을 검사하지 못했습니다"
+
+        # When / Then
+        assert COL_SCREEN not in execution.columns, "집행 축 표에 판정이 남아 있습니다 — 판정의 자리는 성적표 하나입니다"
+        for column in (COL_DIRECTION, COL_HIT_RATE, COL_EXPECTED_VALUE):
+            assert column in execution.columns, f"집행 축 표에 {column} 이 없습니다"
+
+    def test_집행_축_표는_다시_계산한_값이_아니다(self, mixed_outputs: StudyOutputs) -> None:
+        """
+        목적: `_execution_rows` 의 핵심 보장을 고정한다 — **골라내기만 하고 다시 계산하지 않는다.**
+
+              그 함수의 docstring 이 「다시 계산하지 않고 고르기만 한다 — 재계산하면 같은 값이
+              두 곳에서 갈라진다」로 못 박고 있는데, 재계산으로 바뀌어도 컬럼 «존재» 검사만으로는
+              통과한다. 그러면 `execution.csv` 가 `통계.csv` 와 조용히 어긋난다.
+
+        Given: 월별 집계표와 집행 축 표
+        When: 같은 집계표로 방향 표를 다시 만들어 (종목, 월) 로 맞춘다
         Then: 공통 컬럼의 값이 전부 같다
         """
         # Given
-        candidates = mixed_outputs.month_candidates
         execution = mixed_outputs.execution
-        keys = [COL_TICKER, COL_MONTH_NUMBER]
-        shared = [column for column in execution.columns if column in candidates.columns and column not in keys]
+        assert not execution.empty, "집행 축 표가 비어 있어 계약을 검사하지 못했습니다"
+
+        rebuilt = pd.concat(
+            [
+                direction_profile(block, axis_column=COL_MONTH_NUMBER).assign(**{COL_TICKER: label})
+                for label, block in mixed_outputs.months.groupby(COL_TICKER, sort=False)
+            ],
+            ignore_index=True,
+        )
 
         # When
-        merged = execution.merge(candidates, on=keys, how="left", suffixes=("_execution", "_source"))
+        keys = [COL_TICKER, COL_MONTH_NUMBER]
+        shared = [column for column in execution.columns if column in rebuilt.columns and column not in keys]
+        merged = execution.merge(rebuilt, on=keys, how="left", suffixes=("_execution", "_source"))
 
         # Then
-        assert not merged.empty, "집행 축 표가 월별 판정표와 이어지지 않습니다"
         assert shared, "두 표에 공통 컬럼이 없습니다 — 골라낸 표가 아닙니다"
+        assert not merged.empty, "집행 축 표가 월별 집계와 이어지지 않습니다"
         for column in shared:
             left = merged[f"{column}_execution"]
             right = merged[f"{column}_source"]

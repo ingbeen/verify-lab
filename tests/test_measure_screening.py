@@ -34,6 +34,7 @@ from verify_lab.measure.screening import (
     COL_HIT_RATE,
     COL_SCREEN,
     COL_TOTAL_RETURN,
+    DIRECTION_COLUMNS,
     DIRECTION_DOWN,
     DIRECTION_UP,
     MIN_EXPECTED_VALUE,
@@ -41,8 +42,8 @@ from verify_lab.measure.screening import (
     SCREEN_CANDIDATE,
     SCREEN_EXCLUDED,
     SCREEN_NOT_JUDGED,
-    SCREENING_COLUMNS,
-    screen_candidates,
+    direction_profile,
+    screen_verdict,
 )
 from verify_lab.measure.statistics import (
     COL_LOSS_RATE,
@@ -105,6 +106,23 @@ def _down_summary(**overrides: float) -> pd.DataFrame:
     return _summary(**values)  # type: ignore[arg-type]
 
 
+def _verdict(profile: pd.DataFrame, *, tradable: bool = True, index: int = 0) -> str:
+    """방향 표 한 행에 게이트를 걸어 판정을 낸다.
+
+    **방향 표는 판정을 담지 않는다** — 1차 판정이 나가는 자리는 `성적표.csv` 뿐이므로
+    (`src/verify_lab/CLAUDE.md` 「매매 산출물 계약」), 이 헬퍼가 `execution/periods.py` 가
+    프로덕션에서 하는 조립을 테스트에서 그대로 재현한다.
+    """
+    row = profile.iloc[index]
+
+    return screen_verdict(
+        hit_rate=float(row[COL_HIT_RATE]),
+        expected_value=float(row[COL_EXPECTED_VALUE]),
+        sample_count=int(row[COL_SAMPLE_COUNT]),
+        tradable=tradable,
+    )
+
+
 class TestScreen:
     """게이트가 무엇을 가르고 무엇을 가르지 «않는지» 고정한다."""
 
@@ -120,10 +138,10 @@ class TestScreen:
         summary = _down_summary()
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
 
     def test_적중률이_낮으면_제외된다(self) -> None:
@@ -139,10 +157,10 @@ class TestScreen:
         summary = _down_summary(loss_rate=hit, win_rate=1.0 - hit)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
+        assert _verdict(result) == SCREEN_EXCLUDED
 
     def test_기대값이_음수면_제외된다(self) -> None:
         """
@@ -157,10 +175,10 @@ class TestScreen:
         summary = _down_summary(win_rate=0.353, loss_rate=0.647, mean=0.003123)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
+        assert _verdict(result) == SCREEN_EXCLUDED
         assert float(result[COL_EXPECTED_VALUE].iloc[0]) == pytest.approx(-0.003123, abs=EXACT_TOLERANCE)
 
     def test_적중률이_하한과_정확히_같으면_후보다(self) -> None:
@@ -175,10 +193,10 @@ class TestScreen:
         summary = _down_summary(loss_rate=MIN_HIT_RATE, win_rate=1.0 - MIN_HIT_RATE)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
 
     def test_기대값이_정확히_0이면_제외된다(self) -> None:
         """
@@ -192,10 +210,10 @@ class TestScreen:
         summary = _down_summary(mean=MIN_EXPECTED_VALUE)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
+        assert _verdict(result) == SCREEN_EXCLUDED
 
     def test_기준선과_똑같아도_게이트를_넘으면_후보다(self) -> None:
         """
@@ -220,10 +238,10 @@ class TestScreen:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
 
     def test_표본이_1건이어도_판정한다(self) -> None:
         """
@@ -238,12 +256,11 @@ class TestScreen:
         summary = _down_summary(win_rate=0.0, loss_rate=1.0, sample=1)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        row = result.iloc[0]
-        assert row[COL_SCREEN] == SCREEN_CANDIDATE
-        assert int(row[COL_SAMPLE_COUNT]) == 1
+        assert _verdict(result) == SCREEN_CANDIDATE
+        assert int(result[COL_SAMPLE_COUNT].iloc[0]) == 1
 
     def test_표본이_0건이면_판정하지_않는다(self) -> None:
         """
@@ -265,10 +282,10 @@ class TestScreen:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_NOT_JUDGED
+        assert _verdict(result) == SCREEN_NOT_JUDGED
 
     def test_제외된_칸도_행이_남는다(self) -> None:
         """
@@ -287,11 +304,12 @@ class TestScreen:
         summary = pd.concat(blocks, ignore_index=True)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert sorted(result[AXIS].tolist()) == [3, 9]
-        assert sorted(result[COL_SCREEN].tolist()) == sorted([SCREEN_CANDIDATE, SCREEN_EXCLUDED])
+        verdicts = [_verdict(result, index=order) for order in range(len(result))]
+        assert sorted(verdicts) == sorted([SCREEN_CANDIDATE, SCREEN_EXCLUDED])
 
 
 class TestBaselineIsNotInTheVerdict:
@@ -317,7 +335,7 @@ class TestBaselineIsNotInTheVerdict:
         summary = _down_summary()
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         leftover = [column for column in result.columns if "기준선" in column or "Baseline" in column]
@@ -336,10 +354,10 @@ class TestBaselineIsNotInTheVerdict:
         summary = _down_summary().drop(columns=[COL_WIN_RATE_EXCESS, COL_LOSS_RATE_EXCESS])
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
 
     def test_기준선을_빼도_판정_값이_그대로다(self) -> None:
         """
@@ -357,15 +375,19 @@ class TestBaselineIsNotInTheVerdict:
         unfavourable = _down_summary(win_excess=0.23, loss_excess=-0.23)
 
         # When
-        first = screen_candidates(favourable, axis_column=AXIS, tradable=True)
-        second = screen_candidates(unfavourable, axis_column=AXIS, tradable=True)
+        first = direction_profile(favourable, axis_column=AXIS)
+        second = direction_profile(unfavourable, axis_column=AXIS)
 
         # Then
         pd.testing.assert_frame_equal(first, second)
 
 
 class TestNotJudged:
-    """살 수 없는 대상은 값만 내고 판정하지 않는다 (측정의 원칙 9)."""
+    """살 수 없는 대상은 값만 내고 판정하지 않는다 (측정의 원칙 9).
+
+    **방향 표는 `tradable` 을 받지 않는다** — 방향과 크기는 살 수 있든 없든 사실이고,
+    「이 대상으로 판정하는가」는 게이트의 질문이다. 그래서 이 클래스는 게이트를 직접 본다.
+    """
 
     def test_살_수_없는_대상은_판정_안_함으로_남는다(self) -> None:
         """
@@ -380,31 +402,32 @@ class TestNotJudged:
         summary = _down_summary()
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=False)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_NOT_JUDGED
+        assert _verdict(result, tradable=False) == SCREEN_NOT_JUDGED
 
     def test_판정_안_해도_값은_그대로_실린다(self) -> None:
         """
         목적: 판정을 막는 것이지 **값을 지우는 것이 아니다.** 참고하려면 숫자가 있어야 한다.
 
+        **방향 표 자체가 판정을 모른다** — 같은 표에 게이트만 다르게 걸리므로
+        「살 수 있는가」가 값을 바꿀 길이 구조적으로 없다.
+
         Given: 같은 칸
-        When: 살 수 있는 대상과 없는 대상으로 각각 판정하면
-        Then: 「1차 판정」만 다르고 나머지 값이 전부 같다
+        When: 방향 표를 내고 두 대상으로 게이트를 각각 걸면
+        Then: 값은 한 벌이고 판정만 갈린다
         """
         # Given
         summary = _down_summary()
 
         # When
-        judged = screen_candidates(summary, axis_column=AXIS, tradable=True)
-        unjudged = screen_candidates(summary, axis_column=AXIS, tradable=False)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        pd.testing.assert_frame_equal(
-            judged.drop(columns=[COL_SCREEN]),
-            unjudged.drop(columns=[COL_SCREEN]),
-        )
+        assert _verdict(result, tradable=True) == SCREEN_CANDIDATE
+        assert _verdict(result, tradable=False) == SCREEN_NOT_JUDGED
+        assert COL_SCREEN not in result.columns, "방향 표에 판정이 실렸습니다 — 판정의 자리는 성적표입니다"
 
     def test_게이트를_못_넘어도_판정_안_함이다(self) -> None:
         """
@@ -419,10 +442,10 @@ class TestNotJudged:
         summary = _down_summary(loss_rate=weak, win_rate=1.0 - weak)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=False)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_NOT_JUDGED
+        assert _verdict(result, tradable=False) == SCREEN_NOT_JUDGED
 
 
 class TestExpectedValue:
@@ -440,7 +463,7 @@ class TestExpectedValue:
         summary = _down_summary(mean=-0.005)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert float(result[COL_EXPECTED_VALUE].iloc[0]) == pytest.approx(0.005, abs=EXACT_TOLERANCE)
@@ -463,7 +486,7 @@ class TestExpectedValue:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
@@ -491,10 +514,10 @@ class TestDirectionSymmetry:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
 
     def test_방향은_두_비율_중_큰_쪽이다(self) -> None:
@@ -520,11 +543,11 @@ class TestDirectionSymmetry:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
 
     def test_기준선보다_낮아도_적중률이_높으면_후보다(self) -> None:
         """
@@ -548,10 +571,10 @@ class TestDirectionSymmetry:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
 
     def test_보합이_커도_여집합으로_방향을_정하지_않는다(self) -> None:
@@ -575,12 +598,12 @@ class TestDirectionSymmetry:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
         assert result[COL_HIT_RATE].iloc[0] == pytest.approx(0.50, abs=EXACT_TOLERANCE)
-        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
+        assert _verdict(result) == SCREEN_EXCLUDED
 
     def test_자주_맞아도_걸면_손실인_칸은_기대값이_거른다(self) -> None:
         """
@@ -605,13 +628,13 @@ class TestDirectionSymmetry:
         )
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
         assert result[COL_HIT_RATE].iloc[0] >= MIN_HIT_RATE
         assert result[COL_EXPECTED_VALUE].iloc[0] == pytest.approx(-0.00315, abs=EXACT_TOLERANCE)
-        assert result[COL_SCREEN].iloc[0] == SCREEN_EXCLUDED
+        assert _verdict(result) == SCREEN_EXCLUDED
 
 
 class TestAxisIndependence:
@@ -630,11 +653,11 @@ class TestAxisIndependence:
         summary = _down_summary().rename(columns={AXIS: axis})
 
         # When
-        result = screen_candidates(summary, axis_column=axis, tradable=True)
+        result = direction_profile(summary, axis_column=axis)
 
         # Then
         assert result[axis].iloc[0] == 9
-        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+        assert _verdict(result) == SCREEN_CANDIDATE
 
     def test_결과_컬럼이_계약대로다(self) -> None:
         """
@@ -642,16 +665,16 @@ class TestAxisIndependence:
 
         Given: 한 칸짜리 집계표
         When: 판정하면
-        Then: 축 컬럼 뒤에 `SCREENING_COLUMNS` 가 그 순서로 붙는다
+        Then: 축 컬럼 뒤에 `DIRECTION_COLUMNS` 가 그 순서로 붙는다
         """
         # Given
         summary = _down_summary()
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert result.columns.tolist() == [AXIS, *SCREENING_COLUMNS]
+        assert result.columns.tolist() == [AXIS, *DIRECTION_COLUMNS]
 
     def test_축_순서가_유지된다(self) -> None:
         """
@@ -666,7 +689,7 @@ class TestAxisIndependence:
         summary = pd.concat(blocks, ignore_index=True)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert result[AXIS].tolist() == [3, 9, 12]
@@ -684,7 +707,7 @@ class TestAxisIndependence:
 
         # When · Then
         with pytest.raises(ValueError, match="필수 컬럼"):
-            screen_candidates(summary, axis_column=AXIS, tradable=True)
+            direction_profile(summary, axis_column=AXIS)
 
     def test_같은_축_값이_두_행이면_예외다(self) -> None:
         """
@@ -706,7 +729,7 @@ class TestAxisIndependence:
 
         # When · Then
         with pytest.raises(ValueError, match="축 값") as caught:
-            screen_candidates(summary, axis_column=AXIS, tradable=True)
+            direction_profile(summary, axis_column=AXIS)
 
         message = str(caught.value)
         assert f"{AXIS}=9" in message
@@ -730,7 +753,7 @@ class TestAxisIndependence:
 
         # When · Then
         with pytest.raises(ValueError, match="축 값이 비어"):
-            screen_candidates(summary, axis_column=AXIS, tradable=True)
+            direction_profile(summary, axis_column=AXIS)
 
     def test_축_값이_서로_다르면_통과한다(self) -> None:
         """
@@ -747,7 +770,7 @@ class TestAxisIndependence:
         summary = pd.concat(blocks, ignore_index=True)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
         assert result[AXIS].tolist() == [3, 9]
@@ -765,7 +788,7 @@ class TestAxisIndependence:
 
         # When · Then
         with pytest.raises(ValueError, match="필수 컬럼"):
-            screen_candidates(summary, axis_column=AXIS, tradable=True)
+            direction_profile(summary, axis_column=AXIS)
 
 
 class TestFormula:
@@ -783,7 +806,7 @@ class TestFormula:
         summary = _down_summary()
 
         # When
-        row = screen_candidates(summary, axis_column=AXIS, tradable=True).iloc[0]
+        row = direction_profile(summary, axis_column=AXIS).iloc[0]
 
         # Then
         assert float(row[COL_HIT_RATE]) == pytest.approx(0.73, abs=EXACT_TOLERANCE)
@@ -807,7 +830,7 @@ class TestFormula:
         )
 
         # When
-        row = screen_candidates(summary, axis_column=AXIS, tradable=True).iloc[0]
+        row = direction_profile(summary, axis_column=AXIS).iloc[0]
 
         # Then
         assert row[COL_DIRECTION] == DIRECTION_UP
@@ -825,7 +848,7 @@ class TestFormula:
         summary = _down_summary(sample=23)
 
         # When
-        row = screen_candidates(summary, axis_column=AXIS, tradable=True).iloc[0]
+        row = direction_profile(summary, axis_column=AXIS).iloc[0]
 
         # Then
         assert int(row[COL_SAMPLE_COUNT]) == 23
@@ -850,7 +873,7 @@ class TestTotalReturn:
         summary = _down_summary(mean=-0.005, sample=30)
 
         # When
-        row = screen_candidates(summary, axis_column=AXIS, tradable=True).iloc[0]
+        row = direction_profile(summary, axis_column=AXIS).iloc[0]
 
         # Then
         assert float(row[COL_TOTAL_RETURN]) == pytest.approx(0.15, abs=EXACT_TOLERANCE)
@@ -873,7 +896,7 @@ class TestTotalReturn:
         summary = pd.concat(blocks, ignore_index=True)
 
         # When
-        result = screen_candidates(summary, axis_column=AXIS, tradable=True).set_index(AXIS)
+        result = direction_profile(summary, axis_column=AXIS).set_index(AXIS)
 
         # Then
         assert float(result.loc[9, COL_EXPECTED_VALUE]) > float(result.loc[3, COL_EXPECTED_VALUE])
@@ -891,7 +914,7 @@ class TestTotalReturn:
         summary = _down_summary(mean=0.004, sample=25)
 
         # When
-        row = screen_candidates(summary, axis_column=AXIS, tradable=True).iloc[0]
+        row = direction_profile(summary, axis_column=AXIS).iloc[0]
 
         # Then
         assert float(row[COL_TOTAL_RETURN]) == pytest.approx(-0.10, abs=EXACT_TOLERANCE)
@@ -909,8 +932,167 @@ class TestTotalReturn:
         summary = _down_summary(loss_rate=weak, win_rate=1.0 - weak, sample=200)
 
         # When
-        row = screen_candidates(summary, axis_column=AXIS, tradable=True).iloc[0]
+        result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert float(row[COL_TOTAL_RETURN]) > 0.0
-        assert row[COL_SCREEN] == SCREEN_EXCLUDED
+        assert float(result[COL_TOTAL_RETURN].iloc[0]) > 0.0
+        assert _verdict(result) == SCREEN_EXCLUDED
+
+
+class TestScalarVerdict:
+    """스칼라 진입점 — 성적표가 쓰는 자리
+
+    **판정식은 한 벌이어야 한다** (패키지 절대 원칙 5). 성적표는 방향이 이미 확정돼 있고
+    승률·평균을 자기가 들고 있어 집계표를 만들 수 없으므로, 같은 게이트를 **값으로** 묻는
+    진입점이 따로 필요하다. 손익비가 `payoff_profile`(스칼라)·`payoff_from_returns`(목록)
+    두 진입점으로 같은 계산을 쓰는 것과 같은 구조다.
+
+    **이 진입점은 방향을 정하지 않는다.** 부르는 쪽이 이미 방향을 알고 있고, 그 방향으로
+    적중률과 기대값을 계산해 넘긴다.
+    """
+
+    def test_방향_표의_값으로_게이트가_걸린다(self) -> None:
+        """
+        목적: **방향 표와 게이트가 맞물리는 것**을 고정한다.
+
+        방향 표는 거는 방향과 크기만 내고 판정하지 않는다 — 그 값을 그대로 게이트에 넣으면
+        판정이 나오며, 이것이 `execution/periods.py` 가 성적표 행마다 하는 일이다.
+
+        Given: 게이트를 넘는 「아래」 칸 하나
+        When: 방향 표를 내고 그 행의 값으로 게이트를 걸었을 때
+        Then: 후보이고, 방향 표 자체에는 판정 컬럼이 없다
+        """
+        # Given
+        summary = _down_summary()
+
+        # When
+        result = direction_profile(summary, axis_column=AXIS)
+        row = result.iloc[0]
+        scalar = screen_verdict(
+            hit_rate=float(row[COL_HIT_RATE]),
+            expected_value=float(row[COL_EXPECTED_VALUE]),
+            sample_count=int(row[COL_SAMPLE_COUNT]),
+            tradable=True,
+        )
+
+        # Then
+        assert scalar == SCREEN_CANDIDATE
+        assert COL_SCREEN not in result.columns
+
+    def test_적중률이_하한과_같으면_후보다_스칼라(self) -> None:
+        """
+        목적: 경계가 「이상」임을 고정한다 — 「초과」로 바뀌면 60.0% 칸이 통째로 빠진다.
+
+        Given: 적중률이 정확히 하한이고 기대값이 양수인 칸
+        When: 판정하면
+        Then: 후보다
+        """
+        # Given / When
+        verdict = screen_verdict(hit_rate=MIN_HIT_RATE, expected_value=0.001, sample_count=30, tradable=True)
+
+        # Then
+        assert verdict == SCREEN_CANDIDATE
+
+    def test_기대값이_하한과_같으면_제외다_스칼라(self) -> None:
+        """
+        목적: 기대값 경계가 「초과」임을 고정한다 — 반복 투자해 0 이 남는 것은 우위가 아니다.
+
+        Given: 적중률은 넘는데 기대값이 정확히 0 인 칸
+        When: 판정하면
+        Then: 제외다
+        """
+        # Given / When
+        verdict = screen_verdict(
+            hit_rate=MIN_HIT_RATE + 0.1,
+            expected_value=MIN_EXPECTED_VALUE,
+            sample_count=30,
+            tradable=True,
+        )
+
+        # Then
+        assert verdict == SCREEN_EXCLUDED
+
+    def test_표본이_1건이어도_판정한다(self) -> None:
+        """
+        목적: 표본 하한을 걸지 않는다 (2026-09-12 사용자 결정).
+
+        과대평가 가능성은 표본 수를 보고 사용자가 판단한다.
+
+        Given: 표본이 1건뿐이고 게이트를 넘는 칸
+        When: 판정하면
+        Then: 후보다
+        """
+        # Given / When
+        verdict = screen_verdict(hit_rate=1.0, expected_value=0.02, sample_count=1, tradable=True)
+
+        # Then
+        assert verdict == SCREEN_CANDIDATE
+
+    def test_표본이_0건이면_판정하지_않는다(self) -> None:
+        """
+        목적: 「재봤더니 아니었다」와 「재본 적이 없다」를 가른다.
+
+        0건 칸의 적중률·기대값은 결측이라 비교가 전부 거짓이 되고, 가만히 두면 「제외」로 찍힌다.
+
+        Given: 표본이 0건인 칸
+        When: 판정하면
+        Then: 판정 안 함이다
+        """
+        # Given / When
+        verdict = screen_verdict(hit_rate=0.0, expected_value=0.0, sample_count=0, tradable=True)
+
+        # Then
+        assert verdict == SCREEN_NOT_JUDGED
+
+    def test_살_수_없는_대상은_판정하지_않는다(self) -> None:
+        """
+        목적: 게이트를 넘어도 「판정 안 함」이 그 결과를 덮는다 (측정의 원칙 9).
+
+        Given: 게이트를 넘는 값인데 판정 대상이 아닌 칸
+        When: 판정하면
+        Then: 판정 안 함이다
+        """
+        # Given / When
+        verdict = screen_verdict(hit_rate=0.9, expected_value=0.02, sample_count=30, tradable=False)
+
+        # Then
+        assert verdict == SCREEN_NOT_JUDGED
+
+    def test_결측_적중률은_판정하지_않는다(self) -> None:
+        """
+        목적: 표본이 있어도 지표가 결측인 칸이 「제외」로 찍히지 않게 한다.
+
+        `NaN` 과의 비교는 전부 거짓이라 가드가 없으면 조용히 제외가 된다.
+
+        Given: 표본 수는 있는데 적중률이 결측인 칸
+        When: 판정하면
+        Then: 판정 안 함이다
+        """
+        # Given / When
+        verdict = screen_verdict(hit_rate=float("nan"), expected_value=0.02, sample_count=5, tradable=True)
+
+        # Then
+        assert verdict == SCREEN_NOT_JUDGED
+
+    def test_성적_산식_계층이_이_게이트를_쓴다(self) -> None:
+        """
+        목적: 게이트가 두 벌이 되지 않았음을 **소스로** 고정한다.
+
+        값이 우연히 같아도 구현이 둘이면 언젠가 갈라진다 (절대 원칙 5 — 판정식 단일화).
+        성적표에 판정을 붙이는 것은 `execution/periods.py` 이고, 거기서 비교식을 다시 쓰면
+        같은 칸이 표마다 다르게 판정된다.
+
+        Given: 구간별 성적 산식 모듈의 소스
+        When: 판정을 내는 자리를 봤을 때
+        Then: 이 모듈의 게이트를 부르고, 기준값을 직접 적지 않는다
+        """
+        # Given
+        from pathlib import Path
+
+        from verify_lab.common_constants import BASE_DIR
+
+        source = Path(BASE_DIR / "src" / "verify_lab" / "execution" / "periods.py").read_text(encoding="utf-8")
+
+        # Then
+        assert "screen_verdict(" in source, "성적 산식이 게이트를 부르지 않습니다 — 판정식이 두 벌입니다"
+        assert "MIN_HIT_RATE" not in source, "성적 산식이 게이트 기준값을 따로 들고 있습니다"

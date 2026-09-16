@@ -472,6 +472,8 @@ def _summary_rows(target: Target, block: _Block, *, stop_level: float | None) ->
             pd.DatetimeIndex(block.entry_dates),
             block.returns,
             last_day=block.last_day,
+            # 이 매매법의 대상은 QQQ·KODEX 200 둘 다 1배 ETF 이고 지수가 없다
+            tradable=True,
             hold_days=block.hold_days,
             reasons=block.reasons,
             event_ids=block.event_ids,

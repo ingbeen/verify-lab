@@ -185,10 +185,6 @@ TEST_FILENAME = "test.csv"
 # 축별 집계표. 축은 검증마다 다르지만(만기월·달·구간) **파일 이름은 같다**
 STATISTICS_FILENAME = "통계.csv"
 
-# 후보 판정표. 축은 검증마다 다르지만(만기월·격자 칸·구간) **파일 이름은 같다** —
-# 흩어진 파일명 문자열이 갈라지는 것을 매매 계층에서 이미 겪었다
-CANDIDATES_FILENAME = "1차_판정.csv"
-
 RUN_SUMMARY_FILENAME = "summary.json"
 
 # 한글 헤더가 엑셀에서 깨지지 않도록 BOM 을 붙인다 (기존 산출물 관용과 동일)

@@ -21,13 +21,6 @@ from verify_lab.measure.constants import (
     COL_MEAN_RATE_CONFLICT,
     COL_SIGNAL_COUNT,
 )
-from verify_lab.measure.screening import (
-    COL_DIRECTION,
-    COL_EXPECTED_VALUE,
-    COL_HIT_RATE,
-    COL_SCREEN,
-    COL_TOTAL_RETURN,
-)
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
     COL_DOWN_RATE_P_VALUE,
@@ -64,18 +57,14 @@ from verify_lab.measure.statistics import (
     COL_WIN_RATE_EXCESS,
 )
 from verify_lab.report.constants import (
-    CANDIDATES_FILENAME,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_BASIS,
     DISPLAY_DATE,
-    DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
     DISPLAY_DOWN_RATE_PERCENTILE,
     DISPLAY_EXCLUDED,
-    DISPLAY_EXPECTED_VALUE,
-    DISPLAY_HIT_RATE,
     DISPLAY_JUDGEABLE,
     DISPLAY_MAX,
     DISPLAY_MEAN,
@@ -100,12 +89,10 @@ from verify_lab.report.constants import (
     DISPLAY_POSITIVE_COUNT,
     DISPLAY_POSITIVE_MEAN,
     DISPLAY_SAMPLE_COUNT,
-    DISPLAY_SCREEN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_SIGNAL_SAMPLE,
     DISPLAY_STD,
     DISPLAY_TEST_NOTE,
-    DISPLAY_TOTAL_RETURN,
     DISPLAY_UP_RATE,
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
@@ -309,6 +296,26 @@ DATASETS: Final = (
         price_decimals=PRICE_DECIMALS_KRW,
         exit_weekdays=(FRIDAY, THURSDAY),
     ),
+    Dataset(
+        # 국내 두 번째 시장. **만기 달력은 코스피200 과 같다** — 코스닥150 선물·옵션의
+        # 최종거래일이 결제월 둘째 목요일(휴장이면 앞당김)로 같은 규칙이다.
+        #
+        # **「매월 만기」인 구간이 시세보다 짧다.** 코스닥150 «선물» 은 결제월이 분기월
+        # (3·6·9·12)뿐이고 **옵션은 2018-03-26 상장**이라, 그 전의 비분기월에는 코스닥150
+        # 파생 만기가 없다 — 그 달의 둘째 목요일은 「코스피200 옵션 만기일」일 뿐이다.
+        # 측정은 그대로 성립하지만 3·6·9·12월과 나머지 달을 같은 것으로 읽으면 안 된다
+        # (`docs/매매/옵션_만기일/설계.md` 데이터 실측 기록).
+        #
+        # 상장일이 2015-10 이라 만기월당 표본이 11건 안팎이다. **게이트는 표본 하한을 걸지
+        # 않으므로 판정은 되고**, 얇다는 것은 성적표의 `신호` 컬럼이 말한다
+        key="kosdaq150",
+        ticker="229200",
+        label="KODEX 코스닥150",
+        rule=KR_MONTHLY_EXPIRY,
+        file_name=MARKET_FILE_TEMPLATE.format(ticker="229200"),
+        price_decimals=PRICE_DECIMALS_KRW,
+        exit_weekdays=(FRIDAY, THURSDAY),
+    ),
 )
 
 
@@ -454,12 +461,6 @@ OUTPUT_LABELS: Final = {
     COL_DOWN_RATE_PERCENTILE: DISPLAY_DOWN_RATE_PERCENTILE,
     COL_DOWN_RATE_P_VALUE: DISPLAY_DOWN_RATE_P_VALUE,
     COL_TEST_NOTE: DISPLAY_TEST_NOTE,
-    # 후보 판정
-    COL_DIRECTION: DISPLAY_DIRECTION,
-    COL_HIT_RATE: DISPLAY_HIT_RATE,
-    COL_EXPECTED_VALUE: DISPLAY_EXPECTED_VALUE,
-    COL_TOTAL_RETURN: DISPLAY_TOTAL_RETURN,
-    COL_SCREEN: DISPLAY_SCREEN,
 }
 
 # 비율(0~1)로 계산해 백분율로 내보낼 컬럼. 헤더에 `(%)` 가 붙는 것과 짝을 이룬다
@@ -499,9 +500,6 @@ PERCENT_OUTPUT_COLUMNS: Final = (
     COL_NULL_MEAN_P95,
     COL_OBSERVED_UP_RATE,
     COL_OBSERVED_DOWN_RATE,
-    COL_HIT_RATE,
-    COL_EXPECTED_VALUE,
-    COL_TOTAL_RETURN,
     # 백분위는 **백분율이지 확률이 아니다.** 「귀무분포에서 관측값보다 작은 값의 비율」이라
     # 0~100 으로 읽는 값이며, `report.build_test_table` 도 같은 자릿수로 낸다
     COL_MEAN_PERCENTILE,
@@ -538,7 +536,6 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     # `trade_summary` 는 보유 거래일 축이라 판정에 쓰이지 않는다
     "trade_by_month": STATISTICS_FILENAME,
     "trade_by_month_halves": "weekly_trade_by_month_halves.csv",
-    "candidates": CANDIDATES_FILENAME,
 }
 
 
@@ -596,11 +593,16 @@ class ExpiryCell:
         dataset_key: `studies.option_expiry` 의 데이터셋 이름
         expiry_month: 만기월 (1~12)
         bet_down: 아래로 거는 칸인지 여부. 참이면 원지수가 내려야 이익이다
+        exit_weekday: 달력이 지목하는 청산 목표 요일.
+            **기본값을 두지 않는다** — 한국은 만기가 목요일이라 같은 「다음주 금요일」이
+            미국 5거래일 · 한국 6거래일이 되고(결정 ⑳), 기본을 금요일로 두면 목요일 청산 칸이
+            **금요일 성적으로 조용히 계산된다.** 값이 틀려도 예외가 나지 않는 자리다
     """
 
     dataset_key: str
     expiry_month: int
     bet_down: bool
+    exit_weekday: int
 
 
 # 만기월 축. 달력이 정하는 값이라 재는 쪽이 고를 것이 없다
@@ -608,7 +610,7 @@ EXPIRY_MONTHS: Final = tuple(range(1, 13))
 
 
 def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, ...]:
-    """대상 × 만기월 × 방향의 **전 칸**을 만든다.
+    """대상 × **청산 요일** × 만기월 × 방향의 **전 칸**을 만든다.
 
     [중요] **코드가 칸을 고르지 않는다.** 전에는 게이트를 넘은 칸을 손으로 적어 두었는데,
     그러면 ① 시세를 다시 받아 게이트 결과가 바뀌어도 목록이 따라오지 않고
@@ -620,8 +622,12 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
     월말 진입이 이미 같은 방식이다(12월 × 두 방향 전 칸). 셋이 같은 관용을 쓰면
     한 매매법의 사정으로 다른 둘이 흔들리지 않는다.
 
-    **두 방향을 모두 낸다.** 어느 쪽에 걸지는 판정표가 칸마다 답하지만, 체결 성적은
+    **두 방향을 모두 낸다.** 어느 쪽에 걸지는 게이트가 칸마다 답하지만, 체결 성적은
     그 답과 무관하게 양쪽이 있어야 **판정이 가리킨 방향의 반대쪽도 대조**할 수 있다.
+
+    **청산 요일도 축이다.** 대상마다 `exit_weekdays` 전부를 돈다 — 한국은 금요일 청산(본검증)과
+    목요일 청산(대조) 두 벌이고(결정 ⑳), 체결을 금요일로 고정하면 **목요일 칸의 성적이
+    어디에도 남지 않는다.** 그 칸에도 게이트를 넘는 달이 있으므로 성적 없이 판정만 뜨게 된다.
 
     Args:
         datasets: 대상 목록. **인자를 아예 주지 않으면** `DATASETS` 전부.
@@ -629,7 +635,7 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
             조용히 전부로 넓히면 대상을 좁히려던 실행이 **전 범위 산출물로 폴더를 덮는다**
 
     Returns:
-        대상 순서 → 만기월 오름차순 → 위·아래 순의 칸 목록.
+        대상 순서 → 청산 요일 순서 → 만기월 오름차순 → 위·아래 순의 칸 목록.
         **순서가 결정적이어야** 산출물 diff 가 「숫자가 바뀌었는가」를 말해 준다
 
     Raises:
@@ -641,8 +647,14 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
     targets = DATASETS if datasets is None else datasets
 
     return tuple(
-        ExpiryCell(dataset_key=dataset.key, expiry_month=month, bet_down=bet_down)
+        ExpiryCell(
+            dataset_key=dataset.key,
+            expiry_month=month,
+            bet_down=bet_down,
+            exit_weekday=exit_weekday,
+        )
         for dataset in targets
+        for exit_weekday in dataset.exit_weekdays
         for month in EXPIRY_MONTHS
         for bet_down in (False, True)
     )
@@ -659,3 +671,6 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
 # 청산일을 확정하지 못해 빠진 진입 수. **측정과 매매가 같은 것을 세므로 한 곳에서 정의한다** —
 # 두 파일에 한 벌씩 두면 한쪽만 고쳐도 예외가 나지 않고 `summary.json` 의 키만 조용히 갈린다
 KEY_EXCLUDED_COUNT: Final = "excluded_count"
+
+# 청산 목표 요일. **측정과 매매가 같은 축을 요약에 남기므로 같은 이유로 여기 둔다**
+KEY_EXIT_WEEKDAY: Final = "exit_weekday"

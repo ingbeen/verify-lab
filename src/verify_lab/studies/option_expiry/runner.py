@@ -33,7 +33,6 @@ from verify_lab.measure.constants import (
     REASON_NONE,
 )
 from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
-from verify_lab.measure.screening import COL_HIT_RATE, COL_SCREEN, SCREEN_CANDIDATE, screen_candidates
 from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
     COL_LOSS_RATE_EXCESS,
@@ -73,6 +72,7 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_HOLD_DAYS_POOLED,
     HORIZON_NEXT_WEEK_EXIT,
     KEY_EXCLUDED_COUNT,
+    KEY_EXIT_WEEKDAY,
     MAX_OFFSET,
     OUTPUT_FILES,
     TRACK_NAME,
@@ -107,7 +107,6 @@ KEY_INSIDE_WINDOW_DAYS = "inside_window_days"
 KEY_EXPIRY_WEEKDAYS = "expiry_weekdays"
 KEY_WEEKLY_TRADE = "weekly_trade"
 
-KEY_EXIT_WEEKDAY = "exit_weekday"
 KEY_ENTRY_COUNT = "entry_count"
 KEY_HOLD_DAYS = "hold_days"
 KEY_BASELINE_ENTRY_COUNT = "baseline_entry_count"
@@ -126,7 +125,6 @@ class StudyOutputs:
         trade_test: 그 매매의 순열 검정
         trade_by_month: 만기월(1~12)별 집계와 같은 달 기준선
         trade_by_month_halves: 만기월 × 시기 앞뒤 절반 — **관찰용**이며 판정에 쓰이지 않는다
-        candidates: 후보 판정 결과 — 전 칸의 1차 판정과 그 판정을 읽을 값 (제외된 칸도 남는다)
         summary: 실행 파라미터와 핵심 수치
     """
 
@@ -138,7 +136,6 @@ class StudyOutputs:
     trade_test: pd.DataFrame
     trade_by_month: pd.DataFrame
     trade_by_month_halves: pd.DataFrame
-    candidates: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -154,7 +151,6 @@ class _Accumulator:
     trade_test: list[pd.DataFrame] = field(default_factory=list)
     trade_by_month: list[pd.DataFrame] = field(default_factory=list)
     trade_by_month_halves: list[pd.DataFrame] = field(default_factory=list)
-    candidates: list[pd.DataFrame] = field(default_factory=list)
 
 
 def _month_day_index(dates: pd.Series) -> pd.Series:
@@ -597,17 +593,9 @@ def _run_weekly_trade(
         if not halves.empty:
             accumulator.trade_by_month_halves.append(_identify(halves, **identity))
 
-        # 후보 판정은 **전체 시기 · 만기월 축**에서만 낸다. 달력 경계로 자른 칸은 표본이
-        # 수십 건이라 우연확률이 성립하지 않고, 시기 축과 역할이 겹친다
+        # **판정표를 따로 내지 않는다** (2026-09-16 통합). 1차 판정은 `성적표.csv` 가 담으며,
+        # 이 표는 그 판정을 읽을 값(기준선·우연확률)을 담는다 — 묻는 질문이 다르다
         by_month = _aggregate_by_month(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
-        accumulator.candidates.append(
-            _identify(
-                # 이 검증의 대상은 전부 ETF 라 언제나 판정한다 — 지수가 들어오면 그때 갈라야 한다
-                screen_candidates(by_month, axis_column=COL_EXPIRY_MONTH_NUMBER, tradable=True),
-                **identity,
-            )
-        )
-
         accumulator.trade_by_month.append(_identify(by_month, **identity))
 
         # 매매 하나의 묶음 성적. **시기 축 말고는 쪼개지 않는다** — 달력 경계로 자른 칸은
@@ -729,7 +717,6 @@ def run_study(
         "trade_test": _concat(accumulator.trade_test),
         "trade_by_month": _concat(accumulator.trade_by_month),
         "trade_by_month_halves": _concat(accumulator.trade_by_month_halves),
-        "candidates": _concat(accumulator.candidates),
     }
 
     # **요약을 먼저 완성한 뒤 산출물을 만든다.** 만들고 나서 그 안의 dict 를 고치면
@@ -805,29 +792,4 @@ def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
     return summary[summary[COL_HORIZON] == DISPLAY_HOLD_DAYS_POOLED].reset_index(drop=True)
 
 
-def candidates_headline(outputs: StudyOutputs) -> pd.DataFrame:
-    """**후보 칸만** 적중률 내림차순으로 뽑는다.
-
-    제외된 칸은 산출물에 그대로 남기되 화면에는 내지 않는다 — 화면은 "지금 볼 것"을 위한
-    자리이고, 전 칸은 `candidates.csv` 가 만기월 순서로 답한다.
-
-    **정렬이 여기 있는 이유**: 판정 계층(`measure`)은 축을 모르므로 무엇을 먼저 보여줄지
-    정할 수 없다. 동률이 흔해(적중률이 표본의 분수라 값이 겹친다) **안정 정렬**을 써서
-    같은 적중률 안에서는 종목·만기월 순서가 유지되게 한다.
-
-    Args:
-        outputs: 실행 산출물
-
-    Returns:
-        후보 칸만 남긴 판정표. 하나도 없으면 빈 표
-    """
-    candidates = outputs.candidates
-    if candidates.empty:
-        return candidates
-
-    selected = candidates[candidates[COL_SCREEN] == SCREEN_CANDIDATE]
-
-    return selected.sort_values(COL_HIT_RATE, ascending=False, kind="stable").reset_index(drop=True)
-
-
-__all__ = ["StudyOutputs", "candidates_headline", "run_study", "trade_headline"]
+__all__ = ["StudyOutputs", "run_study", "trade_headline"]

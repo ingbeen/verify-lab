@@ -6,7 +6,7 @@
 
 from .run_summary import dataset_record, format_period
 from .tables import (
-    build_candidates_table,
+    build_direction_table,
     build_excess_table,
     build_signal_table,
     build_statistics_table,
@@ -17,7 +17,7 @@ from .tables import (
 from .writer import create_run_directory, save_run_summary, save_table
 
 __all__ = [
-    "build_candidates_table",
+    "build_direction_table",
     "build_excess_table",
     "build_signal_table",
     "build_statistics_table",

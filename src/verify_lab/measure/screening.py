@@ -5,6 +5,20 @@
 
 **판정은 게이트 하나뿐이다** — 적중률과 방향 기대값. 이것 말고는 아무것도 떨어뜨리지 않는다.
 
+**이 모듈의 함수는 둘이고 하는 일이 다르다.**
+
+| 함수 | 답하는 것 | 쓰는 곳 |
+| --- | --- | --- |
+| `screen_verdict` | **걸 만한가** — 후보 / 제외 / 판정 안 함 | `execution/periods.py` 가 성적표 행마다 부른다 |
+| `direction_profile` | **어느 쪽으로 얼마나** — 방향·적중률·기대값·합산 | 축별 집계표가 필요한 곳 (월말의 집행 축) |
+
+**게이트의 소유자는 `screen_verdict` 하나다.** 1차 판정이 나가는 자리는 `성적표.csv` 뿐이므로
+(`src/verify_lab/CLAUDE.md` 「매매 산출물 계약」) **축별 «판정표»를 만드는 함수를 두지 않는다** —
+두면 같은 판정이 두 표에 실리고 한쪽이 낡는다.
+
+**`direction_profile` 은 판정하지 않으므로 `tradable` 을 받지 않는다.** 방향과 크기는 살 수 있든
+없든 사실이고, 「이 대상으로 판정하는가」는 게이트의 질문이다.
+
 **게이트 위에 「등급」(기준선 대비 차이·우연확률·시기 안정성·손익비)을 얹지 않는다.** 얹으면
 매매 계층이 **같은 것을 다른 기준으로 또 묻게 된다** — 시기를 등급은 55% 로, 구간 게이트는
 60% 로 물어 같은 질문에 답이 갈린다. 판단은 사용자가 하고, 이 모듈은 볼 목록만 만든다.
@@ -60,6 +74,7 @@ KODEX 코스닥150 8월은 오른 비율 63.6% · 회당 +2.11% 인데 기준선
 근거는 루트 `CLAUDE.md` 「기준선은 탈락 사유가 아니다」가 SoT 다.
 """
 
+import math
 from typing import Final
 
 import pandas as pd
@@ -107,14 +122,14 @@ SCREEN_CANDIDATE: Final = "후보"
 SCREEN_EXCLUDED: Final = "제외"
 SCREEN_NOT_JUDGED: Final = "판정 안 함"
 
-# **판정에 쓰는 축만 담는다.** 판정에 안 쓰는 축을 함께 실으면 읽는 사람이 그것으로 거른다
-SCREENING_COLUMNS: Final = [
+# 방향 표의 컬럼. **판정을 싣지 않는다** — 1차 판정이 나가는 자리는 `성적표.csv` 뿐이다.
+# 판정에 안 쓰는 축을 함께 실으면 읽는 사람이 그것으로 거른다
+DIRECTION_COLUMNS: Final = [
     COL_SAMPLE_COUNT,
     COL_DIRECTION,
     COL_HIT_RATE,
     COL_EXPECTED_VALUE,
     COL_TOTAL_RETURN,
-    COL_SCREEN,
 ]
 
 # 집계표에서 읽는 입력 컬럼. 두 방향 비율에 더해 **평균이 반드시 있어야 한다** —
@@ -130,13 +145,53 @@ REQUIRED_SUMMARY_COLUMNS: Final = [
 ]
 
 
-def screen_candidates(
-    summary: pd.DataFrame,
+def screen_verdict(
     *,
-    axis_column: str,
+    hit_rate: float,
+    expected_value: float,
+    sample_count: int,
     tradable: bool,
-) -> pd.DataFrame:
-    """축의 각 칸을 게이트로 가른다.
+) -> str:
+    """한 칸의 1차 판정을 낸다. **게이트의 소유자는 이 함수 하나다.**
+
+    **방향을 정하지 않는다.** 부르는 쪽이 이미 방향을 알고 그 방향으로 두 값을 계산해 넘긴다 —
+    성적표는 행마다 방향이 확정돼 있어 승률·평균이 곧 그 방향의 값이다.
+
+    **스칼라를 받는 이유**: 판정이 나가는 자리가 성적표뿐인데 그 표는 방향과 손절선이 확정된
+    «체결» 결과라 집계표 모양을 만들 수 없다. 그렇다고 판정을 거기서 다시 구현하면
+    **같은 칸이 표마다 다르게 판정된다** (패키지 절대 원칙 5).
+
+    Args:
+        hit_rate: 거는 방향의 적중률 (비율, 0.60 = 60%)
+        expected_value: 방향 기대값 (비율). 「아래」 칸은 평균의 부호를 뒤집은 값이다
+        sample_count: 표본 수. **하한을 걸지 않는다** — 1건도 판정하며 과대평가 가능성은
+            표본 수를 보고 사용자가 판단한다 (2026-09-12 사용자 결정)
+        tradable: **판정 대상인가.** 거짓이면 게이트 결과와 무관하게 「판정 안 함」이다 —
+            지수(살 수 없다)와 인버스 실물(1배 롱이 같은 질문에 이미 답한다)이 그 경우다
+
+    Returns:
+        `SCREEN_CANDIDATE` · `SCREEN_EXCLUDED` · `SCREEN_NOT_JUDGED` 중 하나
+    """
+    # **「판정 안 함」이 게이트 결과를 덮는다.** 묻지 않은 칸에는 합격도 불합격도 없다.
+    # **결측을 함께 거른다** — `NaN` 과의 비교는 전부 거짓이라 가드가 없으면 조용히 「제외」가
+    # 되고, 그러면 「재봤더니 아니었다」와 「재본 적이 없다」가 구별되지 않는다
+    if not tradable or sample_count == 0:
+        return SCREEN_NOT_JUDGED
+    if math.isnan(hit_rate) or math.isnan(expected_value):
+        return SCREEN_NOT_JUDGED
+
+    passed = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
+
+    return SCREEN_CANDIDATE if passed else SCREEN_EXCLUDED
+
+
+def direction_profile(summary: pd.DataFrame, *, axis_column: str) -> pd.DataFrame:
+    """축의 각 칸이 **어느 쪽으로 얼마나** 치우쳤는지 낸다.
+
+    **판정하지 않는다.** 1차 판정이 나가는 자리는 `성적표.csv` 뿐이므로(`src/verify_lab/CLAUDE.md`
+    「매매 산출물 계약」) 여기서 판정을 내면 같은 판정이 두 표에 실리고 한쪽이 낡는다.
+    같은 이유로 `tradable` 을 받지 않는다 — 방향과 크기는 살 수 있든 없든 사실이고,
+    「이 대상으로 판정하는가」는 게이트의 질문이다.
 
     **방향은 두 방향 비율 중 큰 쪽이다.** 기준선과의 거리로 정하지 않는다 —
     칸마다 다른 허들이 서서 기준선이 높은 칸의 우위가 뒤집힌다 (모듈 docstring 의 실측).
@@ -144,22 +199,15 @@ def screen_candidates(
     **결과에 기준선이 없다.** 판정이 묻지 않는 축이라 빼는 것이며, 값은 같은 폴더의
     `통계.csv` 계열이 담는다.
 
-    **제외된 칸도 행이 그대로 남는다.** 산출물에서 사라지면 사용자가 되짚을 수 없다.
+    **치우치지 않은 칸도 행이 그대로 남는다.** 산출물에서 사라지면 사용자가 되짚을 수 없다.
 
     Args:
         summary: 축별 집계표. `REQUIRED_SUMMARY_COLUMNS` 가 있어야 하고
             **축 값마다 행이 하나**여야 한다
-        axis_column: 축 컬럼 이름. 만기월·요일 등 무엇이든 받는다
-        tradable: **판정 대상인가.** `False` 면 값만 내고 판정하지 않으며
-            `1차 판정` 이 전부 「판정 안 함」이 된다. 지수(살 수 없다)와
-            **인버스 실물**(1배 롱이 이미 같은 질문에 답해, 판정하면 같은 달이 두 번
-            판정되고 방향이 반대로 나온다)이 그 경우다.
-            **기본값을 두지 않는다** — 기본이 「판정한다」면 참고용 대상을 받는 호출처가
-            인자를 빠뜨렸을 때 **틀린 판정이 조용히 나간다**.
-            `strategy.constants.stop_level_value` 의 `measurable` 과 같은 이유다
+        axis_column: 축 컬럼 이름. 만기월·격자 칸 등 무엇이든 받는다
 
     Returns:
-        축 컬럼 뒤에 `SCREENING_COLUMNS` 가 붙은 판정표. **축 오름차순**이며
+        축 컬럼 뒤에 `DIRECTION_COLUMNS` 가 붙은 표. **축 오름차순**이며
         우선순위로 줄 세우지 않는다
 
     Raises:
@@ -177,33 +225,31 @@ def screen_candidates(
         raise ValueError(f"축 값이 비어 있는 행이 있습니다: {axis_column} {blank_axis}행")
 
     # **축 값 하나에 행 하나를 «요구»한다.** `iloc[0]` 으로 첫 행만 쓰면 나머지가 조용히
-    # 버려진다 — 예외도 경고도 없고 로그마저 「1칸 중 후보 1」로 정상처럼 찍힌다.
-    # 축을 하나 더 붙이거나 기준을 둘로 늘리는 날 없는 우위를 보고하게 된다.
+    # 버려진다 — 예외도 경고도 없고 로그마저 「1칸」으로 정상처럼 찍힌다.
+    # 축을 하나 더 붙이는 날 없는 우위를 보고하게 된다.
     # `report/tables.py` 가 같은 종류의 사고를 거부하므로 가드 강도를 그쪽에 맞춘다
     rows: list[dict[str, object]] = []
     for axis_value, cell in summary.groupby(axis_column, sort=True):
         if len(cell) != 1:
             raise ValueError(f"축 값 하나에 행이 하나여야 합니다: {axis_column}={axis_value} ({len(cell)}행)")
-        rows.append(_screen_cell(cell.iloc[0], axis_column=axis_column, tradable=tradable))
-    result = pd.DataFrame(rows, columns=[axis_column, *SCREENING_COLUMNS])
+        rows.append(_direction_row(cell.iloc[0], axis_column=axis_column))
+    result = pd.DataFrame(rows, columns=[axis_column, *DIRECTION_COLUMNS])
 
-    candidates = int((result[COL_SCREEN] == SCREEN_CANDIDATE).sum())
-    judged = "판정함" if tradable else "판정 안 함"
-    logger.debug(f"후보 판정 완료: {len(result)}칸 중 후보 {candidates} ({judged})")
+    downward = int((result[COL_DIRECTION] == DIRECTION_DOWN).sum())
+    logger.debug(f"방향 표 산출: {len(result)}칸 (아래 {downward} · 위 {len(result) - downward})")
 
     return result
 
 
-def _screen_cell(row: pd.Series, *, axis_column: str, tradable: bool) -> dict[str, object]:
-    """한 칸을 판정한다.
+def _direction_row(row: pd.Series, *, axis_column: str) -> dict[str, object]:
+    """한 칸의 방향과 크기를 낸다.
 
     Args:
         row: 집계표의 한 줄
         axis_column: 축 컬럼 이름
-        tradable: 살 수 있는 대상인가
 
     Returns:
-        판정표 한 줄
+        방향 표 한 줄
     """
     sample_count = int(row[COL_SAMPLE_COUNT])
 
@@ -219,27 +265,14 @@ def _screen_cell(row: pd.Series, *, axis_column: str, tradable: bool) -> dict[st
     expected_value = -float(row[COL_MEAN]) if downward else float(row[COL_MEAN])
 
     # 같은 금액을 표본 수만큼 반복 투자했을 때의 단순 합 (측정의 원칙 16). 신호가 드문
-    # 매매법은 회당 평균이 구조적으로 작아 크기 감각을 주지 못하므로 둘을 나란히 낸다.
-    # **게이트에는 쓰지 않는다** — 표시용이며 판정 기준을 바꾸지 않는다
+    # 매매법은 회당 평균이 구조적으로 작아 크기 감각을 주지 못하므로 둘을 나란히 낸다
     total_return = expected_value * sample_count
-
-    screened = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
-
-    # **「판정 안 함」이 게이트 결과를 덮는다.** 묻지 않은 칸에는 합격도 불합격도 없다.
-    # **표본 0건을 함께 거른다** — 그 칸의 적중률·평균은 `NaN` 이고 비교가 전부 거짓이 되어
-    # 가만히 두면 **「제외」로 찍힌다.** 「재봤더니 아니었다」와 「재본 적이 없다」는 다른 사실이다.
-    # **표본 하한은 걸지 않는다** — 1건짜리도 판정하며, 과대평가는 `표본` 컬럼이 말해 준다
-    if not tradable or sample_count == 0:
-        verdict = SCREEN_NOT_JUDGED
-    else:
-        verdict = SCREEN_CANDIDATE if screened else SCREEN_EXCLUDED
 
     return {
         axis_column: row[axis_column],
-        COL_SAMPLE_COUNT: int(row[COL_SAMPLE_COUNT]),
+        COL_SAMPLE_COUNT: sample_count,
         COL_DIRECTION: DIRECTION_DOWN if downward else DIRECTION_UP,
         COL_HIT_RATE: hit_rate,
         COL_EXPECTED_VALUE: expected_value,
         COL_TOTAL_RETURN: total_return,
-        COL_SCREEN: verdict,
     }

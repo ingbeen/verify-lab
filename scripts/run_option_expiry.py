@@ -26,14 +26,19 @@ import pandas as pd
 
 from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.execution.constants import (
+    DISPLAY_DIRECTION,
     DISPLAY_STOP_LEVEL,
+    DISPLAY_TOTAL,
+    DISPLAY_WIN_RATE,
     NO_STOP_LABEL,
+    PERIOD_ALL,
     PERIODS,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
 )
 from verify_lab.execution.run_summary import KEY_ROW_COUNTS, KEY_RULE, merge_run_summary
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
+from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP, SCREEN_CANDIDATE
 from verify_lab.measure.statistics import (
     COL_MEAN,
     COL_MEDIAN,
@@ -42,18 +47,19 @@ from verify_lab.measure.statistics import (
     DEFAULT_REPEAT_COUNT,
 )
 from verify_lab.report.constants import (
-    CANDIDATES_FILENAME,
     DISPLAY_EXCLUDED,
     DISPLAY_MEAN,
     DISPLAY_MEDIAN,
+    DISPLAY_PERIOD,
+    DISPLAY_SCREEN,
+    DISPLAY_SIGNAL_COUNT,
     DISPLAY_UP_RATE,
     PERCENT_DECIMALS,
 )
-from verify_lab.report.tables import build_candidates_table, print_dataframe, to_display_columns
+from verify_lab.report.tables import print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
     COL_EXIT_WEEKDAY,
-    COL_EXPIRY_MONTH_NUMBER,
     COL_TICKER,
     DATASETS,
     DISPLAY_ENTRY_COUNT,
@@ -67,6 +73,7 @@ from verify_lab.studies.option_expiry.constants import (
     PERCENT_OUTPUT_COLUMNS,
     PROBABILITY_OUTPUT_COLUMNS,
     TRACK_NAME,
+    WEEKDAY_LABELS,
     Dataset,
     ExpiryCell,
     all_cells,
@@ -77,7 +84,6 @@ from verify_lab.studies.option_expiry.runner import (
     KEY_PERMUTATION_REPEATS,
     KEY_PERMUTATION_SEED,
     StudyOutputs,
-    candidates_headline,
     run_study,
     trade_headline,
 )
@@ -95,6 +101,19 @@ KEY_META_OPTION_EXPIRY = "option_expiry"
 # 산출물 표의 컬럼 이름. **폭은 적지 않는다** — `print_dataframe` 이 내용에서 계산한다
 DISPLAY_FILE = "파일"
 DISPLAY_ROW_COUNT = "행 수"
+
+# 화면에 낼 후보 칸의 컬럼. **성적표 전 컬럼을 쏟으면 가로로 넘쳐 읽을 수 없고**,
+# 바로 뒤의 맨몸 성적 표가 같은 행을 다시 내므로 여기서는 판정에 필요한 것만 낸다
+CANDIDATE_COLUMNS = [
+    DISPLAY_TICKER,
+    DISPLAY_EXPIRY_MONTH,
+    DISPLAY_EXIT_WEEKDAY,
+    DISPLAY_DIRECTION,
+    DISPLAY_SIGNAL_COUNT,
+    DISPLAY_WIN_RATE,
+    DISPLAY_MEAN,
+    DISPLAY_TOTAL,
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -147,7 +166,7 @@ def _selected_datasets(keys: list[str] | None) -> tuple[Dataset, ...]:
 
 
 def _selected_cells(datasets: tuple[Dataset, ...]) -> list[ExpiryCell]:
-    """고른 대상의 **전 칸**(만기월 12 × 방향 2)을 만든다.
+    """고른 대상의 **전 칸**(청산 요일 × 만기월 12 × 방향 2)을 만든다.
 
     **측정과 체결의 범위가 한 인자로 정해진다.** 따로 받으면 한 실행 안에서 둘이 갈릴 수 있고,
     그러면 같은 폴더의 두 표가 다른 범위를 재게 된다.
@@ -184,27 +203,45 @@ def _print_scope(cells: list[ExpiryCell]) -> None:
     logger.debug("같은 달 미국 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향이라 독립된 세 번의 기회가 아닙니다")
 
 
-def _display_headline(outputs: StudyOutputs) -> None:
-    """**후보 판정과 맨몸 매매 성적**을 화면에 표시한다.
+def _print_candidates(outputs: ExpiryOutputs) -> None:
+    """성적표에서 **맨몸 후보 칸만** 뽑아 화면에 보여 준다.
 
-    후보 표를 먼저 낸다 — 화면에서 가장 먼저 봐야 할 것이 "어느 달·어느 방향"이기 때문이다.
+    **판정표를 따로 내지 않으므로 성적표가 그 자리다** (2026-09-16 통합). 화면은 "지금 볼 것"을
+    위한 자리이고, 제외된 칸을 포함한 전 칸은 성적표가 만기월 순서로 답한다.
+
+    **무손절 행을 보여 준다** — 게이트가 맨몸 성적으로 걸리기 때문이다(측정의 원칙 10).
+    같은 칸이 확정 손절선에서 어떻게 되는지는 CSV 에서 `손절선(%)` 을 바꿔 보면 된다.
+
+    Args:
+        outputs: 체결 산출물
+    """
+    table = outputs.performance
+    picked = table[
+        (table[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL)
+        & (table[DISPLAY_PERIOD] == PERIOD_ALL)
+        & (table[DISPLAY_SCREEN] == SCREEN_CANDIDATE)
+    ]
+    if picked.empty:
+        logger.debug("1차 게이트를 넘은 칸이 없습니다")
+        return
+
+    # 동률이 흔하므로(적중률이 표본의 분수라 값이 겹친다) **안정 정렬**을 써서
+    # 같은 적중률 안에서는 종목·만기월 순서가 유지되게 한다
+    ordered = picked.sort_values(DISPLAY_WIN_RATE, ascending=False, kind="stable")
+    print_dataframe(
+        ordered[CANDIDATE_COLUMNS],
+        logger,
+        title=f"1차 후보 — {NO_STOP_LABEL} · 적중률 60% 이상 · 평균 양수 (적중률 순)",
+    )
+    logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {SUMMARY_FILENAME} 의 「1차 판정」 컬럼에 있습니다")
+
+
+def _display_headline(outputs: StudyOutputs) -> None:
+    """맨몸 매매 성적을 화면에 표시한다.
 
     Args:
         outputs: 측정 산출물
     """
-    candidates = candidates_headline(outputs)
-    if candidates.empty:
-        logger.debug("1차 게이트를 넘은 칸이 없습니다")
-    else:
-        table = build_candidates_table(candidates, axis_column=COL_EXPIRY_MONTH_NUMBER, axis_label=DISPLAY_EXPIRY_MONTH)
-        # 청산 요일까지 붙여야 칸이 유일해진다 — 한국은 금요일·목요일 두 벌이라
-        # 종목과 만기월만으로는 같은 달이 두 줄로 겹쳐 보인다
-        table.insert(0, DISPLAY_EXIT_WEEKDAY, candidates[COL_EXIT_WEEKDAY].to_numpy())
-        table.insert(0, DISPLAY_TICKER, candidates[COL_TICKER].to_numpy())
-        print_dataframe(table, logger, title="1차 후보 — 적중률 60% 이상 · 방향 기대값 양수 (적중률 순)")
-        # 화면에서 사라진 칸이 어디 있는지 알려주지 않으면 「코드가 대신 판단한다」는 문제가 화면에 남는다
-        logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {CANDIDATES_FILENAME} 에 만기월 순서로 있습니다")
-
     trade = trade_headline(outputs)
     if trade.empty:
         logger.debug("표시할 매매 요약 행이 없습니다")
@@ -318,6 +355,7 @@ def main() -> int:
     directory = create_run_directory(TRACK_NAME)
     counts = _save(study, trading, directory)
 
+    _print_candidates(trading)
     _display_headline(study)
     _print_performance(trading)
     print_dataframe(
@@ -331,7 +369,13 @@ def main() -> int:
         {
             "output_dir": str(directory),
             KEY_DATASETS: [dataset.key for dataset in datasets],
-            "cells": [f"{cell.dataset_key} {cell.expiry_month}월" for cell in cells],
+            # **청산 요일과 방향까지 붙여야 칸이 유일해진다** — 국내는 요일 두 벌 × 방향 둘이라
+            # 만기월만 적으면 같은 문자열이 네 번 실려 무엇을 돌렸는지 알 수 없다
+            "cells": [
+                f"{cell.dataset_key} {WEEKDAY_LABELS[cell.exit_weekday]} {cell.expiry_month}월 "
+                f"{DIRECTION_DOWN if cell.bet_down else DIRECTION_UP}"
+                for cell in cells
+            ],
             "stop_levels": trading.summary[KEY_RULE][KEY_STOP_LEVELS],
             KEY_MAX_OFFSET: study.summary[KEY_MAX_OFFSET],
             KEY_PERMUTATION_REPEATS: study.summary[KEY_PERMUTATION_REPEATS],

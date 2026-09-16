@@ -323,6 +323,9 @@ def _run_cell(
         entries.entry_dates,
         returns,
         last_day=last_day,
+        # **판정은 살 수 있는 1배 롱에만 건다.** 지수와 인버스 실물은 성적만 내고 「판정 안 함」이다 —
+        # 그 성질은 대상 자신이 답한다 (`Dataset.is_judged`)
+        tradable=dataset.is_judged,
         hold_days=hold_days,
         reasons=reasons,
     ):

@@ -42,7 +42,6 @@ from verify_lab.measure.constants import (
     PERIOD_SECOND_HALF,
 )
 from verify_lab.measure.forward_return import ReturnBasis
-from verify_lab.measure.screening import SCREENING_COLUMNS
 from verify_lab.measure.statistics import COL_MEAN, COL_SAMPLE_COUNT
 from verify_lab.studies.month_end import runner as month_end_runner
 from verify_lab.studies.month_end.constants import (
@@ -315,26 +314,6 @@ class TestPeriodSplit:
             DISPLAY_PERIOD_RECENT.format(years=years) for years in RECENT_WINDOWS_YEARS
         }
         assert set(outputs.periods["period"]) == expected
-
-    def test_no_period_enters_the_screening(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: **어떤 구간도 판정에 들어가지 않음**을 고정한다 (2026-09-12 개편).
-
-        게이트는 전체 구간 하나만 본다. 쪼개면 칸당 표본이 5~6건까지 줄어 한 건이 20%p 를
-        움직이므로, 그 값으로 칸을 떨어뜨리면 멀쩡한 매매법이 우연으로 죽는다.
-        **구간은 산출물에 관찰용으로만 남고**(위 테스트), 판정표에는 흔적이 없어야 한다.
-
-        Given: 합성 ETF 하나
-        When: 검증을 돌린다
-        Then: 판정표 컬럼이 `SCREENING_COLUMNS` 계약 그대로이고 시기 관련 열이 없다
-        """
-        # Given / When
-        outputs = etf_outputs
-
-        # Then
-        assert set(SCREENING_COLUMNS) <= set(outputs.grid_candidates.columns)
-        leftovers = [column for column in outputs.grid_candidates.columns if "Period" in column]
-        assert leftovers == []
 
     def test_표본이_0건인_구간도_전체_스키마를_갖는다(self) -> None:
         """

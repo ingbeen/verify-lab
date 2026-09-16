@@ -33,7 +33,7 @@ from verify_lab.measure.constants import (
     PERIOD_SECOND_HALF,
     REASON_NONE,
 )
-from verify_lab.measure.screening import SCREEN_CANDIDATE, screen_candidates
+from verify_lab.measure.screening import direction_profile
 from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
     COL_LOSS_RATE_EXCESS,
@@ -53,9 +53,8 @@ from verify_lab.measure.statistics import (
     permutation_test,
     summarize,
 )
-from verify_lab.report.constants import DISPLAY_HIT_RATE, DISPLAY_SCREEN
 from verify_lab.report.run_summary import KEY_TRACK, dataset_record
-from verify_lab.report.tables import build_candidates_table, to_display_columns
+from verify_lab.report.tables import build_direction_table, to_display_columns
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
@@ -74,7 +73,6 @@ from verify_lab.studies.month_end.constants import (
     DATASETS,
     DISPLAY_EXECUTION_ROLE,
     DISPLAY_EXIT_OFFSET,
-    DISPLAY_GRID_CELL,
     DISPLAY_MARKET,
     DISPLAY_MONTH_NUMBER,
     DISPLAY_PERIOD_RECENT,
@@ -82,7 +80,6 @@ from verify_lab.studies.month_end.constants import (
     DISPLAY_TICKER,
     ENTRY_CALENDAR_DAYS,
     EXECUTION_ROLE_NONE,
-    EXECUTION_ROLE_UP,
     EXIT_OFFSETS,
     GRID_CELL_TEMPLATE,
     GRID_EXIT_MONTH_END,
@@ -134,8 +131,6 @@ class StudyOutputs:
         months: 원 매매법 칸의 월별 분해
         month_halves: 월별 × 시기 분해. 후보 판정의 시기 항목을 재는 축이다
         periods: 격자 칸별 시기 분해 (균등 2분할 + 최근 10년·5년)
-        grid_candidates: 격자 축의 후보 판정
-        month_candidates: 월별 축의 후보 판정
         execution: 월별 판정표에서 **살 수 있는 상품의 행만** 골라낸 표.
             사용자가 이 한 장만 열어도 실제 매매 수치가 된다
         summary: 실행 요약
@@ -146,8 +141,6 @@ class StudyOutputs:
     months: pd.DataFrame
     month_halves: pd.DataFrame
     periods: pd.DataFrame
-    grid_candidates: pd.DataFrame
-    month_candidates: pd.DataFrame
     execution: pd.DataFrame
     summary: dict[str, Any]
 
@@ -161,8 +154,7 @@ class _Accumulator:
     months: list[pd.DataFrame] = field(default_factory=list)
     month_halves: list[pd.DataFrame] = field(default_factory=list)
     periods: list[pd.DataFrame] = field(default_factory=list)
-    grid_candidates: list[pd.DataFrame] = field(default_factory=list)
-    month_candidates: list[pd.DataFrame] = field(default_factory=list)
+    month_directions: list[pd.DataFrame] = field(default_factory=list)
 
 
 def grid_cell_label(calendar_day: int, exit_offset: int) -> str:
@@ -329,32 +321,6 @@ def _judgeable(sample_counts: pd.Series) -> pd.Series:
         「예」/「아니오」 문자열 Series
     """
     return sample_counts.map(lambda count: judgeable(int(count)))
-
-
-def _is_judged(dataset: Dataset) -> bool:
-    """이 대상으로 후보 판정을 하는가.
-
-    **판정은 「살 수 있는 1배 롱」에만 건다** (2026-09-15 개편). 나머지 둘은 값을 그대로 내되
-    `1차 판정` 이 「판정 안 함」이 되며, 빼는 것이 아니라 **참고용으로 남긴다.**
-
-    | 빠지는 대상 | 왜 |
-    | --- | --- |
-    | 지수 | 살 수 없다. 그 결과로 「우위가 있다」를 주장하면 **집행할 수 없는 성적이 근거**가 된다 (측정의 원칙 9) |
-    | 인버스 실물 | 1배 롱이 **같은 질문에 이미 답한다.** 둘 다 판정하면 같은 달이 두 번 판정되고 **방향이 반대로 나온다** — 실측으로 8월이 롱 「아래」·인버스 「위」였고 둘 다 제외였다 |
-
-    **인버스 행을 지우지 않는 이유**는 그 성적이 일일 리밸런싱과 총보수가 든 실제 값이라
-    분배락 교차검증의 재료이기 때문이다 (`.claude/rules/trading.md`).
-
-    **판정식을 두 곳에 두지 않는다** — 격자 축과 월별 축이 갈리면 같은 대상이 한 표에서는
-    판정되고 다른 표에서는 안 된다.
-
-    Args:
-        dataset: 검증 대상
-
-    Returns:
-        판정 대상이면 True
-    """
-    return dataset.execution_role == EXECUTION_ROLE_UP
 
 
 def _identify(frame: pd.DataFrame, **values: Any) -> pd.DataFrame:
@@ -718,13 +684,6 @@ def _run_dataset(dataset: Dataset, accumulator: _Accumulator, *, repeats: int, s
         if not cell_periods.empty:
             accumulator.periods.append(_identify(cell_periods, **identity))
 
-        accumulator.grid_candidates.append(
-            _identify(
-                screen_candidates(grid, axis_column=COL_GRID_CELL, tradable=_is_judged(dataset)),
-                **identity,
-            )
-        )
-
     # **요약이 「정상으로 보이는 것」이 이 가드의 이유다.** 진입·제외 건수와 보유일은 원 매매법
     # 칸에서만 나오는데, 그 칸에 닿지 못하면 `base_record` 가 빈 채로 펼쳐져 다섯 키가 통째로
     # 빠진다 — 나머지 키는 멀쩡하므로 `summary.json` 만 봐서는 알 수 없다.
@@ -788,11 +747,11 @@ def _run_base_cell(
     by_month = _aggregate_by_month(valid_signal, valid_baseline, repeats=repeats, seed=seed)
     if not by_month.empty:
         accumulator.months.append(_identify(by_month, **identity))
-        accumulator.month_candidates.append(
-            _identify(
-                screen_candidates(by_month, axis_column=COL_MONTH_NUMBER, tradable=_is_judged(dataset)),
-                **identity,
-            )
+        # **판정하지 않는다** (2026-09-16 통합). 1차 판정의 자리는 `성적표.csv` 하나이고
+        # 이 표는 **거는 방향과 그 크기**만 낸다 — 집행 축 표가 그것을 쓴다.
+        # 성적표에는 인버스 실물이 없어(매매 기본에서 빠진다) 「아래」를 실물로 잰 값이 그쪽에 없다
+        accumulator.month_directions.append(
+            _identify(direction_profile(by_month, axis_column=COL_MONTH_NUMBER), **identity)
         )
 
     # 이웃 달력일과 같은 거래일로 수렴한 달의 수 (결정 ⑥). 격자 칸이 독립이 아니라는 근거값이다
@@ -823,8 +782,8 @@ def _hold_day_counts(frame: pd.DataFrame) -> dict[str, int]:
     return {str(days): int(count) for days, count in counts.items()}
 
 
-def _execution_rows(month_candidates: pd.DataFrame, datasets: tuple[Dataset, ...]) -> pd.DataFrame:
-    """월별 판정표에서 **실제로 살 수 있는 상품의 행만** 골라낸다.
+def _execution_rows(month_directions: pd.DataFrame, datasets: tuple[Dataset, ...]) -> pd.DataFrame:
+    """월별 방향 표에서 **실제로 살 수 있는 상품의 행만** 골라낸다.
 
     사용자가 이 표 하나만 열어도 「실제로 매매했을 때의 수치」가 되는 것이 목적이다.
     **다시 계산하지 않고 고르기만 한다** — 재계산하면 같은 값이 두 곳에서 갈라진다.
@@ -834,7 +793,7 @@ def _execution_rows(month_candidates: pd.DataFrame, datasets: tuple[Dataset, ...
     분배락·총보수·일일 리밸런싱 손실이 이미 들어 있다.
 
     Args:
-        month_candidates: 월별 축의 후보 판정표
+        month_directions: 월별 축의 방향 표 (1차 판정은 성적표가 담는다)
         datasets: 이번 실행의 대상 목록
 
     Returns:
@@ -843,11 +802,11 @@ def _execution_rows(month_candidates: pd.DataFrame, datasets: tuple[Dataset, ...
     """
     executable = {dataset.label: dataset for dataset in datasets if dataset.execution_role != EXECUTION_ROLE_NONE}
 
-    if month_candidates.empty or not executable:
+    if month_directions.empty or not executable:
         logger.debug(f"집행 가능한 대상이 없어 집행 축 표를 비웁니다 (대상 {len(datasets)}개)")
-        return month_candidates.iloc[0:0].copy()
+        return month_directions.iloc[0:0].copy()
 
-    selected = month_candidates[month_candidates[COL_TICKER].isin(executable)].copy()
+    selected = month_directions[month_directions[COL_TICKER].isin(executable)].copy()
 
     # **두 줄이 같은 모양이어야 한다.** 한쪽만 종목명으로 찾는 사전을 쓰면 `.get(label, "")` 가
     # **조용히 빈칸**을 내는데 바로 옆 줄은 같은 라벨로 `KeyError` 를 내 가드 강도가 정반대가 된다.
@@ -896,7 +855,7 @@ def run_study(
         KEY_DATASETS: dataset_summaries,
     }
 
-    month_candidates = _concat(accumulator.month_candidates)
+    month_directions = _concat(accumulator.month_directions)
 
     tables = {
         "trades": _concat(accumulator.trades),
@@ -904,9 +863,7 @@ def run_study(
         "months": _concat(accumulator.months),
         "month_halves": _concat(accumulator.month_halves),
         "periods": _concat(accumulator.periods),
-        "grid_candidates": _concat(accumulator.grid_candidates),
-        "month_candidates": month_candidates,
-        "execution": _execution_rows(month_candidates, datasets),
+        "execution": _execution_rows(month_directions, datasets),
     }
 
     # **요약을 먼저 완성한 뒤 산출물을 만든다.** 만들고 나서 그 안의 dict 를 고치면
@@ -924,7 +881,7 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
     **터미널과 CSV 가 같은 프레임을 쓴다.** 따로 가공하면 반올림 시점이 갈려 화면에서 본 숫자를
     CSV 에서 찾지 못한다 — 사용자가 직접 대조하는 것이 이 프로젝트의 전제다.
 
-    후보 판정표는 `report.tables.build_candidates_table` 이 자기 규격을 갖고 있어 그것을 쓴다.
+    집행 축 표는 `report.tables.build_direction_table` 이 자기 규격을 갖고 있어 그것을 쓴다.
 
     Args:
         outputs: 실행 산출물
@@ -944,16 +901,6 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
         if not table.empty:
             tables[name] = _display(table)
 
-    for name, table, axis_column, axis_label in (
-        ("grid_candidates", outputs.grid_candidates, COL_GRID_CELL, DISPLAY_GRID_CELL),
-        ("month_candidates", outputs.month_candidates, COL_MONTH_NUMBER, DISPLAY_MONTH_NUMBER),
-    ):
-        if not table.empty:
-            identified = table.drop(columns=[COL_TICKER])
-            built = build_candidates_table(identified, axis_column=axis_column, axis_label=axis_label)
-            built.insert(0, DISPLAY_TICKER, table[COL_TICKER].to_numpy())
-            tables[name] = built
-
     if not outputs.execution.empty:
         tables["execution"] = _execution_display(outputs.execution)
 
@@ -963,8 +910,11 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
 def _execution_display(execution: pd.DataFrame) -> pd.DataFrame:
     """집행 축 표를 표시용으로 바꾼다.
 
-    월별 판정표와 **같은 규격**을 쓰고 앞에 시장·종목·집행 세 열만 더 붙인다 —
+    월별 방향 표와 **같은 규격**을 쓰고 앞에 시장·종목·집행 세 열만 더 붙인다 —
     두 표를 나란히 읽을 수 있어야 「골라낸 표」라는 것이 눈으로 확인된다.
+
+    **1차 판정 컬럼이 없다** — 판정의 자리는 성적표 하나이며, 이 표의 절반(아래 집행 = 인버스)은
+    애초에 「판정 안 함」이었다.
 
     Args:
         execution: 집행 축 표 (영문 헤더)
@@ -974,7 +924,7 @@ def _execution_display(execution: pd.DataFrame) -> pd.DataFrame:
     """
     identity = [COL_MARKET, COL_TICKER, COL_EXECUTION_ROLE]
 
-    built = build_candidates_table(
+    built = build_direction_table(
         execution.drop(columns=identity), axis_column=COL_MONTH_NUMBER, axis_label=DISPLAY_MONTH_NUMBER
     )
 
@@ -1028,30 +978,6 @@ def base_cell_headline(grid_display: pd.DataFrame) -> pd.DataFrame:
     return base.reset_index(drop=True)
 
 
-def candidates_headline(candidates_display: pd.DataFrame) -> pd.DataFrame:
-    """**후보 칸만** 적중률 내림차순으로 뽑는다.
-
-    제외된 칸은 산출물에 그대로 남기되 화면에는 내지 않는다 — 화면은 "지금 볼 것"을 위한
-    자리이고, 전 칸은 판정 CSV 가 격자 순서로 답한다.
-
-    **정렬이 여기 있는 이유**: 판정 계층(`measure`)은 축을 모르므로 무엇을 먼저 보여줄지
-    정할 수 없다. 동률이 흔해(적중률이 표본의 분수라 값이 겹친다) **안정 정렬**을 써서
-    같은 적중률 안에서는 대상·칸 순서가 유지되게 한다.
-
-    Args:
-        candidates_display: `display_tables` 가 만든 판정표
-
-    Returns:
-        후보 칸만 남긴 판정표. 하나도 없으면 빈 표
-    """
-    if candidates_display.empty:
-        return candidates_display
-
-    selected = candidates_display[candidates_display[DISPLAY_SCREEN] == SCREEN_CANDIDATE]
-
-    return selected.sort_values(DISPLAY_HIT_RATE, ascending=False, kind="stable").reset_index(drop=True)
-
-
 def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
     """모아둔 표 조각을 하나로 잇는다.
 
@@ -1070,7 +996,6 @@ def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
 __all__ = [
     "StudyOutputs",
     "base_cell_headline",
-    "candidates_headline",
     "display_tables",
     "grid_cell_label",
     "run_study",

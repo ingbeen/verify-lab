@@ -64,7 +64,7 @@ from verify_lab.report.constants import (
     HORIZON_LABELS,
 )
 from verify_lab.report.tables import (
-    build_candidates_table,
+    build_direction_table,
     build_excess_table,
     build_signal_table,
     build_statistics_table,
@@ -620,8 +620,12 @@ class TestTerminalOutput:
             print_dataframe(pd.DataFrame({"구간": []}), logging.getLogger("test_report_tables"))
 
 
-class TestCandidatesTable:
-    """후보 판정표의 표시 계약을 고정한다."""
+class TestDirectionTable:
+    """축별 방향 표의 표시 계약을 고정한다.
+
+    **1차 판정 컬럼이 없다** (2026-09-16 통합). 판정의 자리는 `성적표.csv` 하나이며,
+    이 표는 그 판정을 읽을 재료(거는 방향과 그 크기)를 낸다.
+    """
 
     # 축 컬럼 이름. 이 계층은 축을 모르므로 검증 쪽 상수를 끌어오지 않는다
     AXIS_COLUMN = "expiry_month_number"
@@ -631,7 +635,7 @@ class TestCandidatesTable:
         """판정표 한 줄을 만든다. 값은 QQQ 9월 실측이다."""
         return pd.DataFrame(
             {
-                TestCandidatesTable.AXIS_COLUMN: [9],
+                TestDirectionTable.AXIS_COLUMN: [9],
                 COL_SAMPLE_COUNT: [27],
                 COL_DIRECTION: [DIRECTION_DOWN],
                 COL_HIT_RATE: [0.6667],
@@ -648,13 +652,13 @@ class TestCandidatesTable:
 
         Given: 후보 한 칸
         When: 표시용으로 바꾸면
-        Then: 컬럼이 계약대로 여덟 개다
+        Then: 컬럼이 계약대로 여섯 개다 — **1차 판정은 성적표가 담으므로 여기 없다**
         """
         # Given
         candidates = self._candidates()
 
         # When
-        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
         assert list(table.columns) == [
@@ -664,7 +668,6 @@ class TestCandidatesTable:
             DISPLAY_HIT_RATE,
             DISPLAY_EXPECTED_VALUE,
             DISPLAY_TOTAL_RETURN,
-            DISPLAY_SCREEN,
         ]
 
     def test_기준선을_싣지_않는다(self) -> None:
@@ -684,28 +687,32 @@ class TestCandidatesTable:
         candidates = self._candidates()
 
         # When
-        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
         assert float(table[DISPLAY_HIT_RATE].iloc[0]) == pytest.approx(66.67, abs=0.005)
         assert [column for column in table.columns if "기준선" in column] == []
 
-    def test_판정_안_함이_그대로_실린다(self) -> None:
+    def test_1차_판정을_싣지_않는다(self) -> None:
         """
-        목적: 살 수 없는 대상의 「판정 안 함」이 표시 계층에서 후보·제외로 뭉개지지 않는다.
+        목적: **판정의 자리는 성적표 하나다** (2026-09-16 통합).
 
-        Given: 1차 판정이 「판정 안 함」인 칸
+              맨몸 성적으로 게이트를 넘은 칸이 확정 손절선을 걸면 떨어지는 일이 실재하므로
+              (옵션 만기일 96칸 중 3칸), 판정과 체결 성적이 같은 표에 있어야 한다.
+              여기 판정을 실으면 같은 판정이 두 파일에 놓이고 한쪽이 낡는다.
+
+        Given: 1차 판정 컬럼이 들어 있는 입력
         When: 표시용으로 바꾸면
-        Then: 그 값이 그대로 있다
+        Then: 그 컬럼이 표에 없다
         """
         # Given
         candidates = self._candidates(screen=SCREEN_NOT_JUDGED)
 
         # When
-        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
-        assert table[DISPLAY_SCREEN].iloc[0] == SCREEN_NOT_JUDGED
+        assert DISPLAY_SCREEN not in table.columns
 
     def test_방향_기대값이_백분율로_실린다(self) -> None:
         """
@@ -719,7 +726,7 @@ class TestCandidatesTable:
         candidates = self._candidates()
 
         # When
-        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
         assert float(table[DISPLAY_EXPECTED_VALUE].iloc[0]) == pytest.approx(1.06, abs=0.005)
@@ -737,7 +744,7 @@ class TestCandidatesTable:
 
         # When / Then
         with pytest.raises(ValueError, match="축 컬럼"):
-            build_candidates_table(candidates, axis_column="요일", axis_label="요일")
+            build_direction_table(candidates, axis_column="요일", axis_label="요일")
 
 
 class TestDisplayColumns:
@@ -859,7 +866,7 @@ class TestDisplayColumns:
             to_display_columns(pd.DataFrame({"Mean": [0.01]}), {"Mean": "평균(%)"}, percent_columns=["Missing"])
 
 
-class TestCandidatesTotalReturn:
+class TestDirectionTotalReturn:
     """**회당 기대값 옆에는 합산 수익률과 표본 수가 함께 있어야 한다** (측정의 원칙 16).
 
     신호가 드물거나 보유가 며칠짜리인 매매법은 회당 평균이 구조적으로 작게 나온다.
@@ -867,7 +874,7 @@ class TestCandidatesTotalReturn:
     산출물 CSV 에는 이미 실리고 있으므로 **화면 표에서만 빠지는 상태**를 막는다.
     """
 
-    AXIS_COLUMN = TestCandidatesTable.AXIS_COLUMN
+    AXIS_COLUMN = TestDirectionTable.AXIS_COLUMN
 
     def test_합산_수익률이_표본_수와_함께_실린다(self) -> None:
         """
@@ -878,10 +885,10 @@ class TestCandidatesTotalReturn:
         Then: 합산 수익률이 회당 × 표본 값으로 실리고 표본 수도 함께 있다
         """
         # Given
-        candidates = TestCandidatesTable._candidates()
+        candidates = TestDirectionTable._candidates()
 
         # When
-        table = build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
+        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
 
         # Then
         assert DISPLAY_TOTAL_RETURN in table.columns, "합산 수익률이 화면 표에서 빠졌습니다 (측정의 원칙 16)"
@@ -897,10 +904,10 @@ class TestCandidatesTotalReturn:
         Then: 「방향 기대값(%)」 바로 다음 컬럼이 「합산 수익률(%)」이다
         """
         # Given
-        candidates = TestCandidatesTable._candidates()
+        candidates = TestDirectionTable._candidates()
 
         # When
-        columns = list(build_candidates_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월").columns)
+        columns = list(build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월").columns)
 
         # Then
         assert columns[columns.index(DISPLAY_EXPECTED_VALUE) + 1] == DISPLAY_TOTAL_RETURN

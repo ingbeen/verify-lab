@@ -56,7 +56,6 @@ from verify_lab.measure.statistics import (
     COL_WIN_RATE_EXCESS,
 )
 from verify_lab.report.constants import (
-    CANDIDATES_FILENAME,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
     DISPLAY_DOWN_RATE,
@@ -159,6 +158,29 @@ class Dataset:
             읽을 파일의 전체 경로
         """
         return self.directory / self.file_template.format(ticker=self.ticker)
+
+    @property
+    def is_judged(self) -> bool:
+        """이 대상으로 1차 판정을 하는가.
+
+        **판정은 「살 수 있는 1배 롱」에만 건다** (2026-09-15 개편). 나머지 둘은 성적이 그대로
+        나오되 `1차 판정` 이 「판정 안 함」이 되며, 빼는 것이 아니라 **참고용으로 남긴다.**
+
+        | 빠지는 대상 | 왜 |
+        | --- | --- |
+        | 지수 | 살 수 없다. 그 결과로 「우위가 있다」를 주장하면 **집행할 수 없는 성적이 근거**가 된다 (측정의 원칙 9) |
+        | 인버스 실물 | 1배 롱이 **같은 질문에 이미 답한다.** 둘 다 판정하면 같은 달이 두 번 판정되고 **방향이 반대로 나온다** — 실측으로 8월이 롱 「아래」·인버스 「위」였고 둘 다 제외였다 |
+
+        **인버스 행을 지우지 않는 이유**는 그 성적이 일일 리밸런싱과 총보수가 든 실제 값이라
+        분배락 교차검증의 재료이기 때문이다 (`.claude/rules/trading.md`).
+
+        **조회표가 아니라 대상 자신이 답한다** (`src/verify_lab/CLAUDE.md` 출력 계약) —
+        종목명으로 찾는 사전으로 두면 호출자가 넘긴 대상이 거기 없을 때 조용히 빈 답이 나온다.
+
+        Returns:
+            판정 대상이면 True
+        """
+        return self.execution_role == EXECUTION_ROLE_UP
 
 
 # 시장마다 **1배 ETF 가 본검증이고, 인버스와 지수는 보조**다.
@@ -277,6 +299,7 @@ DATASETS: Final = DATASETS_KOSPI + DATASETS_KOSDAQ
 # **`--ticker` 로 지목하면 매매에서도 돈다** — 확정 전 분배락 교차검증이 그 용도다
 # (`docs/검증/월말_진입/설계.md` §7.16)
 DATASETS_TRADING: Final = tuple(dataset for dataset in DATASETS if dataset.execution_role != EXECUTION_ROLE_DOWN)
+
 
 # ============================================================
 # 격자 축 (`docs/검증/월말_진입/설계.md` §3.3 결정 ③)
@@ -539,10 +562,8 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     # 집행 축은 달 축을 한 번 더 쪼갠 것이라 영문으로 남는다 —
     # 이름은 `report/constants.py` 가 소유하고 세 매매법이 같은 상수를 쓴다
     "months": STATISTICS_FILENAME,
-    "month_candidates": CANDIDATES_FILENAME,
     "month_halves": "month_halves.csv",
     "periods": "periods.csv",
-    "grid_candidates": "grid_candidates.csv",
     "execution": "execution.csv",
 }
 

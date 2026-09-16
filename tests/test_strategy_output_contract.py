@@ -139,6 +139,10 @@ SUMMARY_COMMON_COLUMNS = (
     "판정가능",
     "시기 시작일",
     "시기 종료일",
+    # **판정은 성적표 안에 있다** (2026-09-16 통합). 별도 판정표를 내지 않는다 —
+    # 맨몸 판정과 손절 판정이 갈리는 칸이 실재해(96칸 중 3칸) 두 파일로 두면 대조가 끊긴다.
+    # 맨 뒤에 두는 것은 앞의 공통 컬럼 순서를 흔들지 않기 위해서다
+    "1차 판정",
 )
 
 # 거래내역의 공통 컬럼. **`청산 목표일` 이 이 목록 «안»에 끼므로**(옵션 만기일만, 진입가 다음)
@@ -148,7 +152,7 @@ TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "청
 
 # 매매법 축 — 종목 바로 다음에 온다. **역방향만 두 칸**이다
 AXIS_REVERSE = ("파라미터", "시작연도")
-AXIS_OPTION_EXPIRY = ("만기월",)
+AXIS_OPTION_EXPIRY = ("만기월", "청산 요일")
 AXIS_MONTH_END = ("월",)
 
 # 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향만 있다
@@ -341,7 +345,7 @@ def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryO
         # **한 손절선으로 고정한다.** 격자 배수가 붙으면 구조 계약(구간 5행·신호마다 한 행)이
         # 손절선 수만큼 늘어나 무엇을 재는지 흐려진다 — 격자 자체는 별도 테스트가 본다
         yield run_option_expiry_trading(
-            [ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False)],
+            [ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False, exit_weekday=FRIDAY)],
             stop_levels=(EXPIRY_STOP_LEVEL,),
         )
 
@@ -922,26 +926,28 @@ class TestSingleColumnStopFilter:
 class TestFilenames:
     """파일 이름은 상수 한 곳에서 온다"""
 
-    def test_사용자가_보는_네_이름이_상수로_정의돼_있다(self) -> None:
+    def test_사용자가_보는_세_이름이_상수로_정의돼_있다(self) -> None:
         """
         목적: 이름이 코드 여러 곳에 흩어진 문자열이던 상태를 닫는다
 
-        **경계는 「중요도」가 아니라 「종류」다.** 사용자가 판정에 쓰는 네 종류만 한글이고
+        **경계는 「중요도」가 아니라 「종류」다.** 사용자가 판정에 쓰는 종류만 한글이고
         원자료·검정 표는 영문으로 남는다 — 중요도로 가르면 새 표가 생길 때마다 다시 물어야 하고,
         판정이 갈리면 이름이 뒤섞인다.
 
+        **넷이 아니라 셋이다** (2026-09-16). 판정표(`1차_판정.csv`)가 성적표로 통합돼
+        그 이름을 쓰는 표가 없어졌다 — 값은 `통계.csv` 가 그대로 담는다.
+
         Given: 체결 계층과 출력 계층의 상수 모듈
         When: 파일명 상수를 읽었을 때
-        Then: 네 이름이 한글로 정의돼 있다
+        Then: 세 이름이 한글로 정의돼 있다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
-        from verify_lab.report.constants import CANDIDATES_FILENAME, STATISTICS_FILENAME
+        from verify_lab.report.constants import STATISTICS_FILENAME
 
         # When / Then
         assert SUMMARY_FILENAME == "성적표.csv"
         assert TRADES_FILENAME == "거래내역.csv"
-        assert CANDIDATES_FILENAME == "1차_판정.csv"
         assert STATISTICS_FILENAME == "통계.csv"
 
     def test_세_매매법이_같은_네_이름을_낸다(self) -> None:
@@ -956,12 +962,12 @@ class TestFilenames:
         이름에 또 넣으면 중복이고, 넣는 순간 세 이름이 다시 갈린다.
 
         Given: 세 매매법의 산출물 파일 목록과 체결 산출물 이름
-        When: 사용자가 보는 네 이름을 찾는다
-        Then: 셋 다 네 이름을 그대로 낸다
+        When: 사용자가 보는 이름을 찾는다
+        Then: 셋 다 그 이름을 그대로 낸다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
-        from verify_lab.report.constants import CANDIDATES_FILENAME, STATISTICS_FILENAME
+        from verify_lab.report.constants import STATISTICS_FILENAME
         from verify_lab.studies.month_end.constants import OUTPUT_FILES as MONTH_END_FILES
         from verify_lab.studies.option_expiry.constants import OUTPUT_FILES as EXPIRY_FILES
         from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
@@ -974,8 +980,7 @@ class TestFilenames:
 
         # When / Then
         for name, files in measured.items():
-            missing = [wanted for wanted in (CANDIDATES_FILENAME, STATISTICS_FILENAME) if wanted not in files]
-            assert not missing, f"{name} 의 산출물에 사용자가 보는 이름이 없습니다: {missing}"
+            assert STATISTICS_FILENAME in files, f"{name} 의 산출물에 사용자가 보는 이름이 없습니다: {STATISTICS_FILENAME}"
 
         # 체결 둘은 `execution/constants.py` 가 소유하므로 세 매매법이 자동으로 같다
         assert {SUMMARY_FILENAME, TRADES_FILENAME} == {"성적표.csv", "거래내역.csv"}
@@ -1039,7 +1044,7 @@ class TestPayoffAmountColumns:
         dates = pd.DatetimeIndex(["2020-01-02", "2020-02-03", "2020-03-02"])
 
         # When
-        rows = period_rows(dates, [0.01, 0.02, 0.03], last_day=pd.Timestamp("2020-03-31"))
+        rows = period_rows(dates, [0.01, 0.02, 0.03], last_day=pd.Timestamp("2020-03-31"), tradable=True)
         overall = rows[0]
 
         # Then
@@ -1060,7 +1065,7 @@ class TestPayoffAmountColumns:
         dates = pd.DatetimeIndex(["2000-01-03", "2000-02-01"])
 
         # When
-        rows = period_rows(dates, [0.01, -0.02], last_day=pd.Timestamp("2020-12-30"))
+        rows = period_rows(dates, [0.01, -0.02], last_day=pd.Timestamp("2020-12-30"), tradable=True)
         recent = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_RECENT_5Y)
 
         # Then
@@ -1339,3 +1344,215 @@ class TestDatasetFields:
         # When / Then
         for dataset in domestic:
             assert not dataset.label.isdigit(), f"{dataset.ticker} 의 표시 이름이 코드입니다"
+
+
+class TestScreenColumn:
+    """`1차 판정` — 성적표 안의 판정 (2026-09-16 통합)
+
+    **판정표를 따로 내지 않는다.** 맨몸(무손절) 판정과 확정 손절선 판정이 갈리는 칸이
+    실재하고(옵션 만기일 96칸 중 3칸, 그중 둘은 기대값 부호까지 뒤집힌다), 두 파일로 두면
+    사용자가 범위를 좁힐 때 그 차이가 보이지 않는다.
+
+    **게이트는 「전체」 구간 하나만 본다** (루트 `CLAUDE.md` 2026-09-12 개정). 쪼개면 칸당
+    표본이 5~6건까지 줄어 한 건이 20%p 를 움직이므로, 그 값으로 칸을 떨어뜨리면 멀쩡한
+    매매법이 우연으로 죽는다. 나머지 네 구간은 **「판정 안 함」**이다 — 빈칸으로 두면
+    「잴 수 없었다」로 읽히는데 실제로는 **「묻지 않았다」**이다.
+    """
+
+    # 판정 값 셋. **손으로 박아 둔다** — 프로덕션 상수를 import 하면 그 상수를 고치는 순간
+    # 테스트가 따라와 아무것도 고정하지 못한다 (이 모듈 머리말)
+    VERDICTS = frozenset({"후보", "제외", "판정 안 함"})
+    NOT_JUDGED = "판정 안 함"
+    PERIOD_ALL_LABEL = "전체"
+    SCREEN_COLUMN = "1차 판정"
+
+    def test_세_성적표가_판정_값_셋만_쓴다(
+        self,
+        reverse_outputs: StrategyOutputs,
+        expiry_outputs: ExpiryOutputs,
+        month_end_outputs: TradingOutputs,
+    ) -> None:
+        """
+        목적: 값 집합이 매매법마다 갈리면 세 성적표를 한 필터로 읽을 수 없다.
+
+        Given: 세 매매법의 성적표
+        When: 판정 컬럼의 값을 모았을 때
+        Then: 셋 다 정해진 세 값 안에 든다
+        """
+        # Given / When / Then
+        for name, table in (
+            ("역방향", reverse_outputs.performance),
+            ("옵션 만기일", expiry_outputs.performance),
+            ("월말", month_end_outputs.performance),
+        ):
+            values = set(table[self.SCREEN_COLUMN])
+            assert values <= self.VERDICTS, f"{name} 성적표에 정의되지 않은 판정 값이 있습니다: {values - self.VERDICTS}"
+
+    def test_시기가_전체가_아닌_행은_판정하지_않는다(
+        self,
+        reverse_outputs: StrategyOutputs,
+        expiry_outputs: ExpiryOutputs,
+        month_end_outputs: TradingOutputs,
+    ) -> None:
+        """
+        목적: **게이트를 시기 행에 걸지 않는다**는 2026-09-12 개정을 고정한다.
+
+        걸면 「최근 5년 → 제외」가 표에 찍히고, 그걸로 거르는 순간 표본 5~6건짜리 구간이
+        멀쩡한 칸을 떨어뜨린다.
+
+        Given: 세 매매법의 성적표
+        When: 시기가 「전체」가 아닌 행의 판정을 봤을 때
+        Then: 전부 「판정 안 함」이다
+        """
+        # Given / When / Then
+        for name, table in (
+            ("역방향", reverse_outputs.performance),
+            ("옵션 만기일", expiry_outputs.performance),
+            ("월말", month_end_outputs.performance),
+        ):
+            split = table[table[DISPLAY_PERIOD] != self.PERIOD_ALL_LABEL]
+            assert not split.empty, f"{name} 성적표에 시기 행이 없어 계약을 검사하지 못했습니다"
+            assert (split[self.SCREEN_COLUMN] == self.NOT_JUDGED).all(), f"{name} 성적표의 시기 행에 게이트가 걸렸습니다"
+
+    def test_전체_행에서는_실제로_판정한다(
+        self,
+        expiry_outputs: ExpiryOutputs,
+        reverse_outputs: StrategyOutputs,
+    ) -> None:
+        """
+        목적: 전 행이 「판정 안 함」이 되어 컬럼이 무의미해지는 것을 막는다.
+
+        **판정 대상만 있는 두 매매법을 본다** — 옵션 만기일과 역방향은 대상이 전부 1배 ETF 다.
+        월말은 지수·인버스가 섞여 있어 「판정 안 함」이 정상이므로 위 테스트가 따로 본다.
+
+        Given: 합성 시세로 돈 두 매매법의 결과
+        When: 시기가 「전체」인 행의 판정을 봤을 때
+        Then: 「판정 안 함」이 아니다
+        """
+        # Given / When / Then
+        for name, table in (("옵션 만기일", expiry_outputs.performance), ("역방향", reverse_outputs.performance)):
+            whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
+            assert not whole.empty, f"{name} 성적표에 전체 구간 행이 없습니다"
+            assert (whole[self.SCREEN_COLUMN] != self.NOT_JUDGED).all(), f"{name} 성적표가 아무것도 판정하지 않았습니다"
+
+    def test_살_수_없는_대상은_전체_행에서도_판정하지_않는다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: 지수로 「우위가 있다」를 주장하면 **집행할 수 없는 성적이 근거**가 된다
+              (측정의 원칙 9).
+
+        Given: 합성 시세와 합성 지수로 돈 월말 결과
+        When: 지수 행의 판정을 봤을 때
+        Then: 시기와 무관하게 전부 「판정 안 함」이다
+        """
+        # Given
+        table = month_end_outputs.performance
+        index_rows = table[table[DISPLAY_TICKER] == "합성 지수"]
+        assert not index_rows.empty, "지수 행이 없어 계약을 검사하지 못했습니다"
+
+        # When / Then
+        assert (index_rows[self.SCREEN_COLUMN] == self.NOT_JUDGED).all()
+
+    def test_표본이_0건인_구간은_판정_안_함이다(self, tmp_path: Path) -> None:
+        """
+        목적: 「재봤더니 아니었다」와 「재본 적이 없다」를 가른다.
+
+        0건 칸은 지표가 결측이라 비교가 전부 거짓이 되고, 가드가 없으면 「제외」로 찍힌다.
+
+        Given: 신호를 앞쪽에만 심어 최근 5년이 0건이 되는 합성 시세
+        When: 표본 0건 행의 판정을 봤을 때
+        Then: 「판정 안 함」이다
+        """
+        # Given
+        target = _reverse_target(_write_market(tmp_path / "empty", "SYN", EARLY_SIGNAL_POSITIONS))
+
+        # When
+        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
+        empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
+
+        # Then
+        assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다"
+        assert (empty[self.SCREEN_COLUMN] == self.NOT_JUDGED).all()
+
+    def test_판정이_승률과_평균에서_그대로_유도된다(self, expiry_outputs: ExpiryOutputs) -> None:
+        """
+        목적: **같은 행의 값으로 다시 세지 않는다** (절대 원칙 5 — 판정식 단일화).
+
+        성적표가 판정을 따로 계산하면 같은 행 안에서 승률·평균과 판정이 어긋날 수 있다.
+
+        Given: 합성 시세로 돈 옵션 만기일 성적표의 전체 구간 행
+        When: 그 행의 승률·평균으로 게이트를 직접 걸었을 때
+        Then: 행에 실린 판정과 같다
+        """
+        # Given
+        from verify_lab.measure.screening import SCREEN_CANDIDATE, SCREEN_EXCLUDED
+
+        table = expiry_outputs.performance
+        whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
+        assert not whole.empty, "전체 구간 행이 없습니다"
+
+        # When / Then — 게이트는 적중률 60% 이상 · 기대값 0 초과 (손으로 박아 둔다).
+        # **판정은 세 값이다** — 표본이 0건이거나 지표가 결측인 행은 「판정 안 함」이며,
+        # 두 값만 기대하면 그 행에서 없는 게이트 버그를 가리키게 된다
+        for _, row in whole.iterrows():
+            if row[DISPLAY_SIGNAL_COUNT] == 0 or pd.isna(row["승률(%)"]) or pd.isna(row["평균(%)"]):
+                expected = self.NOT_JUDGED
+            elif row["승률(%)"] >= 60.0 and row["평균(%)"] > 0.0:
+                expected = SCREEN_CANDIDATE
+            else:
+                expected = SCREEN_EXCLUDED
+            assert row[self.SCREEN_COLUMN] == expected, f"판정이 같은 행의 승률·평균과 어긋납니다: {dict(row)}"
+
+
+class TestNoCandidatesFile:
+    """판정표 파일을 더 이상 내지 않는다
+
+    「1차 판정」이라는 개념이 성적표로 통합됐으므로, 같은 판정을 담은 **두 번째 파일**이
+    남아 있으면 어느 쪽이 현재인지 매번 판별해야 한다.
+
+    **값이 사라지는 것이 아니다** — 판정표의 축과 값은 `통계.csv`·`grid.csv` 가 그대로
+    담는다(실측 대조: 월말 격자 616행 · 역방향 576행 모두 누락 0 · 값 불일치 0).
+    """
+
+    def test_세_매매법의_산출물에_판정표가_없다(self) -> None:
+        """
+        목적: 산출물 목록에서 판정표가 빠졌는지 고정한다.
+
+        Given: 세 매매법의 산출물 파일 목록
+        When: 판정표 이름을 찾았을 때
+        Then: 하나도 없다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import OUTPUT_FILES as MONTH_END_FILES
+        from verify_lab.studies.option_expiry.constants import OUTPUT_FILES as EXPIRY_FILES
+        from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
+
+        # When / Then
+        for name, files in (
+            ("역방향", REVERSE_FILES),
+            ("옵션 만기일", EXPIRY_FILES),
+            ("월말 진입", MONTH_END_FILES),
+        ):
+            leftovers = [value for value in files.values() if "판정" in value]
+            assert not leftovers, f"{name} 이 아직 판정표를 냅니다: {leftovers}"
+
+    def test_판정표_이름과_표_생성기가_저장소에서_사라졌다(self) -> None:
+        """
+        목적: 상수와 헬퍼가 남아 있으면 그 경로로 판정표가 되살아난다.
+
+        Given: 패키지와 스크립트 소스 전체
+        When: 판정표 이름 상수와 표 생성기를 찾았을 때
+        Then: 하나도 없다
+        """
+        # Given
+        sources = [
+            *(BASE_DIR / "src" / "verify_lab").rglob("*.py"),
+            *(BASE_DIR / "scripts").rglob("*.py"),
+        ]
+        assert sources, "소스를 찾지 못했습니다"
+
+        # When / Then
+        for path in sources:
+            text = path.read_text(encoding="utf-8")
+            where = path.relative_to(BASE_DIR)
+            assert "CANDIDATES_FILENAME" not in text, f"{where} 에 판정표 이름 상수가 남아 있습니다"
+            assert "build_candidates_table" not in text, f"{where} 에 판정표 생성기가 남아 있습니다"

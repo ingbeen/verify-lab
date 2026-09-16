@@ -32,12 +32,14 @@ from verify_lab.execution.constants import (
     DISPLAY_TICKER,
     DISPLAY_TOTAL,
     DISPLAY_WIN_RATE,
+    NO_STOP_LABEL,
     PERIOD_ALL,
+    STOP_NOT_MEASURABLE_LABEL,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
 )
 from verify_lab.execution.run_summary import KEY_ROW_COUNTS, merge_run_summary
-from verify_lab.measure.screening import SCREEN_NOT_JUDGED
+from verify_lab.measure.screening import SCREEN_CANDIDATE, SCREEN_NOT_JUDGED
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.constants import (
     DISPLAY_MEAN,
@@ -59,7 +61,6 @@ from verify_lab.studies.month_end.constants import (
 from verify_lab.studies.month_end.runner import (
     StudyOutputs,
     base_cell_headline,
-    candidates_headline,
     display_tables,
     run_study,
 )
@@ -93,16 +94,20 @@ HEADLINE_COLUMNS = [
     "판정가능",
 ]
 
-# 화면에 낼 후보 칸의 컬럼
+# 화면에 낼 후보 칸의 컬럼. **성적표의 이름을 쓴다** — 판정이 그 표 안에 있기 때문이다
 CANDIDATE_COLUMNS = [
-    "대상",
-    "격자 칸",
-    "표본",
-    "방향",
-    "적중률(%)",
-    "방향 기대값(%)",
-    "합산 수익률(%)",
+    DISPLAY_TICKER,
+    DISPLAY_MONTH_NUMBER,
+    DISPLAY_DIRECTION,
+    DISPLAY_SIGNAL_COUNT,
+    DISPLAY_WIN_RATE,
+    DISPLAY_MEAN,
+    DISPLAY_TOTAL,
 ]
+
+# 맨몸 성적을 담은 행의 손절선 값 둘. **`무손절`(안 걸었다)과 `손절불가`(못 잰다)는 다른 사실**이라
+# 둘 다 골라야 지수 행을 잃지 않는다 (`.claude/rules/trading.md`)
+NO_STOP_LABELS = (NO_STOP_LABEL, STOP_NOT_MEASURABLE_LABEL)
 
 # 화면에 낼 성적표 컬럼
 PERFORMANCE_COLUMNS = [
@@ -188,35 +193,49 @@ def _known(tickers: list[str] | None) -> tuple[Dataset, ...] | None:
     return tuple(known[ticker] for ticker in tickers)
 
 
-def _print_study(outputs: StudyOutputs, tables: dict[str, pd.DataFrame]) -> None:
-    """원 매매법 칸과 후보 판정을 화면에 보여 준다.
+def _print_study(tables: dict[str, pd.DataFrame]) -> None:
+    """원 매매법 칸의 성적을 화면에 보여 준다.
+
+    **1차 판정은 여기서 내지 않는다** (2026-09-16 통합). 판정의 자리는 성적표 하나이며
+    `_print_candidates` 가 그 표에서 후보 칸을 뽑는다.
 
     화면은 **저장한 표시용 프레임에서 발췌**한다 — 따로 가공하면 반올림 시점이 갈려
     화면에서 본 숫자를 CSV 에서 찾지 못한다.
 
     Args:
-        outputs: 측정 산출물
         tables: 저장한 표시용 프레임
     """
     headline = base_cell_headline(tables["grid"])
     if not headline.empty:
         print_dataframe(headline[HEADLINE_COLUMNS], logger, title="원 매매법 칸 — 20일 매수 → 말일 매도")
 
-    grid_candidates = tables["grid_candidates"]
-    candidates = candidates_headline(grid_candidates)
 
-    # **분모는 «판정한» 칸이다.** 지수와 인버스는 참고용이라 판정하지 않으므로,
-    # 전체 행 수를 분모로 쓰면 통과 비율이 실제보다 작아 보인다
-    judged = int((grid_candidates[DISPLAY_SCREEN] != SCREEN_NOT_JUDGED).sum())
-    unjudged = len(grid_candidates) - judged
-    if candidates.empty:
-        logger.debug(f"게이트를 넘은 격자 칸이 없습니다 (판정한 칸 {judged})")
+def _print_candidates(outputs: TradingOutputs) -> None:
+    """성적표에서 **맨몸 후보 칸만** 뽑아 화면에 보여 준다.
+
+    **판정표를 따로 내지 않으므로 성적표가 그 자리다** (2026-09-16 통합).
+    **무손절 행을 보여 준다** — 게이트가 맨몸 성적으로 걸리기 때문이다(측정의 원칙 10).
+
+    **분모는 «판정한» 칸이다.** 지수와 인버스는 참고용이라 판정하지 않으므로,
+    전체 행 수를 분모로 쓰면 통과 비율이 실제보다 작아 보인다.
+
+    Args:
+        outputs: 체결 산출물
+    """
+    table = outputs.performance
+    whole = table[(table[DISPLAY_STOP_LEVEL].isin(NO_STOP_LABELS)) & (table[DISPLAY_PERIOD] == PERIOD_ALL)]
+    judged = int((whole[DISPLAY_SCREEN] != SCREEN_NOT_JUDGED).sum())
+    picked = whole[whole[DISPLAY_SCREEN] == SCREEN_CANDIDATE]
+
+    if picked.empty:
+        logger.debug(f"게이트를 넘은 칸이 없습니다 (판정한 칸 {judged})")
         return
 
+    ordered = picked.sort_values(DISPLAY_WIN_RATE, ascending=False, kind="stable")
     print_dataframe(
-        candidates[CANDIDATE_COLUMNS],
+        ordered[CANDIDATE_COLUMNS],
         logger,
-        title=f"게이트를 넘은 격자 칸 — {len(candidates)}칸 (판정한 {judged}칸 · 판정 안 함 {unjudged}칸)",
+        title=f"1차 후보 — 맨몸 · 전체 구간 {len(picked)}칸 (판정한 {judged}칸 · 판정 안 함 {len(whole) - judged}칸)",
     )
 
 
@@ -293,7 +312,8 @@ def main() -> int:
     directory = create_run_directory(TRACK_NAME)
     counts = _save(study, tables, trading, directory)
 
-    _print_study(study, tables)
+    _print_study(tables)
+    _print_candidates(trading)
     _print_performance(trading)
     print_dataframe(
         pd.DataFrame([{DISPLAY_FILE: name, DISPLAY_ROW_COUNT: rows} for name, rows in counts.items()]),

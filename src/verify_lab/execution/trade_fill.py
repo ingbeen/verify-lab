@@ -138,7 +138,7 @@ def simulate_signal(
             **기본값을 두지 않는다** — 이 모듈은 매매법 이름을 갖지 않는 공유 체결식인데
             기본값이 있으면 그것이 **한 매매법의 파라미터**가 된다. 실제로 역방향의 −5% 가
             기본값이었고, 인자를 빠뜨린 호출은 **예외 없이 남의 손절선으로 체결**된다.
-            `measure.screening.screen_candidates` 의 `tradable` 과
+            `measure.screening.screen_verdict` 의 `tradable` 과
             `constants.stop_level_value` 의 `measurable` 이 같은 이유로 기본값을 두지 않는다
         take_profit: 종가가 진입가 위면 그날 청산할지 여부. 거짓이면 손절이 걸리지 않는 한
             **한도일까지 보유한다**

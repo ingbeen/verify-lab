@@ -10,6 +10,13 @@
 **표본이 모자란 구간도 행을 남긴다.** 0건이어도 행이 있고 `판정가능` 이 「아니오」다 —
 행이 사라지면 사용자가 그 구간을 못 봤다는 사실 자체를 모른다.
 
+**1차 판정이 이 표 안에 있다.** 판정표를 따로 내지 않는 것은 **판정과 집행이 다른 조건이면
+안 되기 때문**이다 — 맨몸 성적으로 게이트를 넘은 칸이 확정 손절선을 걸면 떨어지는 일이
+실제로 있었고(옵션 만기일 96칸 중 3칸, 그중 둘은 기대값 부호까지 뒤집혔다), 두 파일로 두면
+사용자가 범위를 좁힐 때 그 차이가 보이지 않는다.
+**게이트는 「전체」 구간 행에서만 걸고 나머지 넷은 「판정 안 함」이다** — 근거는 `_verdict` 에 있다.
+**산식은 `measure.screening` 이 소유한다.**
+
 **`사건` 은 번호를 넘긴 매매법만 받는다.** 한 달에 몰린 폭락일을 묶어 세야 하는 매매법
 (역방향)은 구간마다 사건 수가 달라지므로 여기서 센다. 신호가 연 1회씩인 매매법
 (옵션 만기일·월말)은 신호가 곧 사건이라 **컬럼 자체를 내지 않는다** — 빈칸으로 두면
@@ -45,6 +52,7 @@ from verify_lab.execution.constants import (
     RECENT_YEARS,
 )
 from verify_lab.measure.constants import PERIOD_FIRST_HALF, PERIOD_SECOND_HALF
+from verify_lab.measure.screening import SCREEN_NOT_JUDGED, screen_verdict
 from verify_lab.measure.statistics import judgeable, payoff_from_returns
 from verify_lab.report.constants import (
     DATE_FORMAT,
@@ -53,6 +61,7 @@ from verify_lab.report.constants import (
     DISPLAY_MEAN,
     DISPLAY_MIN,
     DISPLAY_PERIOD,
+    DISPLAY_SCREEN,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_STD,
     PAYOFF_DECIMALS,
@@ -77,6 +86,7 @@ def period_rows(
     returns: Sequence[float],
     *,
     last_day: pd.Timestamp,
+    tradable: bool,
     hold_days: Sequence[int] | None = None,
     reasons: Sequence[str] | None = None,
     event_ids: Sequence[int] | None = None,
@@ -96,6 +106,10 @@ def period_rows(
         entry_dates: 신호별 진입일 (시간순)
         returns: 신호별 수익률 (비율). `entry_dates` 와 길이가 같아야 한다
         last_day: 시세의 마지막 거래일. 「최근 N년」의 기준점이다
+        tradable: **판정 대상인가.** 거짓이면 `1차 판정` 이 전 행에서 「판정 안 함」이 된다 —
+            지수(살 수 없다)와 인버스 실물(1배 롱이 같은 질문에 이미 답한다)이 그 경우다.
+            **기본값을 두지 않는다** — 기본이 「판정한다」면 참고용 대상을 받는 호출처가 인자를
+            빠뜨렸을 때 **틀린 판정이 조용히 나간다.** `measure.screening` 과 같은 이유다
         hold_days: 신호별 보유 거래일 수. 없으면 평균 보유일을 비운다
         reasons: 신호별 청산 사유. 없으면 손절 건수를 비운다
         event_ids: 신호별 사건 번호. **주면 `사건` 컬럼이 구간마다 따로 세어지고,
@@ -141,6 +155,7 @@ def period_rows(
             labels[masks[period]] if labels is not None else None,
             entry_dates[masks[period]],
             events[masks[period]] if events is not None else None,
+            tradable,
         )
         for period in PERIODS
     ]
@@ -153,6 +168,7 @@ def _period_row(
     labels: np.ndarray | None,
     entry_dates: pd.DatetimeIndex,
     events: np.ndarray | None,
+    tradable: bool,
 ) -> dict[str, Any]:
     """구간 하나의 집계를 만든다.
 
@@ -173,6 +189,7 @@ def _period_row(
         labels: 그 구간의 청산 사유
         entry_dates: 그 구간의 진입일. 기간의 양 끝을 여기서 낸다
         events: 그 구간의 사건 번호. `None` 이면 `사건` 컬럼을 내지 않는다
+        tradable: 판정 대상인가
 
     Returns:
         성적표 한 줄
@@ -182,12 +199,17 @@ def _period_row(
     empty = count == 0
     payoff = payoff_from_returns(values)
 
+    # **판정에 넣는 값과 표에 싣는 값이 같아야 한다.** 원값으로 게이트를 걸면 표에 `60.00` ·
+    # `+0.01` 이 찍힌 행이 「제외」로 나올 수 있다 — 반올림 경계에서 표가 자기 자신과 어긋난다
+    mean_value = np.nan if empty else round(float(percent.mean()), PERCENT_DECIMALS)
+    win_rate = np.nan if empty else round(float((values > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS)
+
     row: dict[str, Any] = {
         DISPLAY_PERIOD: period,
         DISPLAY_SIGNAL_COUNT: count,
         DISPLAY_TOTAL: np.nan if empty else round(float(percent.sum()), PERCENT_DECIMALS),
-        DISPLAY_MEAN: np.nan if empty else round(float(percent.mean()), PERCENT_DECIMALS),
-        DISPLAY_WIN_RATE: np.nan if empty else round(float((values > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_MEAN: mean_value,
+        DISPLAY_WIN_RATE: win_rate,
         # **산식은 `measure` 가 소유한다.** 여기서 다시 계산하면 판정 계층과 조용히 갈라진다.
         # 표본이 있는데 진 거래가 0 건인 것은 «사실»이므로 그때는 손익비만 비고 표본은 0 을 적는다
         DISPLAY_PAYOFF_RATIO: np.nan if empty else round(payoff.payoff_ratio, PAYOFF_DECIMALS),
@@ -222,6 +244,7 @@ def _period_row(
         # **표본이 없으면 비운다.** 임의의 날짜로 채우면 잰 적이 없는 구간이 잰 것처럼 읽힌다
         DISPLAY_PERIOD_START: np.nan if empty else entry_dates.min().strftime(DATE_FORMAT),
         DISPLAY_PERIOD_END: np.nan if empty else entry_dates.max().strftime(DATE_FORMAT),
+        DISPLAY_SCREEN: _verdict(period, win_rate=win_rate, mean_value=mean_value, count=count, tradable=tradable),
     }
 
     # **사건 수는 번호를 넘긴 매매법만 낸다.** 같은 사건에서 파생된 신호를 묶어 세는 것이
@@ -231,6 +254,41 @@ def _period_row(
         row[DISPLAY_EVENT_COUNT] = np.nan if empty else int(np.unique(events).size)
 
     return row
+
+
+def _verdict(period: str, *, win_rate: float, mean_value: float, count: int, tradable: bool) -> str:
+    """그 구간 행의 1차 판정을 낸다.
+
+    **게이트는 「전체」 구간 하나만 본다** (루트 `CLAUDE.md` 2026-09-12 개정). 쪼개면 칸당
+    표본이 5~6건까지 줄어 **한 건이 20%p 를 움직이므로**, 그 값으로 칸을 떨어뜨리면 멀쩡한
+    매매법이 우연으로 죽는다. 나머지 네 구간은 **관찰용**이다.
+
+    **빈칸이 아니라 「판정 안 함」으로 적는다.** 빈칸은 이 표에서 「잴 수 없었다」는 뜻인데
+    (표본 0건 칸의 지표가 그렇다), 시기 행은 잰 값이 있고 **묻지 않았을** 뿐이다.
+
+    **산식은 `measure.screening` 이 소유한다.** 여기서 비교식을 다시 쓰면 같은 칸이 집계표와
+    성적표에서 다르게 판정된다 (절대 원칙 5).
+
+    Args:
+        period: 구간 이름
+        win_rate: 그 행에 실리는 승률 (백분율). 방향 부호가 이미 반영된 값이다
+        mean_value: 그 행에 실리는 평균 (백분율). 같은 뜻으로 곧 방향 기대값이다
+        count: 표본 수
+        tradable: 판정 대상인가
+
+    Returns:
+        판정 값
+    """
+    if period != PERIOD_ALL:
+        return SCREEN_NOT_JUDGED
+
+    # 게이트는 비율(0~1)로 묻고 성적표 컬럼은 백분율이다
+    return screen_verdict(
+        hit_rate=win_rate / RATE_TO_PERCENT,
+        expected_value=mean_value / RATE_TO_PERCENT,
+        sample_count=count,
+        tradable=tradable,
+    )
 
 
 def to_summary_frame(rows: Sequence[Mapping[str, Any]]) -> pd.DataFrame:

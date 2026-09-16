@@ -74,7 +74,7 @@ class TestPeriodSchema:
         years = list(range(2006, 2026))
 
         # When
-        rows = period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+        rows = period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True)
 
         # Then
         assert [row[DISPLAY_PERIOD] for row in rows] == list(PERIODS)
@@ -107,7 +107,9 @@ class TestSampleConservation:
         # When
         rows = {
             row[DISPLAY_PERIOD]: row[DISPLAY_SIGNAL_COUNT]
-            for row in period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
         }
 
         # Then
@@ -128,7 +130,9 @@ class TestSampleConservation:
         # When
         rows = {
             row[DISPLAY_PERIOD]: row[DISPLAY_SIGNAL_COUNT]
-            for row in period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
         }
 
         # Then
@@ -153,7 +157,9 @@ class TestEmptyPeriod:
         # When
         rows = {
             row[DISPLAY_PERIOD]: row
-            for row in period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
         }
 
         # Then
@@ -174,7 +180,9 @@ class TestEmptyPeriod:
         # When
         rows = {
             row[DISPLAY_PERIOD]: row
-            for row in period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
         }
 
         # Then
@@ -198,7 +206,9 @@ class TestJudgeable:
         # When
         rows = {
             row[DISPLAY_PERIOD]: row
-            for row in period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
         }
 
         # Then
@@ -218,7 +228,9 @@ class TestJudgeable:
         # When
         rows = {
             row[DISPLAY_PERIOD]: row
-            for row in period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
         }
 
         # Then
@@ -246,11 +258,11 @@ class TestRecentBoundary:
         # When
         early = {
             row[DISPLAY_PERIOD]: row[DISPLAY_SIGNAL_COUNT]
-            for row in period_rows(entries, returns, last_day=pd.Timestamp("2015-12-31"))
+            for row in period_rows(entries, returns, last_day=pd.Timestamp("2015-12-31"), tradable=True)
         }
         late = {
             row[DISPLAY_PERIOD]: row[DISPLAY_SIGNAL_COUNT]
-            for row in period_rows(entries, returns, last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(entries, returns, last_day=pd.Timestamp("2026-08-25"), tradable=True)
         }
 
         # Then
@@ -270,7 +282,9 @@ class TestRecentBoundary:
         # When
         rows = {
             row[DISPLAY_PERIOD]: row[DISPLAY_SIGNAL_COUNT]
-            for row in period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
         }
 
         # Then
@@ -293,7 +307,7 @@ class TestValidation:
 
         # When / Then
         with pytest.raises(ValueError, match="길이"):
-            period_rows(entries, [0.01, 0.02], last_day=pd.Timestamp("2026-08-25"))
+            period_rows(entries, [0.01, 0.02], last_day=pd.Timestamp("2026-08-25"), tradable=True)
 
 
 class TestEmptyPeriodMetrics:
@@ -319,7 +333,7 @@ class TestEmptyPeriodMetrics:
         last_day = pd.Timestamp("2026-08-25")
 
         # When
-        rows = period_rows(entry_dates, returns, last_day=last_day, reasons=reasons)
+        rows = period_rows(entry_dates, returns, last_day=last_day, tradable=True, reasons=reasons)
         recent = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_RECENT_5Y)
 
         # Then
@@ -346,7 +360,7 @@ class TestEmptyPeriodMetrics:
         last_day = pd.Timestamp(f"{years[-1]}-12-30")
 
         # When
-        rows = period_rows(entry_dates, returns, last_day=last_day, reasons=reasons)
+        rows = period_rows(entry_dates, returns, last_day=last_day, tradable=True, reasons=reasons)
         whole = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_ALL)
 
         # Then
@@ -377,7 +391,7 @@ class TestPeriodSpan:
         entry_dates = _dates(years)
 
         # When
-        rows = period_rows(entry_dates, _returns(len(years)), last_day=pd.Timestamp("2025-12-30"))
+        rows = period_rows(entry_dates, _returns(len(years)), last_day=pd.Timestamp("2025-12-30"), tradable=True)
         by_period = {row[DISPLAY_PERIOD]: row for row in rows}
 
         # Then
@@ -406,7 +420,7 @@ class TestPeriodSpan:
         entry_dates = _dates(years)
 
         # When
-        rows = period_rows(entry_dates, _returns(len(years)), last_day=pd.Timestamp("2026-08-25"))
+        rows = period_rows(entry_dates, _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True)
         recent = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_RECENT_5Y)
 
         # Then
@@ -430,7 +444,7 @@ class TestPeriodSpan:
         years = list(range(2016, 2026))
 
         # When
-        rows = period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2025-12-30"))
+        rows = period_rows(_dates(years), _returns(len(years)), last_day=pd.Timestamp("2025-12-30"), tradable=True)
         whole = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_ALL)
 
         # Then
