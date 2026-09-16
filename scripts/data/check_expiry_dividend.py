@@ -152,20 +152,8 @@ def main() -> int:
     """
     # **방향을 한 쪽만 돈다.** `_measure_cell` 이 원본가·수정주가 «둘 다»에 같은 부호를 곱하므로
     # 그 차이에서 부호가 지워진다 — 두 방향을 다 돌면 부호만 뒤집힌 사본이 배로 쌓인다.
-    #
-    # **본검증 청산 요일만 돈다.** 칸에 청산 요일 축이 생겼지만 이 프로브의 표에는 그 컬럼이
-    # 없어, 전부 돌면 국내 두 줄이 **구별되지 않은 채** 나란히 실린다. 이 프로브가 묻는 것은
-    # 「확정 규칙의 보유 구간에 배당락이 걸리나」이고 그 규칙은 대상마다 첫 청산 요일이다.
-    # 그래서 행 수는 **대상 수 × 만기월 12** 다.
-    #
-    # **대상을 한 번만 찾는다** — 조회는 `DATASETS` 선형 탐색이라 칸마다 두 번 부르면
-    # 같은 스캔이 두 벌이 된다
-    primary = {dataset.key: dataset.exit_weekdays[0] for dataset in DATASETS}
-    rows = [
-        _measure_cell(cell)
-        for cell in all_cells()
-        if not cell.bet_down and cell.exit_weekday == primary[cell.dataset_key]
-    ]
+    # 그래서 행 수는 **대상 수 × 만기월 12** 다
+    rows = [_measure_cell(cell) for cell in all_cells() if not cell.bet_down]
 
     table = TableLogger(RESULT_COLUMNS, logger)
     table.print_header("보유 구간에 들어간 배당락 (원본가 − 수정주가 수익률)")

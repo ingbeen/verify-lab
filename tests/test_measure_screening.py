@@ -93,13 +93,17 @@ def _down_summary(**overrides: float) -> pd.DataFrame:
     """게이트를 넘는 「아래 방향」 칸. 개별 값을 덮어써 한 조건씩 무너뜨린다.
 
     평균이 음수이므로 아래로 걸었을 때의 기대값은 양수다.
+
+    **평균을 기대값 하한에서 파생시킨다.** 손으로 박으면 하한이 올라갈 때 기본 픽스처가
+    조용히 경계에 걸터앉고, 「게이트를 넘는 칸」을 전제한 테스트들이 무더기로 의미를 잃는다
+    (tests/CLAUDE.md 「픽스처가 코드와 같은 가정을 하면 그 버그는 영원히 안 잡힌다」).
     """
     values: dict[str, float] = {
         "win_rate": 0.27,
         "loss_rate": 0.73,
         "win_excess": -0.23,
         "loss_excess": 0.23,
-        "mean": -0.005,
+        "mean": -(MIN_EXPECTED_VALUE + 0.005),
     }
     values.update(overrides)
 
@@ -198,21 +202,51 @@ class TestScreen:
         # Then
         assert _verdict(result) == SCREEN_CANDIDATE
 
-    def test_기대값이_정확히_0이면_제외된다(self) -> None:
+    def test_기대값이_하한과_같으면_후보다(self) -> None:
         """
-        목적: 기대값 경계는 **초과**다. 같은 금액을 반복 투자해 0 이 남는 것은 우위가 아니다.
+        목적: 기대값 경계가 **이상**임을 고정한다. 적중률 경계와 같은 방향이다 —
+              두 게이트의 경계가 서로 다르면 표를 읽을 때마다 어느 쪽인지 되짚어야 한다.
 
-        Given: 평균이 0 이라 기대값도 0 인 칸
+              **판정에 들어가는 값은 반올림 뒤**라(`execution/periods.py`) 표에 `0.50` 이
+              찍힌 행이 곧 경계다. 실측으로 옵션 만기일 13행 · 월말 2행이 여기 걸리므로
+              경계를 어느 쪽으로 여는지가 산출물을 바꾼다.
+
+              **부호를 뒤집어 넘긴다.** 「아래」 칸의 기대값은 평균의 부호를 뒤집은 값이므로,
+              평균에 하한을 그대로 넣으면 기대값이 **음수**가 되어 경계가 아니라 한참 아래를
+              재게 된다 — 테스트는 통과하면서 고정하려던 계약만 사라진다.
+
+        Given: 아래로 걸었을 때의 기대값이 하한과 정확히 같은 칸
         When: 판정하면
-        Then: 제외된다
+        Then: 후보다
         """
         # Given
-        summary = _down_summary(mean=MIN_EXPECTED_VALUE)
+        summary = _down_summary(mean=-MIN_EXPECTED_VALUE)
 
         # When
         result = direction_profile(summary, axis_column=AXIS)
 
         # Then
+        assert float(result[COL_EXPECTED_VALUE].iloc[0]) == pytest.approx(MIN_EXPECTED_VALUE, abs=EXACT_TOLERANCE)
+        assert _verdict(result) == SCREEN_CANDIDATE
+
+    def test_기대값이_양수여도_하한_미만이면_제외된다(self) -> None:
+        """
+        목적: **하한이 0 보다 커진 뒤 생긴 칸을 고정한다** — 「버는데 모자란」 칸이다.
+              하한이 0 이던 시절에는 존재할 수 없었고, 이 테스트가 없으면 하한을 되돌려도
+              아무것도 실패하지 않는다.
+
+        Given: 아래로 걸었을 때의 기대값이 양수이지만 하한에 못 미치는 칸
+        When: 판정하면
+        Then: 제외된다
+        """
+        # Given
+        summary = _down_summary(mean=-(MIN_EXPECTED_VALUE / 2.0))
+
+        # When
+        result = direction_profile(summary, axis_column=AXIS)
+
+        # Then
+        assert float(result[COL_EXPECTED_VALUE].iloc[0]) > 0.0
         assert _verdict(result) == SCREEN_EXCLUDED
 
     def test_기준선과_똑같아도_게이트를_넘으면_후보다(self) -> None:
@@ -528,10 +562,15 @@ class TestDirectionSymmetry:
               24.9~73.2%), 기준선이 높은 칸에서 멀쩡한 우위가 뒤집힌다. 실측으로 두 검증
               156칸에서 기준선 방식이 **더해 주는 칸은 0개**이고 5칸을 빼기만 했다.
 
+              **회당 기대값을 하한 위에 둔다.** 하한 미만이면 방향이 「위」든 「아래」든
+              어차피 제외라 **판정 단언이 공허해지고**, 「기준선보다 낮아도 후보로 남는다」는
+              회귀 가드가 함께 사라진다 — 방향이 뒤집혔을 때 실패해야 이 테스트가 일을 한다.
+
         Given: 오른 비율(62.5%)이 내린 비율(37.5%)보다 크지만 기준선(66.3%)보다는 «낮은» 칸
-               — 옵션 만기일 KODEX 200 12월의 실물 모양이다
+               — 옵션 만기일 KODEX 200 12월의 실물 모양에 기대값만 하한 위로 올린 것이다
         When: 판정하면
-        Then: 방향이 「위」이고 후보다
+        Then: 방향이 「위」이고 후보다. **기준선 방식으로 뒤집혀 「아래」가 되면 기대값이
+              음수가 되어 제외로 떨어지므로, 이 단언이 방향 회귀를 잡는다**
         """
         # Given
         summary = _summary(
@@ -539,7 +578,7 @@ class TestDirectionSymmetry:
             loss_rate=0.375,
             win_excess=-0.0383,
             loss_excess=0.0383,
-            mean=0.0005,
+            mean=MIN_EXPECTED_VALUE + 0.001,
         )
 
         # When
@@ -983,28 +1022,54 @@ class TestScalarVerdict:
         """
         목적: 경계가 「이상」임을 고정한다 — 「초과」로 바뀌면 60.0% 칸이 통째로 빠진다.
 
-        Given: 적중률이 정확히 하한이고 기대값이 양수인 칸
+        Given: 적중률이 정확히 하한이고 기대값이 하한을 넘는 칸
+               — 기대값은 **상수에서 파생**시킨다. 손으로 박으면 하한이 올라갈 때 조용히
+               「적중률 경계」가 아니라 「기대값 경계」를 재게 된다
         When: 판정하면
         Then: 후보다
         """
         # Given / When
-        verdict = screen_verdict(hit_rate=MIN_HIT_RATE, expected_value=0.001, sample_count=30, tradable=True)
+        verdict = screen_verdict(
+            hit_rate=MIN_HIT_RATE,
+            expected_value=MIN_EXPECTED_VALUE + 0.001,
+            sample_count=30,
+            tradable=True,
+        )
 
         # Then
         assert verdict == SCREEN_CANDIDATE
 
-    def test_기대값이_하한과_같으면_제외다_스칼라(self) -> None:
+    def test_기대값이_하한과_같으면_후보다_스칼라(self) -> None:
         """
-        목적: 기대값 경계가 「초과」임을 고정한다 — 반복 투자해 0 이 남는 것은 우위가 아니다.
+        목적: 기대값 경계가 「이상」임을 고정한다 — 적중률 경계와 같은 방향이다.
 
-        Given: 적중률은 넘는데 기대값이 정확히 0 인 칸
+        Given: 적중률은 넘고 기대값이 하한과 정확히 같은 칸
+        When: 판정하면
+        Then: 후보다
+        """
+        # Given / When
+        verdict = screen_verdict(
+            hit_rate=MIN_HIT_RATE + 0.1,
+            expected_value=MIN_EXPECTED_VALUE,
+            sample_count=30,
+            tradable=True,
+        )
+
+        # Then
+        assert verdict == SCREEN_CANDIDATE
+
+    def test_기대값이_하한에_한_칸_못_미치면_제외다_스칼라(self) -> None:
+        """
+        목적: 경계의 «반대쪽»을 고정한다. 「이상」이므로 하한 미만은 제외다.
+
+        Given: 적중률은 넘는데 기대값이 하한에 아주 조금 못 미치는 칸
         When: 판정하면
         Then: 제외다
         """
         # Given / When
         verdict = screen_verdict(
             hit_rate=MIN_HIT_RATE + 0.1,
-            expected_value=MIN_EXPECTED_VALUE,
+            expected_value=MIN_EXPECTED_VALUE - 1e-9,
             sample_count=30,
             tradable=True,
         )

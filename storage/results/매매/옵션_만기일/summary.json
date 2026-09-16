@@ -3,14 +3,14 @@
   "row_counts": {
     "expiries.csv": 1493,
     "signals.csv": 29572,
-    "weekly_trade_signals.csv": 1910,
-    "weekly_trade_summary.csv": 29,
-    "weekly_trade_excess.csv": 29,
-    "weekly_trade_permutation.csv": 29,
-    "통계.csv": 84,
-    "weekly_trade_by_month_halves.csv": 168,
-    "거래내역.csv": 76320,
-    "성적표.csv": 16800
+    "weekly_trade_signals.csv": 1493,
+    "weekly_trade_summary.csv": 19,
+    "weekly_trade_excess.csv": 19,
+    "weekly_trade_permutation.csv": 19,
+    "통계.csv": 60,
+    "weekly_trade_by_month_halves.csv": 120,
+    "거래내역.csv": 59640,
+    "성적표.csv": 12000
   },
   "cost": "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)",
   "measure": {
@@ -31,18 +31,15 @@
           "목요일": 8,
           "금요일": 322
         },
-        "weekly_trade": [
-          {
-            "exit_weekday": "금요일",
-            "entry_count": 330,
-            "excluded_count": 0,
-            "hold_days": {
-              "4": 78,
-              "5": 252
-            },
-            "baseline_entry_count": 1385
-          }
-        ]
+        "weekly_trade": {
+          "entry_count": 330,
+          "excluded_count": 0,
+          "hold_days": {
+            "4": 78,
+            "5": 252
+          },
+          "baseline_entry_count": 1385
+        }
       },
       {
         "ticker": "SPY",
@@ -57,18 +54,15 @@
           "목요일": 8,
           "금요일": 395
         },
-        "weekly_trade": [
-          {
-            "exit_weekday": "금요일",
-            "entry_count": 403,
-            "excluded_count": 1,
-            "hold_days": {
-              "4": 93,
-              "5": 309
-            },
-            "baseline_entry_count": 1692
-          }
-        ]
+        "weekly_trade": {
+          "entry_count": 403,
+          "excluded_count": 1,
+          "hold_days": {
+            "4": 93,
+            "5": 309
+          },
+          "baseline_entry_count": 1692
+        }
       },
       {
         "ticker": "DIA",
@@ -83,18 +77,15 @@
           "목요일": 8,
           "금요일": 335
         },
-        "weekly_trade": [
-          {
-            "exit_weekday": "금요일",
-            "entry_count": 343,
-            "excluded_count": 1,
-            "hold_days": {
-              "4": 81,
-              "5": 261
-            },
-            "baseline_entry_count": 1439
-          }
-        ]
+        "weekly_trade": {
+          "entry_count": 343,
+          "excluded_count": 1,
+          "hold_days": {
+            "4": 81,
+            "5": 261
+          },
+          "baseline_entry_count": 1439
+        }
       },
       {
         "ticker": "069500",
@@ -111,32 +102,17 @@
           "수요일": 4,
           "목요일": 280
         },
-        "weekly_trade": [
-          {
-            "exit_weekday": "금요일",
-            "entry_count": 286,
-            "excluded_count": 0,
-            "hold_days": {
-              "3": 5,
-              "4": 4,
-              "5": 42,
-              "6": 235
-            },
-            "baseline_entry_count": 1190
+        "weekly_trade": {
+          "entry_count": 286,
+          "excluded_count": 0,
+          "hold_days": {
+            "3": 5,
+            "4": 4,
+            "5": 42,
+            "6": 235
           },
-          {
-            "exit_weekday": "목요일",
-            "entry_count": 286,
-            "excluded_count": 0,
-            "hold_days": {
-              "2": 2,
-              "3": 6,
-              "4": 40,
-              "5": 238
-            },
-            "baseline_entry_count": 1190
-          }
-        ]
+          "baseline_entry_count": 1190
+        }
       },
       {
         "ticker": "229200",
@@ -151,32 +127,17 @@
           "수요일": 2,
           "목요일": 129
         },
-        "weekly_trade": [
-          {
-            "exit_weekday": "금요일",
-            "entry_count": 131,
-            "excluded_count": 0,
-            "hold_days": {
-              "3": 3,
-              "4": 3,
-              "5": 19,
-              "6": 106
-            },
-            "baseline_entry_count": 546
+        "weekly_trade": {
+          "entry_count": 131,
+          "excluded_count": 0,
+          "hold_days": {
+            "3": 3,
+            "4": 3,
+            "5": 19,
+            "6": 106
           },
-          {
-            "exit_weekday": "목요일",
-            "entry_count": 131,
-            "excluded_count": 0,
-            "hold_days": {
-              "2": 2,
-              "3": 3,
-              "4": 19,
-              "5": 107
-            },
-            "baseline_entry_count": 546
-          }
-        ]
+          "baseline_entry_count": 546
+        }
       }
     ]
   },
@@ -244,1176 +205,720 @@
       "cells": [
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "QQQ",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "위",
           "excluded_count": 1
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "아래",
           "excluded_count": 1
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "SPY",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "위",
           "excluded_count": 1
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "아래",
           "excluded_count": 1
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 200",
-          "exit_weekday": "금요일",
-          "expiry_month": 12,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 1,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 1,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 2,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 2,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 3,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 3,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 4,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 4,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 5,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 5,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 6,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 6,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 7,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 7,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 8,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 8,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 9,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 9,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 10,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 10,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 11,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 11,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
-          "expiry_month": 12,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "exit_weekday": "목요일",
           "expiry_month": 12,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 1,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 2,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 3,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 4,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 5,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 6,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 7,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 8,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 9,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 10,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 11,
           "direction": "아래",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
           "expiry_month": 12,
           "direction": "위",
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "exit_weekday": "금요일",
-          "expiry_month": 12,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 1,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 1,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 2,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 2,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 3,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 3,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 4,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 4,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 5,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 5,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 6,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 6,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 7,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 7,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 8,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 8,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 9,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 9,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 10,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 10,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 11,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 11,
-          "direction": "아래",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
-          "expiry_month": 12,
-          "direction": "위",
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 코스닥150",
-          "exit_weekday": "목요일",
           "expiry_month": 12,
           "direction": "아래",
           "excluded_count": 0
@@ -1422,7 +927,7 @@
     },
     "notes": [
       "진입은 만기일 종가다. 만기일이 휴장이면 직전 거래일로 앞당긴다",
-      "청산은 달력이 지목한 다음 주의 「청산 요일」 종가다. 이익이어도 중간에 팔지 않는다. 한국은 만기가 목요일이라 금요일 청산이 6거래일이고, 목요일 청산을 대조로 함께 낸다",
+      "청산은 달력이 지목한 다음 주 금요일 종가다. 이익이어도 중간에 팔지 않는다. 한국은 만기가 목요일이라 같은 금요일 청산이 6거래일이다",
       "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
     ]
   }

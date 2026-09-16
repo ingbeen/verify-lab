@@ -58,7 +58,6 @@ from verify_lab.studies.option_expiry.constants import (
     COL_ADVANCED_DAYS,
     COL_BASELINE_KIND,
     COL_DAILY_RETURN,
-    COL_EXIT_WEEKDAY,
     COL_EXPIRY_DATE,
     COL_EXPIRY_MONTH,
     COL_EXPIRY_MONTH_NUMBER,
@@ -70,9 +69,9 @@ from verify_lab.studies.option_expiry.constants import (
     COL_TIME_HALF,
     DATASETS,
     DISPLAY_HOLD_DAYS_POOLED,
+    EXIT_WEEKDAY,
     HORIZON_NEXT_WEEK_EXIT,
     KEY_EXCLUDED_COUNT,
-    KEY_EXIT_WEEKDAY,
     MAX_OFFSET,
     OUTPUT_FILES,
     TRACK_NAME,
@@ -561,8 +560,11 @@ def _run_weekly_trade(
     *,
     repeats: int,
     seed: int,
-) -> list[dict[str, Any]]:
-    """만기일 매수 → 다음주 청산 매매를 청산 요일마다 전부 돌린다.
+) -> dict[str, Any]:
+    """만기일 매수 → 다음 주 금요일 청산 매매를 돌린다.
+
+    **청산 요일은 축이 아니라 확정 규칙이다** (`constants.EXIT_WEEKDAY`). 목요일 청산을 대조로
+    함께 내던 것을 그만뒀으므로 순회가 없고, 산출물에도 그 컬럼이 없다.
 
     Args:
         df: 날짜 오름차순 시세
@@ -573,47 +575,39 @@ def _run_weekly_trade(
         seed: 순열 검정 시드
 
     Returns:
-        청산 요일별 요약 수치
+        이 매매의 요약 수치
     """
-    records: list[dict[str, Any]] = []
+    identity = {COL_TICKER: dataset.label}
 
-    for exit_weekday in dataset.exit_weekdays:
-        exit_label = WEEKDAY_LABELS[exit_weekday]
-        identity = {COL_TICKER: dataset.label, COL_EXIT_WEEKDAY: exit_label}
+    signal, baseline = _weekly_trade_frames(df, dataset, expiries, EXIT_WEEKDAY)
 
-        signal, baseline = _weekly_trade_frames(df, dataset, expiries, exit_weekday)
+    # 신호일 원자료. 진입·청산 가격과 날짜를 전부 남겨 사용자가 차트로 대조한다 (측정의 원칙 8)
+    raw = signal.copy()
+    raw[COL_EXPIRY_MONTH_NUMBER] = raw[COL_DATE].dt.month
+    accumulator.trade_signals.append(_identify(raw.drop(columns=[COL_BASIS, COL_HORIZON]), **identity))
 
-        # 신호일 원자료. 진입·청산 가격과 날짜를 전부 남겨 사용자가 차트로 대조한다 (측정의 원칙 8)
-        raw = signal.copy()
-        raw[COL_EXPIRY_MONTH_NUMBER] = raw[COL_DATE].dt.month
-        accumulator.trade_signals.append(_identify(raw.drop(columns=[COL_BASIS, COL_HORIZON]), **identity))
+    # 시기 2등분은 **전 구간의 신호를 시간순으로** 갈라야 의미가 있다
+    halves = _aggregate_month_halves(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
+    if not halves.empty:
+        accumulator.trade_by_month_halves.append(_identify(halves, **identity))
 
-        # 시기 2등분은 **전 구간의 신호를 시간순으로** 갈라야 의미가 있다
-        halves = _aggregate_month_halves(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
-        if not halves.empty:
-            accumulator.trade_by_month_halves.append(_identify(halves, **identity))
+    # **판정표를 따로 내지 않는다** (2026-09-16 통합). 1차 판정은 `성적표.csv` 가 담으며,
+    # 이 표는 그 판정을 읽을 값(기준선·우연확률)을 담는다 — 묻는 질문이 다르다
+    by_month = _aggregate_by_month(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
+    accumulator.trade_by_month.append(_identify(by_month, **identity))
 
-        # **판정표를 따로 내지 않는다** (2026-09-16 통합). 1차 판정은 `성적표.csv` 가 담으며,
-        # 이 표는 그 판정을 읽을 값(기준선·우연확률)을 담는다 — 묻는 질문이 다르다
-        by_month = _aggregate_by_month(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
-        accumulator.trade_by_month.append(_identify(by_month, **identity))
+    # 매매 하나의 묶음 성적. **시기 축 말고는 쪼개지 않는다** — 달력 경계로 자른 칸은
+    # 표본이 수십 건이라 판정력이 없고, 시기 2등분이 같은 질문에 더 균등한 표본으로 답한다
+    _record_trade_cell(signal, baseline, df, identity, accumulator, repeats=repeats, seed=seed)
 
-        # 매매 하나의 묶음 성적. **시기 축 말고는 쪼개지 않는다** — 달력 경계로 자른 칸은
-        # 표본이 수십 건이라 판정력이 없고, 시기 2등분이 같은 질문에 더 균등한 표본으로 답한다
-        _record_trade_cell(signal, baseline, df, identity, accumulator, repeats=repeats, seed=seed)
+    valid = signal[signal[COL_EXCLUDED_REASON] == REASON_NONE]
 
-        valid = signal[signal[COL_EXCLUDED_REASON] == REASON_NONE]
-        records.append(
-            {
-                KEY_EXIT_WEEKDAY: exit_label,
-                KEY_ENTRY_COUNT: len(signal),
-                KEY_EXCLUDED_COUNT: len(signal) - len(valid),
-                KEY_HOLD_DAYS: _count_labels(valid[COL_HOLD_DAYS].to_numpy(dtype=int)),
-                KEY_BASELINE_ENTRY_COUNT: len(baseline),
-            }
-        )
-
-    return records
+    return {
+        KEY_ENTRY_COUNT: len(signal),
+        KEY_EXCLUDED_COUNT: len(signal) - len(valid),
+        KEY_HOLD_DAYS: _count_labels(valid[COL_HOLD_DAYS].to_numpy(dtype=int)),
+        KEY_BASELINE_ENTRY_COUNT: len(baseline),
+    }
 
 
 def _record_trade_cell(
@@ -783,7 +777,7 @@ def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
         outputs: 실행 산출물
 
     Returns:
-        종목 × 청산 요일의 요약표
+        종목별 요약표 (종목당 한 행)
     """
     summary = outputs.trade_summary
     if summary.empty:

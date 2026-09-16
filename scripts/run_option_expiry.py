@@ -2,8 +2,9 @@
 """옵션 만기일 실행 CLI — 측정과 체결을 한 번에 돈다
 
 만기월(1~12)로 쪼개 방향 비율을 재고 각 칸을 **게이트 둘**(적중률 60% 이상 ·
-방향 기대값 0 초과)로 판정한 뒤, 대상 칸에 손절선을 걸어 체결 원자료와 성적표를 낸다.
-게이트를 넘지 못한 칸도 판정표에 값 그대로 남는다 — 화면에서만 빠진다.
+회당 기대값 0.5% 이상)로 판정한 뒤, 대상 칸에 손절선을 걸어 체결 원자료와 성적표를 낸다.
+게이트를 넘지 못한 칸도 성적표에 값 그대로 남는다 — 화면에서만 빠진다.
+**기준값의 소유자는 `measure/screening.py` 하나다** — 여기서 값을 다시 적지 않는다.
 
 **등급(검증·매매)은 분류일 뿐이라 실행을 가르지 않는다.** 한 번 돌리면 측정 표와
 체결 산출물이 **한 폴더에** 함께 나오며, 어느 등급 폴더에 쌓일지는
@@ -59,11 +60,9 @@ from verify_lab.report.constants import (
 from verify_lab.report.tables import print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
-    COL_EXIT_WEEKDAY,
     COL_TICKER,
     DATASETS,
     DISPLAY_ENTRY_COUNT,
-    DISPLAY_EXIT_WEEKDAY,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
     EXPIRY_STOP_LEVEL,
@@ -73,7 +72,6 @@ from verify_lab.studies.option_expiry.constants import (
     PERCENT_OUTPUT_COLUMNS,
     PROBABILITY_OUTPUT_COLUMNS,
     TRACK_NAME,
-    WEEKDAY_LABELS,
     Dataset,
     ExpiryCell,
     all_cells,
@@ -107,7 +105,6 @@ DISPLAY_ROW_COUNT = "행 수"
 CANDIDATE_COLUMNS = [
     DISPLAY_TICKER,
     DISPLAY_EXPIRY_MONTH,
-    DISPLAY_EXIT_WEEKDAY,
     DISPLAY_DIRECTION,
     DISPLAY_SIGNAL_COUNT,
     DISPLAY_WIN_RATE,
@@ -166,7 +163,7 @@ def _selected_datasets(keys: list[str] | None) -> tuple[Dataset, ...]:
 
 
 def _selected_cells(datasets: tuple[Dataset, ...]) -> list[ExpiryCell]:
-    """고른 대상의 **전 칸**(청산 요일 × 만기월 12 × 방향 2)을 만든다.
+    """고른 대상의 **전 칸**(만기월 12 × 방향 2)을 만든다.
 
     **측정과 체결의 범위가 한 인자로 정해진다.** 따로 받으면 한 실행 안에서 둘이 갈릴 수 있고,
     그러면 같은 폴더의 두 표가 다른 범위를 재게 된다.
@@ -231,7 +228,7 @@ def _print_candidates(outputs: ExpiryOutputs) -> None:
     print_dataframe(
         ordered[CANDIDATE_COLUMNS],
         logger,
-        title=f"1차 후보 — {NO_STOP_LABEL} · 적중률 60% 이상 · 평균 양수 (적중률 순)",
+        title=f"1차 후보 — {NO_STOP_LABEL} · 게이트 둘을 넘은 칸 (적중률 순)",
     )
     logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {SUMMARY_FILENAME} 의 「1차 판정」 컬럼에 있습니다")
 
@@ -247,16 +244,13 @@ def _display_headline(outputs: StudyOutputs) -> None:
         logger.debug("표시할 매매 요약 행이 없습니다")
         return
 
-    table = trade[
-        [COL_TICKER, COL_EXIT_WEEKDAY, COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT, COL_MEAN, COL_MEDIAN, COL_WIN_RATE]
-    ].copy()
+    table = trade[[COL_TICKER, COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT, COL_MEAN, COL_MEDIAN, COL_WIN_RATE]].copy()
     for column in (COL_MEAN, COL_MEDIAN, COL_WIN_RATE):
         table[column] = (table[column] * RATE_TO_PERCENT).round(PERCENT_DECIMALS)
 
     table = table.rename(
         columns={
             COL_TICKER: DISPLAY_TICKER,
-            COL_EXIT_WEEKDAY: DISPLAY_EXIT_WEEKDAY,
             COL_SIGNAL_COUNT: DISPLAY_ENTRY_COUNT,
             COL_EXCLUDED_COUNT: DISPLAY_EXCLUDED,
             COL_MEAN: DISPLAY_MEAN,
@@ -369,11 +363,10 @@ def main() -> int:
         {
             "output_dir": str(directory),
             KEY_DATASETS: [dataset.key for dataset in datasets],
-            # **청산 요일과 방향까지 붙여야 칸이 유일해진다** — 국내는 요일 두 벌 × 방향 둘이라
-            # 만기월만 적으면 같은 문자열이 네 번 실려 무엇을 돌렸는지 알 수 없다
+            # **방향까지 붙여야 칸이 유일해진다** — 만기월만 적으면 같은 문자열이 두 번 실려
+            # 무엇을 돌렸는지 알 수 없다
             "cells": [
-                f"{cell.dataset_key} {WEEKDAY_LABELS[cell.exit_weekday]} {cell.expiry_month}월 "
-                f"{DIRECTION_DOWN if cell.bet_down else DIRECTION_UP}"
+                f"{cell.dataset_key} {cell.expiry_month}월 " f"{DIRECTION_DOWN if cell.bet_down else DIRECTION_UP}"
                 for cell in cells
             ],
             "stop_levels": trading.summary[KEY_RULE][KEY_STOP_LEVELS],

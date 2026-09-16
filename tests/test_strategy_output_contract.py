@@ -92,7 +92,7 @@ from verify_lab.studies.month_end.trading import KEY_TARGETS as MONTH_END_KEY_TA
 from verify_lab.studies.month_end.trading import TradingOutputs, run_month_end_trading
 from verify_lab.studies.option_expiry import trading as option_expiry_runner
 from verify_lab.studies.option_expiry.constants import DATASETS as EXPIRY_DATASETS
-from verify_lab.studies.option_expiry.constants import EXPIRY_STOP_LEVEL, FRIDAY, US_MONTHLY_EXPIRY, ExpiryCell
+from verify_lab.studies.option_expiry.constants import EXPIRY_STOP_LEVEL, US_MONTHLY_EXPIRY, ExpiryCell
 from verify_lab.studies.option_expiry.constants import Dataset as ExpiryDataset
 from verify_lab.studies.option_expiry.trading import KEY_CELLS as EXPIRY_KEY_CELLS
 from verify_lab.studies.option_expiry.trading import ExpiryOutputs, run_option_expiry_trading
@@ -152,7 +152,7 @@ TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "청
 
 # 매매법 축 — 종목 바로 다음에 온다. **역방향만 두 칸**이다
 AXIS_REVERSE = ("파라미터", "시작연도")
-AXIS_OPTION_EXPIRY = ("만기월", "청산 요일")
+AXIS_OPTION_EXPIRY = ("만기월",)
 AXIS_MONTH_END = ("월",)
 
 # 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향만 있다
@@ -336,7 +336,6 @@ def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryO
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="SYN"),
         price_decimals=PRICE_DECIMALS_KRW,
-        exit_weekdays=(FRIDAY,),
     )
 
     with pytest.MonkeyPatch.context() as patch:
@@ -345,7 +344,7 @@ def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryO
         # **한 손절선으로 고정한다.** 격자 배수가 붙으면 구조 계약(구간 5행·신호마다 한 행)이
         # 손절선 수만큼 늘어나 무엇을 재는지 흐려진다 — 격자 자체는 별도 테스트가 본다
         yield run_option_expiry_trading(
-            [ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False, exit_weekday=FRIDAY)],
+            [ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False)],
             stop_levels=(EXPIRY_STOP_LEVEL,),
         )
 
@@ -1490,13 +1489,15 @@ class TestScreenColumn:
         whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
         assert not whole.empty, "전체 구간 행이 없습니다"
 
-        # When / Then — 게이트는 적중률 60% 이상 · 기대값 0 초과 (손으로 박아 둔다).
+        # When / Then — 게이트는 적중률 60% 이상 · 회당 기대값 0.5% 이상 (손으로 박아 둔다).
+        # **두 경계가 같은 방향(이상)이다.** 여기서 상수를 가져오면 게이트가 바뀌어도 이 검사가
+        # 함께 따라와 **독립 검증이 아니게 된다** — 그래서 일부러 숫자를 박는다.
         # **판정은 세 값이다** — 표본이 0건이거나 지표가 결측인 행은 「판정 안 함」이며,
         # 두 값만 기대하면 그 행에서 없는 게이트 버그를 가리키게 된다
         for _, row in whole.iterrows():
             if row[DISPLAY_SIGNAL_COUNT] == 0 or pd.isna(row["승률(%)"]) or pd.isna(row["평균(%)"]):
                 expected = self.NOT_JUDGED
-            elif row["승률(%)"] >= 60.0 and row["평균(%)"] > 0.0:
+            elif row["승률(%)"] >= 60.0 and row["평균(%)"] >= 0.5:
                 expected = SCREEN_CANDIDATE
             else:
                 expected = SCREEN_EXCLUDED

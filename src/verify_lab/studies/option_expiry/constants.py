@@ -131,6 +131,15 @@ US_MONTHLY_EXPIRY: Final = ExpiryRule(label="셋째 금요일", weekday=FRIDAY, 
 # 한국 월물 옵션 만기 — 매월 둘째 목요일
 KR_MONTHLY_EXPIRY: Final = ExpiryRule(label="둘째 목요일", weekday=THURSDAY, ordinal=2)
 
+# 달력 기준 청산의 목표 요일. **축이 아니라 확정 규칙이다** — 「만기일 매수 → 다음 주 금요일
+# 매도」가 이 매매의 정의이고, 값 하나를 확정하는 자리는 `docs/매매/옵션_만기일/규칙.md` §1 이다.
+#
+# **한국은 만기가 목요일이라 같은 「다음 주 금요일」이 미국 5거래일 · 한국 6거래일**이 된다.
+# 그 차이를 축으로 두어 목요일 청산을 대조로 함께 내던 것을 그만뒀다 — 요일에 따라 판정이
+# 갈리는 칸이 5개였고 방향이 제각각이라, **좋은 쪽을 고르면 그 선택이 결론에 숨는다.**
+# 버린 쪽의 실측 성적은 `docs/매매/옵션_만기일/설계.md` 결정 ⑳ 에 탈락안으로 남아 있다
+EXIT_WEEKDAY: Final = FRIDAY
+
 
 # ============================================================
 # 상대 거래일 (offset)
@@ -182,9 +191,6 @@ COL_HOLD_DAYS: Final = "hold_days"
 
 COL_ENTRY_CLOSE: Final = "entry_close"
 COL_EXIT_CLOSE: Final = "exit_close"
-
-# 청산 요일 축 — 한국은 금요일 청산과 목요일 청산을 나란히 낸다 (결정 ⑳)
-COL_EXIT_WEEKDAY: Final = "exit_weekday"
 
 # 기준선 대비 차이 표에서 어느 기준선과 견줬는지 밝히는 축. 둘은 묻는 질문이 다르다
 # (`docs/매매/옵션_만기일/설계.md` §3.7)
@@ -240,9 +246,6 @@ class Dataset:
         rule: 그 시장의 월물 만기 규칙
         file_name: `storage/market/` 안의 원본가 파일 이름
         price_decimals: 종가를 저장할 때의 반올림 자릿수
-        exit_weekdays: 달력 기준 청산의 목표 요일. 첫 번째가 본검증이고 나머지는 대조다.
-            **한국만 두 벌**인 이유는 만기가 목요일이라 같은 "다음주 금요일"이
-            미국 5거래일 · 한국 6거래일이 되기 때문이다 (`docs/매매/옵션_만기일/설계.md` 결정 ⑳)
     """
 
     key: str
@@ -251,7 +254,6 @@ class Dataset:
     rule: ExpiryRule
     file_name: str
     price_decimals: int
-    exit_weekdays: tuple[int, ...]
 
 
 DATASETS: Final = (
@@ -262,7 +264,6 @@ DATASETS: Final = (
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="QQQ"),
         price_decimals=PRICE_DECIMALS,
-        exit_weekdays=(FRIDAY,),
     ),
     Dataset(
         key="spy",
@@ -271,7 +272,6 @@ DATASETS: Final = (
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="SPY"),
         price_decimals=PRICE_DECIMALS,
-        exit_weekdays=(FRIDAY,),
     ),
     Dataset(
         # 미국 세 번째 대표 지수. QQQ·SPY 는 독립 표본이 아니므로 "두 ETF에서 같은 모양"을
@@ -282,7 +282,6 @@ DATASETS: Final = (
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="DIA"),
         price_decimals=PRICE_DECIMALS,
-        exit_weekdays=(FRIDAY,),
     ),
     Dataset(
         # 원본가는 상장일(2002-10-14)부터 있다. 수정주가는 조회 시점 기준 최근 3,000거래일만
@@ -294,7 +293,6 @@ DATASETS: Final = (
         rule=KR_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="069500"),
         price_decimals=PRICE_DECIMALS_KRW,
-        exit_weekdays=(FRIDAY, THURSDAY),
     ),
     Dataset(
         # 국내 두 번째 시장. **만기 달력은 코스피200 과 같다** — 코스닥150 선물·옵션의
@@ -314,7 +312,6 @@ DATASETS: Final = (
         rule=KR_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="229200"),
         price_decimals=PRICE_DECIMALS_KRW,
-        exit_weekdays=(FRIDAY, THURSDAY),
     ),
 )
 
@@ -333,13 +330,12 @@ DISPLAY_MONTH_DAY_INDEX: Final = "월중 서수"
 DISPLAY_DAILY_RETURN: Final = "일간 등락률(%)"
 DISPLAY_CLOSE: Final = "종가"
 
-DISPLAY_EXIT_WEEKDAY: Final = "청산 요일"
-
 # 만기일 매수 → 다음주 청산 매매의 진입 수. **`report` 의 「신호」와 뜻이 같지만 말이 다르다** —
 # 이 매매는 만기일이 곧 진입일이라 화면에서 「진입」으로 읽는 것이 자연스럽다
 DISPLAY_ENTRY_COUNT: Final = "진입"
 
-# 요일 번호를 표에 적을 때 쓰는 이름
+# 요일 번호를 표에 적을 때 쓰는 이름. **만기일이 무슨 요일에 떨어지는지**를 세는 자리가 쓴다
+# (`runner.py` 의 만기일 요일 분포) — 휴장 앞당김 때문에 만기가 늘 같은 요일인 것이 아니다
 WEEKDAY_LABELS: Final = ("월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일")
 
 
@@ -375,7 +371,6 @@ _BASELINE_PREFIX: Final = "기준선 "
 OUTPUT_LABELS: Final = {
     # 식별 축
     COL_TICKER: DISPLAY_TICKER,
-    COL_EXIT_WEEKDAY: DISPLAY_EXIT_WEEKDAY,
     COL_EXPIRY_MONTH_NUMBER: DISPLAY_EXPIRY_MONTH,
     COL_EXPIRY_MONTH: DISPLAY_EXPIRY_YEAR_MONTH,
     COL_TIME_HALF: DISPLAY_PERIOD,
@@ -593,16 +588,11 @@ class ExpiryCell:
         dataset_key: `studies.option_expiry` 의 데이터셋 이름
         expiry_month: 만기월 (1~12)
         bet_down: 아래로 거는 칸인지 여부. 참이면 원지수가 내려야 이익이다
-        exit_weekday: 달력이 지목하는 청산 목표 요일.
-            **기본값을 두지 않는다** — 한국은 만기가 목요일이라 같은 「다음주 금요일」이
-            미국 5거래일 · 한국 6거래일이 되고(결정 ⑳), 기본을 금요일로 두면 목요일 청산 칸이
-            **금요일 성적으로 조용히 계산된다.** 값이 틀려도 예외가 나지 않는 자리다
     """
 
     dataset_key: str
     expiry_month: int
     bet_down: bool
-    exit_weekday: int
 
 
 # 만기월 축. 달력이 정하는 값이라 재는 쪽이 고를 것이 없다
@@ -610,7 +600,7 @@ EXPIRY_MONTHS: Final = tuple(range(1, 13))
 
 
 def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, ...]:
-    """대상 × **청산 요일** × 만기월 × 방향의 **전 칸**을 만든다.
+    """대상 × 만기월 × 방향의 **전 칸**을 만든다.
 
     [중요] **코드가 칸을 고르지 않는다.** 전에는 게이트를 넘은 칸을 손으로 적어 두었는데,
     그러면 ① 시세를 다시 받아 게이트 결과가 바뀌어도 목록이 따라오지 않고
@@ -625,9 +615,8 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
     **두 방향을 모두 낸다.** 어느 쪽에 걸지는 게이트가 칸마다 답하지만, 체결 성적은
     그 답과 무관하게 양쪽이 있어야 **판정이 가리킨 방향의 반대쪽도 대조**할 수 있다.
 
-    **청산 요일도 축이다.** 대상마다 `exit_weekdays` 전부를 돈다 — 한국은 금요일 청산(본검증)과
-    목요일 청산(대조) 두 벌이고(결정 ⑳), 체결을 금요일로 고정하면 **목요일 칸의 성적이
-    어디에도 남지 않는다.** 그 칸에도 게이트를 넘는 달이 있으므로 성적 없이 판정만 뜨게 된다.
+    **청산 요일은 축이 아니다.** 전 대상이 `EXIT_WEEKDAY`(금요일) 하나를 쓴다 — 확정 규칙이라
+    고를 것이 없고, 그래서 칸에도 산출물에도 그 컬럼이 없다.
 
     Args:
         datasets: 대상 목록. **인자를 아예 주지 않으면** `DATASETS` 전부.
@@ -635,7 +624,7 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
             조용히 전부로 넓히면 대상을 좁히려던 실행이 **전 범위 산출물로 폴더를 덮는다**
 
     Returns:
-        대상 순서 → 청산 요일 순서 → 만기월 오름차순 → 위·아래 순의 칸 목록.
+        대상 순서 → 만기월 오름차순 → 위·아래 순의 칸 목록.
         **순서가 결정적이어야** 산출물 diff 가 「숫자가 바뀌었는가」를 말해 준다
 
     Raises:
@@ -647,14 +636,8 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
     targets = DATASETS if datasets is None else datasets
 
     return tuple(
-        ExpiryCell(
-            dataset_key=dataset.key,
-            expiry_month=month,
-            bet_down=bet_down,
-            exit_weekday=exit_weekday,
-        )
+        ExpiryCell(dataset_key=dataset.key, expiry_month=month, bet_down=bet_down)
         for dataset in targets
-        for exit_weekday in dataset.exit_weekdays
         for month in EXPIRY_MONTHS
         for bet_down in (False, True)
     )
@@ -671,6 +654,3 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
 # 청산일을 확정하지 못해 빠진 진입 수. **측정과 매매가 같은 것을 세므로 한 곳에서 정의한다** —
 # 두 파일에 한 벌씩 두면 한쪽만 고쳐도 예외가 나지 않고 `summary.json` 의 키만 조용히 갈린다
 KEY_EXCLUDED_COUNT: Final = "excluded_count"
-
-# 청산 목표 요일. **측정과 매매가 같은 축을 요약에 남기므로 같은 이유로 여기 둔다**
-KEY_EXIT_WEEKDAY: Final = "exit_weekday"

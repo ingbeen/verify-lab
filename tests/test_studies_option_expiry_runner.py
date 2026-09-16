@@ -47,7 +47,6 @@ from verify_lab.studies.option_expiry.constants import (
     COL_MONTH_DAY_INDEX,
     COL_OFFSET,
     COL_TIME_HALF,
-    FRIDAY,
     HORIZON_NEXT_WEEK_EXIT,
     KR_MONTHLY_EXPIRY,
     US_MONTHLY_EXPIRY,
@@ -90,7 +89,6 @@ def _dataset(rule: object) -> Dataset:
         rule=rule,  # pyright: ignore[reportArgumentType]
         file_name="none.csv",
         price_decimals=4,
-        exit_weekdays=(FRIDAY,),
     )
 
 

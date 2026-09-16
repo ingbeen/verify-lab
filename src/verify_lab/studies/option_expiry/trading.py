@@ -50,14 +50,12 @@ from verify_lab.studies.option_expiry.constants import (
     COL_RULE_DATE,
     COL_TARGET_DATE,
     DATASETS,
-    DISPLAY_EXIT_WEEKDAY,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TARGET_DATE,
+    EXIT_WEEKDAY,
     EXPIRY_STOP_LEVELS,
     KEY_EXCLUDED_COUNT,
-    KEY_EXIT_WEEKDAY,
     TRACK_NAME,
-    WEEKDAY_LABELS,
     Dataset,
     ExpiryCell,
     all_cells,
@@ -82,7 +80,7 @@ KEY_DIRECTION = "direction"
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 만기일 종가다. 만기일이 휴장이면 직전 거래일로 앞당긴다"
-NOTE_EXIT = "청산은 달력이 지목한 다음 주의 「청산 요일」 종가다. 이익이어도 중간에 팔지 않는다. " "한국은 만기가 목요일이라 금요일 청산이 6거래일이고, 목요일 청산을 대조로 함께 낸다"
+NOTE_EXIT = "청산은 달력이 지목한 다음 주 금요일 종가다. 이익이어도 중간에 팔지 않는다. 한국은 만기가 목요일이라 같은 금요일 청산이 6거래일이다"
 
 
 @dataclass(frozen=True)
@@ -199,7 +197,6 @@ def run_option_expiry_trading(
         cell_records.append(
             {
                 KEY_LABEL: dataset.label,
-                KEY_EXIT_WEEKDAY: WEEKDAY_LABELS[cell.exit_weekday],
                 KEY_EXPIRY_MONTH: cell.expiry_month,
                 KEY_DIRECTION: DIRECTION_DOWN if cell.bet_down else DIRECTION_UP,
                 KEY_EXCLUDED_COUNT: entries.excluded_count,
@@ -287,8 +284,8 @@ def collect_entries(dataset: Dataset, cell: ExpiryCell) -> Entries:
         RuntimeError: 진입일·청산일이 시세의 거래일에 없는 경우 (내부 불변조건 위반)
     """
     # **칸마다 다시 읽는 것을 종목 단위로 묶지 않는다.** 한 종목이 여러 칸에 걸쳐 있어
-    # 시세·만기 달력·청산 일정이 겹쳐 만들어지고, **전 칸(96칸)이 기본이 된 뒤로는 그 중복이
-    # 대상 4개 × 24벌**이다. 그래도 묶지 않는 것은 `Entries` 를 칸들이 나눠 갖게 되어
+    # 시세·만기 달력·청산 일정이 겹쳐 만들어지고, **전 칸(120칸)이 기본이라 그 중복이
+    # 대상 5개 × 24벌**이다. 그래도 묶지 않는 것은 `Entries` 를 칸들이 나눠 갖게 되어
     # **한 칸의 수정이 다른 칸에 새는 길**이 생기기 때문이다 — 전체 실행이 몇 초라 그 위험이 크다.
     # 느려져서 문제가 되면 그때 **읽기만** 묶는다(`Entries` 는 칸마다 새로 만든다)
     df = load_market_csv(MARKET_DIR / dataset.file_name)
@@ -299,7 +296,7 @@ def collect_entries(dataset: Dataset, cell: ExpiryCell) -> Entries:
         trading_days,
         pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]),
         pd.DatetimeIndex(expiries[COL_RULE_DATE]),
-        exit_weekday=cell.exit_weekday,
+        exit_weekday=EXIT_WEEKDAY,
     ).frame
 
     in_month = pd.DatetimeIndex(schedule[COL_DATE]).month == cell.expiry_month
@@ -427,9 +424,6 @@ def _identity(dataset: Dataset, cell: ExpiryCell, stop_level: float | None) -> d
     return {
         DISPLAY_TICKER: dataset.label,
         DISPLAY_EXPIRY_MONTH: cell.expiry_month,
-        # **청산 요일이 매매법 축의 한 칸이다.** 한국은 만기가 목요일이라 같은 「다음주 금요일」이
-        # 6거래일이고, 목요일 청산을 대조로 함께 낸다 — 이 컬럼이 없으면 같은 달이 두 줄로 겹친다
-        DISPLAY_EXIT_WEEKDAY: WEEKDAY_LABELS[cell.exit_weekday],
         DISPLAY_DIRECTION: DIRECTION_DOWN if cell.bet_down else DIRECTION_UP,
         # **언제나 잴 수 있는 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
         # 그 로더가 시가·고가·저가를 요구하므로 종가 계열(지수)은 읽는 단계에서 거부된다 —

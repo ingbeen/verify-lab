@@ -96,9 +96,13 @@ logger = get_logger(__name__)
 # 방향 적중률의 하한 (비율, 0.60 = 60%). 크기가 커도 적중률이 낮으면 집행할 수 없다
 MIN_HIT_RATE: Final = 0.60
 
-# 방향 기대값의 하한 (비율, 0.0 = 0%). **초과**여야 통과한다 — 반복 투자해 0 이 남는 것은 우위가 아니다.
-# 거래비용을 반영하기로 하면 이 값이 그 자리다. 지금은 맨몸 성적이므로 0 이다 (측정의 원칙 10)
-MIN_EXPECTED_VALUE: Final = 0.0
+# 방향 기대값의 하한 (비율, 0.005 = 0.5%). **이상**이면 통과한다 — 적중률과 경계 방향이 같다.
+#
+# **사용자가 정한 최소 회당 기대값이지 거래비용이 아니다** (2026-09-16 사용자 확정).
+# 왕복 비용 0.4% 와 숫자가 가까워 비용 문턱으로 읽히기 쉬운데, 성적은 여전히 맨몸이다
+# (측정의 원칙 10). **거래비용을 반영하기로 하면 그것은 이 값 «위에» 더해진다** —
+# 비용을 문턱으로 쓰지 않는다는 결정은 `docs/조사/투자금_결정/규칙.md` §3.2 가 SoT 다
+MIN_EXPECTED_VALUE: Final = 0.005
 
 # ============================================================
 # 판정 결과 스키마
@@ -180,7 +184,7 @@ def screen_verdict(
     if math.isnan(hit_rate) or math.isnan(expected_value):
         return SCREEN_NOT_JUDGED
 
-    passed = hit_rate >= MIN_HIT_RATE and expected_value > MIN_EXPECTED_VALUE
+    passed = hit_rate >= MIN_HIT_RATE and expected_value >= MIN_EXPECTED_VALUE
 
     return SCREEN_CANDIDATE if passed else SCREEN_EXCLUDED
 

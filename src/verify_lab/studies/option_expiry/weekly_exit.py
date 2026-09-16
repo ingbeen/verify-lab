@@ -91,11 +91,9 @@ class WeeklyExitSchedule:
     Attributes:
         frame: 진입일·주 기준일·목표일·청산일·보유 거래일수·제외 사유를 담은 DataFrame.
             **제외된 진입도 행으로 남는다** — 값만 비어 있고 사유가 붙는다
-        exit_weekday: 청산 목표 요일 (월=0 ~ 일=6)
     """
 
     frame: pd.DataFrame
-    exit_weekday: int
 
     @property
     def entry_count(self) -> int:
@@ -145,7 +143,7 @@ def weekly_exit_schedule(
         raise ValueError(f"진입일과 주 기준일의 길이가 다릅니다: 진입일 {len(entry_dates)}개, 주 기준일 {len(week_reference_dates)}개")
 
     if len(entry_dates) == 0:
-        return WeeklyExitSchedule(frame=_empty_schedule(), exit_weekday=exit_weekday)
+        return WeeklyExitSchedule(frame=_empty_schedule())
 
     entry_positions = np.asarray(trading_days.get_indexer(entry_dates), dtype=np.int64)
     if entry_positions.min() < 0:
@@ -191,7 +189,7 @@ def weekly_exit_schedule(
         f"보유 분포 {frame[COL_HOLD_DAYS].value_counts().sort_index().to_dict()}"
     )
 
-    return WeeklyExitSchedule(frame=frame, exit_weekday=exit_weekday)
+    return WeeklyExitSchedule(frame=frame)
 
 
 def weekly_exit_returns(df: pd.DataFrame, schedule: WeeklyExitSchedule) -> pd.DataFrame:
