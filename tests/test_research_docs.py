@@ -1,4 +1,4 @@
-"""결과 문서(`docs/<등급>/<이름>/결과.md`)의 「모양」 계약을 검사한다.
+"""결과 문서(`docs/<등급>/<이름>/결과.md` · `docs/조사/<이름>.md`)의 「모양」 계약을 검사한다.
 
 결과 문서는 이 저장소의 최종 산출물이자 그 검증의 진입점이다. 계획서가 삭제되고 산출물 폴더가
 비워져도 이 문서 하나로 "무엇을 어떻게 재서 어떤 결론이 나왔는지"가 재구성돼야 한다.
@@ -29,7 +29,7 @@ DOCS_DIR = PROJECT_ROOT / "docs"
 
 # 결과 문서가 놓이는 등급 폴더. **등급은 분류일 뿐이라 결과 문서의 규칙은 같다** —
 # 매매로 승격해도 그 문서가 규칙을 덜 지켜도 되는 것이 아니다.
-# `공유/` 는 신호도 보유 구간도 없어 「결과」가 없으므로 빠진다
+# **매매법에 묶이지 않는 공통 규칙도 조사 등급에 있다** — 등급 축 밖에 폴더를 두지 않는다
 RESULT_GRADE_DIRS = ("검증", "매매", "조사")
 
 # 결과 문서의 파일 이름. **폴더가 매매법을 말하므로 파일 이름은 종류만 말한다**
@@ -65,8 +65,17 @@ PLAN_REFERENCE = re.compile(r"docs/plans|plans/PLAN_")
 # 글롭으로 해석해야 하는 경로에 들어가는 문자
 GLOB_CHARS = "*?["
 
-# 검사 대상 결과 문서
-RESULT_DOCS = sorted(path for grade in RESULT_GRADE_DIRS for path in (DOCS_DIR / grade).glob(f"*/{RESULT_FILENAME}"))
+# 검사 대상 결과 문서. **두 모양을 함께 본다** — 폴더형(`<이름>/결과.md`)과
+# 한 장형(`<이름>.md`). 한 장형은 문서가 하나뿐인 조사에 쓰이며 **같은 계약이 걸린다**:
+# 한쪽만 검사하면 그 모양으로 옮기는 것이 곧 검사를 벗어나는 길이 된다
+RESULT_DOCS = sorted(
+    {
+        path
+        for grade in RESULT_GRADE_DIRS
+        for pattern in (f"*/{RESULT_FILENAME}", "*.md")
+        for path in (DOCS_DIR / grade).glob(pattern)
+    }
+)
 
 
 def _front_matter(text: str) -> str:

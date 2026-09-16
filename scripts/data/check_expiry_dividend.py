@@ -35,7 +35,7 @@ from verify_lab.common_constants import (
 )
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
-from verify_lab.studies.option_expiry.constants import DATASETS, EXPIRY_CELLS, Dataset, ExpiryCell
+from verify_lab.studies.option_expiry.constants import DATASETS, Dataset, ExpiryCell, all_cells
 from verify_lab.studies.option_expiry.trading import collect_entries
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
@@ -150,7 +150,10 @@ def main() -> int:
     Returns:
         종료 코드 (성공 0)
     """
-    rows = [_measure_cell(cell) for cell in EXPIRY_CELLS]
+    # **방향을 한 쪽만 돈다.** `_measure_cell` 이 원본가·수정주가 «둘 다»에 같은 부호를 곱하므로
+    # 그 차이에서 부호가 지워진다 — 두 방향을 다 돌면 48행이 부호만 뒤집힌 사본이 되고,
+    # `meta.json` 에도 그 사본이 실행마다 쌓인다
+    rows = [_measure_cell(cell) for cell in all_cells() if not cell.bet_down]
 
     table = TableLogger(RESULT_COLUMNS, logger)
     table.print_header("보유 구간에 들어간 배당락 (원본가 − 수정주가 수익률)")
@@ -158,7 +161,8 @@ def main() -> int:
         table.print_row([str(row[name]) for name, _, _ in RESULT_COLUMNS])
     table.print_footer()
 
-    logger.debug("「아래」 칸에서 차이가 양수면 원본가 성적이 그만큼 과대평가돼 있습니다")
+    logger.debug("방향은 재지 않습니다 — 원본가와 수정주가에 같은 부호가 걸려 차이에서 지워집니다")
+    logger.debug("「아래」로 걸면 이 차이만큼 원본가 성적이 과대평가되고, 「위」로 걸면 과소평가됩니다")
     logger.debug("대조 가능이 진입보다 적은 칸은 수정주가 파일이 그 구간을 덮지 못한 것입니다")
 
     save_metadata(KEY_META_EXPIRY_DIVIDEND, {"cells": rows})

@@ -53,10 +53,13 @@ class Track:
     """매매법·조사 한 줄
 
     Attributes:
-        slug: 코드에서 부르는 이름. **폴더 이름 전체가 이 값**이다.
-            정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME` 이고 여기서는 그것을 키로 쓴다
-        label: 문서와 산출물에서 부르는 한글 이름
-        grade: `GRADES` 중 하나. 산출물 폴더가 이 값이다
+        slug: 코드에서 부르는 이름. 정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME` 이고
+            여기서는 그것을 키로 쓴다
+        label: 사람이 부르는 한글 이름. **산출물 폴더 이름과 문서 폴더 이름이 둘 다 이 값**이라
+            `docs/<등급>/<label>/` 과 `storage/results/<등급>/<label>/` 의 자리가 그대로 맞는다.
+            그래서 **폴더 이름으로 쓸 수 있는 모양이어야** 하며 그 검사는 `report/writer.py` 가 한다 —
+            폴더를 `rmtree` 로 비우므로 경로 구분자가 섞이면 산출물 루트 밖을 겨눈다
+        grade: `GRADES` 중 하나. 산출물 폴더의 상위 폴더가 이 값이다
         kind: `KINDS` 중 하나
     """
 
@@ -70,20 +73,26 @@ class Track:
 #
 # 한글 이름은 `docs/INDEX.md` 이름표와 같아야 하며 `tests/test_tracks.py` 가 대조한다 —
 # 두 벌이 되면 한쪽이 낡고, 그때 어느 쪽이 현재인지 판별할 방법이 없다.
+#
+# [중요] **띄어쓰기 대신 밑줄을 쓴다.** 이 값이 폴더 이름이므로 공백이 들어가면 셸·링크에서
+# 매번 따옴표를 달아야 하고, VSCode 확장이 공백 든 경로의 링크를 열지 못한다.
 TRACKS: Final = (
     Track("reverse", "역방향", GRADE_TRADING, KIND_METHOD),
-    Track("option_expiry", "옵션 만기일", GRADE_TRADING, KIND_METHOD),
-    Track("month_end", "월말 진입", GRADE_TRADING, KIND_METHOD),
-    Track("usdkrw_equivalence", "원달러 ETF 등가성", GRADE_SURVEY, KIND_PROPERTY),
-    Track("leverage_tracking", "레버리지 ETF 괴리", GRADE_SURVEY, KIND_PROPERTY),
-    Track("futures_leverage", "선물 대 레버리지 ETF", GRADE_SURVEY, KIND_PROPERTY),
+    Track("option_expiry", "옵션_만기일", GRADE_TRADING, KIND_METHOD),
+    # 「검증」은 **진행 중**이라는 뜻이다. 확정 규칙이 아직 없으면 여기 있는다 —
+    # 월말은 대상 달이 권고안이고 손절선도 확정 전이라(`docs/검증/월말_진입/규칙.md` §1)
+    # 매매 등급에 두면 등급이 상태를 말하지 못한다
+    Track("month_end", "월말_진입", GRADE_STUDY, KIND_METHOD),
+    Track("usdkrw_equivalence", "원달러_ETF_등가성", GRADE_SURVEY, KIND_PROPERTY),
+    Track("leverage_tracking", "레버리지_ETF_괴리", GRADE_SURVEY, KIND_PROPERTY),
+    Track("futures_leverage", "선물_대_레버리지_ETF", GRADE_SURVEY, KIND_PROPERTY),
     # 매매법으로 설계됐으나 채택되지 않아 실행 코드를 지웠다. 남은 것은 「왜 안 쓰는지의 근거」라
     # 종류도 성질 조사다 — 성적표를 낼 코드가 없으므로 매매법 계약을 요구받으면 안 된다
-    Track("usdkrw_grid", "원달러 그리드", GRADE_SURVEY, KIND_PROPERTY),
+    Track("usdkrw_grid", "원달러_그리드", GRADE_SURVEY, KIND_PROPERTY),
     # 실측 프로브. 매매법이 아니라 **데이터 소스의 성질**을 잰다
-    Track("ecos_probe", "ECOS 실측", GRADE_SURVEY, KIND_PROPERTY),
-    Track("pykrx_etf_probe", "pykrx ETF 실측", GRADE_SURVEY, KIND_PROPERTY),
-    Track("pykrx_splice_probe", "pykrx 이어붙이기 실측", GRADE_SURVEY, KIND_PROPERTY),
+    Track("ecos_probe", "ECOS_실측", GRADE_SURVEY, KIND_PROPERTY),
+    Track("pykrx_etf_probe", "pykrx_ETF_실측", GRADE_SURVEY, KIND_PROPERTY),
+    Track("pykrx_splice_probe", "pykrx_이어붙이기_실측", GRADE_SURVEY, KIND_PROPERTY),
 )
 
 _BY_SLUG: Final = {track.slug: track for track in TRACKS}
@@ -106,24 +115,6 @@ def track_of(slug: str) -> Track:
         raise ValueError(f"등록되지 않은 매매법입니다: {slug} (등록처: src/verify_lab/tracks.py)")
 
     return track
-
-
-def grade_of(slug: str) -> str:
-    """그 매매법의 등급을 돌려준다.
-
-    산출물 폴더가 이 값이므로 **오타가 통과하면 선언되지 않은 자리에 조용히 쌓인다.**
-    그래서 모르는 이름은 기본값을 돌려주지 않고 거부한다.
-
-    Args:
-        slug: 매매법 이름
-
-    Returns:
-        `GRADES` 중 하나
-
-    Raises:
-        ValueError: 등록되지 않은 slug 인 경우
-    """
-    return track_of(slug).grade
 
 
 def tracks_of_kind(kind: str) -> tuple[Track, ...]:

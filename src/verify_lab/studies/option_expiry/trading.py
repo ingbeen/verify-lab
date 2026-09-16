@@ -52,13 +52,13 @@ from verify_lab.studies.option_expiry.constants import (
     DATASETS,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TARGET_DATE,
-    EXPIRY_CELLS,
     EXPIRY_STOP_LEVELS,
     FRIDAY,
     KEY_EXCLUDED_COUNT,
     TRACK_NAME,
     Dataset,
     ExpiryCell,
+    all_cells,
 )
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
 from verify_lab.studies.option_expiry.weekly_exit import weekly_exit_schedule
@@ -140,7 +140,7 @@ class _Block:
 
 
 def run_option_expiry_trading(
-    cells: Sequence[ExpiryCell] = EXPIRY_CELLS,
+    cells: Sequence[ExpiryCell] | None = None,
     stop_levels: Sequence[float | None] = (None, *EXPIRY_STOP_LEVELS),
 ) -> ExpiryOutputs:
     """대상 칸마다 손절선을 적용해 성적표와 원자료를 낸다.
@@ -164,6 +164,9 @@ def run_option_expiry_trading(
     Raises:
         ValueError: 대상 칸이 비었거나, 손절선 목록이 비었거나, 데이터셋 이름을 찾을 수 없는 경우
     """
+    # **기본이 전 칸이다.** 손으로 적은 목록을 기본값에 두면 그 목록이 사후 선택과
+    # 구별되지 않는다 — 무엇을 실제로 거는지는 `docs/매매/옵션_만기일/규칙.md` §1 이 정한다
+    cells = all_cells() if cells is None else cells
     if not cells:
         raise ValueError("대상 칸이 비어 있어 매매를 돌릴 수 없습니다")
     if not stop_levels:
@@ -278,10 +281,10 @@ def collect_entries(dataset: Dataset, cell: ExpiryCell) -> Entries:
         RuntimeError: 진입일·청산일이 시세의 거래일에 없는 경우 (내부 불변조건 위반)
     """
     # **칸마다 다시 읽는 것을 종목 단위로 묶지 않는다.** 한 종목이 여러 칸에 걸쳐 있어
-    # 시세·만기 달력·청산 일정이 겹쳐 만들어지지만, 실측으로 그 몫이 없다 —
-    # 7칸 합계 0.081초 중 중복 3칸이 0.026초이고 **매매 실행 전체가 0.097초**다
-    # [실측] 2026-09-15. 묶으면 `Entries` 를 칸들이 나눠 갖게 되어 한 칸의 수정이 다른 칸에
-    # 새는 길이 생기는데, 그 위험이 0.026초보다 크다
+    # 시세·만기 달력·청산 일정이 겹쳐 만들어지고, **전 칸(96칸)이 기본이 된 뒤로는 그 중복이
+    # 대상 4개 × 24벌**이다. 그래도 묶지 않는 것은 `Entries` 를 칸들이 나눠 갖게 되어
+    # **한 칸의 수정이 다른 칸에 새는 길**이 생기기 때문이다 — 전체 실행이 몇 초라 그 위험이 크다.
+    # 느려져서 문제가 되면 그때 **읽기만** 묶는다(`Entries` 는 칸마다 새로 만든다)
     df = load_market_csv(MARKET_DIR / dataset.file_name)
     trading_days = pd.DatetimeIndex(df[COL_DATE])
     expiries = monthly_expiry_dates(trading_days, dataset.rule)

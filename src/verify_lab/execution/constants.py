@@ -107,7 +107,7 @@ DISPLAY_PAYOFF_RATIO: Final = "손익비"
 DISPLAY_BREAKEVEN_WIN_RATE: Final = "손익분기 승률(%)"
 DISPLAY_LOSING_COUNT: Final = "질 때 표본"
 
-# 손익비의 **분자와 분모**. `docs/공유/투자금_결정.md` §1.2 가 이 두 값의 출처를
+# 손익비의 **분자와 분모**. `docs/조사/투자금_결정/규칙.md` §1.2 가 이 두 값의 출처를
 # 성적표로 적어 두었는데 실제 표에는 없어서, 계산기 시트를 쓰는 사람이 거래내역에서
 # 직접 계산해야 했다.
 #
@@ -211,7 +211,7 @@ DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
 
 # **「장중 손절을 걸 수 있었는가」를 별도 컬럼으로 두지 않는다.** `DISPLAY_STOP_LEVEL` 의
 # `STOP_NOT_MEASURABLE_LABEL` 이 그 사실을 이미 말하므로 완전히 유도되는 값이다.
-# **잴 수 없는 «이유»**(지수는 종가만 있다 — `docs/매매/월말_진입/설계.md` §7.6)는 값이 아니라
+# **잴 수 없는 «이유»**(지수는 종가만 있다 — `docs/검증/월말_진입/설계.md` §7.6)는 값이 아니라
 # `summary.json` 의 `notes` 와 규칙 문서가 담는다
 
 

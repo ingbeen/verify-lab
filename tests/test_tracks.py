@@ -4,14 +4,16 @@
 넘기면 폴더를 손으로 옮겨도 다음 실행이 되돌리므로, 승격·강등이 한 줄 변경으로 끝나려면
 선언할 자리가 하나여야 한다.
 
-검사하는 것은 넷이다.
+검사하는 것은 다섯이다.
 
 1. 식별자가 유일한가 (slug·한글 이름)
 2. 등급과 종류가 선언된 값인가
-3. 코드에 있는 매매법이 전부 등록됐는가 (`studies/<slug>/constants.py` 의 `TRACK_NAME`)
-4. 그 이름이 `docs/INDEX.md` 이름표와 같은가
+3. **한글 이름이 폴더 이름으로 쓸 수 있는 모양인가** — 산출물 폴더 이름이 이 값이고
+   그 폴더를 `rmtree` 로 비우므로, 경로 구분자가 섞이면 산출물 루트 밖을 겨눠 지운다
+4. 코드에 있는 매매법이 전부 등록됐는가 (`studies/<slug>/constants.py` 의 `TRACK_NAME`)
+5. 그 이름이 `docs/INDEX.md` 이름표와 같은가
 
-3·4 가 이 파일의 핵심이다. **레지스트리가 코드·문서와 갈라지면 예외가 나지 않는다** —
+3·4·5 가 이 파일의 핵심이다. **레지스트리가 코드·문서와 갈라지면 예외가 나지 않는다** —
 산출물만 조용히 다른 자리에 쌓인다.
 """
 
@@ -30,7 +32,6 @@ from verify_lab.tracks import (
     KINDS,
     TRACKS,
     Track,
-    grade_of,
     track_of,
     tracks_of_kind,
 )
@@ -39,9 +40,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STUDIES_DIR = PROJECT_ROOT / "src" / "verify_lab" / "studies"
 INDEX_PATH = PROJECT_ROOT / "docs" / "INDEX.md"
 
-# 폴더 이름으로 쓸 수 있는 모양. 정의처는 `report/writer.py` 의 `TRACK_NAME_PATTERN` 이고
-# 여기서는 **레지스트리에 든 값이 그 모양인지**만 본다
+# slug 의 모양. 코드에서 매매법을 부르는 이름이라 영소문자와 밑줄만 쓴다
 SLUG_SHAPE = re.compile(r"^[a-z][a-z_]*$")
+
+# 한글 이름의 모양. **산출물 폴더 이름이 이 값**이므로 slug 와 요구가 다르다 —
+# 한글과 대문자를 허용하되 경로 구분자·점·공백은 막는다.
+# 정의처는 `report/writer.py` 의 `TRACK_LABEL_PATTERN` 이고 여기서는 레지스트리에 든 값이
+# 그 모양인지만 본다
+LABEL_SHAPE = re.compile(r"^[A-Za-z가-힣][0-9A-Za-z가-힣_]*$")
+
+# 폴더 이름에 절대 들어가면 안 되는 조각. **폴더를 비우므로** 이것이 섞이면 지우는 자리가 바뀐다
+PATH_ESCAPES = ("/", "\\", "..", " ")
 
 # `studies/<slug>/constants.py` 에서 slug 를 뽑는다
 TRACK_NAME_ASSIGNMENT = re.compile(r"^TRACK_NAME\s*:\s*Final\s*=\s*\"([^\"]+)\"", re.MULTILINE)
@@ -105,6 +114,24 @@ class TestRegistryShape:
         assert SLUG_SHAPE.match(track.slug), f"slug 모양이 맞지 않습니다: {track.slug}"
 
     @pytest.mark.parametrize("track", TRACKS, ids=lambda track: track.slug)
+    def test_한글_이름이_폴더_이름으로_쓸_수_있는_모양이다(self, track: Track) -> None:
+        """
+        목적: **산출물 폴더 이름이 이 값**이고 그 폴더를 `rmtree` 로 비운다.
+
+        slug 와 요구가 다르다 — 한글과 대문자를 써야 하므로 slug 패턴을 쓸 수 없고,
+        그렇다고 아무 문자나 허용하면 `../` 가 섞였을 때 **산출물 루트 밖을 겨눠 지운다.**
+
+        Given: 레지스트리의 한 줄
+        When: 한글 이름의 모양을 본다
+        Then: 한글·영숫자·밑줄로만 이루어져 있고 경로 조각이 섞이지 않았다
+        """
+        # Given / When / Then
+        assert LABEL_SHAPE.match(track.label), f"한글 이름 모양이 맞지 않습니다: {track.label}"
+
+        found = [piece for piece in PATH_ESCAPES if piece in track.label]
+        assert not found, f"{track.label}: 폴더 이름에 쓸 수 없는 조각이 있습니다 {found}"
+
+    @pytest.mark.parametrize("track", TRACKS, ids=lambda track: track.slug)
     def test_등급과_종류가_선언된_값이다(self, track: Track) -> None:
         """
         목적: 오타를 통과시키면 **예외 없이 새 상위 폴더가 생긴다.**
@@ -156,14 +183,14 @@ class TestRegistryLookup:
         목적: 산출물 폴더가 이 값에서만 정해진다.
 
         Given: 레지스트리에 있는 slug
-        When: grade_of 로 조회한다
+        When: track_of 로 조회해 등급을 읽는다
         Then: 그 줄의 등급이 나온다
         """
         # Given
         track = TRACKS[0]
 
         # When
-        grade = grade_of(track.slug)
+        grade = track_of(track.slug).grade
 
         # Then
         assert grade == track.grade
@@ -173,12 +200,12 @@ class TestRegistryLookup:
         목적: 오타를 통과시키면 **선언되지 않은 자리에 산출물이 조용히 쌓인다.**
 
         Given: 레지스트리에 없는 slug
-        When: grade_of 로 조회한다
+        When: track_of 로 조회한다
         Then: ValueError 가 난다
         """
         # Given / When / Then
         with pytest.raises(ValueError, match="등록되지 않은"):
-            grade_of("nonexistent_track")
+            track_of("nonexistent_track")
 
     def test_track_of가_같은_줄을_돌려준다(self) -> None:
         """
@@ -257,6 +284,21 @@ class TestRegistryMatchesCode:
 
 class TestGradeSemantics:
     """등급이 뜻하는 것을 고정한다."""
+
+    def test_월말_진입은_검증_등급이다(self) -> None:
+        """
+        목적: **등급은 「상태」다** — 검증은 진행 중, 매매는 걸기로 정한 것.
+
+        월말 진입은 `docs/검증/월말_진입/규칙.md` §1 이 스스로 「대상 달을 좁힌 **권고안**이며
+        손절선도 사용자 확정 전」이라고 적는다. 확정되지 않은 것이 매매 등급에 있으면
+        **등급이 상태를 말하지 못한다** (2026-09-16 사용자 결정).
+
+        Given: 레지스트리
+        When: 월말 진입의 등급을 조회한다
+        Then: 검증이다
+        """
+        # Given / When / Then
+        assert track_of("month_end").grade == GRADE_STUDY
 
     def test_조사_등급은_종류도_조사다(self) -> None:
         """

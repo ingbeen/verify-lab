@@ -9,21 +9,26 @@
 **판단은 사용자가 한다** — 코드는 볼 목록만 만든다.
 
 핵심 계약은 다섯이다.
-- 게이트 두 축**만** 가른다 — 기준선 대비 차이가 0 이어도, 우연확률이 1 이어도 후보로 남는다
+- 게이트 두 축**만** 가른다 — 우연확률이 1 이어도, 기준선과 같아도 후보로 남는다
 - 방향 기대값은 **방향 부호를 적용한 평균**이다 — 「아래」 칸은 평균이 양수면 기대값이 음수다
-- 방향은 **두 방향 비율 중 큰 쪽**이다. 기준선은 표시만 하고 방향에도 게이트에도 쓰지 않는다
+- 방향은 **두 방향 비율 중 큰 쪽**이다. 기준선은 방향에도 게이트에도 쓰지 않는다
   (2026-09-15 개편 — 기준선 방식은 156칸에서 **더해 주는 칸 0개**에 5칸을 빼기만 했다)
 - **표본이 1건이어도 판정한다** — 과대평가 가능성은 표본 수를 보고 사용자가 판단한다
 - **참고용 대상은 판정하지 않는다** — 지수(살 수 없다)와 인버스 실물(1배 롱이 같은 질문에
   이미 답한다). 값은 내되 「판정 안 함」으로 남는다
+
+**판정표에 기준선 컬럼을 두지 않는다** (2026-09-16 개편). 기준선은 「이 신호가 시장 전체와
+다른가」를 묻는 축이고 판정이 묻는 것은 「걸 만한가」라 **다른 질문**이다. 판정에 쓰지 않는 축을
+판정표에 두면 읽는 사람이 그걸로 거른다 — 실제로 「기준선과 같으니 그냥 들고 있는 것과 다를 바
+없다」는 잘못된 탈락 근거로 읽혔다. 기준선이 80%인 칸에서 신호도 80%면 **그 신호에 특별함은
+없어도 80%로 이기는 매매인 것은 그대로**이고, 이벤트형은 그 성적을 **연 며칠의 노출로** 얻는다.
+값은 `통계.csv` 계열이 그대로 담는다.
 """
 
 import pandas as pd
 import pytest
 
 from verify_lab.measure.screening import (
-    COL_BASELINE_GAP,
-    COL_BASELINE_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
@@ -194,13 +199,16 @@ class TestScreen:
 
     def test_기준선과_똑같아도_게이트를_넘으면_후보다(self) -> None:
         """
-        목적: **이 개편의 핵심 계약이다.** 게이트는 두 축뿐이므로 기준선 대비 차이가 0 이어도
+        목적: **이 개편의 핵심 계약이다.** 게이트는 두 축뿐이므로 기준선과 성적이 같아도
               후보로 남는다. 실물 사례가 SPY 11월 — 적중률 66.7% 인데 기준선도 66.7% 다.
-              **그 사실은 컬럼으로 보여 주고, 뺄지는 사용자가 정한다.**
+
+              **「기준선과 같다」는 「걸 가치가 없다」가 아니다.** 그 신호에 특별함이 없을 뿐
+              66.7% 로 이기는 매매인 것은 그대로이고, 이벤트형은 그 성적을 **연 며칠의 노출로**
+              얻는다 — 365일 묶여서 같은 성적을 내는 것과 자본 효율이 다르다.
 
         Given: SPY 11월 그대로 — 오른 비율 66.7% 인데 기준선도 66.7% 라 차이가 0 인 칸
         When: 판정하면
-        Then: 후보이고 기준선 대비 차이가 0 으로 실린다
+        Then: 후보다
         """
         # Given
         summary = _summary(
@@ -215,9 +223,7 @@ class TestScreen:
         result = screen_candidates(summary, axis_column=AXIS, tradable=True)
 
         # Then
-        row = result.iloc[0]
-        assert row[COL_SCREEN] == SCREEN_CANDIDATE
-        assert float(row[COL_BASELINE_GAP]) == pytest.approx(0.0, abs=EXACT_TOLERANCE)
+        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
 
     def test_표본이_1건이어도_판정한다(self) -> None:
         """
@@ -286,6 +292,76 @@ class TestScreen:
         # Then
         assert sorted(result[AXIS].tolist()) == [3, 9]
         assert sorted(result[COL_SCREEN].tolist()) == sorted([SCREEN_CANDIDATE, SCREEN_EXCLUDED])
+
+
+class TestBaselineIsNotInTheVerdict:
+    """판정표는 **판정에 쓰는 축만** 담는다 (2026-09-16 개편).
+
+    기준선은 「이 신호가 시장 전체와 다른가」를 묻고, 판정은 「걸 만한가」를 묻는다.
+    **다른 질문이라 같은 표에 두면 읽는 사람이 판정에 안 쓰는 축으로 거른다** —
+    실제로 「기준선과 같으니 그냥 들고 있는 것과 다를 바 없다」는 잘못된 탈락 근거로 읽혔다.
+
+    **값이 사라지는 것이 아니다** — 같은 폴더의 `통계.csv` 계열이 기준선 14컬럼과
+    차이 4컬럼을 그대로 담는다.
+    """
+
+    def test_판정표에_기준선_컬럼이_없다(self) -> None:
+        """
+        목적: 스키마에서 두 축을 빼는 것을 고정한다.
+
+        Given: 한 칸짜리 집계표
+        When: 판정하면
+        Then: 결과 컬럼 어디에도 「기준선」이 들어간 이름이 없다
+        """
+        # Given
+        summary = _down_summary()
+
+        # When
+        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        # Then
+        leftover = [column for column in result.columns if "기준선" in column or "Baseline" in column]
+        assert leftover == [], f"판정표에 기준선 컬럼이 남아 있습니다: {leftover}"
+
+    def test_기준선_초과분_없이도_판정된다(self) -> None:
+        """
+        목적: **입력 계약에서도 뺀다.** 쓰지 않는 값을 계속 요구하면 호출하는 쪽이
+              그것을 계산해 넘겨야 하고, 그러면 「빼지 않은 것」과 같아진다.
+
+        Given: 기준선 초과분 두 컬럼이 없는 집계표
+        When: 판정하면
+        Then: 예외 없이 후보로 판정된다
+        """
+        # Given
+        summary = _down_summary().drop(columns=[COL_WIN_RATE_EXCESS, COL_LOSS_RATE_EXCESS])
+
+        # When
+        result = screen_candidates(summary, axis_column=AXIS, tradable=True)
+
+        # Then
+        assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
+
+    def test_기준선을_빼도_판정_값이_그대로다(self) -> None:
+        """
+        목적: **표시를 바꾸는 것이지 판정을 바꾸는 것이 아니다.**
+
+              기준선이 유리한 칸과 불리한 칸이 «같은 판정»을 받아야 그 축이 게이트에
+              관여하지 않는다는 것이 증명된다.
+
+        Given: 다른 값은 같고 기준선 초과분 부호만 반대인 두 칸
+        When: 각각 판정하면
+        Then: 판정·방향·적중률·기대값이 전부 같다
+        """
+        # Given
+        favourable = _down_summary(win_excess=-0.23, loss_excess=0.23)
+        unfavourable = _down_summary(win_excess=0.23, loss_excess=-0.23)
+
+        # When
+        first = screen_candidates(favourable, axis_column=AXIS, tradable=True)
+        second = screen_candidates(unfavourable, axis_column=AXIS, tradable=True)
+
+        # Then
+        pd.testing.assert_frame_equal(first, second)
 
 
 class TestNotJudged:
@@ -455,11 +531,11 @@ class TestDirectionSymmetry:
         목적: **「그냥 들고 있는 것보다 못하다」가 탈락 사유가 아니다.**
 
               이벤트형 매매는 자본이 99% 이상 놀고 있어 비교 대상이 상시 보유가 아니라
-              현금이다. 기준선은 그 사실을 **보여 주는 표시 컬럼**으로만 남는다.
+              현금이다. 기준선을 넘는지는 **다른 질문**이고 판정은 그것을 묻지 않는다.
 
         Given: 월말 KODEX 코스닥150 8월의 실물 모양 — 오른 63.6% · 기준선 66.2% · 회당 +2.11%
         When: 판정하면
-        Then: 후보이고, 기준선 대비 차이가 음수로 그대로 실린다
+        Then: 후보이고 방향이 「위」다
         """
         # Given
         summary = _summary(
@@ -477,7 +553,6 @@ class TestDirectionSymmetry:
         # Then
         assert result[COL_SCREEN].iloc[0] == SCREEN_CANDIDATE
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_UP
-        assert result[COL_BASELINE_GAP].iloc[0] == pytest.approx(-0.026, abs=EXACT_TOLERANCE)
 
     def test_보합이_커도_여집합으로_방향을_정하지_않는다(self) -> None:
         """
@@ -696,13 +771,13 @@ class TestAxisIndependence:
 class TestFormula:
     """적중률·기준선·표본이 방향에 맞게 실리는지 실측값으로 박는다."""
 
-    def test_적중률과_차이가_방향에_맞게_실린다(self) -> None:
+    def test_적중률이_방향에_맞게_실린다(self) -> None:
         """
-        목적: 「아래」 칸은 **내린 비율**과 **내린 비율 초과분**을 읽는다.
+        목적: 「아래」 칸은 **내린 비율**을 적중률로 읽는다.
 
-        Given: 내린 비율 73% · 내린 비율 초과분 23%p 인 칸
+        Given: 내린 비율 73% 인 아래 방향 칸
         When: 판정하면
-        Then: 적중률 0.73 · 차이 0.23 · 기준선 0.50 이다
+        Then: 적중률이 0.73 이다
         """
         # Given
         summary = _down_summary()
@@ -712,8 +787,6 @@ class TestFormula:
 
         # Then
         assert float(row[COL_HIT_RATE]) == pytest.approx(0.73, abs=EXACT_TOLERANCE)
-        assert float(row[COL_BASELINE_GAP]) == pytest.approx(0.23, abs=EXACT_TOLERANCE)
-        assert float(row[COL_BASELINE_HIT_RATE]) == pytest.approx(0.50, abs=EXACT_TOLERANCE)
 
     def test_위_방향은_오른_비율을_직접_읽는다(self) -> None:
         """

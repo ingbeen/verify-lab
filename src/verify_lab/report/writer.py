@@ -28,18 +28,27 @@ import pandas as pd
 
 from verify_lab.common_constants import RESULTS_DIR
 from verify_lab.report.constants import CSV_ENCODING, RUN_SUMMARY_FILENAME
-from verify_lab.tracks import grade_of
+from verify_lab.tracks import GRADES, track_of
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 폴더 이름에 쓸 수 있는 매매법 이름. **폴더 이름이 곧 이 값이므로 정의처가 여기다** —
-# 코드에서 매매법은 영문 slug 하나로 불린다(`docs/INDEX.md` §3 이름표).
+# 코드에서 매매법을 부르는 이름(slug)의 모양. 레지스트리를 찾는 키이며 영소문자와 밑줄만 쓴다
+# (`docs/INDEX.md` §3 이름표).
 #
-# [중요] **모양 검사가 경로 탈출도 막는다.** 이름이 폴더 이름 «전체» 이고 그 폴더를 비우므로,
-# `../` 나 `/` 가 섞이면 산출물 루트 밖을 겨눠 지운다. 그래서 검사는 «비우기보다 먼저» 한다
+# [중요] **`$` 가 아니라 `fullmatch` 로 잰다.** `$` 는 문자열 끝뿐 아니라 **끝의 개행 바로 앞에서도**
+# 맞으므로 `"reverse\n"` 이 통과한다 — 그 값이 폴더 이름이 되고 그 폴더를 `rmtree` 로 비운다
 TRACK_NAME_PATTERN = r"[a-z][a-z_]*"
-VALID_TRACK_NAME = re.compile(rf"^{TRACK_NAME_PATTERN}$")
+VALID_TRACK_NAME = re.compile(TRACK_NAME_PATTERN)
+
+# **폴더 이름이 되는 한글 이름의 모양.** slug 와 요구가 다르다 — 한글과 대문자를 써야 하므로
+# (`원달러_ETF_등가성` · `pykrx_ETF_실측`) 위 패턴을 그대로 쓸 수 없다.
+#
+# [중요] **모양 검사가 경로 탈출을 막는다.** 이 값이 폴더 이름 «전체» 이고 그 폴더를 비우므로,
+# `../` 나 `/` 가 섞이면 산출물 루트 밖을 겨눠 지운다. 그래서 검사는 «비우기보다 먼저» 한다.
+# 공백을 막는 것은 안전이 아니라 쓰임새 때문이다 — 셸·마크다운 링크에서 매번 따옴표가 필요해진다
+TRACK_LABEL_PATTERN = r"[A-Za-z가-힣][0-9A-Za-z가-힣_]*"
+VALID_TRACK_LABEL = re.compile(TRACK_LABEL_PATTERN)
 
 # 절대경로로 읽히는 문자열의 머리. **손으로 박는다** — `BASE_DIR` 에서 파생시키면 이 PC 의
 # 경로만 보게 되어 **다른 PC 가 쓴** 경로를 못 잡는다. 실제로 커밋된 산출물에
@@ -51,12 +60,15 @@ ABSOLUTE_PATH_PREFIXES = ("/", "~/")
 
 
 def create_run_directory(track_name: str) -> Path:
-    """`storage/results/<등급>/<매매법>/` 을 **비우고** 만든다.
+    """`storage/results/<등급>/<한글 이름>/` 을 **비우고** 만든다.
 
-    **등급은 경로가 말하고 폴더 이름에는 넣지 않는다.** 매매법 이름이 등급이 달라도 같아야
-    한다는 것이 이 저장소의 규약이므로, 둘을 가르는 것은 상위 폴더뿐이다. 이름에 접미사를
-    또 붙이면 중복이고, 접미사가 등급마다 갈리면 **같은 매매법이 두 이름으로 불려** 사용자가
-    두 산출물 폴더를 옛것/새것으로 오해한다.
+    **폴더 이름은 slug 가 아니라 한글 이름이다.** 사용자가 여는 것이 이 폴더인데 이름이 코드
+    식별자면 문서와 대조할 때마다 번역해야 한다. 한글 이름을 쓰면 `docs/<등급>/<한글 이름>/` 과
+    자리가 그대로 맞는다.
+
+    **등급은 경로가 말하고 폴더 이름에는 넣지 않는다.** 이름에 접미사를 또 붙이면 중복이고,
+    접미사가 등급마다 갈리면 **같은 매매법이 두 이름으로 불려** 사용자가 두 산출물 폴더를
+    옛것/새것으로 오해한다.
 
     [중요] **등급을 인자로 받지 않는다.** 호출 측이 넘기면 `tracks.py` 가 SoT 가 아니게 되고,
     폴더를 손으로 옮겨도 다음 실행이 원래 자리에 다시 만든다. 승격·강등이 레지스트리 한 줄로
@@ -74,22 +86,35 @@ def create_run_directory(track_name: str) -> Path:
         만들어진 빈 폴더 경로
 
     Raises:
-        ValueError: 매매법 이름이 비어 있거나, 모양이 맞지 않거나, 레지스트리에 없는 경우
+        ValueError: slug 가 비어 있거나, 모양이 맞지 않거나, 레지스트리에 없거나,
+            그 줄의 한글 이름이 폴더 이름으로 쓸 수 없는 모양인 경우
     """
     name = track_name.strip()
     if not name:
         raise ValueError("매매법 이름이 비어 있습니다")
 
-    # [중요] **검사는 반드시 비우기보다 먼저다.** 이름이 폴더 이름 전체라
-    # `../` 나 `/` 가 섞이면 산출물 루트 밖을 겨눠 지운다
-    if not VALID_TRACK_NAME.match(name):
+    if not VALID_TRACK_NAME.fullmatch(name):
         raise ValueError(f"매매법 이름은 영소문자와 밑줄로만 이루어져야 합니다: {name}")
 
     # 등록되지 않은 이름을 통과시키면 **예외 없이 새 상위 폴더가 생긴다.** 산출물이 선언된
     # 등급 밖으로 조용히 흩어지고, 그 자리는 아무도 보지 않는다
-    grade = grade_of(name)
+    track = track_of(name)
 
-    directory = RESULTS_DIR / grade / name
+    # [중요] **검사는 반드시 비우기보다 먼저다.** 폴더 이름이 되는 것은 slug 가 아니라 이 값이라
+    # 위 slug 검사가 여기를 덮지 못한다 — `../` 나 `/` 가 섞이면 산출물 루트 밖을 겨눠 지운다.
+    # **앞뒤 공백을 먼저 턴다** — slug 는 위에서 `strip()` 을 거치는데 이 값은 레지스트리에서
+    # 바로 오므로, 털지 않으면 `" 역방향"` 같은 값이 그대로 폴더 이름이 된다
+    label = track.label.strip()
+    if not VALID_TRACK_LABEL.fullmatch(label):
+        raise ValueError(f"폴더 이름으로 쓸 수 없는 한글 이름입니다: {track.label!r} (등록처: src/verify_lab/tracks.py)")
+
+    # **등급도 경로 한 조각이라 같은 강도로 본다.** 위 검사가 `label` 만 보면
+    # `grade` 에 `..` 이 든 줄 하나로 산출물 루트 밖을 겨눠 지운다 — 테스트만으로는
+    # 실행 시점을 막지 못한다
+    if track.grade not in GRADES:
+        raise ValueError(f"선언되지 않은 등급입니다: {track.grade!r} (가능한 값: {list(GRADES)})")
+
+    directory = RESULTS_DIR / track.grade / label
 
     # 심볼릭 링크는 `rmtree` 가 거부하고, 끊어진 링크는 `exists()` 가 False 라 아래 `mkdir` 에서
     # 죽는다. 링크 자체만 지우면 둘 다 평범한 「자리 비우기」가 된다

@@ -28,8 +28,6 @@ from verify_lab.measure.constants import (
 )
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
 from verify_lab.measure.screening import (
-    COL_BASELINE_GAP,
-    COL_BASELINE_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
@@ -47,8 +45,6 @@ from verify_lab.measure.statistics import (
     summarize,
 )
 from verify_lab.report.constants import (
-    DISPLAY_BASELINE_GAP,
-    DISPLAY_BASELINE_HIT_RATE,
     DISPLAY_BASIS,
     DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
@@ -641,8 +637,6 @@ class TestCandidatesTable:
                 COL_HIT_RATE: [0.6667],
                 COL_EXPECTED_VALUE: [0.010578],
                 COL_TOTAL_RETURN: [0.010578 * 27],
-                COL_BASELINE_HIT_RATE: [0.4522],
-                COL_BASELINE_GAP: [0.2145],
                 COL_SCREEN: [screen],
             }
         )
@@ -670,19 +664,21 @@ class TestCandidatesTable:
             DISPLAY_HIT_RATE,
             DISPLAY_EXPECTED_VALUE,
             DISPLAY_TOTAL_RETURN,
-            DISPLAY_BASELINE_HIT_RATE,
-            DISPLAY_BASELINE_GAP,
             DISPLAY_SCREEN,
         ]
 
-    def test_기준선과_그_차이가_함께_실린다(self) -> None:
+    def test_기준선을_싣지_않는다(self) -> None:
         """
-        목적: **기준선은 판정에 쓰이지 않지만 판정을 읽는 데 필요하다.** 같은 적중률이
-              방향에 따라 뜻이 정반대이고, 기준선과 사실상 같은 칸도 게이트를 통과한다.
+        목적: **판정표는 판정이 묻는 축만 담는다.**
 
-        Given: 적중률 66.67% · 기준선 45.22% 인 칸
+              기준선은 「이 신호가 시장 전체와 다른가」를 묻고 판정은 「걸 만한가」를 묻는
+              다른 질문이다. 함께 실으면 읽는 사람이 판정에 안 쓰는 축으로 거른다 —
+              실제로 「기준선과 같으니 그냥 들고 있는 것과 다를 바 없다」로 읽혔다.
+              값은 같은 폴더의 `통계.csv` 계열이 담는다.
+
+        Given: 후보 한 칸
         When: 표시용으로 바꾸면
-        Then: 둘과 그 차이가 백분율로 함께 실린다
+        Then: 적중률은 백분율로 실리고 기준선이 들어간 열은 하나도 없다
         """
         # Given
         candidates = self._candidates()
@@ -692,8 +688,7 @@ class TestCandidatesTable:
 
         # Then
         assert float(table[DISPLAY_HIT_RATE].iloc[0]) == pytest.approx(66.67, abs=0.005)
-        assert float(table[DISPLAY_BASELINE_HIT_RATE].iloc[0]) == pytest.approx(45.22, abs=0.005)
-        assert float(table[DISPLAY_BASELINE_GAP].iloc[0]) == pytest.approx(21.45, abs=0.005)
+        assert [column for column in table.columns if "기준선" in column] == []
 
     def test_판정_안_함이_그대로_실린다(self) -> None:
         """

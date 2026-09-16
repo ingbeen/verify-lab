@@ -48,8 +48,16 @@
 다른 허들**이 서고(월말 기준선 24.9~73.2%), 기준선이 높은 칸에서 멀쩡한 우위가 뒤집힌다 —
 실측으로 두 검증 156칸에서 기준선 방식이 **더해 주는 칸은 0개**이고 **5칸을 빼기만 했다**.
 KODEX 코스닥150 8월은 오른 비율 63.6% · 회당 +2.11% 인데 기준선 66.2% 에 걸려
-「아래 36.4%」로 뒤집혀 제외됐다. **기준선은 표시 컬럼으로 남는다** — 그 칸이 「그냥 들고
-있는 것보다 못하다」는 사실은 사용자가 보고 판단할 재료이지 게이트가 아니다.
+「아래 36.4%」로 뒤집혀 제외됐다.
+
+**판정표에서도 기준선을 뺐다** (2026-09-16). 기준선은 「이 신호가 시장 전체와 다른가」를 묻고
+판정은 「걸 만한가」를 묻는다 — **다른 질문이다.** 판정에 안 쓰는 축을 판정표에 실으면 읽는
+사람이 그것으로 거른다: 실제로 「기준선과 같으니 그냥 들고 있는 것과 다를 바 없다」는 잘못된
+탈락 근거로 읽혔다. **기준선이 80% 인 칸에서 신호도 80% 면 그 신호에 특별함은 없어도 80% 로
+이기는 매매인 것은 그대로**이고, 이벤트형은 그 성적을 **연 며칠의 노출로** 얻는다 —
+365일 묶여 같은 성적을 내는 것과 자본 효율이 다르다.
+**값은 `통계.csv` 계열이 기준선 14컬럼과 차이 4컬럼으로 그대로 담는다.**
+근거는 루트 `CLAUDE.md` 「기준선은 탈락 사유가 아니다」가 SoT 다.
 """
 
 from typing import Final
@@ -58,11 +66,9 @@ import pandas as pd
 
 from verify_lab.measure.statistics import (
     COL_LOSS_RATE,
-    COL_LOSS_RATE_EXCESS,
     COL_MEAN,
     COL_SAMPLE_COUNT,
     COL_WIN_RATE,
-    COL_WIN_RATE_EXCESS,
 )
 from verify_lab.utils.logger import get_logger
 
@@ -87,8 +93,6 @@ COL_DIRECTION = "Direction"
 COL_HIT_RATE = "HitRate"
 COL_EXPECTED_VALUE = "ExpectedValue"
 COL_TOTAL_RETURN = "TotalReturn"
-COL_BASELINE_HIT_RATE = "BaselineHitRate"
-COL_BASELINE_GAP = "BaselineGap"
 COL_SCREEN = "Screen"
 
 # 방향. 신호가 기준선에서 어느 쪽으로 멀어졌는가
@@ -103,26 +107,26 @@ SCREEN_CANDIDATE: Final = "후보"
 SCREEN_EXCLUDED: Final = "제외"
 SCREEN_NOT_JUDGED: Final = "판정 안 함"
 
+# **판정에 쓰는 축만 담는다.** 판정에 안 쓰는 축을 함께 실으면 읽는 사람이 그것으로 거른다
 SCREENING_COLUMNS: Final = [
     COL_SAMPLE_COUNT,
     COL_DIRECTION,
     COL_HIT_RATE,
     COL_EXPECTED_VALUE,
     COL_TOTAL_RETURN,
-    COL_BASELINE_HIT_RATE,
-    COL_BASELINE_GAP,
     COL_SCREEN,
 ]
 
-# 집계표에서 읽는 입력 컬럼. 신호와 기준선의 두 방향 비율에 더해 **평균이 반드시 있어야 한다** —
-# 평균 없이 게이트를 통과시키면 방향은 맞지만 걸면 손실인 칸이 후보로 올라간다
+# 집계표에서 읽는 입력 컬럼. 두 방향 비율에 더해 **평균이 반드시 있어야 한다** —
+# 평균 없이 게이트를 통과시키면 방향은 맞지만 걸면 손실인 칸이 후보로 올라간다.
+#
+# **기준선 초과분을 요구하지 않는다.** 쓰지 않는 값을 계속 요구하면 호출하는 쪽이 그것을
+# 계산해 넘겨야 하고, 그러면 「빼지 않은 것」과 같아진다
 REQUIRED_SUMMARY_COLUMNS: Final = [
     COL_SAMPLE_COUNT,
     COL_MEAN,
     COL_WIN_RATE,
     COL_LOSS_RATE,
-    COL_WIN_RATE_EXCESS,
-    COL_LOSS_RATE_EXCESS,
 ]
 
 
@@ -136,6 +140,9 @@ def screen_candidates(
 
     **방향은 두 방향 비율 중 큰 쪽이다.** 기준선과의 거리로 정하지 않는다 —
     칸마다 다른 허들이 서서 기준선이 높은 칸의 우위가 뒤집힌다 (모듈 docstring 의 실측).
+
+    **결과에 기준선이 없다.** 판정이 묻지 않는 축이라 빼는 것이며, 값은 같은 폴더의
+    `통계.csv` 계열이 담는다.
 
     **제외된 칸도 행이 그대로 남는다.** 산출물에서 사라지면 사용자가 되짚을 수 없다.
 
@@ -208,10 +215,6 @@ def _screen_cell(row: pd.Series, *, axis_column: str, tradable: bool) -> dict[st
     downward = float(row[COL_LOSS_RATE]) > float(row[COL_WIN_RATE])
     hit_rate = float(row[COL_LOSS_RATE] if downward else row[COL_WIN_RATE])
 
-    # 기준선 대비 차이. **판정에 쓰지 않고 표시만 한다** — 거는 방향과 짝이 맞아야
-    # `기준선 = 적중률 − 차이` 가 성립한다
-    gap = float(row[COL_LOSS_RATE_EXCESS] if downward else row[COL_WIN_RATE_EXCESS])
-
     # 아래로 거는 신호는 주가가 내릴 때 버는 것이므로 평균의 부호를 뒤집는다
     expected_value = -float(row[COL_MEAN]) if downward else float(row[COL_MEAN])
 
@@ -238,7 +241,5 @@ def _screen_cell(row: pd.Series, *, axis_column: str, tradable: bool) -> dict[st
         COL_HIT_RATE: hit_rate,
         COL_EXPECTED_VALUE: expected_value,
         COL_TOTAL_RETURN: total_return,
-        COL_BASELINE_HIT_RATE: hit_rate - gap,
-        COL_BASELINE_GAP: gap,
         COL_SCREEN: verdict,
     }

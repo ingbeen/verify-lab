@@ -2,10 +2,10 @@
   "track": "reverse",
   "row_counts": {
     "signals.csv": 915,
-    "statistics.csv": 576,
+    "통계.csv": 576,
     "excess.csv": 1152,
     "test.csv": 1152,
-    "candidates.csv": 576,
+    "1차_판정.csv": 576,
     "거래내역.csv": 1600,
     "성적표.csv": 200
   },

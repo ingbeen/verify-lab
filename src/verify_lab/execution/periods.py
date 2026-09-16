@@ -194,7 +194,7 @@ def _period_row(
         DISPLAY_BREAKEVEN_WIN_RATE: (
             np.nan if empty else round(payoff.breakeven_hit_rate * RATE_TO_PERCENT, PERCENT_DECIMALS)
         ),
-        # **손익비의 분자와 분모를 그대로 낸다.** `docs/공유/투자금_결정.md` §1.2 가 이 두
+        # **손익비의 분자와 분모를 그대로 낸다.** `docs/조사/투자금_결정/규칙.md` §1.2 가 이 두
         # 값의 출처를 성적표로 적어 두었는데 실제로는 없어서, 계산기 시트를 쓰는 사람이
         # 거래내역에서 직접 계산해야 했다. **`measure` 가 이미 구한 값이라 다시 세지 않는다.**
         #

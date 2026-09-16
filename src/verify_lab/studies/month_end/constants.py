@@ -1,6 +1,6 @@
 """검증 #10(월 하순 진입) 이벤트 정의와 실행이 공유하는 상수
 
-파라미터 값은 `docs/매매/월말_진입/설계.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
+파라미터 값은 `docs/검증/월말_진입/설계.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
 격자 축을 나란히 산출해 보고하기 위한 목록이므로 하나를 골라 두지 않는다 (측정의 원칙 1).
 
 표시용 한글 레이블도 여기 둔다. `report` 는 어떤 검증이 자기를 쓰는지 몰라야 하므로
@@ -56,6 +56,7 @@ from verify_lab.measure.statistics import (
     COL_WIN_RATE_EXCESS,
 )
 from verify_lab.report.constants import (
+    CANDIDATES_FILENAME,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
     DISPLAY_DOWN_RATE,
@@ -85,6 +86,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE,
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
+    STATISTICS_FILENAME,
 )
 
 # 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
@@ -92,7 +94,7 @@ TRACK_NAME: Final = "month_end"
 
 
 # ============================================================
-# 검증 대상 (`docs/매매/월말_진입/설계.md` §3.4)
+# 검증 대상 (`docs/검증/월말_진입/설계.md` §3.4)
 # ============================================================
 
 # 집행 역할 — **이 상품으로 어느 방향을 거는가.** 방향을 고르는 값이 아니라 상품의 성질이다
@@ -100,7 +102,7 @@ TRACK_NAME: Final = "month_end"
 #
 # 「아래」를 1배 ETF 의 하락률로 재면 분배락 하락이 이익으로 잡히는데 **인버스는 그만큼 오르지
 # 않는다** (코스닥 4월 실측 +0.65%p). 인버스 종가에는 분배락·총보수·일일 리밸런싱 손실이
-# 이미 들어 있어 따로 뺄 것이 없다. 근거는 `docs/매매/월말_진입/설계.md` §7.9 다
+# 이미 들어 있어 따로 뺄 것이 없다. 근거는 `docs/검증/월말_진입/설계.md` §7.9 다
 EXECUTION_ROLE_UP: Final = "위 집행"
 EXECUTION_ROLE_DOWN: Final = "아래 집행"
 EXECUTION_ROLE_NONE: Final = "불가"
@@ -273,11 +275,11 @@ DATASETS: Final = DATASETS_KOSPI + DATASETS_KOSDAQ
 # 1배의 부호를 뒤집은 값과 차이가 잡음이라(6월 0.01 · 9월 0.08 · 12월 0.02%p) 같은 베팅이
 # 두 줄로 실린다. 실제 집행도 2배 인버스라 1배 실물은 집행 상품이 아니다.
 # **`--ticker` 로 지목하면 매매에서도 돈다** — 확정 전 분배락 교차검증이 그 용도다
-# (`docs/매매/월말_진입/설계.md` §7.16)
+# (`docs/검증/월말_진입/설계.md` §7.16)
 DATASETS_TRADING: Final = tuple(dataset for dataset in DATASETS if dataset.execution_role != EXECUTION_ROLE_DOWN)
 
 # ============================================================
-# 격자 축 (`docs/매매/월말_진입/설계.md` §3.3 결정 ③)
+# 격자 축 (`docs/검증/월말_진입/설계.md` §3.3 결정 ③)
 # ============================================================
 
 # 진입 목표 달력일. 원 매매법인 20일 앞뒤를 감싼다 — 20일만 튀는지 이웃도 같은지가
@@ -533,11 +535,14 @@ PROBABILITY_COLUMNS: Final = (
 OUTPUT_FILES: Final[dict[str, str]] = {
     "trades": "trades.csv",
     "grid": "grid.csv",
-    "months": "months.csv",
+    # **달 축이 판정이 서는 축**이라 이 둘이 사용자가 보는 표다. 격자 축(11 × 7칸)과
+    # 집행 축은 달 축을 한 번 더 쪼갠 것이라 영문으로 남는다 —
+    # 이름은 `report/constants.py` 가 소유하고 세 매매법이 같은 상수를 쓴다
+    "months": STATISTICS_FILENAME,
+    "month_candidates": CANDIDATES_FILENAME,
     "month_halves": "month_halves.csv",
     "periods": "periods.csv",
     "grid_candidates": "grid_candidates.csv",
-    "month_candidates": "month_candidates.csv",
     "execution": "execution.csv",
 }
 

@@ -20,10 +20,13 @@ import pytest
 from verify_lab import common_constants
 from verify_lab.report import writer
 from verify_lab.report.constants import RUN_SUMMARY_FILENAME, SIGNALS_FILENAME
-from verify_lab.tracks import GRADE_SURVEY, GRADE_TRADING, grade_of
+from verify_lab.tracks import GRADE_SURVEY, GRADE_TRADING, KIND_METHOD, Track, track_of
 
 TRACK_NAME = "reverse"
-OTHER_TRACK_NAME = "month_end"
+
+# **같은 등급의 다른 매매법**이어야 「비우기가 그 폴더 안에만 미친다」를 잴 수 있다.
+# 등급이 다르면 부모가 달라 애초에 서로 닿지 않으므로 규칙이 깨져도 통과한다
+OTHER_TRACK_NAME = "option_expiry"
 
 # 등급이 다른 매매법. **같은 등급 둘만으로는 「등급이 상위 폴더가 된다」를 고정할 수 없다** —
 # 부모가 늘 같아 규칙이 깨져도 통과한다
@@ -45,23 +48,47 @@ def mock_results_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return results_dir
 
 
-def test_directory_name_is_the_track_name(mock_results_dir: Path) -> None:
+def test_directory_name_is_the_korean_label(mock_results_dir: Path) -> None:
     """
-    목적: 결과 폴더 이름이 **매매법 이름 하나**임을 고정한다.
+    목적: 결과 폴더 이름이 **그 매매법의 한글 이름 하나**임을 고정한다.
+
+    **사용자가 여는 것은 산출물 폴더**인데 그 이름이 코드 식별자(slug)면 문서와 대조할 때마다
+    번역해야 한다. 한글 이름을 쓰면 `docs/<등급>/<이름>/` 과 자리가 그대로 맞는다.
 
     **실행 시각을 붙이지 않는다.** 같은 소스로 재실행하면 산출물이 바이트 단위로 같으므로,
     시각을 붙이면 **내용이 같고 이름만 다른 폴더**가 실행할 때마다 쌓인다.
-    **계층 접미사도 붙이지 않는다** — 계층은 상위 폴더가 말하므로 이름에 또 넣으면 중복이다.
+    **등급 접미사도 붙이지 않는다** — 등급은 상위 폴더가 말하므로 이름에 또 넣으면 중복이다.
 
-    Given: 매매법 이름
+    Given: 매매법 slug
     When: 결과 폴더를 만든다
-    Then: 폴더 이름이 그 매매법 이름과 정확히 같다
+    Then: 폴더 이름이 레지스트리의 한글 이름과 정확히 같다
     """
     # When
     directory = writer.create_run_directory(TRACK_NAME)
 
     # Then
-    assert directory.name == TRACK_NAME
+    assert directory.name == track_of(TRACK_NAME).label
+
+
+def test_directory_name_is_not_the_slug(mock_results_dir: Path) -> None:
+    """
+    목적: 한글 이름을 쓴다는 계약을 **반대쪽에서도** 고정한다 (경계 조건).
+
+    위 테스트만 두면 `label` 을 slug 와 같은 값으로 바꾸는 것만으로 통과한다.
+    둘이 실제로 다른 매매법에서 재야 계약이 닫힌다.
+
+    Given: slug 와 한글 이름이 다른 매매법
+    When: 결과 폴더를 만든다
+    Then: 폴더 이름이 slug 가 아니다
+    """
+    # Given
+    assert track_of(TRACK_NAME).label != TRACK_NAME, "이 테스트는 slug 와 한글 이름이 다른 매매법이 필요합니다"
+
+    # When
+    directory = writer.create_run_directory(TRACK_NAME)
+
+    # Then
+    assert directory.name != TRACK_NAME
 
 
 def test_same_track_reuses_the_same_directory(mock_results_dir: Path) -> None:
@@ -147,7 +174,7 @@ def test_grade_becomes_the_parent_folder(mock_results_dir: Path, track_name: str
     directory = writer.create_run_directory(track_name)
 
     # Then
-    assert directory.parent == mock_results_dir / grade_of(track_name)
+    assert directory.parent == mock_results_dir / track_of(track_name).grade
 
 
 def test_grade_comes_from_the_registry_not_the_caller(mock_results_dir: Path) -> None:
@@ -255,6 +282,119 @@ def test_accepts_every_real_track_name() -> None:
     # When / Then
     unmatched = [name for name in names if not writer.VALID_TRACK_NAME.match(name)]
     assert unmatched == [], f"실제 매매법 이름이 폴더 이름 검사를 통과하지 못합니다: {unmatched}"
+
+
+@pytest.mark.parametrize("bad_label", ["../탈출", "역방향/하위", "역방향\\하위", ".", "..", "역 방향", ""])
+def test_rejects_label_outside_the_folder_shape(
+    mock_results_dir: Path, monkeypatch: pytest.MonkeyPatch, bad_label: str
+) -> None:
+    """
+    목적: **폴더 이름이 slug 에서 한글 이름으로 바뀌면서 검사 대상도 옮겨간다** (경계 조건).
+
+    slug 검사만 두면 등록된 slug 를 넘겼을 때 **아무 검사 없이** 한글 이름이 폴더가 된다.
+    그 폴더를 `rmtree` 로 비우므로 `../` 가 섞이면 **산출물 루트 밖을 겨눠 지운다.**
+    slug 패턴을 그대로 쓸 수는 없다 — 한글과 대문자를 허용해야 하기 때문이다.
+
+    Given: 폴더 이름으로 쓸 수 없는 한글 이름을 가진 레지스트리 줄
+    When: 결과 폴더를 만든다
+    Then: ValueError 이고, **산출물 루트가 만들어지지 않았다**
+    """
+    # Given
+    broken = Track(slug=TRACK_NAME, label=bad_label, grade=GRADE_TRADING, kind=KIND_METHOD)
+    monkeypatch.setattr(writer, "track_of", lambda _slug: broken)
+
+    # When / Then
+    with pytest.raises(ValueError, match="이름"):
+        writer.create_run_directory(TRACK_NAME)
+
+    # 검사가 «비우기보다 먼저» 일어나야 한다 — 나중이면 거부해도 이미 지운 뒤다
+    assert not mock_results_dir.exists(), "거부했는데 산출물 루트가 만들어졌습니다"
+
+
+def test_strips_whitespace_around_the_label(mock_results_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    목적: **`track_name` 은 `strip()` 을 거치는데 `label` 은 레지스트리에서 바로 온다** (경계 조건).
+
+    털지 않으면 `"역방향\n"` 이 그대로 폴더 이름이 된다 — 개행이 든 폴더는 셸에서 다루기
+    어렵고, 같은 매매법이 두 자리에 쌓인다.
+
+    Given: 앞뒤에 공백과 개행이 붙은 한글 이름
+    When: 결과 폴더를 만든다
+    Then: 털어낸 이름으로 만들어진다
+    """
+    # Given
+    padded = Track(slug=TRACK_NAME, label=" 역방향\n", grade=GRADE_TRADING, kind=KIND_METHOD)
+    monkeypatch.setattr(writer, "track_of", lambda _slug: padded)
+
+    # When
+    directory = writer.create_run_directory(TRACK_NAME)
+
+    # Then
+    assert directory.name == "역방향"
+
+
+def test_rejects_newline_inside_the_label(mock_results_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    목적: **`$` 는 끝의 개행 «앞»에서도 맞는다** — 그래서 `fullmatch` 로 잰다 (경계 조건).
+
+    `re.match(r"^...$", "역방향\n악성")` 은 거부하지만 `"역방향\n"` 은 통과한다.
+    털어내는 것만으로는 **가운데 개행**을 막지 못하므로 모양 검사가 끝까지 맞아야 한다.
+
+    Given: 이름 가운데에 개행이 든 줄
+    When: 결과 폴더를 만든다
+    Then: ValueError 이고 산출물 루트가 만들어지지 않았다
+    """
+    # Given
+    broken = Track(slug=TRACK_NAME, label="역방향\n악성", grade=GRADE_TRADING, kind=KIND_METHOD)
+    monkeypatch.setattr(writer, "track_of", lambda _slug: broken)
+
+    # When / Then
+    with pytest.raises(ValueError, match="이름"):
+        writer.create_run_directory(TRACK_NAME)
+
+    assert not mock_results_dir.exists(), "거부했는데 산출물 루트가 만들어졌습니다"
+
+
+def test_rejects_undeclared_grade(mock_results_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    목적: **등급도 경로 한 조각이라 같은 강도로 본다** (경계 조건).
+
+    `RESULTS_DIR / track.grade / label` 이므로 `grade` 에 `..` 이 들면 산출물 루트 밖을
+    겨눠 지운다. 레지스트리 검사는 테스트 시점에만 걸리므로 **실행 시점을 막지 못한다** —
+    한글 이름에 런타임 가드를 둔 것과 같은 이유로 여기도 둔다.
+
+    Given: 선언되지 않은 등급을 가진 줄
+    When: 결과 폴더를 만든다
+    Then: ValueError 이고 산출물 루트가 만들어지지 않았다
+    """
+    # Given
+    broken = Track(slug=TRACK_NAME, label="역방향", grade="..", kind=KIND_METHOD)
+    monkeypatch.setattr(writer, "track_of", lambda _slug: broken)
+
+    # When / Then
+    with pytest.raises(ValueError, match="등급"):
+        writer.create_run_directory(TRACK_NAME)
+
+    assert not mock_results_dir.exists(), "거부했는데 산출물 루트가 만들어졌습니다"
+
+
+def test_accepts_every_real_label() -> None:
+    """
+    목적: 한글 이름 검사가 **실제로 쓰는 이름을 막지 않는다**를 고정한다.
+
+    거부 테스트만 두면 패턴을 지나치게 좁혀도 통과한다. 실측 프로브 이름(`ECOS_실측`·
+    `pykrx_ETF_실측`)은 **대문자와 영문이 섞여** 있어 한글만 허용하는 패턴에서 조용히 막힌다.
+
+    Given: 레지스트리의 모든 한글 이름
+    When: 폴더 이름 검사 패턴에 맞춘다
+    Then: 전부 통과한다
+    """
+    # Given
+    from verify_lab.tracks import TRACKS
+
+    # When / Then
+    unmatched = [track.label for track in TRACKS if not writer.VALID_TRACK_LABEL.match(track.label)]
+    assert unmatched == [], f"실제 한글 이름이 폴더 이름 검사를 통과하지 못합니다: {unmatched}"
 
 
 def test_rejects_unregistered_track_name(mock_results_dir: Path) -> None:

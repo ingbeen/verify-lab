@@ -121,7 +121,7 @@ def _write_market(directory: Path, ticker: str, days: pd.DatetimeIndex | None = 
 def _write_index(directory: Path, ticker: str) -> Dataset:
     """합성 지수 계열을 만든다.
 
-    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/매매/월말_진입/설계.md` §7.6),
+    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/검증/월말_진입/설계.md` §7.6),
     그래서 장중 손절을 잴 수 없다.
 
     Args:

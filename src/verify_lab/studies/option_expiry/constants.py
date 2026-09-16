@@ -22,8 +22,6 @@ from verify_lab.measure.constants import (
     COL_SIGNAL_COUNT,
 )
 from verify_lab.measure.screening import (
-    COL_BASELINE_GAP,
-    COL_BASELINE_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
@@ -67,8 +65,6 @@ from verify_lab.measure.statistics import (
 )
 from verify_lab.report.constants import (
     CANDIDATES_FILENAME,
-    DISPLAY_BASELINE_GAP,
-    DISPLAY_BASELINE_HIT_RATE,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_BASIS,
     DISPLAY_DATE,
@@ -115,6 +111,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE_P_VALUE,
     DISPLAY_UP_RATE_PERCENTILE,
     SIGNALS_FILENAME,
+    STATISTICS_FILENAME,
 )
 
 
@@ -462,8 +459,6 @@ OUTPUT_LABELS: Final = {
     COL_HIT_RATE: DISPLAY_HIT_RATE,
     COL_EXPECTED_VALUE: DISPLAY_EXPECTED_VALUE,
     COL_TOTAL_RETURN: DISPLAY_TOTAL_RETURN,
-    COL_BASELINE_HIT_RATE: DISPLAY_BASELINE_HIT_RATE,
-    COL_BASELINE_GAP: DISPLAY_BASELINE_GAP,
     COL_SCREEN: DISPLAY_SCREEN,
 }
 
@@ -507,8 +502,6 @@ PERCENT_OUTPUT_COLUMNS: Final = (
     COL_HIT_RATE,
     COL_EXPECTED_VALUE,
     COL_TOTAL_RETURN,
-    COL_BASELINE_HIT_RATE,
-    COL_BASELINE_GAP,
     # 백분위는 **백분율이지 확률이 아니다.** 「귀무분포에서 관측값보다 작은 값의 비율」이라
     # 0~100 으로 읽는 값이며, `report.build_test_table` 도 같은 자릿수로 낸다
     COL_MEAN_PERCENTILE,
@@ -535,13 +528,15 @@ PROBABILITY_OUTPUT_COLUMNS: Final = (
 # 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
 OUTPUT_FILES: Final[dict[str, str]] = {
     "expiries": "expiries.csv",
-    # 공통 컬럼의 파일 이름은 `report/constants.py` 가 소유한다 — 역방향도 같은 상수를 쓴다
+    # 사용자가 보는 이름은 `report/constants.py` 가 소유한다 — 세 매매법이 같은 상수를 쓴다
     "signals": SIGNALS_FILENAME,
     "trade_signals": "weekly_trade_signals.csv",
     "trade_summary": "weekly_trade_summary.csv",
     "trade_excess": "weekly_trade_excess.csv",
     "trade_test": "weekly_trade_permutation.csv",
-    "trade_by_month": "weekly_trade_by_month.csv",
+    # **판정이 서는 축의 집계표**라 이것이 그 매매법의 `통계.csv` 다.
+    # `trade_summary` 는 보유 거래일 축이라 판정에 쓰이지 않는다
+    "trade_by_month": STATISTICS_FILENAME,
     "trade_by_month_halves": "weekly_trade_by_month_halves.csv",
     "candidates": CANDIDATES_FILENAME,
 }
@@ -608,36 +603,50 @@ class ExpiryCell:
     bet_down: bool
 
 
-# `docs/매매/옵션_만기일/결과.md` 0장에서 **게이트를 넘은 칸**이다. 전부 금요일 청산이다.
-#
-# **통계량으로 칸을 빼지 않는다.** 게이트를 넘었으면 함께 두며, 통계량으로 빼면
-# 60칸에서 좋아 보이는 칸만 고르는 **사후 선택**이 된다 (결정 ㊳).
-# **그래서 이 목록은 「실제로 거는 칸」이 아니다** — 그쪽은 `docs/매매/옵션_만기일/규칙.md`
-# §1.1 이 갖고 이 목록보다 좁다. 여기서 칸을 빼려면 통계량이 아니라 데이터 오염이나
-# 사용자 결정 같은 게이트 밖의 근거가 있어야 한다.
-# **게이트 위에 「등급」 표기를 두지 않는다** — 등급 자체가 판정에 없다 (결정 ㊹).
-#
-# **미국 9월 세 칸은 같은 날 같은 방향이라 독립된 세 번의 기회가 아니다.** QQQ·SPY·DIA 는
-# 같은 시장의 지수 ETF로 상관이 매우 높아 사실상 한 번의 베팅이며, 산출물을 읽을 때
-# 세 번의 확인으로 세면 안 된다 (결과 문서 §12A.6). **다만 12월에는 QQQ↔DIA 상관이 0.418 로
-# 9월(0.769)보다 훨씬 낮다** — 12월 세 칸은 9월만큼 같이 움직이지 않는다.
-#
-# **DIA 6월은 아직 이 목록에 없다.** 시기 축이 판정에 들어가지 않으므로 게이트로는 후보다
-# (결정 ㊸·㊺ — 표본 29 · 적중률 75.86% · 회당 +0.44%).
-# 뒤 절반 −0.167% · 최근 5년 −1.832% 는 그대로 사실이지만 **관찰용**이며,
-# **넣을지는 사용자가 정한다** — 코드가 대신 판단하지 않으므로 결정 전까지 목록 밖에 둔다
-EXPIRY_CELLS: Final = (
-    ExpiryCell(dataset_key="dia", expiry_month=12, bet_down=False),
-    ExpiryCell(dataset_key="kodex200", expiry_month=9, bet_down=False),
-    ExpiryCell(dataset_key="spy", expiry_month=9, bet_down=True),
-    ExpiryCell(dataset_key="dia", expiry_month=9, bet_down=True),
-    ExpiryCell(dataset_key="spy", expiry_month=12, bet_down=False),
-    ExpiryCell(dataset_key="qqq", expiry_month=9, bet_down=True),
-    # 기준선 대비 +6.33%p 로 얇다. **통계적 근거가 있어서 넣는 것이 아니라,
-    # 뺄 근거가 사후 선택뿐이라 안 빼는 것이다.** 같은 27건으로 맞춰도 적중률이
-    # 62.96% 로 DIA(81.48%)·SPY(70.37%)보다 낮아 표본 기간 탓이 아니다
-    ExpiryCell(dataset_key="qqq", expiry_month=12, bet_down=False),
-)
+# 만기월 축. 달력이 정하는 값이라 재는 쪽이 고를 것이 없다
+EXPIRY_MONTHS: Final = tuple(range(1, 13))
+
+
+def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, ...]:
+    """대상 × 만기월 × 방향의 **전 칸**을 만든다.
+
+    [중요] **코드가 칸을 고르지 않는다.** 전에는 게이트를 넘은 칸을 손으로 적어 두었는데,
+    그러면 ① 시세를 다시 받아 게이트 결과가 바뀌어도 목록이 따라오지 않고
+    ② 「왜 이 칸인가」의 근거가 코드에서 사라져 **사후 선택과 구별되지 않는다.**
+    격자를 전부 내는 것은 고르는 것이 아니므로 과최적화가 아니며
+    (`.claude/rules/trading.md` 의 경계는 폴더가 아니라 행위다), **값 하나를 확정하는 것은
+    `docs/매매/옵션_만기일/규칙.md` §1 이 한다** — 그 문서가 확정 집행 칸의 SoT 다.
+
+    월말 진입이 이미 같은 방식이다(12월 × 두 방향 전 칸). 셋이 같은 관용을 쓰면
+    한 매매법의 사정으로 다른 둘이 흔들리지 않는다.
+
+    **두 방향을 모두 낸다.** 어느 쪽에 걸지는 판정표가 칸마다 답하지만, 체결 성적은
+    그 답과 무관하게 양쪽이 있어야 **판정이 가리킨 방향의 반대쪽도 대조**할 수 있다.
+
+    Args:
+        datasets: 대상 목록. **인자를 아예 주지 않으면** `DATASETS` 전부.
+            빈 튜플은 **거부한다** — 「전부」와 「고른 결과가 없다」는 다른 사실이고,
+            조용히 전부로 넓히면 대상을 좁히려던 실행이 **전 범위 산출물로 폴더를 덮는다**
+
+    Returns:
+        대상 순서 → 만기월 오름차순 → 위·아래 순의 칸 목록.
+        **순서가 결정적이어야** 산출물 diff 가 「숫자가 바뀌었는가」를 말해 준다
+
+    Raises:
+        ValueError: 빈 대상 목록을 넘긴 경우
+    """
+    if datasets is not None and not datasets:
+        raise ValueError("고른 종목에 해당하는 칸이 없습니다")
+
+    targets = DATASETS if datasets is None else datasets
+
+    return tuple(
+        ExpiryCell(dataset_key=dataset.key, expiry_month=month, bet_down=bet_down)
+        for dataset in targets
+        for month in EXPIRY_MONTHS
+        for bet_down in (False, True)
+    )
+
 
 # **만기월과 청산 목표일의 레이블은 위 측정 절에 이미 있다.** 측정과 체결이 같은 이름을
 # 쓰는 것이 의도이며, 두 벌을 두면 한쪽만 고쳐도 예외가 나지 않고 두 표의 헤더만 갈린다

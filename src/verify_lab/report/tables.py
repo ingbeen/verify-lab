@@ -28,8 +28,6 @@ from verify_lab.measure.constants import (
     COL_SIGNAL_COUNT,
 )
 from verify_lab.measure.screening import (
-    COL_BASELINE_GAP,
-    COL_BASELINE_HIT_RATE,
     COL_DIRECTION,
     COL_EXPECTED_VALUE,
     COL_HIT_RATE,
@@ -73,8 +71,6 @@ from verify_lab.report.constants import (
     COLUMN_GAP,
     DATE_FORMAT,
     DISPLAY_BASELINE,
-    DISPLAY_BASELINE_GAP,
-    DISPLAY_BASELINE_HIT_RATE,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
     DISPLAY_DIRECTION,
@@ -567,9 +563,10 @@ def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_l
     셋 중 하나라도 빠지면 그 칸의 크기를 판단할 수 없다 — 회당만 있으면 작아 보이고,
     합산만 있으면 기간이 긴 칸이 자동으로 이긴다.
 
-    **기준선을 함께 낸다.** 판정에 쓰이지는 않지만 **같은 적중률이 방향에 따라 뜻이 정반대**이고
-    (오르는 쪽 기준선 55~59% · 내리는 쪽 41~45%), 기준선과 사실상 같은 칸이 게이트를 통과하기
-    때문이다 — SPY 11월은 적중률 66.7% 인데 기준선도 66.7% 다.
+    **기준선을 내지 않는다.** 기준선은 「이 신호가 시장 전체와 다른가」를 묻고 판정은
+    「걸 만한가」를 묻는 **다른 질문**이라, 함께 실으면 읽는 사람이 판정에 안 쓰는 축으로
+    거른다. 값은 같은 폴더의 `통계.csv` 계열이 담는다
+    (루트 `CLAUDE.md` 「기준선은 탈락 사유가 아니다」).
 
     Args:
         candidates: `screening.screen_candidates` 의 결과
@@ -596,8 +593,6 @@ def build_candidates_table(candidates: pd.DataFrame, *, axis_column: str, axis_l
             # 매매법은 회당 평균이 구조적으로 작게 나와 크기 감각을 주지 못하고, 왕복 수수료와
             # 견줄 값인지도 그 자리에서 보이지 않는다. 떨어뜨려 두면 둘이 같이 읽히지 않는다
             DISPLAY_TOTAL_RETURN: _to_percent(candidates[COL_TOTAL_RETURN]).to_numpy(),
-            DISPLAY_BASELINE_HIT_RATE: _to_percent(candidates[COL_BASELINE_HIT_RATE]).to_numpy(),
-            DISPLAY_BASELINE_GAP: _to_percent(candidates[COL_BASELINE_GAP]).to_numpy(),
             DISPLAY_SCREEN: candidates[COL_SCREEN].to_numpy(),
         }
     )

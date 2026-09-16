@@ -25,7 +25,13 @@ from pathlib import Path
 import pandas as pd
 
 from verify_lab.common_constants import RATE_TO_PERCENT
-from verify_lab.execution.constants import DISPLAY_STOP_LEVEL, NO_STOP_LABEL, SUMMARY_FILENAME, TRADES_FILENAME
+from verify_lab.execution.constants import (
+    DISPLAY_STOP_LEVEL,
+    NO_STOP_LABEL,
+    PERIODS,
+    SUMMARY_FILENAME,
+    TRADES_FILENAME,
+)
 from verify_lab.execution.run_summary import KEY_ROW_COUNTS, KEY_RULE, merge_run_summary
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
 from verify_lab.measure.statistics import (
@@ -54,7 +60,6 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_EXIT_WEEKDAY,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
-    EXPIRY_CELLS,
     EXPIRY_STOP_LEVEL,
     EXPIRY_STOP_LEVELS,
     OUTPUT_FILES,
@@ -64,6 +69,7 @@ from verify_lab.studies.option_expiry.constants import (
     TRACK_NAME,
     Dataset,
     ExpiryCell,
+    all_cells,
 )
 from verify_lab.studies.option_expiry.runner import (
     KEY_DATASETS,
@@ -140,29 +146,23 @@ def _selected_datasets(keys: list[str] | None) -> tuple[Dataset, ...]:
     return tuple(dataset for dataset in DATASETS if dataset.key in set(keys))
 
 
-def _selected_cells(keys: list[str] | None) -> list[ExpiryCell]:
-    """같은 키로 체결 대상 칸을 고른다.
+def _selected_cells(datasets: tuple[Dataset, ...]) -> list[ExpiryCell]:
+    """고른 대상의 **전 칸**(만기월 12 × 방향 2)을 만든다.
 
     **측정과 체결의 범위가 한 인자로 정해진다.** 따로 받으면 한 실행 안에서 둘이 갈릴 수 있고,
     그러면 같은 폴더의 두 표가 다른 범위를 재게 된다.
 
+    **칸을 고르지 않는다.** 격자를 전부 내는 것은 고르는 것이 아니며, 무엇을 실제로 거는지는
+    `docs/매매/옵션_만기일/규칙.md` §1 이 정한다. 목록 생성은 도메인 로직이라 CLI 가 아니라
+    `studies.option_expiry.constants.all_cells` 가 소유한다.
+
     Args:
-        keys: 종목 이름 목록. `None` 이면 전부
+        datasets: 이번 실행의 측정 대상
 
     Returns:
-        선택된 칸 목록
-
-    Raises:
-        ValueError: 고른 종목에 해당하는 칸이 하나도 없는 경우
+        그 대상들의 전 칸
     """
-    if not keys:
-        return list(EXPIRY_CELLS)
-
-    selected = [cell for cell in EXPIRY_CELLS if cell.dataset_key in set(keys)]
-    if not selected:
-        raise ValueError(f"고른 종목에 해당하는 칸이 없습니다: {keys}")
-
-    return selected
+    return list(all_cells(datasets))
 
 
 def _print_scope(cells: list[ExpiryCell]) -> None:
@@ -174,12 +174,14 @@ def _print_scope(cells: list[ExpiryCell]) -> None:
     Args:
         cells: 실행할 칸 목록
     """
+    stop_count = len(EXPIRY_STOP_LEVELS) + 1
     logger.debug(
-        f"대상 {len(cells)}칸 × 손절선 {len(EXPIRY_STOP_LEVELS)}종 + {NO_STOP_LABEL} "
-        f"= {len(cells) * (len(EXPIRY_STOP_LEVELS) + 1)}행 "
+        f"대상 {len(cells)}칸 × 손절선 {stop_count}종({NO_STOP_LABEL} 포함) × 시기 {len(PERIODS)}행 "
+        f"= 성적표 {len(cells) * stop_count * len(PERIODS):,}행 "
         f"(확정 손절선은 {-EXPIRY_STOP_LEVEL * RATE_TO_PERCENT:.1f}%)"
     )
-    logger.debug("미국 9월 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향이라 독립된 세 번의 기회가 아닙니다")
+    logger.debug("전 칸을 냅니다 — 실제로 거는 칸은 docs/매매/옵션_만기일/규칙.md §1 이 정합니다")
+    logger.debug("같은 달 미국 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향이라 독립된 세 번의 기회가 아닙니다")
 
 
 def _display_headline(outputs: StudyOutputs) -> None:
@@ -304,7 +306,7 @@ def main() -> int:
     """
     args = parse_args()
     datasets = _selected_datasets(args.dataset)
-    cells = _selected_cells(args.dataset)
+    cells = _selected_cells(datasets)
 
     _print_scope(cells)
     study = run_study(datasets, repeats=args.repeats, seed=args.seed)

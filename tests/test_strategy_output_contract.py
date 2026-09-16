@@ -124,7 +124,7 @@ SUMMARY_COMMON_COLUMNS = (
     "승률(%)",
     "손익비",
     "손익분기 승률(%)",
-    # **손익비 바로 뒤에 그 분자·분모를 둔다.** `docs/공유/투자금_결정.md` §1.2 가
+    # **손익비 바로 뒤에 그 분자·분모를 둔다.** `docs/조사/투자금_결정/규칙.md` §1.2 가
     # 이 두 값의 출처를 성적표로 적어 두었는데 실제로는 없었다. `이길 때(%)` 는 양수,
     # `질 때(%)` 는 **음수**다 — `최악(%)` 과 같은 관용이고 그 문서의 예시와도 부호가 맞는다
     "이길 때(%)",
@@ -922,20 +922,63 @@ class TestSingleColumnStopFilter:
 class TestFilenames:
     """파일 이름은 상수 한 곳에서 온다"""
 
-    def test_세_파일_이름이_상수로_정의돼_있다(self) -> None:
+    def test_사용자가_보는_네_이름이_상수로_정의돼_있다(self) -> None:
         """
         목적: 이름이 코드 여러 곳에 흩어진 문자열이던 상태를 닫는다
 
-        Given: 매매 계층의 상수 모듈
+        **경계는 「중요도」가 아니라 「종류」다.** 사용자가 판정에 쓰는 네 종류만 한글이고
+        원자료·검정 표는 영문으로 남는다 — 중요도로 가르면 새 표가 생길 때마다 다시 물어야 하고,
+        판정이 갈리면 이름이 뒤섞인다.
+
+        Given: 체결 계층과 출력 계층의 상수 모듈
         When: 파일명 상수를 읽었을 때
-        Then: 세 이름이 한글로 정의돼 있다
+        Then: 네 이름이 한글로 정의돼 있다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
+        from verify_lab.report.constants import CANDIDATES_FILENAME, STATISTICS_FILENAME
 
         # When / Then
         assert SUMMARY_FILENAME == "성적표.csv"
         assert TRADES_FILENAME == "거래내역.csv"
+        assert CANDIDATES_FILENAME == "1차_판정.csv"
+        assert STATISTICS_FILENAME == "통계.csv"
+
+    def test_세_매매법이_같은_네_이름을_낸다(self) -> None:
+        """
+        목적: **같은 질문에 답하는 표가 매매법마다 다른 이름으로 불리던 상태를 닫는다.**
+
+        판정표가 `candidates.csv`·`month_candidates.csv` 였고 집계표가 `statistics.csv`·
+        `months.csv`·`weekly_trade_by_month.csv` 였다. 매매법을 바꿔 열 때마다 어느 파일인지
+        다시 찾아야 했고, **이름이 갈려 있어 계약으로 고정할 수도 없었다.**
+
+        축을 이름에 넣지 않는다(`만기월별_통계` 가 아니라 `통계`) — 폴더가 매매법을 말하므로
+        이름에 또 넣으면 중복이고, 넣는 순간 세 이름이 다시 갈린다.
+
+        Given: 세 매매법의 산출물 파일 목록과 체결 산출물 이름
+        When: 사용자가 보는 네 이름을 찾는다
+        Then: 셋 다 네 이름을 그대로 낸다
+        """
+        # Given
+        from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
+        from verify_lab.report.constants import CANDIDATES_FILENAME, STATISTICS_FILENAME
+        from verify_lab.studies.month_end.constants import OUTPUT_FILES as MONTH_END_FILES
+        from verify_lab.studies.option_expiry.constants import OUTPUT_FILES as EXPIRY_FILES
+        from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
+
+        measured = {
+            "역방향": set(REVERSE_FILES.values()),
+            "옵션 만기일": set(EXPIRY_FILES.values()),
+            "월말 진입": set(MONTH_END_FILES.values()),
+        }
+
+        # When / Then
+        for name, files in measured.items():
+            missing = [wanted for wanted in (CANDIDATES_FILENAME, STATISTICS_FILENAME) if wanted not in files]
+            assert not missing, f"{name} 의 산출물에 사용자가 보는 이름이 없습니다: {missing}"
+
+        # 체결 둘은 `execution/constants.py` 가 소유하므로 세 매매법이 자동으로 같다
+        assert {SUMMARY_FILENAME, TRADES_FILENAME} == {"성적표.csv", "거래내역.csv"}
 
     def test_매매_스크립트에_csv_문자열이_없다(self) -> None:
         """
@@ -963,7 +1006,7 @@ class TestPayoffAmountColumns:
         """
         목적: 두 열의 부호를 계약으로 고정한다.
 
-        **`최악(%)` 이 음수인 것과 같은 관용**이고 `docs/공유/투자금_결정.md` §1.2 의
+        **`최악(%)` 이 음수인 것과 같은 관용**이고 `docs/조사/투자금_결정/규칙.md` §1.2 의
         예시(`0.0138` · `-0.0133`)와도 부호가 맞는다. 둘 다 절대값으로 내면 표를 읽는 사람이
         어느 쪽이 손실인지 이름으로만 판단해야 한다.
 
