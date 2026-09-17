@@ -1,15 +1,18 @@
 """후보 판정의 계약을 고정한다.
 
-이 계층이 조용히 틀리면 **없는 우위를 있다고 보고한다.** 판정은 **게이트 하나뿐**이다.
+이 계층이 조용히 틀리면 **없는 우위를 있다고 보고한다.** 판정은 **게이트 하나뿐이고
+조건도 하나**다 (2026-09-17 사용자 확정).
 
-- **게이트** (적중률 · 방향 기대값) — 볼 목록에 올릴지를 가른다. 이것 말고는 아무것도 떨어뜨리지 않는다
+- **게이트** (방향 기대값 하한) — 볼 목록에 올릴지를 가른다. 이것 말고는 아무것도 떨어뜨리지 않는다
+- **적중률은 게이트가 아니다** — 성적표의 `승률(%)` 과 방향 표의 `적중률(%)` 로 그대로 나가고,
+  그것으로 칸을 거를지는 사용자가 정한다
 
 **등급은 없다** (2026-09-12 개편). 전에는 기준선 대비 차이·우연확률·시기 안정성·손익비 넷을
 「충족/물음」으로 셌는데, 같은 것을 구간 게이트가 다른 기준(55% 대 60%)으로 또 묻고 있었다.
 **판단은 사용자가 한다** — 코드는 볼 목록만 만든다.
 
 핵심 계약은 다섯이다.
-- 게이트 두 축**만** 가른다 — 우연확률이 1 이어도, 기준선과 같아도 후보로 남는다
+- **기대값 하나»만«** 가른다 — 우연확률이 1 이어도, 기준선과 같아도, **적중률이 낮아도** 후보로 남는다
 - 방향 기대값은 **방향 부호를 적용한 평균**이다 — 「아래」 칸은 평균이 양수면 기대값이 음수다
 - 방향은 **두 방향 비율 중 큰 쪽**이다. 기준선은 방향에도 게이트에도 쓰지 않는다
   (2026-09-15 개편 — 기준선 방식은 156칸에서 **더해 주는 칸 0개**에 5칸을 빼기만 했다)
@@ -38,7 +41,6 @@ from verify_lab.measure.screening import (
     DIRECTION_DOWN,
     DIRECTION_UP,
     MIN_EXPECTED_VALUE,
-    MIN_HIT_RATE,
     SCREEN_CANDIDATE,
     SCREEN_EXCLUDED,
     SCREEN_NOT_JUDGED,
@@ -56,6 +58,11 @@ from verify_lab.measure.statistics import (
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12
+
+# 방향 표에서 «우세한 쪽»으로 잡히는 비율. **게이트 상수가 아니다** — 적중률은 2026-09-17 에
+# 게이트에서 빠졌고, 이 값은 「두 비율 중 큰 쪽이 방향이 된다」를 재는 데만 쓴다.
+# 프로덕션 상수에서 파생시키지 않는 것은 **이제 대응하는 상수가 없기 때문**이다
+DOMINANT_RATE = 0.60
 
 AXIS = "만기월"
 
@@ -120,7 +127,6 @@ def _verdict(profile: pd.DataFrame, *, tradable: bool = True, index: int = 0) ->
     row = profile.iloc[index]
 
     return screen_verdict(
-        hit_rate=float(row[COL_HIT_RATE]),
         expected_value=float(row[COL_EXPECTED_VALUE]),
         sample_count=int(row[COL_SAMPLE_COUNT]),
         tradable=tradable,
@@ -130,11 +136,11 @@ def _verdict(profile: pd.DataFrame, *, tradable: bool = True, index: int = 0) ->
 class TestScreen:
     """게이트가 무엇을 가르고 무엇을 가르지 «않는지» 고정한다."""
 
-    def test_적중률과_기대값을_넘으면_후보다(self) -> None:
+    def test_기대값을_넘으면_후보다(self) -> None:
         """
-        목적: 게이트 두 조건을 모두 넘은 칸은 후보로 올린다.
+        목적: 게이트 조건 하나를 넘은 칸은 후보로 올린다.
 
-        Given: 아래로 73% 적중 · 평균 -0.5%(아래로 걸면 기대값 +0.5%)
+        Given: 아래로 73% 적중 · 기대값이 하한 위인 칸
         When: 판정하면
         Then: 후보이고 방향이 「아래」다
         """
@@ -148,23 +154,29 @@ class TestScreen:
         assert _verdict(result) == SCREEN_CANDIDATE
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
 
-    def test_적중률이_낮으면_제외된다(self) -> None:
+    def test_적중률이_낮아도_기대값을_넘으면_후보다(self) -> None:
         """
-        목적: **게이트 조건 1 단독으로 가른다.** 기대값이 좋아도 적중률이 낮으면 집행할 수 없다.
+        목적: **적중률이 게이트에서 빠진 것을 고정한다** (2026-09-17 사용자 확정).
 
-        Given: 기대값은 양수인데 적중률이 하한 미만
+              전에는 이 칸이 「적중률 미달」로 제외됐다. **이 테스트가 없으면 적중률 하한을
+              되돌려도 아무것도 실패하지 않는다** — 조건을 다시 늘리는 것은 판정 기준을
+              바꾸는 일이므로 그 자리에서 드러나야 한다.
+
+        Given: 기대값은 하한 위인데 적중률이 옛 하한(60%)에 못 미치는 칸
+               — **우세한 쪽이긴 해야 방향이 「아래」로 잡힌다.** 두 비율이 같으면 「위」로 간다
         When: 판정하면
-        Then: 제외된다
+        Then: **후보다**
         """
         # Given
-        hit = MIN_HIT_RATE - 0.01
+        hit = DOMINANT_RATE - 0.05
         summary = _down_summary(loss_rate=hit, win_rate=1.0 - hit)
 
         # When
         result = direction_profile(summary, axis_column=AXIS)
 
         # Then
-        assert _verdict(result) == SCREEN_EXCLUDED
+        assert float(result[COL_HIT_RATE].iloc[0]) < DOMINANT_RATE
+        assert _verdict(result) == SCREEN_CANDIDATE
 
     def test_기대값이_음수면_제외된다(self) -> None:
         """
@@ -184,23 +196,6 @@ class TestScreen:
         # Then
         assert _verdict(result) == SCREEN_EXCLUDED
         assert float(result[COL_EXPECTED_VALUE].iloc[0]) == pytest.approx(-0.003123, abs=EXACT_TOLERANCE)
-
-    def test_적중률이_하한과_정확히_같으면_후보다(self) -> None:
-        """
-        목적: 경계를 어느 쪽으로 여는지 고정한다. 하한은 **이상**이다.
-
-        Given: 적중률이 하한과 정확히 같은 칸
-        When: 판정하면
-        Then: 후보다
-        """
-        # Given
-        summary = _down_summary(loss_rate=MIN_HIT_RATE, win_rate=1.0 - MIN_HIT_RATE)
-
-        # When
-        result = direction_profile(summary, axis_column=AXIS)
-
-        # Then
-        assert _verdict(result) == SCREEN_CANDIDATE
 
     def test_기대값이_하한과_같으면_후보다(self) -> None:
         """
@@ -258,7 +253,10 @@ class TestScreen:
               66.7% 로 이기는 매매인 것은 그대로이고, 이벤트형은 그 성적을 **연 며칠의 노출로**
               얻는다 — 365일 묶여서 같은 성적을 내는 것과 자본 효율이 다르다.
 
-        Given: SPY 11월 그대로 — 오른 비율 66.7% 인데 기준선도 66.7% 라 차이가 0 인 칸
+        Given: SPY 11월의 방향 비율 그대로 — 오른 비율 66.7% 인데 기준선도 66.7% 라 차이가 0 인 칸.
+               **평균은 기대값 하한에서 파생시킨다** — 손으로 박으면 하한이 올라갈 때 이 칸이
+               조용히 게이트 아래로 내려가고, 「기준선을 안 봐도 후보다」를 재려던 테스트가
+               **실은 「기대값이 모자라 제외다」를 재게 된다**
         When: 판정하면
         Then: 후보다
         """
@@ -268,7 +266,7 @@ class TestScreen:
             loss_rate=0.333,
             win_excess=0.0,
             loss_excess=0.0,
-            mean=0.0074,
+            mean=MIN_EXPECTED_VALUE + 0.002,
         )
 
         # When
@@ -330,10 +328,9 @@ class TestScreen:
         Then: 두 칸이 모두 결과에 있다
         """
         # Given
-        weak_hit = MIN_HIT_RATE - 0.10
         blocks = [
             _down_summary().assign(**{AXIS: 9}),
-            _down_summary(loss_rate=weak_hit, win_rate=1.0 - weak_hit).assign(**{AXIS: 3}),
+            _down_summary(mean=-(MIN_EXPECTED_VALUE / 2.0)).assign(**{AXIS: 3}),
         ]
         summary = pd.concat(blocks, ignore_index=True)
 
@@ -467,13 +464,12 @@ class TestNotJudged:
         """
         목적: 「판정 안 함」이 「제외」를 덮는다. 살 수 없는 대상에는 합격도 불합격도 없다.
 
-        Given: 적중률이 하한에 못 미치는 칸
+        Given: 기대값이 하한에 못 미치는 칸
         When: 살 수 없는 대상으로 판정하면
         Then: 제외가 아니라 「판정 안 함」이다
         """
         # Given
-        weak = MIN_HIT_RATE - 0.10
-        summary = _down_summary(loss_rate=weak, win_rate=1.0 - weak)
+        summary = _down_summary(mean=-(MIN_EXPECTED_VALUE / 2.0))
 
         # When
         result = direction_profile(summary, axis_column=AXIS)
@@ -534,7 +530,9 @@ class TestDirectionSymmetry:
         """
         목적: 방향을 가리지 않는다. 위로 치우친 칸도 같은 두 조건으로 판정한다.
 
-        Given: 오른 비율이 기준선보다 15%p 높고 평균이 양수인 칸
+        Given: 오른 비율이 기준선보다 15%p 높고 평균이 하한을 넘는 칸.
+               **평균을 하한에서 파생시킨다** — 손으로 박으면 하한이 올라갈 때 이 칸이
+               게이트 아래로 내려가, 「방향 대칭」을 재려던 테스트가 기대값 경계를 재게 된다
         When: 판정하면
         Then: 후보이고 방향이 「위」다
         """
@@ -544,7 +542,7 @@ class TestDirectionSymmetry:
             loss_rate=0.32,
             win_excess=0.15,
             loss_excess=-0.15,
-            mean=0.006,
+            mean=MIN_EXPECTED_VALUE + 0.001,
         )
 
         # When
@@ -671,7 +669,7 @@ class TestDirectionSymmetry:
 
         # Then
         assert result[COL_DIRECTION].iloc[0] == DIRECTION_DOWN
-        assert result[COL_HIT_RATE].iloc[0] >= MIN_HIT_RATE
+        assert result[COL_HIT_RATE].iloc[0] >= DOMINANT_RATE
         assert result[COL_EXPECTED_VALUE].iloc[0] == pytest.approx(-0.00315, abs=EXACT_TOLERANCE)
         assert _verdict(result) == SCREEN_EXCLUDED
 
@@ -960,15 +958,14 @@ class TestTotalReturn:
 
     def test_합산은_게이트_판정을_바꾸지_않는다(self) -> None:
         """
-        목적: 합산이 커도 게이트는 적중률과 회당 기대값만 본다.
+        목적: 합산이 커도 게이트는 **회당** 기대값만 본다.
 
-        Given: 표본이 많아 합산은 큰데 적중률이 하한에 못 미치는 칸
+        Given: 표본이 많아 합산은 큰데 회당 기대값이 하한에 못 미치는 칸
         When: 판정하면
         Then: 제외다
         """
         # Given
-        weak = MIN_HIT_RATE - 0.05
-        summary = _down_summary(loss_rate=weak, win_rate=1.0 - weak, sample=200)
+        summary = _down_summary(mean=-(MIN_EXPECTED_VALUE / 2.0), sample=200)
 
         # When
         result = direction_profile(summary, axis_column=AXIS)
@@ -987,7 +984,7 @@ class TestScalarVerdict:
     두 진입점으로 같은 계산을 쓰는 것과 같은 구조다.
 
     **이 진입점은 방향을 정하지 않는다.** 부르는 쪽이 이미 방향을 알고 있고, 그 방향으로
-    적중률과 기대값을 계산해 넘긴다.
+    기대값을 계산해 넘긴다.
     """
 
     def test_방향_표의_값으로_게이트가_걸린다(self) -> None:
@@ -1008,7 +1005,6 @@ class TestScalarVerdict:
         result = direction_profile(summary, axis_column=AXIS)
         row = result.iloc[0]
         scalar = screen_verdict(
-            hit_rate=float(row[COL_HIT_RATE]),
             expected_value=float(row[COL_EXPECTED_VALUE]),
             sample_count=int(row[COL_SAMPLE_COUNT]),
             tradable=True,
@@ -1018,42 +1014,19 @@ class TestScalarVerdict:
         assert scalar == SCREEN_CANDIDATE
         assert COL_SCREEN not in result.columns
 
-    def test_적중률이_하한과_같으면_후보다_스칼라(self) -> None:
-        """
-        목적: 경계가 「이상」임을 고정한다 — 「초과」로 바뀌면 60.0% 칸이 통째로 빠진다.
-
-        Given: 적중률이 정확히 하한이고 기대값이 하한을 넘는 칸
-               — 기대값은 **상수에서 파생**시킨다. 손으로 박으면 하한이 올라갈 때 조용히
-               「적중률 경계」가 아니라 「기대값 경계」를 재게 된다
-        When: 판정하면
-        Then: 후보다
-        """
-        # Given / When
-        verdict = screen_verdict(
-            hit_rate=MIN_HIT_RATE,
-            expected_value=MIN_EXPECTED_VALUE + 0.001,
-            sample_count=30,
-            tradable=True,
-        )
-
-        # Then
-        assert verdict == SCREEN_CANDIDATE
-
     def test_기대값이_하한과_같으면_후보다_스칼라(self) -> None:
         """
-        목적: 기대값 경계가 「이상」임을 고정한다 — 적중률 경계와 같은 방향이다.
+        목적: 경계가 「이상」임을 고정한다 — 「초과」로 바뀌면 하한과 정확히 같은 칸이 통째로 빠진다.
 
-        Given: 적중률은 넘고 기대값이 하한과 정확히 같은 칸
+              **판정에 들어가는 값은 반올림 뒤**라(`execution/periods.py`) 표에 하한이 그대로
+              찍힌 행이 곧 경계이고, 경계를 어느 쪽으로 여는지가 산출물을 바꾼다.
+
+        Given: 기대값이 하한과 정확히 같은 칸
         When: 판정하면
         Then: 후보다
         """
         # Given / When
-        verdict = screen_verdict(
-            hit_rate=MIN_HIT_RATE + 0.1,
-            expected_value=MIN_EXPECTED_VALUE,
-            sample_count=30,
-            tradable=True,
-        )
+        verdict = screen_verdict(expected_value=MIN_EXPECTED_VALUE, sample_count=30, tradable=True)
 
         # Then
         assert verdict == SCREEN_CANDIDATE
@@ -1062,17 +1035,12 @@ class TestScalarVerdict:
         """
         목적: 경계의 «반대쪽»을 고정한다. 「이상」이므로 하한 미만은 제외다.
 
-        Given: 적중률은 넘는데 기대값이 하한에 아주 조금 못 미치는 칸
+        Given: 기대값이 하한에 아주 조금 못 미치는 칸
         When: 판정하면
         Then: 제외다
         """
         # Given / When
-        verdict = screen_verdict(
-            hit_rate=MIN_HIT_RATE + 0.1,
-            expected_value=MIN_EXPECTED_VALUE - 1e-9,
-            sample_count=30,
-            tradable=True,
-        )
+        verdict = screen_verdict(expected_value=MIN_EXPECTED_VALUE - 1e-9, sample_count=30, tradable=True)
 
         # Then
         assert verdict == SCREEN_EXCLUDED
@@ -1088,7 +1056,7 @@ class TestScalarVerdict:
         Then: 후보다
         """
         # Given / When
-        verdict = screen_verdict(hit_rate=1.0, expected_value=0.02, sample_count=1, tradable=True)
+        verdict = screen_verdict(expected_value=0.02, sample_count=1, tradable=True)
 
         # Then
         assert verdict == SCREEN_CANDIDATE
@@ -1097,14 +1065,14 @@ class TestScalarVerdict:
         """
         목적: 「재봤더니 아니었다」와 「재본 적이 없다」를 가른다.
 
-        0건 칸의 적중률·기대값은 결측이라 비교가 전부 거짓이 되고, 가만히 두면 「제외」로 찍힌다.
+        0건 칸의 기대값은 결측이라 비교가 전부 거짓이 되고, 가만히 두면 「제외」로 찍힌다.
 
         Given: 표본이 0건인 칸
         When: 판정하면
         Then: 판정 안 함이다
         """
         # Given / When
-        verdict = screen_verdict(hit_rate=0.0, expected_value=0.0, sample_count=0, tradable=True)
+        verdict = screen_verdict(expected_value=0.0, sample_count=0, tradable=True)
 
         # Then
         assert verdict == SCREEN_NOT_JUDGED
@@ -1118,23 +1086,23 @@ class TestScalarVerdict:
         Then: 판정 안 함이다
         """
         # Given / When
-        verdict = screen_verdict(hit_rate=0.9, expected_value=0.02, sample_count=30, tradable=False)
+        verdict = screen_verdict(expected_value=0.02, sample_count=30, tradable=False)
 
         # Then
         assert verdict == SCREEN_NOT_JUDGED
 
-    def test_결측_적중률은_판정하지_않는다(self) -> None:
+    def test_결측_기대값은_판정하지_않는다(self) -> None:
         """
         목적: 표본이 있어도 지표가 결측인 칸이 「제외」로 찍히지 않게 한다.
 
         `NaN` 과의 비교는 전부 거짓이라 가드가 없으면 조용히 제외가 된다.
 
-        Given: 표본 수는 있는데 적중률이 결측인 칸
+        Given: 표본 수는 있는데 기대값이 결측인 칸
         When: 판정하면
         Then: 판정 안 함이다
         """
         # Given / When
-        verdict = screen_verdict(hit_rate=float("nan"), expected_value=0.02, sample_count=5, tradable=True)
+        verdict = screen_verdict(expected_value=float("nan"), sample_count=5, tradable=True)
 
         # Then
         assert verdict == SCREEN_NOT_JUDGED
@@ -1161,3 +1129,43 @@ class TestScalarVerdict:
         # Then
         assert "screen_verdict(" in source, "성적 산식이 게이트를 부르지 않습니다 — 판정식이 두 벌입니다"
         assert "MIN_HIT_RATE" not in source, "성적 산식이 게이트 기준값을 따로 들고 있습니다"
+
+
+class TestGateValues:
+    """게이트의 «값»을 손으로 박는다 — 나머지 경계 테스트는 상수에서 파생되기 때문이다
+
+    이 파일의 경계 테스트는 전부 `MIN_EXPECTED_VALUE` 에서 값을 끌어온다.
+    의도한 설계지만(하한이 올라가도 「경계」를 계속 재려면 그래야 한다) **그 상태에서는
+    상수를 바꿔도 아무것도 실패하지 않는다.** 값을 바꾸는 것은 판정 기준을 바꾸는 일이고
+    산출물의 `1차 판정` 이 통째로 달라지므로, **의도한 변경일 때만 이 테스트가 실패해야 한다.**
+
+    **값을 바꿀 때는 이 파일을 함께 고치고, 그 사실을 계획서와 문서에 남긴다.**
+    """
+
+    def test_게이트_조건이_하나다(self) -> None:
+        """
+        목적: **조건이 다시 늘어나는 것을 막는다** (2026-09-17 사용자 확정)
+
+        적중률 하한을 함께 걸던 것을 걷어냈고, 그 상수도 지웠다. 되살리면 여기서 걸린다.
+
+        Given: 판정 모듈
+        When: 적중률 하한 상수를 찾는다
+        Then: 없다
+        """
+        from verify_lab.measure import screening
+
+        assert not hasattr(screening, "MIN_HIT_RATE"), "적중률 하한이 되살아났습니다 — 게이트 조건은 하나입니다"
+
+    def test_회당_기대값_하한이_1퍼센트다(self) -> None:
+        """
+        목적: 회당 기대값 하한을 값으로 고정한다 (2026-09-17 사용자 확정, 0.5% 에서 올렸다)
+
+        [중요] **거래비용 문턱이 아니다.** 왕복 비용과 숫자를 견주어 정한 값이 아니라
+        「이만큼은 벌어야 걸겠다」는 사용자의 최소치이며, 비용을 반영하기로 하면 그것은
+        이 값 **위에** 더해진다 (`docs/조사/투자금_결정/규칙.md` §3.2).
+
+        Given: 게이트 상수
+        When: 값을 본다
+        Then: 0.01 이다
+        """
+        assert MIN_EXPECTED_VALUE == pytest.approx(0.01, abs=EXACT_TOLERANCE)

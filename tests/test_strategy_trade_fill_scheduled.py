@@ -16,12 +16,15 @@
 - 청산일 이후의 데이터를 잘라도 결과가 같다 (**미래 참조 감시**)
 - **음수 진입 위치는 두 경로 모두에서 거부한다.** `iloc[-1]` 이 뒤에서 세어 마지막 행을
   진입가로 잡으므로, 막지 않으면 무손절 경로가 **예외 없이** 엉뚱한 체결을 만든다
+- **보유 중 최악은 결과와 따로 잰다.** ETF 는 장중 고가·저가로, 종가 하나뿐인 지수는
+  종가로 재며 **기준을 가르는 것은 `price_column` 하나**다. 보유 구간 안의 0 이하 가격은
+  거부한다 — 진입가·청산가 검사는 양 끝만 보기 때문이다
 """
 
 import pandas as pd
 import pytest
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VALUE, COL_VOLUME
 from verify_lab.execution.constants import EXIT_GAP_STOP, EXIT_INTRADAY_STOP, EXIT_LIMIT
 from verify_lab.execution.trade_fill import resolve_positions, simulate_scheduled_trade
 
@@ -606,3 +609,106 @@ class TestResolvePositions:
 
         # Then
         assert positions.tolist() == []
+
+
+class TestWorstHoldRateScheduled:
+    """보유 중 최악 계약 — 달력 청산 경로
+
+    **이 경로에만 있는 갈림이 하나다: 종가 계열(지수)은 장중을 잴 수 없다.**
+    고가·저가가 아예 없으므로 종가로 재며, 그 값은 실제로 감당한 낙폭보다 **얕다.**
+    어느 기준으로 잰 행인지는 `손절선(%)` 의 `손절불가` 표기가 이미 말해 준다.
+    """
+
+    def test_무손절_ETF_도_장중으로_잰다(self) -> None:
+        """
+        목적: 무손절 행이 **결과만 보고 끝나지 않는다**는 계약을 고정한다
+
+        무손절 경로는 청산일 종가만 읽어 체결을 만든다. 보유 중 최악까지 그 방식으로 재면
+        **손절이 무엇을 막았는지**를 견줄 대조축이 사라진다 — 무손절 행의 존재 이유가 그것이다.
+
+        Given: 중간에 -20% 까지 밀렸다가 청산일에 -6% 로 끝난 시세
+        When: 손절선 없이 위에 걸었을 때
+        Then: 결과는 -6% 이고 보유 중 최악은 **-20%** 다
+        """
+        # Given
+        frame = _frame([_entry_day(), (95.0, 96.0, 80.0, 82.0), (90.0, 95.0, 89.0, 94.0)])
+
+        # When
+        result = simulate_scheduled_trade(frame, 0, 2, bet_down=False, stop_level=None)
+
+        # Then
+        assert result.return_rate == pytest.approx(-0.06, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate == pytest.approx(-0.20, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate <= result.return_rate
+
+    def test_종가_계열은_종가로_잰다(self) -> None:
+        """
+        목적: **지수 경로**를 고정한다 — 고가·저가가 없어도 값을 낸다
+
+        지수는 `storage/series/` 에 종가 하나로 저장돼 장중 최저점을 알 방법이 없다.
+        여기서 예외를 내면 30년짜리 긴 축에서 이 컬럼을 통째로 잃는다.
+
+        **기준을 가르는 것은 `price_column` 하나다** — 종가가 아니면 장중을 잴 수 없다는 뜻이라
+        별도 인자를 두지 않는다. 두면 같은 사실을 두 곳에서 말하게 되고 어긋나면 한쪽이 조용히 틀린다.
+
+        Given: 종가만 있는 계열이 중간에 -10% 까지 내렸다가 -2% 로 끝난 경우
+        When: 그 계열의 가격 컬럼으로 무손절 체결을 요청했을 때
+        Then: 종가 기준으로 **-10%** 가 나온다
+        """
+        # Given
+        frame = pd.DataFrame(
+            {
+                COL_DATE: pd.to_datetime(["2020-01-02", "2020-01-03", "2020-01-06"]),
+                COL_VALUE: [100.0, 90.0, 98.0],
+            }
+        )
+
+        # When
+        result = simulate_scheduled_trade(frame, 0, 2, bet_down=False, stop_level=None, price_column=COL_VALUE)
+
+        # Then
+        assert result.return_rate == pytest.approx(-0.02, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate == pytest.approx(-0.10, abs=RATE_TOLERANCE)
+
+    def test_보유_구간의_0_이하_가격을_거부한다(self) -> None:
+        """
+        목적: **진입가·청산가 검사가 「구간 안」을 막지 못하는 것**을 닫는다 (엣지 케이스)
+
+        계열 로더는 값의 부호를 보지 않는다 — 마이너스 금리와 0% 금리가 실재하기 때문이며
+        그 판정은 옳다. 그런데 양 끝만 검사하면 **가운데 0 하나가 조용히 −100% 짜리
+        보유 중 최악을 만들고**, 그 값이 칸의 최솟값이 되어 성적표에 그대로 실린다.
+
+        Given: 진입가·청산가는 멀쩡한데 «가운데» 값이 0 인 계열
+        When: 무손절 체결을 요청했을 때
+        Then: ValueError 가 난다
+        """
+        # Given
+        frame = pd.DataFrame(
+            {
+                COL_DATE: pd.to_datetime(["2020-01-02", "2020-01-03", "2020-01-06"]),
+                COL_VALUE: [100.0, 0.0, 98.0],
+            }
+        )
+
+        # When / Then
+        with pytest.raises(ValueError, match="0 이하"):
+            simulate_scheduled_trade(frame, 0, 2, bet_down=False, stop_level=None, price_column=COL_VALUE)
+
+    def test_아래로_거는_칸은_고가로_잡힌다(self) -> None:
+        """
+        목적: 달력 경로에서도 방향에 따라 손실 쪽이 갈리는 것을 고정한다
+
+        Given: 장중 +9% 까지 올랐다가 청산일에 진입가로 돌아온 시세
+        When: 무손절로 아래에 걸었을 때
+        Then: 결과는 0% 이고 보유 중 최악은 -9% 다
+        """
+        # Given
+        frame = _frame([_entry_day(), (100.0, 109.0, 99.0, 105.0), (105.0, 106.0, 99.0, 100.0)])
+
+        # When
+        result = simulate_scheduled_trade(frame, 0, 2, bet_down=True, stop_level=None)
+
+        # Then
+        assert result.return_rate == pytest.approx(0.0, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate == pytest.approx(-0.09, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate <= result.return_rate

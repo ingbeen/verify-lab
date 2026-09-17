@@ -10,6 +10,7 @@
 - **표본이 0건인 구간도 행이 남는다** — 행이 사라지면 사용자가 그 구간을 못 봤다는 사실 자체를 모른다
 - **표본 10건 미만이면 `판정가능` 이 아니오** — 판정에 쓰지 말라는 표시다
 - **최근 N년의 기준일은 데이터 마지막 거래일**이다 — 실행 시각에 묶이면 재현되지 않는다
+- **보유 중 최악은 그 구간의 최솟값**이고 결과 최악보다 나쁘거나 같다
 """
 
 import pandas as pd
@@ -18,6 +19,7 @@ import pytest
 from verify_lab.execution.constants import (
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
+    DISPLAY_WORST_HOLD,
     EXIT_INTRADAY_STOP,
     EXIT_LIMIT,
     PERIOD_ALL,
@@ -32,7 +34,10 @@ from verify_lab.measure.constants import (
     PERIOD_FIRST_HALF,
     PERIOD_SECOND_HALF,
 )
-from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
+from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_MIN, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
+
+# 백분율 지표 비교 허용오차 (tests/CLAUDE.md)
+PERCENT_TOLERANCE = 0.1
 
 
 def _dates(years: list[int]) -> pd.DatetimeIndex:
@@ -367,6 +372,126 @@ class TestEmptyPeriodMetrics:
         assert whole[DISPLAY_SIGNAL_COUNT] == len(years)
         assert whole[DISPLAY_GAP_STOP_COUNT] == 0
         assert whole[DISPLAY_INTRADAY_STOP_COUNT] == 0
+
+
+class TestWorstHoldColumn:
+    """보유 중 최악은 그 구간에서 **가장 깊이 밀린 한 건**이다
+
+    기존 `최악(%)` 과 대칭이라 두 값을 같은 행에서 바로 견줄 수 있다 —
+    「매도 시점 -5%」와 「보유 중 -20%」가 한 줄에 나란히 있어야 감당할 손실이 보인다.
+    """
+
+    def test_구간_최솟값이_실린다(self) -> None:
+        """
+        목적: 집계 방식이 **평균이 아니라 최솟값**임을 고정한다
+
+        평균으로 내면 한 번 크게 밀린 체결이 다른 체결에 희석돼 **감당해야 할 최대 손실이
+        표에서 사라진다.** 그것이 이 컬럼을 만든 이유다.
+
+        Given: 보유 중 최악이 -3% · -18% · -5% 인 체결 셋
+        When: 구간별 성적 행을 만든다
+        Then: 전체 행의 보유 중 최악이 **-18%** 다
+        """
+        # Given
+        years = [2020, 2021, 2022]
+        entry_dates = _dates(years)
+
+        # When
+        rows = period_rows(
+            entry_dates,
+            [0.01, -0.02, 0.01],
+            last_day=pd.Timestamp("2026-08-25"),
+            tradable=True,
+            worst_hold_rates=[-0.03, -0.18, -0.05],
+        )
+        whole = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_ALL)
+
+        # Then
+        assert whole[DISPLAY_WORST_HOLD] == pytest.approx(-18.0, abs=PERCENT_TOLERANCE)
+
+    def test_결과_최악보다_나쁘거나_같다(self) -> None:
+        """
+        목적: 불변조건 `보유 중 최악(%) <= 최악(%)` 을 구간 행에서 고정한다
+
+        체결마다 성립하는 부등식이 최솟값끼리에서도 성립한다 — 결과 최악을 만든 체결의
+        보유 중 최악이 이미 그보다 나쁘기 때문이다. 깨지면 두 컬럼이 서로 다른 체결 목록을
+        보고 있다는 뜻이다.
+
+        Given: 부호가 섞인 체결 10건
+        When: 구간별 성적 행을 만든다
+        Then: 표본이 있는 모든 구간에서 부등식이 성립한다
+        """
+        # Given
+        years = list(range(2016, 2026))
+        returns = _returns(len(years))
+        worst = [value - 0.04 for value in returns]
+
+        # When
+        rows = period_rows(
+            _dates(years),
+            returns,
+            last_day=pd.Timestamp("2025-12-30"),
+            tradable=True,
+            worst_hold_rates=worst,
+        )
+
+        # Then
+        measured = [row for row in rows if row[DISPLAY_SIGNAL_COUNT] > 0]
+        assert measured, "표본이 있는 구간이 없어 계약을 검사하지 못했습니다"
+        for row in measured:
+            assert row[DISPLAY_WORST_HOLD] <= row[DISPLAY_MIN], f"보유 중 최악이 결과 최악보다 낫습니다: {row}"
+
+    def test_표본_0건_구간은_비어_있다(self) -> None:
+        """
+        목적: 같은 행의 다른 지표와 어긋나지 않게 한다 (엣지 케이스)
+
+        `0` 은 「한 번도 안 밀렸다」로 읽히는데 실제로는 「잰 적이 없다」다.
+
+        Given: 최근 5년에 진입이 하나도 없는 체결 목록
+        When: 구간별 성적 행을 만든다
+        Then: 최근 5년 행의 보유 중 최악이 비어 있다
+        """
+        # Given
+        years = list(range(2000, 2011))
+        returns = _returns(len(years))
+
+        # When
+        rows = period_rows(
+            _dates(years),
+            returns,
+            last_day=pd.Timestamp("2026-08-25"),
+            tradable=True,
+            worst_hold_rates=[value - 0.04 for value in returns],
+        )
+        recent = next(row for row in rows if row[DISPLAY_PERIOD] == PERIOD_RECENT_5Y)
+
+        # Then
+        assert recent[DISPLAY_SIGNAL_COUNT] == 0
+        assert pd.isna(recent[DISPLAY_WORST_HOLD])
+
+    def test_길이가_어긋나면_거부한다(self) -> None:
+        """
+        목적: 나란한 배열의 길이 검사에 이 인자도 들어가는지 고정한다
+
+        길이가 어긋나면 마스크 적용에서 numpy 가 영문 `IndexError` 를 내고 **어느 인자가
+        잘못됐는지 말해 주지 않는다.**
+
+        Given: 수익률 3건에 보유 중 최악 2건
+        When: 구간별 성적 행을 만든다
+        Then: ValueError 가 난다
+        """
+        # Given
+        entries = _dates([2020, 2021, 2022])
+
+        # When / Then
+        with pytest.raises(ValueError, match="길이"):
+            period_rows(
+                entries,
+                [0.01, 0.02, 0.03],
+                last_day=pd.Timestamp("2026-08-25"),
+                tradable=True,
+                worst_hold_rates=[-0.01, -0.02],
+            )
 
 
 class TestPeriodSpan:

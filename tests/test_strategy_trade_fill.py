@@ -10,6 +10,8 @@
 - 손절선은 **진입가 기준**이며 보유 기간 내내 갱신하지 않는다
 - 이익이 나면 **그날 종가**로 청산된다
 - 상승 방향 신호는 **고가**로 손절을 판정한다 (인버스 진입)
+- **보유 중 최악은 결과 수익률과 다른 값이다.** 진입 다음 날부터 실제 청산일까지의
+  장중 최저점이며, 언제나 결과보다 나쁘거나 같다
 """
 
 import pandas as pd
@@ -558,3 +560,199 @@ class TestNoStop:
         # When / Then
         with pytest.raises(ValueError, match="양수"):
             simulate_signal(frame, 0, upward=False, hold_limit=HOLD_LIMIT, stop_level=0.0)
+
+
+class TestWorstHoldRate:
+    """보유 중 최악 계약 — 「매도 시점 손실」과 「보유 중 감당한 손실」은 다른 값이다
+
+    청산가만 보면 **-5% 로 끝난 체결과 -20% 까지 밀렸다가 -5% 로 끝난 체결이 같아 보인다.**
+    회당 기대값 대비 감당해야 하는 손실이 전혀 다르므로 두 값을 갈라 낸다.
+
+    **부등식 하나가 이 산식의 불변조건이다** — `보유 중 최악 <= 결과 수익률`.
+    청산가는 보유 중에 실제로 지난 가격이고 보유 중 최악은 그것을 포함한 구간의 최솟값이므로,
+    이 부등식이 깨지면 구간이나 부호가 틀린 것이다.
+    """
+
+    def test_보유_중_최악은_장중_저가로_잡힌다(self) -> None:
+        """
+        목적: 위로 거는 칸의 보유 중 최악이 **종가가 아니라 저가**임을 고정한다
+
+        종가로 재면 장중에 밀렸다가 회복한 날이 통째로 빠져 **실제로 감당한 손실보다 얕게**
+        나온다 — 손절 판정이 저가를 보는 것과 같은 이유다.
+
+        Given: 장중 -12% 까지 밀렸다가 종가는 -1% 로 회복한 날
+        When: 무손절로 위에 걸었을 때
+        Then: 보유 중 최악이 **-12%** 다 (종가 기준이면 -1% 였다)
+        """
+        # Given
+        frame = _frame([_signal_day(), (99.0, 99.5, 88.0, 99.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=None)
+
+        # Then
+        assert result is not None
+        assert result.worst_hold_rate == pytest.approx(-0.12, abs=RATE_TOLERANCE)
+
+    def test_아래로_거는_칸은_고가로_잡힌다(self) -> None:
+        """
+        목적: 방향에 따라 어느 쪽이 손실인지 갈리는 것을 고정한다
+
+        아래로 걸면 **주가가 오를 때 잃는다.** 저가를 보면 부호가 뒤집혀
+        「가장 많이 번 지점」을 최악이라고 적게 된다.
+
+        Given: 장중 +8% 까지 올랐다가 종가는 진입가인 날
+        When: 무손절로 아래에 걸었을 때
+        Then: 보유 중 최악이 **-8%** 다
+        """
+        # Given
+        frame = _frame([_signal_day(), (100.0, 108.0, 99.0, 100.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=True, hold_limit=1, stop_level=None)
+
+        # Then
+        assert result is not None
+        assert result.worst_hold_rate == pytest.approx(-0.08, abs=RATE_TOLERANCE)
+
+    def test_진입일_당일은_세지_않는다(self) -> None:
+        """
+        목적: 구간의 시작을 고정한다 (엣지 케이스)
+
+        **진입가가 진입일 «종가»이므로 그날 장중은 이미 지나간 시간이다.** 그 저가를 세면
+        사지도 않은 구간의 손실이 성적에 실린다.
+
+        Given: 진입일 장중이 -30% 까지 밀렸고 다음날은 아무 일도 없는 시세
+        When: 무손절로 위에 걸었을 때
+        Then: 보유 중 최악이 진입일 저가(-30%)가 아니라 다음날 저가(-1%)다
+        """
+        # Given
+        frame = _frame([(100.0, 100.0, 70.0, ENTRY_PRICE), (100.0, 100.5, 99.0, 100.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=None)
+
+        # Then
+        assert result is not None
+        assert result.worst_hold_rate == pytest.approx(-0.01, abs=RATE_TOLERANCE)
+
+    def test_익절로_일찍_나가면_그_전까지만_본다(self) -> None:
+        """
+        목적: 구간의 끝이 **한도일이 아니라 실제 청산일**임을 고정한다
+
+        역방향 매매는 이익이 나면 그날 청산한다. 청산 뒤의 날을 세면 **들고 있지도 않은
+        기간의 낙폭**이 성적에 실린다.
+
+        Given: 다음날 +2% 로 익절되고, 그 뒤에 -20% 가 오는 시세
+        When: 한도를 3일로 두고 위에 걸었을 때
+        Then: 청산일까지만 보므로 보유 중 최악이 -1% 다
+        """
+        # Given
+        frame = _frame(
+            [_signal_day(), (100.0, 102.5, 99.0, 102.0), (100.0, 100.0, 80.0, 81.0), (81.0, 82.0, 79.0, 80.0)]
+        )
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=3, stop_level=None)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_PROFIT
+        assert result.hold_days == 1
+        assert result.worst_hold_rate == pytest.approx(-0.01, abs=RATE_TOLERANCE)
+
+    def test_장중_손절은_체결가에서_끊긴다(self) -> None:
+        """
+        목적: **손절이 «막아 준» 몫을 「감당한 손실」로 적지 않는다** (2026-09-17 사용자 확정)
+
+        손절이 발동한 순간 포지션이 끝나므로 그 뒤의 하락은 감당한 적이 없다.
+        그날 저가까지 세면 **손절을 건 칸이 실제보다 나빠 보인다** — 실측으로 역방향
+        KODEX 200 이 -5.00% 대신 -13.55% 로 나왔다. 그 -13.55% 는 같은 칸의 **무손절 행이
+        말해야 하는 값**이고 실제로 거기 실린다.
+
+        Given: 장중 -7% 까지 밀린 다음날
+        When: 손절선 -5% 로 위에 걸었을 때
+        Then: -5% 에 체결되고 보유 중 최악도 **-5%** 다 (-7% 가 아니다)
+        """
+        # Given
+        frame = _frame([_signal_day(), (99.5, 100.0, 93.0, 94.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_INTRADAY_STOP
+        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+
+    def test_갭_청산은_시가에서_끊긴다(self) -> None:
+        """
+        목적: 같은 규칙을 **갭 청산**에서 고정한다
+
+        갭은 시가로 나가므로 그 시가까지가 감당한 것이고, 그날 더 빠진 것은 나온 뒤의 일이다.
+        **갭이 손절선보다 더 잃는다는 사실은 그대로다** — 여기서는 -5% 가 아니라 -9% 다.
+
+        Given: 다음날 시가가 -9% 로 열리고 장중에 -15% 까지 밀린 시세
+        When: 손절선 -5% 로 위에 걸었을 때
+        Then: 갭으로 -9% 에 나가고 보유 중 최악도 **-9%** 다
+        """
+        # Given
+        frame = _frame([_signal_day(), (91.0, 92.0, 85.0, 90.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+
+        # Then
+        assert result is not None
+        assert result.reason == EXIT_GAP_STOP
+        assert result.return_rate == pytest.approx(-0.09, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate == pytest.approx(-0.09, abs=RATE_TOLERANCE)
+
+    def test_손절_전에_밀린_날은_그대로_센다(self) -> None:
+        """
+        목적: 「체결에서 끊는다」가 **그 전날까지 지우는 것으로 과잉 적용되지 않게** 짝으로 둔다
+
+        손절 봉 «이전» 의 날들은 온전히 들고 있었으므로 그 장중이 그대로 견딘 값이다.
+        앞의 두 테스트만 있으면 구간을 통째로 체결가로 덮는 구현도 통과한다.
+
+        Given: 첫날 장중 -4% 까지 밀렸다가 종가 회복, 이튿날 장중 -5.5% 까지 밀려 종가 -5% 인 시세
+        When: 손절선 -5% 와 -7% 로 각각 위에 걸었을 때
+        Then: -5% 는 이튿날 손절로 끊겨 보유 중 최악이 **-5%** 이고,
+              -7% 는 손절이 안 걸려 이튿날 장중 **-5.5%** 가 그대로 드러난다
+        """
+        # Given
+        frame = _frame([_signal_day(), (100.0, 100.0, 96.0, 99.0), (99.0, 99.0, 94.5, 95.0)])
+
+        # When
+        tight = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
+        wide = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=0.07)
+
+        # Then
+        assert tight is not None and wide is not None
+        assert tight.reason == EXIT_INTRADAY_STOP
+        assert tight.worst_hold_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert wide.reason == EXIT_LIMIT
+        assert wide.worst_hold_rate == pytest.approx(-0.055, abs=RATE_TOLERANCE)
+
+    def test_한_번도_밀리지_않으면_양수다(self) -> None:
+        """
+        목적: **0 으로 깎지 않는다**는 정책을 고정한다 (엣지 케이스)
+
+        보유 내내 진입가 위였다면 보유 중 최악은 양수다. 0 으로 깎으면
+        「한 번은 본전까지 내려왔다」는 없는 사실을 만들게 된다 —
+        기존 `최악(%)` 도 같은 이유로 양수가 나올 수 있다.
+
+        Given: 저가조차 진입가보다 높았던 다음날
+        When: 무손절로 위에 걸었을 때
+        Then: 보유 중 최악이 +1% 다
+        """
+        # Given
+        frame = _frame([_signal_day(), (101.0, 103.0, 101.0, 102.0)])
+
+        # When
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=None)
+
+        # Then
+        assert result is not None
+        assert result.worst_hold_rate == pytest.approx(0.01, abs=RATE_TOLERANCE)

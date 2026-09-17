@@ -209,6 +209,14 @@ DISPLAY_EXIT_PRICE: Final = "청산가"
 DISPLAY_GAP_STOP_COUNT: Final = "갭손절"
 DISPLAY_INTRADAY_STOP_COUNT: Final = "장중손절"
 
+# **보유 중** 가장 깊이 밀린 지점. `report/constants.py` 의 `최악(%)` 은 «청산 시점»의 가장
+# 나쁜 결과이고 이것은 그 «과정»이다 — 매도할 때 -5% 로 끝난 체결과 중간에 -20% 까지
+# 밀렸다가 -5% 로 끝난 체결은 **결과만 보면 같아 보이는데 감당해야 할 손실이 전혀 다르다.**
+#
+# **여기 두는 이유**: 체결에서만 나오는 값이라 측정 표(`통계.csv`)에는 대응이 없다.
+# `measure`·`report` 가 함께 내는 공통 컬럼은 `report/constants.py` 가 소유한다
+DISPLAY_WORST_HOLD: Final = "보유 중 최악(%)"
+
 # **「장중 손절을 걸 수 있었는가」를 별도 컬럼으로 두지 않는다.** `DISPLAY_STOP_LEVEL` 의
 # `STOP_NOT_MEASURABLE_LABEL` 이 그 사실을 이미 말하므로 완전히 유도되는 값이다.
 # **잴 수 없는 «이유»**(지수는 종가만 있다 — `docs/검증/월말_진입/설계.md` §7.6)는 값이 아니라

@@ -33,6 +33,7 @@ from verify_lab.execution.constants import (
     DISPLAY_START_YEAR,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
+    DISPLAY_WORST_HOLD,
     PARAMETER_PREFIX_RANK_CUT,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -133,6 +134,8 @@ class _Block:
         hold_days: 신호별 보유일 (진입일로부터의 거래일 수)
         reasons: 신호별 청산 사유. 구간별 손절 건수를 이것으로 센다
         entry_dates: 신호별 진입일. **구간 분해가 이것으로 행을 나눈다**
+        worst_hold_rates: 신호별 보유 중 최악 수익률. **결과 최악과 다른 값이다** —
+            익절로 일찍 나간 체결도 그 전에 밀린 지점이 있다
         event_ids: 신호별 사건 번호. 구간마다 사건 수를 따로 센다 (측정의 원칙 5)
         excluded_count: 보유 한도가 데이터 끝을 넘어가 체결을 만들지 못한 신호 수.
             **버린 건수를 세어 보고한다** — 조용히 사라진 표본은 생존편향을 만든다
@@ -145,6 +148,7 @@ class _Block:
     hold_days: list[int]
     reasons: list[str]
     entry_dates: list[pd.Timestamp]
+    worst_hold_rates: list[float]
     event_ids: list[int]
     excluded_count: int
     last_day: pd.Timestamp
@@ -332,6 +336,7 @@ def _measure(
     hold_days: list[int] = []
     reasons: list[str] = []
     entry_dates: list[pd.Timestamp] = []
+    worst_hold_rates: list[float] = []
     event_ids: list[int] = []
     excluded_count = 0
 
@@ -354,6 +359,7 @@ def _measure(
         hold_days.append(result.hold_days)
         reasons.append(result.reason)
         entry_dates.append(pd.Timestamp(frame.iloc[int(position)][COL_DATE]))
+        worst_hold_rates.append(result.worst_hold_rate)
         event_ids.append(int(signals.event_ids[order]))
 
     return _Block(
@@ -362,6 +368,7 @@ def _measure(
         hold_days=hold_days,
         reasons=reasons,
         entry_dates=entry_dates,
+        worst_hold_rates=worst_hold_rates,
         event_ids=event_ids,
         excluded_count=excluded_count,
         last_day=pd.Timestamp(frame[COL_DATE].iloc[-1]),
@@ -438,6 +445,7 @@ def _trade_row(
         DISPLAY_HOLD_DAYS: result.hold_days,
         DISPLAY_EXIT_PRICE: round(exit_price, target.dataset.price_decimals),
         DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_HOLD: round(result.worst_hold_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
         DISPLAY_EXIT_REASON: result.reason,
         DISPLAY_CHANGE_RATE: round(float(signals.change_rates[order]) * RATE_TO_PERCENT, PERCENT_DECIMALS),
         DISPLAY_EVENT_ID: int(signals.event_ids[order]),
@@ -477,6 +485,7 @@ def _summary_rows(target: Target, block: _Block, *, stop_level: float | None) ->
             hold_days=block.hold_days,
             reasons=block.reasons,
             event_ids=block.event_ids,
+            worst_hold_rates=block.worst_hold_rates,
         )
     ]
 

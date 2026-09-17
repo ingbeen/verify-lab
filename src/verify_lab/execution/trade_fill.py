@@ -55,11 +55,18 @@ class TradeResult:
             읽는 쪽이 부호를 다시 뒤집지 않는다 (`measure` 가 내는 원지수 수익률과 다르다)
         reason: 청산 사유
         hold_days: 진입일로부터의 보유 거래일 수
+        worst_hold_rate: **보유 중** 가장 깊이 밀린 지점의 수익률 (비율).
+            `return_rate` 가 「매도할 때 얼마였나」라면 이것은 「끌고 가는 동안 얼마까지
+            밀렸나」다. **두 값이 크게 벌어지는 체결은 같은 성적이 아니다** — 청산가만
+            −5% 로 같아도 중간에 −20% 를 견뎌야 했다면 회당 기대값 대비 감당할 손실이 다르다.
+            **언제나 `return_rate` 보다 나쁘거나 같다** — 청산가는 보유 중에 실제로 지난
+            가격이므로 이 구간의 최솟값이 그것을 넘어설 수 없다
     """
 
     return_rate: float
     reason: str
     hold_days: int
+    worst_hold_rate: float
 
 
 def resolve_positions(trading_days: pd.DatetimeIndex, dates: pd.DatetimeIndex, *, label: str) -> np.ndarray:
@@ -156,6 +163,10 @@ def simulate_signal(
     entry_price = float(frame.iloc[entry_position][COL_CLOSE])
     sign = -1.0 if upward else 1.0
 
+    # 아래로 걸면 고가가, 위로 걸면 저가가 손실 쪽이다. 이 진입점은 시세 스키마 전용이라
+    # 장중을 언제나 잴 수 있다 — `_validate` 가 네 컬럼을 요구한다
+    column = COL_HIGH if upward else COL_LOW
+
     for day in range(1, hold_limit + 1):
         position = entry_position + day
         if position >= len(frame):
@@ -174,21 +185,82 @@ def simulate_signal(
 
             # 1. 시가가 이미 손절선 아래면 그 시가가 체결가다 — 손절선을 지켜주지 못한다
             if open_rate <= -stop_level:
-                return TradeResult(open_rate, EXIT_GAP_STOP, day)
+                # **보유 중 최악이 곧 체결가다.** 그 순간 포지션이 끝났으므로 그날 더 빠진 것은
+                # 나온 뒤의 일이고, 그 전날까지는 전부 손절선 위였다 (아니면 거기서 끊겼다)
+                return TradeResult(open_rate, EXIT_GAP_STOP, day, open_rate)
 
             # 2. 장중에 손절선을 터치하면 손절가에 체결된다
             if worst_rate <= -stop_level:
-                return TradeResult(-stop_level, EXIT_INTRADAY_STOP, day)
+                return TradeResult(-stop_level, EXIT_INTRADAY_STOP, day, -stop_level)
 
         # 3. 이익이면 그날 종가로 청산하고 끝낸다. 청산이 달력 기준인 매매법은 이 단계를 끈다
         if take_profit and close_rate > 0:
-            return TradeResult(close_rate, EXIT_PROFIT, day)
+            worst = _worst_hold_rate(frame, entry_position, position, entry_price=entry_price, sign=sign, column=column)
+            return TradeResult(close_rate, EXIT_PROFIT, day, worst)
 
         # 4. 한도일에는 손실이어도 청산한다
         if day == hold_limit:
-            return TradeResult(close_rate, EXIT_LIMIT, day)
+            worst = _worst_hold_rate(frame, entry_position, position, entry_price=entry_price, sign=sign, column=column)
+            return TradeResult(close_rate, EXIT_LIMIT, day, worst)
 
     raise RuntimeError(f"내부 불변조건 위반: 한도 안에서 청산되지 않았습니다 - 한도 {hold_limit}")
+
+
+def _worst_hold_rate(
+    frame: pd.DataFrame,
+    entry_position: int,
+    exit_position: int,
+    *,
+    entry_price: float,
+    sign: float,
+    column: str,
+) -> float:
+    """청산 봉을 끝까지 들고 있었을 때, 보유 중 가장 깊이 밀린 지점의 수익률을 낸다.
+
+    **손절로 나간 체결은 이 함수를 거치지 않는다.** 손절이 발동한 순간 포지션이 끝나므로
+    그때의 보유 중 최악은 **체결가 그 자체**이고, 부르는 쪽이 그 값을 그대로 싣는다.
+    여기서 계산해도 같은 값이 나오지만(손절 전날까지는 전부 손절선 위였다) **그 동치는
+    판정 순서에 기대는 것이라**, 계산하지 않고 부르는 쪽이 사실을 적는 편이 읽힌다.
+
+    **구간은 진입 «다음» 거래일부터 청산일까지다.** 진입가가 진입일 종가이므로 그날 장중은
+    이미 지나간 시간이다 — 세면 사지도 않은 구간의 손실이 성적에 실린다.
+
+    **아래로 거는 칸은 고가가 최악이다.** 주가가 오를 때 잃기 때문이며, 저가를 보면
+    「가장 많이 번 지점」을 최악이라고 적게 된다. **어느 컬럼을 볼지는 부르는 쪽이 정한다** —
+    종가 하나뿐인 지수는 고를 것이 없고, 그 사실을 아는 것은 대상을 든 쪽이다.
+
+    **양수가 나올 수 있다.** 보유 내내 진입가 위였다는 뜻이며 0 으로 깎지 않는다 —
+    깎으면 「한 번은 본전까지 내려왔다」는 없는 사실을 만든다.
+
+    Args:
+        frame: 날짜 오름차순 시세 또는 종가 계열
+        entry_position: 진입일의 위치 인덱스
+        exit_position: 청산일의 위치 인덱스. 진입 위치보다 뒤여야 한다
+        entry_price: 진입가. **부르는 쪽이 체결에 쓴 값을 그대로 넘긴다** — 여기서 다시 읽으면
+            수익률과 보유 중 최악이 다른 분모로 계산될 수 있고, 그래도 「보유 중 최악 <= 수익률」은
+            성립해 **틀린 값이 모든 검사를 통과한다**
+        sign: 상승 방향 신호(아래로 건다)면 -1, 아니면 1
+        column: 최악을 읽을 가격 컬럼. 장중을 잴 수 있으면 고가·저가, 종가 계열이면 그 컬럼이다
+
+    Returns:
+        보유 중 최악의 수익률 (비율). 거는 방향이 이미 반영돼 있다
+
+    Raises:
+        ValueError: 구간 안에 0 이하 가격이 있는 경우. **계열 로더는 값의 부호를 보지 않으므로**
+            (마이너스 금리가 실재한다) 진입가·청산가 검사만으로는 «구간 안»이 막히지 않는다 —
+            그대로 두면 0 하나가 조용히 −100% 짜리 보유 중 최악을 만들어 그 칸의 최솟값이 된다
+    """
+    window = frame.iloc[entry_position + 1 : exit_position + 1]
+    extreme = float(window[column].max() if sign < 0 else window[column].min())
+
+    # 아래로 거는 칸은 «최대»를 보므로 0 이하가 있어도 이 값에 안 잡힌다. 따로 센다
+    if extreme <= 0 or float(window[column].min()) <= 0:
+        raise ValueError(
+            f"보유 구간에 0 이하 가격이 있습니다: {float(window[column].min())} "
+            f"(컬럼 {column}, 진입 {entry_position}, 청산 {exit_position})"
+        )
+
+    return _rate(extreme, entry_price, sign)
 
 
 def _rate(price: float, entry_price: float, sign: float) -> float:
@@ -274,7 +346,11 @@ def simulate_scheduled_trade(
             얼마나 밀려도 청산일까지 보유한다
         price_column: 가격 컬럼 이름. **지수는 종가 계열이라 이름이 다르다**
             (`storage/series/` 의 `Value`). 손절을 걸 때는 이 값을 바꿀 수 없다 —
-            장중 판정에 시가·고가·저가가 필요한데 지수에는 없다
+            장중 판정에 시가·고가·저가가 필요한데 지수에는 없다.
+            **보유 중 최악의 기준도 이 값이 정한다** — 종가가 아니면 장중을 잴 수 없으므로
+            그 컬럼 하나로 재며, 그 값은 실제 낙폭보다 **얕다.** 어느 기준으로 잰 행인지는
+            `손절선(%)` 의 `손절불가` 표기가 말한다. **별도 인자를 두지 않는 것은 같은 사실을
+            두 곳에서 말하게 되기 때문이다** — 둘이 어긋나면 한쪽은 조용히 틀린다
 
     Returns:
         체결 결과
@@ -283,6 +359,7 @@ def simulate_scheduled_trade(
         ValueError: **진입 위치가 음수인 경우**, 청산 위치가 진입 위치보다 뒤가 아니거나
             시세 범위를 벗어난 경우, 손절선이 양수가 아닌 경우,
             **종가가 아닌 가격 컬럼에 손절선을 건 경우**,
+            보유 구간에 0 이하 가격이 있는 경우,
             손절 경로에서 시세 컬럼이 없는 경우. **무손절 경로는 가격 컬럼 하나만 읽으므로
             그 컬럼이 없으면 `KeyError` 다** — 시세 스키마 전체를 요구하지 않는다
         RuntimeError: 청산일까지 체결되지 않은 경우 (내부 불변조건 위반)
@@ -301,7 +378,12 @@ def simulate_scheduled_trade(
 
     if stop_level is None:
         return _scheduled_exit(
-            frame, entry_position, exit_position, bet_down=bet_down, hold_days=hold_days, price_column=price_column
+            frame,
+            entry_position,
+            exit_position,
+            bet_down=bet_down,
+            hold_days=hold_days,
+            price_column=price_column,
         )
 
     # 손절 경로는 시가·고가·저가를 읽으므로 시세 스키마에서만 성립한다. 조용히 종가로 재면
@@ -332,13 +414,19 @@ def _scheduled_exit(
     hold_days: int,
     price_column: str,
 ) -> TradeResult:
-    """무손절 체결 — 청산일 종가로만 계산한다.
+    """무손절 체결 — 청산일 종가로 계산하고, 보유 중 최악은 따로 잰다.
 
-    **손절 판정이 없으므로 시가도 장중도 보지 않는다.** 이 행은 손절 격자의 대조축이며,
-    `.claude/rules/trading.md` 가 「손절이 무엇을 막았는가」를 수치로 남기도록 요구한다.
+    **손절 판정이 없으므로 시가도 장중도 «체결»에는 쓰지 않는다.** 이 행은 손절 격자의
+    대조축이며, `.claude/rules/trading.md` 가 「손절이 무엇을 막았는가」를 수치로 남기도록
+    요구한다.
 
-    **종가 하나만 읽으므로 지수 계열도 이 경로로 지난다.** 지수는 시가·고가·저가가 없어
-    손절 경로에 들어갈 수 없고, 그래서 무손절이 지수가 갈 수 있는 유일한 길이다.
+    **그 대조는 보유 중 최악에서도 성립해야 하므로 그 값은 장중으로 잰다.** 결과만 놓고
+    비교하면 「손절이 막아 준 몫」이 청산가 차이로만 보이고, **얼마나 밀렸다가 돌아왔는지**가
+    무손절 행에서 사라진다.
+
+    **체결은 가격 컬럼 하나만 읽으므로 지수 계열도 이 경로로 지난다.** 지수는 시가·고가·저가가
+    없어 손절 경로에 들어갈 수 없고, 그래서 무손절이 지수가 갈 수 있는 유일한 길이다 —
+    그때는 보유 중 최악도 같은 컬럼으로 잰다. **기준을 가르는 것은 `price_column` 하나다.**
 
     Args:
         frame: 시세 또는 지수 계열
@@ -346,13 +434,14 @@ def _scheduled_exit(
         exit_position: 청산일의 위치 인덱스
         bet_down: 아래로 거는 칸인지 여부
         hold_days: 보유 거래일 수
-        price_column: 가격 컬럼 이름
+        price_column: 가격 컬럼 이름. **보유 중 최악의 기준도 이 값이 정한다** —
+            종가면 장중 고가·저가로, 계열이면 그 컬럼 하나로 잰다
 
     Returns:
         청산일 종가로 나간 체결 결과
 
     Raises:
-        ValueError: 진입가나 청산가가 0 이하인 경우
+        ValueError: 진입가·청산가가 0 이하이거나, **보유 구간 안에** 0 이하 가격이 있는 경우
     """
     entry_price = float(frame.iloc[entry_position][price_column])
     exit_price = float(frame.iloc[exit_position][price_column])
@@ -368,7 +457,24 @@ def _scheduled_exit(
         if price <= 0:
             raise ValueError(f"{label}가 0 이하입니다: {price} (컬럼 {price_column}, 진입 {entry_position}, 청산 {exit_position})")
 
-    return TradeResult((exit_price / entry_price - 1.0) * sign, EXIT_LIMIT, hold_days)
+    # **장중을 잴 수 있는지는 가격 컬럼이 말한다.** 종가 계열(지수)에는 고가·저가가 없으므로
+    # 그 컬럼 하나로 재며, 그 값은 실제 낙폭보다 얕다 — 같은 조건이 위 손절 경로의 가드다.
+    #
+    # **이 경로는 손절이 없으므로 청산 봉을 언제나 끝까지 들고 있었다** — 그 봉의 장중까지 센다.
+    # 구간 안의 0 이하 가격은 `_worst_hold_rate` 가 거부한다 (진입가·청산가 검사는 양 끝만 본다)
+    intraday = price_column == COL_CLOSE
+    column = (COL_HIGH if bet_down else COL_LOW) if intraday else price_column
+
+    worst_hold = _worst_hold_rate(
+        frame,
+        entry_position,
+        exit_position,
+        entry_price=entry_price,
+        sign=sign,
+        column=column,
+    )
+
+    return TradeResult((exit_price / entry_price - 1.0) * sign, EXIT_LIMIT, hold_days, worst_hold)
 
 
 __all__ = ["TradeResult", "resolve_positions", "simulate_scheduled_trade", "simulate_signal"]

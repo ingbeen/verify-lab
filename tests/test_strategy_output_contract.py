@@ -132,6 +132,11 @@ SUMMARY_COMMON_COLUMNS = (
     "질 때 표본",
     "최고(%)",
     "최악(%)",
+    # **「최악」이 둘이고 뜻이 다르다.** 앞은 «청산 시점»의 가장 나쁜 결과, 이것은 «보유 중»에
+    # 가장 깊이 밀린 지점이다. 매도할 때 -5% 로 끝난 체결과 중간에 -20% 까지 밀렸다가
+    # -5% 로 끝난 체결은 감당해야 할 손실이 전혀 다른데, 결과만 보면 같아 보인다.
+    # 바로 뒤에 두는 것은 두 값을 같은 눈높이에서 견주기 위해서다
+    "보유 중 최악(%)",
     "표준편차(%)",
     "갭손절",
     "장중손절",
@@ -148,7 +153,10 @@ SUMMARY_COMMON_COLUMNS = (
 # 거래내역의 공통 컬럼. **`청산 목표일` 이 이 목록 «안»에 끼므로**(옵션 만기일만, 진입가 다음)
 # 두 토막으로 나눈다
 TRADE_COMMON_HEAD = ("방향", "손절선(%)", "진입일", "진입가")
-TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "청산 사유")
+# **`보유 중 최악(%)` 이 `수익률(%)` 바로 뒤에 온다.** 성적표에서 `최악(%)` 뒤에 오는 것과
+# 같은 자리이며, **집계값만 있고 원자료가 없으면 어느 체결이 그 값을 만들었는지 되짚을 수 없다**
+# (측정의 원칙 8 — 사용자가 직접 검증할 수 있어야 한다)
+TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "보유 중 최악(%)", "청산 사유")
 
 # 매매법 축 — 종목 바로 다음에 온다. **역방향만 두 칸**이다
 AXIS_REVERSE = ("파라미터", "시작연도")
@@ -1073,6 +1081,119 @@ class TestPayoffAmountColumns:
         assert pd.isna(recent[DISPLAY_LOSS_AMOUNT])
 
 
+class TestWorstHoldColumn:
+    """세 매매법이 `보유 중 최악(%)` 을 실제로 «채운다»
+
+    **컬럼 이름만 검사하면 이 계약이 닫히지 않는다.** 값을 넘기는 인자가 선택형이라
+    (`hold_days`·`reasons` 와 같은 관용) 매매법이 그것을 빠뜨리면 **컬럼은 그대로 있고
+    내용만 비어 나간다** — 앞의 컬럼 순서 테스트는 통과한다.
+    그래서 「이름이 있는가」가 아니라 **「표본이 있는 행에 값이 있는가」**를 본다.
+    """
+
+    COLUMN = "보유 중 최악(%)"
+    RESULT_COLUMN = "최악(%)"
+
+    def test_역방향_성적표가_값을_채운다(self, reverse_outputs: StrategyOutputs) -> None:
+        """
+        목적: 매매법이 값 넘기기를 빠뜨린 것을 잡는다
+
+        Given: 합성 시세로 돈 역방향 성적표
+        When: 표본이 있는 행을 봤을 때
+        Then: 보유 중 최악이 비어 있지 않다
+        """
+        self._assert_filled(reverse_outputs.performance)
+
+    def test_옵션_만기일_성적표가_값을_채운다(self, expiry_outputs: ExpiryOutputs) -> None:
+        """
+        목적: 같은 계약을 달력 청산 매매법에서 고정한다
+
+        Given: 합성 시세로 돈 옵션 만기일 성적표
+        When: 표본이 있는 행을 봤을 때
+        Then: 보유 중 최악이 비어 있지 않다
+        """
+        self._assert_filled(expiry_outputs.performance)
+
+    def test_월말_성적표가_값을_채운다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: **지수 대상이 섞인** 매매법에서도 값이 나오는지 고정한다
+
+        지수는 종가만 있어 장중을 못 재지만 **그렇다고 비우지는 않는다** — 종가 기준으로
+        재고, 어느 기준인지는 `손절선(%)` 의 `손절불가` 표기가 말한다. 비우면 30년짜리
+        긴 축에서 이 값을 통째로 잃는다.
+
+        Given: 합성 시세와 지수 계열로 돈 월말 성적표
+        When: 표본이 있는 행을 봤을 때
+        Then: 보유 중 최악이 비어 있지 않다
+        """
+        self._assert_filled(month_end_outputs.performance)
+
+    def test_지수_행도_값을_갖는다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: 「손절불가」 행이 조용히 빠지지 않는지 고정한다 (엣지 케이스)
+
+        Given: 월말 성적표의 지수 행 (`손절선(%)` 이 `손절불가`)
+        When: 표본이 있는 행을 봤을 때
+        Then: 보유 중 최악이 비어 있지 않다
+        """
+        # Given
+        table = month_end_outputs.performance
+        index_rows = table[table["손절선(%)"] == STOP_NOT_MEASURABLE_LABEL]
+        assert not index_rows.empty, "지수 행이 없어 계약을 검사하지 못했습니다"
+
+        # When / Then
+        self._assert_filled(index_rows)
+
+    @pytest.mark.parametrize("fixture_name", ["reverse_outputs", "expiry_outputs", "month_end_outputs"])
+    def test_보유_중_최악이_결과_최악보다_나쁘거나_같다(self, fixture_name: str, request: pytest.FixtureRequest) -> None:
+        """
+        목적: 두 컬럼이 **같은 체결 목록**을 보고 있음을 고정한다
+
+        청산가는 보유 중에 실제로 지난 가격이므로 보유 중 최악은 언제나 그보다 나쁘거나 같다.
+        이 부등식이 깨지면 구간(진입 다음 날 ~ 청산일)이나 방향 부호가 틀린 것이다.
+        **세 매매법에 한꺼번에 건다** — 한 곳만 틀려도 잡힌다.
+
+        Given: 합성 시세로 돈 성적표
+        When: 표본이 있는 행의 두 컬럼을 견줬을 때
+        Then: 보유 중 최악 <= 최악 이다
+        """
+        # Given
+        table = request.getfixturevalue(fixture_name).performance
+        measured = table[table["신호"] > 0]
+        assert not measured.empty, "표본이 있는 행이 없어 계약을 검사하지 못했습니다"
+
+        # When / Then
+        violations = measured[measured[self.COLUMN] > measured[self.RESULT_COLUMN]]
+        assert violations.empty, f"보유 중 최악이 결과 최악보다 낫습니다:\n{violations.head()}"
+
+    def test_거래내역도_체결마다_값을_갖는다(self, expiry_outputs: ExpiryOutputs) -> None:
+        """
+        목적: 원자료에도 실린다는 계약을 고정한다 (측정의 원칙 8)
+
+        집계값만 있고 원자료가 없으면 **어느 체결이 그 값을 만들었는지** 되짚을 수 없다.
+
+        Given: 합성 시세로 돈 옵션 만기일 거래내역
+        When: 보유 중 최악 컬럼을 봤을 때
+        Then: 빈 칸이 없고, 체결마다 수익률보다 나쁘거나 같다
+        """
+        # Given
+        trades = expiry_outputs.trades
+        assert not trades.empty, "체결이 없어 계약을 검사하지 못했습니다"
+
+        # When / Then
+        assert not trades[self.COLUMN].isna().any(), "체결에 보유 중 최악이 빈 칸으로 남았습니다"
+        assert (trades[self.COLUMN] <= trades["수익률(%)"]).all(), "체결의 보유 중 최악이 결과보다 낫습니다"
+
+    def _assert_filled(self, table: pd.DataFrame) -> None:
+        """표본이 있는 행에 보유 중 최악이 채워져 있는지 본다.
+
+        Args:
+            table: 성적표
+        """
+        measured = table[table["신호"] > 0]
+        assert not measured.empty, "표본이 있는 행이 없어 계약을 검사하지 못했습니다"
+        assert not measured[self.COLUMN].isna().any(), "표본이 있는 행에 보유 중 최악이 비어 있습니다 — 매매법이 값을 넘기지 않았습니다"
+
+
 class TestIntegerCounts:
     """건수 컬럼은 정수로 나간다 — 빈칸은 빈칸으로 둔 채"""
 
@@ -1489,19 +1610,20 @@ class TestScreenColumn:
         whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
         assert not whole.empty, "전체 구간 행이 없습니다"
 
-        # When / Then — 게이트는 적중률 60% 이상 · 회당 기대값 0.5% 이상 (손으로 박아 둔다).
-        # **두 경계가 같은 방향(이상)이다.** 여기서 상수를 가져오면 게이트가 바뀌어도 이 검사가
-        # 함께 따라와 **독립 검증이 아니게 된다** — 그래서 일부러 숫자를 박는다.
-        # **판정은 세 값이다** — 표본이 0건이거나 지표가 결측인 행은 「판정 안 함」이며,
+        # When / Then — 게이트는 **회당 기대값 1.0% 이상 하나뿐**이다 (손으로 박아 둔다).
+        # 여기서 상수를 가져오면 게이트가 바뀌어도 이 검사가 함께 따라와 **독립 검증이 아니게
+        # 된다** — 그래서 일부러 숫자를 박는다.
+        # **승률은 판정에 들어가지 않는다** (2026-09-17). 조건이 다시 늘면 여기서 걸린다.
+        # **판정은 세 값이다** — 표본이 0건이거나 평균이 결측인 행은 「판정 안 함」이며,
         # 두 값만 기대하면 그 행에서 없는 게이트 버그를 가리키게 된다
         for _, row in whole.iterrows():
-            if row[DISPLAY_SIGNAL_COUNT] == 0 or pd.isna(row["승률(%)"]) or pd.isna(row["평균(%)"]):
+            if row[DISPLAY_SIGNAL_COUNT] == 0 or pd.isna(row["평균(%)"]):
                 expected = self.NOT_JUDGED
-            elif row["승률(%)"] >= 60.0 and row["평균(%)"] >= 0.5:
+            elif row["평균(%)"] >= 1.0:
                 expected = SCREEN_CANDIDATE
             else:
                 expected = SCREEN_EXCLUDED
-            assert row[self.SCREEN_COLUMN] == expected, f"판정이 같은 행의 승률·평균과 어긋납니다: {dict(row)}"
+            assert row[self.SCREEN_COLUMN] == expected, f"판정이 같은 행의 평균과 어긋납니다: {dict(row)}"
 
 
 class TestNoCandidatesFile:

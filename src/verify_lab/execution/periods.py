@@ -44,6 +44,7 @@ from verify_lab.execution.constants import (
     DISPLAY_TOTAL,
     DISPLAY_WIN_AMOUNT,
     DISPLAY_WIN_RATE,
+    DISPLAY_WORST_HOLD,
     EXIT_GAP_STOP,
     EXIT_INTRADAY_STOP,
     HOLD_DAYS_DECIMALS,
@@ -90,6 +91,7 @@ def period_rows(
     hold_days: Sequence[int] | None = None,
     reasons: Sequence[str] | None = None,
     event_ids: Sequence[int] | None = None,
+    worst_hold_rates: Sequence[float] | None = None,
 ) -> list[dict[str, Any]]:
     """체결 목록을 구간별로 갈라 성적 행들을 만든다.
 
@@ -115,6 +117,10 @@ def period_rows(
         event_ids: 신호별 사건 번호. **주면 `사건` 컬럼이 구간마다 따로 세어지고,
             주지 않으면 그 컬럼 자체가 나오지 않는다** — 신호가 연 1회씩인 매매법은
             신호가 곧 사건이라 같은 값이 두 열에 실리고, 빈칸으로 두면 「세지 못했다」로 읽힌다
+        worst_hold_rates: 신호별 **보유 중** 최악 수익률 (비율). 없으면 그 컬럼을 비운다.
+            **컬럼 자체는 남는다** — `hold_days`·`reasons` 와 같은 관용이며, 세 매매법이
+            이것을 실제로 채우는지는 `tests/test_strategy_output_contract.py` 가 본다.
+            그 검사가 없으면 **컬럼은 그대로 있고 내용만 비어 나가는데 컬럼 순서 검사는 통과한다**
 
     Returns:
         구간마다 한 줄씩. 순서는 `PERIODS` 와 같다
@@ -127,7 +133,12 @@ def period_rows(
 
     # **선택 인자도 나란한 배열이다.** 길이가 어긋나면 아래 마스크 적용에서 numpy 가
     # 영문 `IndexError` 를 내고 어느 인자가 잘못됐는지 말해 주지 않는다
-    for name, values in (("보유일", hold_days), ("청산 사유", reasons), ("사건 번호", event_ids)):
+    for name, values in (
+        ("보유일", hold_days),
+        ("청산 사유", reasons),
+        ("사건 번호", event_ids),
+        ("보유 중 최악", worst_hold_rates),
+    ):
         if values is not None and len(values) != len(returns):
             raise ValueError(f"{name}의 길이가 수익률과 다릅니다: {name} {len(values)}개, 수익률 {len(returns)}개")
 
@@ -137,6 +148,7 @@ def period_rows(
     days = np.asarray(hold_days, dtype=float) if hold_days is not None else None
     labels = np.asarray(reasons, dtype=object) if reasons is not None else None
     events = np.asarray(event_ids, dtype=np.int64) if event_ids is not None else None
+    worst = np.asarray(worst_hold_rates, dtype=float) if worst_hold_rates is not None else None
 
     # 홀수면 뒤 절반이 하나 많다. `studies` 의 시기 2등분과 같은 규칙이라 두 산출물이 어긋나지 않는다
     masks: dict[str, np.ndarray] = {
@@ -155,6 +167,7 @@ def period_rows(
             labels[masks[period]] if labels is not None else None,
             entry_dates[masks[period]],
             events[masks[period]] if events is not None else None,
+            worst[masks[period]] if worst is not None else None,
             tradable,
         )
         for period in PERIODS
@@ -168,6 +181,7 @@ def _period_row(
     labels: np.ndarray | None,
     entry_dates: pd.DatetimeIndex,
     events: np.ndarray | None,
+    worst: np.ndarray | None,
     tradable: bool,
 ) -> dict[str, Any]:
     """구간 하나의 집계를 만든다.
@@ -189,6 +203,7 @@ def _period_row(
         labels: 그 구간의 청산 사유
         entry_dates: 그 구간의 진입일. 기간의 양 끝을 여기서 낸다
         events: 그 구간의 사건 번호. `None` 이면 `사건` 컬럼을 내지 않는다
+        worst: 그 구간의 보유 중 최악 수익률. `None` 이면 그 컬럼을 비운다
         tradable: 판정 대상인가
 
     Returns:
@@ -227,6 +242,15 @@ def _period_row(
         DISPLAY_LOSING_COUNT: np.nan if empty else payoff.losing_count,
         DISPLAY_MAX: np.nan if empty else round(float(percent.max()), PERCENT_DECIMALS),
         DISPLAY_MIN: np.nan if empty else round(float(percent.min()), PERCENT_DECIMALS),
+        # **결과 최악 바로 뒤에 둔다.** 「매도할 때 -5%」와 「보유 중 -20%」가 한 줄에 나란히
+        # 있어야 회당 기대값 대비 감당할 손실이 보인다.
+        #
+        # **최솟값이지 평균이 아니다.** 평균으로 내면 한 번 크게 밀린 체결이 다른 체결에
+        # 희석돼 **감당해야 할 최대 손실이 표에서 사라진다** — 그것이 이 컬럼을 만든 이유다.
+        # 기존 `최악(%)` 과 대칭이라 두 값을 그 자리에서 견줄 수 있다
+        DISPLAY_WORST_HOLD: (
+            np.nan if (empty or worst is None) else round(float((worst * RATE_TO_PERCENT).min()), PERCENT_DECIMALS)
+        ),
         # 표본이 하나뿐인 칸에서 표본표준편차는 정의되지 않는다. 0 으로 채우면 "흔들림이 없다"로
         # 읽히므로 비워 둔다
         DISPLAY_STD: round(float(percent.std(ddof=1)), PERCENT_DECIMALS) if count > 1 else np.nan,
@@ -244,7 +268,7 @@ def _period_row(
         # **표본이 없으면 비운다.** 임의의 날짜로 채우면 잰 적이 없는 구간이 잰 것처럼 읽힌다
         DISPLAY_PERIOD_START: np.nan if empty else entry_dates.min().strftime(DATE_FORMAT),
         DISPLAY_PERIOD_END: np.nan if empty else entry_dates.max().strftime(DATE_FORMAT),
-        DISPLAY_SCREEN: _verdict(period, win_rate=win_rate, mean_value=mean_value, count=count, tradable=tradable),
+        DISPLAY_SCREEN: _verdict(period, mean_value=mean_value, count=count, tradable=tradable),
     }
 
     # **사건 수는 번호를 넘긴 매매법만 낸다.** 같은 사건에서 파생된 신호를 묶어 세는 것이
@@ -256,8 +280,11 @@ def _period_row(
     return row
 
 
-def _verdict(period: str, *, win_rate: float, mean_value: float, count: int, tradable: bool) -> str:
+def _verdict(period: str, *, mean_value: float, count: int, tradable: bool) -> str:
     """그 구간 행의 1차 판정을 낸다.
+
+    **조건은 하나다** — 그 행의 평균이 하한 이상인가 (2026-09-17 사용자 확정).
+    승률은 표에 그대로 실리지만 **판정에는 들어가지 않는다.**
 
     **게이트는 「전체」 구간 하나만 본다** (루트 `CLAUDE.md` 2026-09-12 개정). 쪼개면 칸당
     표본이 5~6건까지 줄어 **한 건이 20%p 를 움직이므로**, 그 값으로 칸을 떨어뜨리면 멀쩡한
@@ -271,7 +298,6 @@ def _verdict(period: str, *, win_rate: float, mean_value: float, count: int, tra
 
     Args:
         period: 구간 이름
-        win_rate: 그 행에 실리는 승률 (백분율). 방향 부호가 이미 반영된 값이다
         mean_value: 그 행에 실리는 평균 (백분율). 같은 뜻으로 곧 방향 기대값이다
         count: 표본 수
         tradable: 판정 대상인가
@@ -284,7 +310,6 @@ def _verdict(period: str, *, win_rate: float, mean_value: float, count: int, tra
 
     # 게이트는 비율(0~1)로 묻고 성적표 컬럼은 백분율이다
     return screen_verdict(
-        hit_rate=win_rate / RATE_TO_PERCENT,
         expected_value=mean_value / RATE_TO_PERCENT,
         sample_count=count,
         tradable=tradable,

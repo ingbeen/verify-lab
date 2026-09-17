@@ -44,6 +44,7 @@ from verify_lab.execution.constants import (
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
+    DISPLAY_WORST_HOLD,
     NOTE_STOP_BASE,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -104,7 +105,10 @@ KEY_FROM_YEAR = "from_year"
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 그 달 20일(휴장이면 직전 거래일) 종가이고 청산은 말일 종가다 — 검증 #10 과 같은 날에 들어간다"
-NOTE_INDEX = "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다"
+NOTE_INDEX = (
+    "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다. "
+    "같은 이유로 「보유 중 최악(%)」 도 종가로 재므로 ETF 행(장중 고가·저가 기준)보다 얕게 나온다"
+)
 NOTE_FROM_YEAR = "시작 연도로 «신호»만 걸렀고 시세는 자르지 않았다 — 「최근 N년」의 기준일은 여전히 시세의 마지막 거래일이다"
 
 
@@ -254,6 +258,7 @@ def _trade_row(
         DISPLAY_HOLD_DAYS: result.hold_days,
         DISPLAY_EXIT_PRICE: round(exit_price, dataset.price_decimals),
         DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_HOLD: round(result.worst_hold_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
         DISPLAY_EXIT_REASON: result.reason,
     }
 
@@ -284,9 +289,14 @@ def _run_cell(
     returns: list[float] = []
     hold_days: list[int] = []
     reasons: list[str] = []
+    worst_hold_rates: list[float] = []
 
     # **표기를 한 번만 만든다.** 두 표가 같은 칸에 다른 값을 실으면 조인이 안 된다 —
-    # 지수 여부에서 유도되는 식이라 두 곳에 두면 한쪽만 바뀔 수 있다
+    # 지수 여부에서 유도되는 식이라 두 곳에 두면 한쪽만 바뀔 수 있다.
+    #
+    # **보유 중 최악의 가격 기준은 넘기지 않는다** — `price_column` 이 이미 그것을 말한다.
+    # 지수는 종가 계열이라 장중 최저점을 알 방법이 없어 그 컬럼 하나로 재지며, 그 값은 실제로
+    # 감당한 낙폭보다 **얕다.** 어느 기준으로 잰 행인지는 `손절선(%)` 의 `손절불가` 표기가 말한다
     stop_display = stop_level_value(stop_level, measurable=not dataset.is_index)
 
     for entry_position, exit_position in zip(entries.entry_positions, entries.exit_positions, strict=True):
@@ -307,6 +317,7 @@ def _run_cell(
         returns.append(result.return_rate)
         hold_days.append(result.hold_days)
         reasons.append(result.reason)
+        worst_hold_rates.append(result.worst_hold_rate)
 
     identity = {
         DISPLAY_TICKER: dataset.label,
@@ -328,6 +339,7 @@ def _run_cell(
         tradable=dataset.is_judged,
         hold_days=hold_days,
         reasons=reasons,
+        worst_hold_rates=worst_hold_rates,
     ):
         accumulator.performance.append({**identity, **row})
 

@@ -32,6 +32,7 @@ from verify_lab.execution.constants import (
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
+    DISPLAY_WORST_HOLD,
     NOTE_STOP_BASE,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -130,6 +131,7 @@ class _Block:
         hold_days: 신호별 보유 거래일 수
         reasons: 신호별 청산 사유
         entry_dates: 신호별 진입일. **구간 분해가 이것으로 행을 나눈다**
+        worst_hold_rates: 신호별 보유 중 최악 수익률
     """
 
     trades: list[dict[str, Any]] = field(default_factory=list)
@@ -137,6 +139,7 @@ class _Block:
     hold_days: list[int] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
     entry_dates: list[pd.Timestamp] = field(default_factory=list)
+    worst_hold_rates: list[float] = field(default_factory=list)
 
 
 def run_option_expiry_trading(
@@ -216,6 +219,7 @@ def run_option_expiry_trading(
                 tradable=True,
                 hold_days=block.hold_days,
                 reasons=block.reasons,
+                worst_hold_rates=block.worst_hold_rates,
             ):
                 grid_rows.append({**identity, **row})
             trade_rows.extend(block.trades)
@@ -353,6 +357,7 @@ def _measure(
         block.hold_days.append(result.hold_days)
         block.reasons.append(result.reason)
         block.entry_dates.append(pd.Timestamp(entries.frame.iloc[entry_position][COL_DATE]))
+        block.worst_hold_rates.append(result.worst_hold_rate)
 
     return block
 
@@ -400,6 +405,7 @@ def _trade_row(
         DISPLAY_HOLD_DAYS: result.hold_days,
         DISPLAY_EXIT_PRICE: round(exit_price, dataset.price_decimals),
         DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_HOLD: round(result.worst_hold_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
         DISPLAY_EXIT_REASON: result.reason,
     }
 
