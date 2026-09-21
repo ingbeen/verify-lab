@@ -10,7 +10,7 @@
 from dataclasses import dataclass
 from typing import Final
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_FILE_TEMPLATE, PRICE_DECIMALS, PRICE_DECIMALS_KRW
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_FILE_TEMPLATE, PRICE_DECIMALS
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_COUNT,
@@ -21,6 +21,7 @@ from verify_lab.measure.constants import (
     COL_MEAN_RATE_CONFLICT,
     COL_SIGNAL_COUNT,
 )
+from verify_lab.measure.screening import COL_DIRECTION
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
     COL_DOWN_RATE_P_VALUE,
@@ -60,6 +61,7 @@ from verify_lab.report.constants import (
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_BASIS,
     DISPLAY_DATE,
+    DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
@@ -85,7 +87,6 @@ from verify_lab.report.constants import (
     DISPLAY_OBSERVED_MEAN,
     DISPLAY_OBSERVED_MEDIAN,
     DISPLAY_OBSERVED_UP_RATE,
-    DISPLAY_PERIOD,
     DISPLAY_POSITIVE_COUNT,
     DISPLAY_POSITIVE_MEAN,
     DISPLAY_SAMPLE_COUNT,
@@ -97,8 +98,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
     DISPLAY_UP_RATE_PERCENTILE,
-    SIGNALS_FILENAME,
-    STATISTICS_FILENAME,
+    MEASURE_FILENAME,
 )
 
 
@@ -169,6 +169,11 @@ COL_DAILY_RETURN: Final = "daily_return"
 
 # 산출물의 식별 컬럼 — 어떤 조합에서 나온 행인지
 COL_TICKER: Final = "ticker"
+
+# 보유 구간에 들어간 배당락. 산식은 `measure/distribution.py` 의 `dividend_impact` 가 소유한다
+COL_DIVIDEND_MEASURED: Final = "dividend_measured"
+COL_DIVIDEND_HIT_COUNT: Final = "dividend_hit"
+COL_DIVIDEND_MEAN_IMPACT: Final = "dividend_mean_impact"
 
 
 # ============================================================
@@ -256,15 +261,17 @@ class Dataset:
     price_decimals: int
 
 
+# **실제로 거는 두 종목뿐이다** (2026-09-21 사용자 확정).
+#
+# 전에는 QQQ·KODEX 200·KODEX 코스닥150 을 함께 돌려 대상 5 × 만기월 12 × 방향 2 = 120칸을
+# 냈다. 셋을 뺀 근거는 서로 다르고 **전부 `docs/매매/옵션_만기일/규칙.md` §3 에 있다** —
+# QQQ 는 배당락이 보유 구간에 들어와 측정값이 오염되고(8/26건 · 회당 +0.049%p 과대),
+# 국내 둘은 이 매매법의 발단인 **네마녀의날**이 미국 달력이라 대상에서 빠졌다.
+#
+# [중요] **되돌리려면 이 목록에 다시 넣으면 된다.** 제외 근거와 실측 수치가 규칙 문서에
+# 남아 있으므로 판단 재료가 사라지지 않는다 — 다만 QQQ 를 넣으면 **그 배당락 왜곡을
+# 함께 안는 것**이고, 그 크기는 `측정.csv` 의 배당락 두 컬럼이 매 실행 알려 준다
 DATASETS: Final = (
-    Dataset(
-        key="qqq",
-        ticker="QQQ",
-        label="QQQ",
-        rule=US_MONTHLY_EXPIRY,
-        file_name=MARKET_FILE_TEMPLATE.format(ticker="QQQ"),
-        price_decimals=PRICE_DECIMALS,
-    ),
     Dataset(
         key="spy",
         ticker="SPY",
@@ -274,44 +281,15 @@ DATASETS: Final = (
         price_decimals=PRICE_DECIMALS,
     ),
     Dataset(
-        # 미국 세 번째 대표 지수. QQQ·SPY 는 독립 표본이 아니므로 "두 ETF에서 같은 모양"을
-        # 두 번의 확인으로 셀 수 없다 — 세 번째로 검산한다 (결정 ㉒)
+        # 미국 세 번째 대표 지수. SPY 와 독립 표본이 아니다 — 9월 아래 두 칸은 **28건 내내
+        # 부호가 갈린 적이 없고 상관이 0.965** 다. 두 칸을 거는 것은 두 번의 확인이 아니라
+        # 같은 포지션을 두 번 사는 것이며, 투자금 결정이 그 사실을 본다 (규칙.md §1.1)
         key="dia",
         ticker="DIA",
         label="DIA",
         rule=US_MONTHLY_EXPIRY,
         file_name=MARKET_FILE_TEMPLATE.format(ticker="DIA"),
         price_decimals=PRICE_DECIMALS,
-    ),
-    Dataset(
-        # 원본가는 상장일(2002-10-14)부터 있다. 수정주가는 조회 시점 기준 최근 3,000거래일만
-        # 존재해 2014년부터인데, **분배락은 만기 4~10거래일 전에 박혀 있어 이 매매의 보유
-        # 구간(만기일 이후)과 겹치지 않는다.** 그래서 원본가로 전 기간을 쓴다 (결정 ㉜)
-        key="kodex200",
-        ticker="069500",
-        label="KODEX 200",
-        rule=KR_MONTHLY_EXPIRY,
-        file_name=MARKET_FILE_TEMPLATE.format(ticker="069500"),
-        price_decimals=PRICE_DECIMALS_KRW,
-    ),
-    Dataset(
-        # 국내 두 번째 시장. **만기 달력은 코스피200 과 같다** — 코스닥150 선물·옵션의
-        # 최종거래일이 결제월 둘째 목요일(휴장이면 앞당김)로 같은 규칙이다.
-        #
-        # **「매월 만기」인 구간이 시세보다 짧다.** 코스닥150 «선물» 은 결제월이 분기월
-        # (3·6·9·12)뿐이고 **옵션은 2018-03-26 상장**이라, 그 전의 비분기월에는 코스닥150
-        # 파생 만기가 없다 — 그 달의 둘째 목요일은 「코스피200 옵션 만기일」일 뿐이다.
-        # 측정은 그대로 성립하지만 3·6·9·12월과 나머지 달을 같은 것으로 읽으면 안 된다
-        # (`docs/매매/옵션_만기일/설계.md` 데이터 실측 기록).
-        #
-        # 상장일이 2015-10 이라 만기월당 표본이 11건 안팎이다. **게이트는 표본 하한을 걸지
-        # 않으므로 판정은 되고**, 얇다는 것은 성적표의 `신호` 컬럼이 말한다
-        key="kosdaq150",
-        ticker="229200",
-        label="KODEX 코스닥150",
-        rule=KR_MONTHLY_EXPIRY,
-        file_name=MARKET_FILE_TEMPLATE.format(ticker="229200"),
-        price_decimals=PRICE_DECIMALS_KRW,
     ),
 )
 
@@ -326,6 +304,17 @@ DISPLAY_EXPIRY_DATE: Final = "만기일"
 DISPLAY_ADVANCED_DAYS: Final = "앞당김(달력일)"
 DISPLAY_OFFSET: Final = "상대 거래일"
 DISPLAY_TICKER: Final = "종목"
+
+# 보유 구간에 들어간 배당락. **`.claude/rules/trading.md` 가 「확정 전 필수 항목」으로
+# 요구하는데 그 값이 어느 산출물에도 없어서** 칸을 뺄지 판단할 때마다 스크립트를 따로
+# 돌려야 했다. 산식은 `measure/distribution.py` 의 `dividend_impact` 하나가 소유한다.
+#
+# [중요] **대조 건수를 함께 낸다.** 「걸린 건수 0」과 「수정주가가 없어 못 쟀다」는 다른
+# 사실이고, 그 구별이 없으면 없는 안전을 보고한다 — 역방향이 실제로 신호 19건을
+# 못 잰 채 0건으로 셌다
+DISPLAY_DIVIDEND_MEASURED: Final = "배당락 대조 건수"
+DISPLAY_DIVIDEND_HIT_COUNT: Final = "배당락 걸린 건수"
+DISPLAY_DIVIDEND_MEAN_IMPACT: Final = "배당락 평균 왜곡(%p)"
 DISPLAY_MONTH_DAY_INDEX: Final = "월중 서수"
 DISPLAY_DAILY_RETURN: Final = "일간 등락률(%)"
 DISPLAY_CLOSE: Final = "종가"
@@ -372,10 +361,9 @@ OUTPUT_LABELS: Final = {
     # 식별 축
     COL_TICKER: DISPLAY_TICKER,
     COL_EXPIRY_MONTH_NUMBER: DISPLAY_EXPIRY_MONTH,
+    COL_DIRECTION: DISPLAY_DIRECTION,
     COL_EXPIRY_MONTH: DISPLAY_EXPIRY_YEAR_MONTH,
-    COL_TIME_HALF: DISPLAY_PERIOD,
     COL_JUDGEABLE: DISPLAY_JUDGEABLE,
-    COL_BASELINE_KIND: DISPLAY_BASELINE_KIND,
     # 만기일 달력
     COL_RULE_DATE: DISPLAY_RULE_DATE,
     COL_EXPIRY_DATE: DISPLAY_EXPIRY_DATE,
@@ -385,7 +373,6 @@ OUTPUT_LABELS: Final = {
     COL_CLOSE: DISPLAY_CLOSE,
     COL_DAILY_RETURN: DISPLAY_DAILY_RETURN,
     COL_OFFSET: DISPLAY_OFFSET,
-    COL_MONTH_DAY_INDEX: DISPLAY_MONTH_DAY_INDEX,
     # 매매 원자료
     COL_WEEK_REFERENCE: DISPLAY_WEEK_REFERENCE,
     COL_TARGET_DATE: DISPLAY_TARGET_DATE,
@@ -413,6 +400,10 @@ OUTPUT_LABELS: Final = {
     COL_POSITIVE_COUNT: DISPLAY_POSITIVE_COUNT,
     COL_NEGATIVE_COUNT: DISPLAY_NEGATIVE_COUNT,
     COL_MEAN_RATE_CONFLICT: DISPLAY_MEAN_RATE_CONFLICT,
+    # 보유 구간에 들어간 배당락
+    COL_DIVIDEND_MEASURED: DISPLAY_DIVIDEND_MEASURED,
+    COL_DIVIDEND_HIT_COUNT: DISPLAY_DIVIDEND_HIT_COUNT,
+    COL_DIVIDEND_MEAN_IMPACT: DISPLAY_DIVIDEND_MEAN_IMPACT,
     # 같은 달 기준선 (merge 가 붙인 `_baseline` 접미사)
     **{
         f"{column}{BASELINE_SUFFIX}": f"{_BASELINE_PREFIX}{label}"
@@ -519,18 +510,24 @@ PROBABILITY_OUTPUT_COLUMNS: Final = (
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 # runner 가 `row_counts` 를 이것으로 키잉하고 CLI 가 이것을 돌며 저장한다 —
 # 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
+# **측정 산출물은 한 장뿐이다** (2026-09-21). 체결 둘(`성적표.csv`·`거래내역.csv`)은
+# `execution/constants.py` 가 소유하므로 여기 없고, 폴더에 생기는 CSV 는 합쳐서 셋이다.
+#
+# 여덟 장이던 것을 한 장으로 줄였고 **사라진 일곱의 사정이 서로 다르다.**
+#
+# | 없앤 표 | 왜 |
+# | --- | --- |
+# | `signals.csv`(29,572행)·`expiries.csv` | **상대 거래일 ±10 격자는 결론이 난 축**이다 — 결과 문서가 「우위 없음」으로 닫았다 |
+# | `weekly_trade_signals.csv` | 체결 원자료는 `거래내역.csv` 가 담는다 |
+# | `weekly_trade_summary/excess/permutation.csv` | **보유 거래일 축**이라 판정에 쓰이지 않았다 |
+# | `weekly_trade_by_month_halves.csv` | 성적표의 시기 5행이 같은 질문에 더 고른 표본으로 답한다 |
+#
+# **남길 값은 `측정.csv` 가 담는다** — 중앙값(측정의 원칙 4) · 평균-비율 어긋남(원칙 13) ·
+# 기준선 · 우연확률 · 배당락. 그 넷은 성적표에 없어서 **이 표가 유일한 자리**다.
+# 되살리는 절차는 `docs/매매/옵션_만기일/결과.md` 에 있다
 OUTPUT_FILES: Final[dict[str, str]] = {
-    "expiries": "expiries.csv",
-    # 사용자가 보는 이름은 `report/constants.py` 가 소유한다 — 세 매매법이 같은 상수를 쓴다
-    "signals": SIGNALS_FILENAME,
-    "trade_signals": "weekly_trade_signals.csv",
-    "trade_summary": "weekly_trade_summary.csv",
-    "trade_excess": "weekly_trade_excess.csv",
-    "trade_test": "weekly_trade_permutation.csv",
-    # **판정이 서는 축의 집계표**라 이것이 그 매매법의 `통계.csv` 다.
-    # `trade_summary` 는 보유 거래일 축이라 판정에 쓰이지 않는다
-    "trade_by_month": STATISTICS_FILENAME,
-    "trade_by_month_halves": "weekly_trade_by_month_halves.csv",
+    # 사용자가 보는 이름은 `report/constants.py` 가 소유한다 — 이름이 갈리면 계약으로 고정할 수 없다
+    "measure": MEASURE_FILENAME,
 }
 
 
@@ -603,25 +600,30 @@ class ExpiryCell:
     bet_down: bool
 
 
-# 만기월 축. 달력이 정하는 값이라 재는 쪽이 고를 것이 없다
-EXPIRY_MONTHS: Final = tuple(range(1, 13))
+# **실제로 거는 세 칸이다** (2026-09-21 사용자 확정).
+#
+# [중요] **전에는 코드가 격자를 전부 냈고, 그 방침을 사용자가 뒤집었다.** 대상 5 × 만기월 12 ×
+# 방향 2 = 120칸을 내던 이유는 「코드가 칸을 고르면 사후 선택과 구별되지 않는다」였는데,
+# **사용자가 실제로 걸 것만 남기기로 정했다** — 산출물이 12,000행이라 열어도 읽히지 않았고,
+# 안 거는 117칸의 성적이 판단을 돕지 않았다.
+#
+# **그 대신 두 가지를 지킨다.**
+#   - **왜 이 칸인가는 `docs/매매/옵션_만기일/규칙.md` §3 이 「확정 / 탈락안 / 근거」로 갖는다.**
+#     코드는 그 결론을 옮겨 적을 뿐이고, 목록만 보고 근거를 짐작하면 안 된다
+#   - **손절선 격자 20종은 그대로 둔다** — `.claude/rules/trading.md` 가 요구하는 대조축이며,
+#     「값 하나를 확정하는 것」과 「격자를 전부 내는 것」의 경계는 여기서도 그대로다
+#
+# **시세를 다시 받으면 이 목록이 따라오지 않는다.** 그것이 격자를 내던 이유였고 지금도 사실이다 —
+# 재수집 뒤에는 성적표를 보고 이 목록을 다시 판단해야 한다
+TRADING_CELLS: Final = (
+    ExpiryCell(dataset_key="spy", expiry_month=9, bet_down=True),
+    ExpiryCell(dataset_key="dia", expiry_month=9, bet_down=True),
+    ExpiryCell(dataset_key="dia", expiry_month=12, bet_down=False),
+)
 
 
-def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, ...]:
-    """대상 × 만기월 × 방향의 **전 칸**을 만든다.
-
-    [중요] **코드가 칸을 고르지 않는다.** 전에는 게이트를 넘은 칸을 손으로 적어 두었는데,
-    그러면 ① 시세를 다시 받아 게이트 결과가 바뀌어도 목록이 따라오지 않고
-    ② 「왜 이 칸인가」의 근거가 코드에서 사라져 **사후 선택과 구별되지 않는다.**
-    격자를 전부 내는 것은 고르는 것이 아니므로 과최적화가 아니며
-    (`.claude/rules/trading.md` 의 경계는 폴더가 아니라 행위다), **값 하나를 확정하는 것은
-    `docs/매매/옵션_만기일/규칙.md` §1 이 한다** — 그 문서가 확정 집행 칸의 SoT 다.
-
-    월말 진입이 이미 같은 방식이다(12월 × 두 방향 전 칸). 셋이 같은 관용을 쓰면
-    한 매매법의 사정으로 다른 둘이 흔들리지 않는다.
-
-    **두 방향을 모두 낸다.** 어느 쪽에 걸지는 게이트가 칸마다 답하지만, 체결 성적은
-    그 답과 무관하게 양쪽이 있어야 **판정이 가리킨 방향의 반대쪽도 대조**할 수 있다.
+def trading_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, ...]:
+    """확정 칸 중 그 대상에 해당하는 것만 낸다.
 
     **청산 요일은 축이 아니다.** 전 대상이 `EXIT_WEEKDAY`(금요일) 하나를 쓴다 — 확정 규칙이라
     고를 것이 없고, 그래서 칸에도 산출물에도 그 컬럼이 없다.
@@ -632,23 +634,25 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
             조용히 전부로 넓히면 대상을 좁히려던 실행이 **전 범위 산출물로 폴더를 덮는다**
 
     Returns:
-        대상 순서 → 만기월 오름차순 → 위·아래 순의 칸 목록.
+        `TRADING_CELLS` 의 순서를 그대로 지킨 칸 목록.
         **순서가 결정적이어야** 산출물 diff 가 「숫자가 바뀌었는가」를 말해 준다
 
     Raises:
-        ValueError: 빈 대상 목록을 넘긴 경우
+        ValueError: 빈 대상 목록을 넘겼거나, 고른 대상에 확정 칸이 하나도 없는 경우
     """
     if datasets is not None and not datasets:
         raise ValueError("고른 종목에 해당하는 칸이 없습니다")
 
     targets = DATASETS if datasets is None else datasets
+    keys = {dataset.key for dataset in targets}
+    cells = tuple(cell for cell in TRADING_CELLS if cell.dataset_key in keys)
 
-    return tuple(
-        ExpiryCell(dataset_key=dataset.key, expiry_month=month, bet_down=bet_down)
-        for dataset in targets
-        for month in EXPIRY_MONTHS
-        for bet_down in (False, True)
-    )
+    # **빈 결과를 조용히 돌려주지 않는다.** 그대로 두면 산출물이 0행으로 나오고
+    # 폴더는 이미 비워진 뒤라, 좁혀 돌린 실행이 **전체 산출물을 지우기만 한다**
+    if not cells:
+        raise ValueError(f"고른 종목에 확정 칸이 없습니다 - 종목: {sorted(keys)}")
+
+    return cells
 
 
 # **만기월과 청산 목표일의 레이블은 위 측정 절에 이미 있다.** 측정과 체결이 같은 이름을
@@ -662,3 +666,12 @@ def all_cells(datasets: tuple[Dataset, ...] | None = None) -> tuple[ExpiryCell, 
 # 청산일을 확정하지 못해 빠진 진입 수. **측정과 매매가 같은 것을 세므로 한 곳에서 정의한다** —
 # 두 파일에 한 벌씩 두면 한쪽만 고쳐도 예외가 나지 않고 `summary.json` 의 키만 조용히 갈린다
 KEY_EXCLUDED_COUNT: Final = "excluded_count"
+
+# 이번 실행이 어느 칸을 잰 것인가. **측정과 체결이 같은 목록을 받으므로 키도 하나다** —
+# 두 파일에 한 벌씩 두면 `summary.json` 의 `measure` 와 `trade` 가 다른 이름으로 같은 것을 적는다
+KEY_CELLS: Final = "cells"
+
+# 그 목록의 한 줄이 담는 것. 측정과 체결이 같은 칸을 적으므로 이름도 한 벌이다
+KEY_LABEL: Final = "label"
+KEY_EXPIRY_MONTH: Final = "expiry_month"
+KEY_DIRECTION: Final = "direction"

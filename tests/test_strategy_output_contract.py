@@ -124,6 +124,11 @@ SUMMARY_COMMON_COLUMNS = (
     "승률(%)",
     "손익비",
     "손익분기 승률(%)",
+    # **손익분기 승률 바로 뒤에 그 «차이»를 둔다.** 두 값이 나란히 있어도 사람이 매번 빼야
+    # 했고, 그 차이가 「이 칸이 얼마나 여유 있게 버는가」를 말한다.
+    # **이름을 「여유」·「초과」로 하지 않는다** — 음수가 될 수 있어 그 말이 어색해진다
+    # (`.claude/rules/docs.md` 가 「초과분」을 「기준선 대비 차이」로 바꾼 것과 같은 이유)
+    "손익분기 대비(%p)",
     # **손익비 바로 뒤에 그 분자·분모를 둔다.** `docs/조사/투자금_결정/규칙.md` §1.2 가
     # 이 두 값의 출처를 성적표로 적어 두었는데 실제로는 없었다. `이길 때(%)` 는 양수,
     # `질 때(%)` 는 **음수**다 — `최악(%)` 과 같은 관용이고 그 문서의 예시와도 부호가 맞는다
@@ -431,7 +436,7 @@ class TestSummaryColumns:
 
         Given: 합성 시세로 돈 역방향 결과
         When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 파라미터 · 시작연도 · 공통 23개 · 사건 순이다
+        Then: 종목 · 파라미터 · 시작연도 · 공통 24개 · 사건 순이다
         """
         # Given / When / Then
         assert list(reverse_outputs.performance.columns) == _expected_summary(AXIS_REVERSE, TAIL_REVERSE_SUMMARY)
@@ -442,7 +447,7 @@ class TestSummaryColumns:
 
         Given: 합성 시세로 돈 옵션 만기일 결과
         When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 만기월 · 공통 23개다. `사건` 은 없다
+        Then: 종목 · 만기월 · 공통 24개다. `사건` 은 없다
         """
         # Given / When / Then
         assert list(expiry_outputs.performance.columns) == _expected_summary(AXIS_OPTION_EXPIRY)
@@ -453,7 +458,7 @@ class TestSummaryColumns:
 
         Given: 합성 시세로 돈 월말 결과
         When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 월 · 공통 23개다
+        Then: 종목 · 월 · 공통 24개다
         """
         # Given / When / Then
         assert list(month_end_outputs.performance.columns) == _expected_summary(AXIS_MONTH_END)
@@ -944,20 +949,26 @@ class TestFilenames:
         **넷이 아니라 셋이다** (2026-09-16). 판정표(`1차_판정.csv`)가 성적표로 통합돼
         그 이름을 쓰는 표가 없어졌다 — 값은 `통계.csv` 가 그대로 담는다.
 
+        [중요] **`측정.csv` 가 넷째로 들어왔다** (2026-09-21). 옵션 만기일이 확정 3칸으로
+        좁아지며 측정 표 여덟을 한 장으로 합친 것이고, **`통계.csv` 는 그대로 남는다** —
+        역방향·월말이 계속 그 이름을 낸다. **두 이름이 공존하는 것은 과도기이며**
+        나머지 둘을 옮길 때 해소된다 (`src/verify_lab/CLAUDE.md` 매매 산출물 계약).
+
         Given: 체결 계층과 출력 계층의 상수 모듈
         When: 파일명 상수를 읽었을 때
-        Then: 세 이름이 한글로 정의돼 있다
+        Then: 네 이름이 한글로 정의돼 있다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
-        from verify_lab.report.constants import STATISTICS_FILENAME
+        from verify_lab.report.constants import MEASURE_FILENAME, STATISTICS_FILENAME
 
         # When / Then
         assert SUMMARY_FILENAME == "성적표.csv"
         assert TRADES_FILENAME == "거래내역.csv"
         assert STATISTICS_FILENAME == "통계.csv"
+        assert MEASURE_FILENAME == "측정.csv"
 
-    def test_세_매매법이_같은_네_이름을_낸다(self) -> None:
+    def test_역방향과_월말은_통계_이름을_낸다(self) -> None:
         """
         목적: **같은 질문에 답하는 표가 매매법마다 다른 이름으로 불리던 상태를 닫는다.**
 
@@ -966,22 +977,22 @@ class TestFilenames:
         다시 찾아야 했고, **이름이 갈려 있어 계약으로 고정할 수도 없었다.**
 
         축을 이름에 넣지 않는다(`만기월별_통계` 가 아니라 `통계`) — 폴더가 매매법을 말하므로
-        이름에 또 넣으면 중복이고, 넣는 순간 세 이름이 다시 갈린다.
+        이름에 또 넣으면 중복이고, 넣는 순간 이름이 다시 갈린다.
 
-        Given: 세 매매법의 산출물 파일 목록과 체결 산출물 이름
+        **옵션 만기일은 여기서 빠진다** — 측정 표를 `측정.csv` 한 장으로 합쳤다(아래 테스트).
+
+        Given: 두 매매법의 산출물 파일 목록과 체결 산출물 이름
         When: 사용자가 보는 이름을 찾는다
-        Then: 셋 다 그 이름을 그대로 낸다
+        Then: 둘 다 그 이름을 그대로 낸다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
         from verify_lab.report.constants import STATISTICS_FILENAME
         from verify_lab.studies.month_end.constants import OUTPUT_FILES as MONTH_END_FILES
-        from verify_lab.studies.option_expiry.constants import OUTPUT_FILES as EXPIRY_FILES
         from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
 
         measured = {
             "역방향": set(REVERSE_FILES.values()),
-            "옵션 만기일": set(EXPIRY_FILES.values()),
             "월말 진입": set(MONTH_END_FILES.values()),
         }
 
@@ -991,6 +1002,39 @@ class TestFilenames:
 
         # 체결 둘은 `execution/constants.py` 가 소유하므로 세 매매법이 자동으로 같다
         assert {SUMMARY_FILENAME, TRADES_FILENAME} == {"성적표.csv", "거래내역.csv"}
+
+    def test_옵션_만기일은_파일_셋만_낸다(self) -> None:
+        """
+        목적: **사용자가 안 여는 표를 내지 않는다**는 결정을 계약으로 고정한다 (2026-09-21).
+
+        측정 표가 여덟이었고 사용자는 성적표·거래내역만 봤다. 그중 상대 거래일 ±10 격자는
+        **결과 문서가 「우위 없음」으로 닫은 축**이고, 보유 거래일 축과 시기 2분할은 성적표의
+        시기 5행과 답이 겹쳤다. 남길 값(중앙값·기준선·우연확률·배당락)은 `측정.csv` 한 장이 담는다.
+
+        [중요] **개수를 박는다.** 「`측정.csv` 가 있는가」만 보면 옛 표가 남아 있어도 통과한다 —
+        이 변경의 요점은 **더 내지 않는 것**이다.
+
+        **두 자리를 합쳐서 센다** — 측정 산출물은 그 매매법의 `OUTPUT_FILES` 가, 체결 둘은
+        `execution/constants.py` 가 소유한다. 한쪽만 보면 나머지가 늘어도 통과한다.
+
+        Given: 옵션 만기일의 측정 산출물 목록과 체결 산출물 이름
+        When: 폴더에 생기는 CSV 이름을 모두 모았을 때
+        Then: 정확히 세 이름이다
+        """
+        # Given
+        from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
+        from verify_lab.report.constants import MEASURE_FILENAME
+        from verify_lab.studies.option_expiry.constants import OUTPUT_FILES as EXPIRY_FILES
+
+        # When
+        files = set(EXPIRY_FILES.values()) | {SUMMARY_FILENAME, TRADES_FILENAME}
+
+        # Then
+        assert files == {
+            SUMMARY_FILENAME,
+            TRADES_FILENAME,
+            MEASURE_FILENAME,
+        }, f"옵션 만기일이 내는 파일이 셋이 아닙니다: {sorted(files)}"
 
     def test_매매_스크립트에_csv_문자열이_없다(self) -> None:
         """
@@ -1009,6 +1053,111 @@ class TestFilenames:
         # When / Then
         for script in scripts:
             assert ".csv" not in script.read_text(encoding="utf-8"), f"{script.name} 에 파일명이 박혀 있습니다"
+
+
+class TestBreakevenMargin:
+    """`손익분기 대비(%p)` — 승률이 손익분기 승률보다 얼마나 위인가
+
+    두 값이 표에 나란히 있어도 **사람이 매번 빼야 했다.** 그 차이가 「이 칸이 얼마나 여유 있게
+    버는가」를 말하는데, 손으로 빼면 행마다 다시 계산해야 하고 표를 정렬할 수도 없다.
+
+    [중요] **표에 실린 «반올림 뒤» 값끼리 뺀다.** 원값으로 계산하면 승률 `72.73` · 손익분기
+    `43.10` 이 찍힌 행에 `29.62` 가 나올 수 있다 — **표가 자기 자신과 어긋난다.**
+    매매 산출물 계약의 「판정에 넣는 값은 반올림 뒤」와 같은 이유다.
+    """
+
+    # 컬럼 이름을 **손으로 박는다.** 프로덕션 상수를 import 하면 그 상수를 고치는 순간
+    # 테스트가 함께 따라와 아무것도 고정하지 못한다 (이 모듈 머리말)
+    MARGIN_COLUMN = "손익분기 대비(%p)"
+    WIN_RATE_COLUMN = "승률(%)"
+    BREAKEVEN_COLUMN = "손익분기 승률(%)"
+
+    def test_세_매매법_모두_승률에서_손익분기를_뺀_값이다(
+        self,
+        reverse_outputs: StrategyOutputs,
+        expiry_outputs: ExpiryOutputs,
+        month_end_outputs: TradingOutputs,
+    ) -> None:
+        """
+        목적: 산식을 계약으로 고정한다 — **표에 실린 값끼리** 뺀 것이어야 한다
+
+        Given: 세 매매법의 성적표
+        When: 값이 있는 행에서 승률 − 손익분기 승률을 계산했을 때
+        Then: `손익분기 대비(%p)` 와 같다
+        """
+        # Given
+        for name, table in (
+            ("역방향", reverse_outputs.performance),
+            ("옵션 만기일", expiry_outputs.performance),
+            ("월말", month_end_outputs.performance),
+        ):
+            filled = table[table[self.MARGIN_COLUMN].notna()]
+            assert not filled.empty, f"{name} 성적표에 값이 있는 행이 없습니다"
+
+            # When
+            expected = (filled[self.WIN_RATE_COLUMN] - filled[self.BREAKEVEN_COLUMN]).round(2)
+
+            # Then
+            assert filled[self.MARGIN_COLUMN].tolist() == pytest.approx(
+                expected.tolist(), abs=1e-9
+            ), f"{name} 성적표의 손익분기 대비가 두 컬럼의 차이와 다릅니다"
+
+    def test_손익분기_승률_바로_뒤에_온다(self, month_end_outputs: TradingOutputs) -> None:
+        """
+        목적: **자리**를 계약으로 고정한다
+
+        재료 바로 옆에 있어야 사용자가 셋을 한눈에 견준다. 표 끝에 붙이면 스크롤해야 한다.
+
+        Given: 합성 시세로 돈 월말 결과
+        When: 두 컬럼의 위치를 봤을 때
+        Then: 손익분기 승률 다음 칸이다
+        """
+        # Given
+        columns = list(month_end_outputs.performance.columns)
+
+        # When
+        breakeven = columns.index(self.BREAKEVEN_COLUMN)
+
+        # Then
+        assert columns[breakeven + 1] == self.MARGIN_COLUMN
+
+    def test_손익분기가_비면_대비도_빈다(self) -> None:
+        """
+        목적: 「잰 적이 없다」를 0 으로 채우지 않는다 (측정의 원칙 17)
+
+        전승 칸은 손익비가 무한대라 손익분기 승률을 숫자로 못 적는다. 그때 대비를
+        `승률 − 0` 으로 계산하면 **「손익분기를 승률만큼 앞선다」는 거짓이 나온다.**
+
+        Given: 전부 이익인 체결 목록 (진 거래 0건 → 손익분기 승률이 결측)
+        When: 구간 행을 만들었을 때
+        Then: 손익분기 승률과 손익분기 대비가 둘 다 비어 있다
+        """
+        # Given
+        dates = pd.DatetimeIndex(["2020-01-02", "2020-02-03", "2020-03-02"])
+
+        # When
+        overall = period_rows(dates, [0.01, 0.02, 0.03], last_day=pd.Timestamp("2020-03-31"), tradable=True)[0]
+
+        # Then
+        assert pd.isna(overall[self.BREAKEVEN_COLUMN]), "진 거래가 0건인데 손익분기 승률에 값이 있습니다"
+        assert pd.isna(overall[self.MARGIN_COLUMN]), "손익분기 승률이 비었는데 대비에 값이 있습니다"
+
+    def test_표본이_0건인_구간은_빈다(self) -> None:
+        """
+        목적: 표본이 없는 칸을 0 으로 채우지 않는다
+
+        Given: 체결이 하나도 없는 목록
+        When: 구간 행을 만들었을 때
+        Then: 손익분기 대비가 비어 있다
+        """
+        # Given
+        empty_dates = pd.DatetimeIndex([])
+
+        # When
+        overall = period_rows(empty_dates, [], last_day=pd.Timestamp("2020-03-31"), tradable=True)[0]
+
+        # Then
+        assert pd.isna(overall[self.MARGIN_COLUMN])
 
 
 class TestPayoffAmountColumns:

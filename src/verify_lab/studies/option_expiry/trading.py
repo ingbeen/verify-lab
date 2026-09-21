@@ -55,11 +55,15 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_TARGET_DATE,
     EXIT_WEEKDAY,
     EXPIRY_STOP_LEVELS,
+    KEY_CELLS,
+    KEY_DIRECTION,
     KEY_EXCLUDED_COUNT,
+    KEY_EXPIRY_MONTH,
+    KEY_LABEL,
     TRACK_NAME,
     Dataset,
     ExpiryCell,
-    all_cells,
+    trading_cells,
 )
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
 from verify_lab.studies.option_expiry.weekly_exit import weekly_exit_schedule
@@ -74,10 +78,6 @@ logger = get_logger(__name__)
 # **요약은 CLI 가 아니라 이 모듈이 조립한다** (`scripts/CLAUDE.md` 「CLI 에 도메인 로직 금지」).
 # CLI 가 들면 이 매매법만 규약이 갈려 대상 범위도 데이터 기간도 비용 표기도 빠진다
 KEY_STOP_LEVELS = "stop_levels"
-KEY_CELLS = "cells"
-KEY_LABEL = "label"
-KEY_EXPIRY_MONTH = "expiry_month"
-KEY_DIRECTION = "direction"
 
 # 산출물만 보고는 알 수 없는 실행 조건
 NOTE_ENTRY = "진입은 만기일 종가다. 만기일이 휴장이면 직전 거래일로 앞당긴다"
@@ -167,9 +167,10 @@ def run_option_expiry_trading(
     Raises:
         ValueError: 대상 칸이 비었거나, 손절선 목록이 비었거나, 데이터셋 이름을 찾을 수 없는 경우
     """
-    # **기본이 전 칸이다.** 손으로 적은 목록을 기본값에 두면 그 목록이 사후 선택과
-    # 구별되지 않는다 — 무엇을 실제로 거는지는 `docs/매매/옵션_만기일/규칙.md` §1 이 정한다
-    cells = all_cells() if cells is None else cells
+    # **기본이 확정 칸이다** (2026-09-21). 전에는 전 격자(120칸)가 기본이었고 사용자가
+    # 성적표에서 3칸을 걸러 봤다 — **왜 이 칸인가의 근거는 여전히 코드에 없고**
+    # `docs/매매/옵션_만기일/규칙.md` §3 이 「확정 / 탈락안 / 근거」로 갖는다
+    cells = trading_cells() if cells is None else cells
     if not cells:
         raise ValueError("대상 칸이 비어 있어 매매를 돌릴 수 없습니다")
     if not stop_levels:

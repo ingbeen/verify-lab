@@ -5,13 +5,19 @@
 
 고정하는 계약은 넷이다.
 - 집계표에 축과 식별 컬럼이 모두 남는다
-- 일간 등락 집계는 **앞날을 보지 않는다** (그날 종가와 전날 종가만 쓴다)
-- 국면·위칭으로 자를 때 **시세가 아니라 신호일만** 잘린다
-- 만기 창 안 + 창 밖 = 전체 거래일 (표본 보존)
+- 만기월 축에 **같은 달 베이스라인**이 붙는다 — 없으면 9월 약세가 만기 효과인지 계절성인지 못 가른다
+- **확정 칸만 낸다** — 산출물은 칸마다 한 행이고 종목·만기월·방향이 그 행을 식별한다
+- **배당락을 함께 잰다** — 「걸린 건 0」과 「수정주가가 없어 못 쟀다」가 구별돼야 한다
+
+**상대 거래일 ±10 격자와 시기 2등분 표의 테스트는 2026-09-21 에 사라졌다** — 그 축들을
+산출물에서 없앴기 때문이며, 상대 거래일은 결과 문서가 「우위 없음」으로 닫은 축이고
+시기 2등분은 성적표의 시기 5행이 같은 질문에 더 고른 표본으로 답한다.
 """
 
 from collections.abc import Sequence
+from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -21,12 +27,7 @@ from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
     COL_HORIZON,
-    COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
-    JUDGEABLE_NO,
-    JUDGEABLE_YES,
-    PERIOD_FIRST_HALF,
-    PERIOD_SECOND_HALF,
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
@@ -36,27 +37,19 @@ from verify_lab.measure.statistics import (
     COL_LOSS_RATE_EXCESS,
     COL_MEAN,
     COL_MEAN_P_VALUE,
-    COL_SAMPLE_COUNT,
     COL_UP_RATE_P_VALUE,
     COL_WIN_RATE,
 )
 from verify_lab.studies.option_expiry.constants import (
-    COL_DAILY_RETURN,
     COL_EXPIRY_MONTH_NUMBER,
     COL_HOLD_DAYS,
-    COL_MONTH_DAY_INDEX,
-    COL_OFFSET,
-    COL_TIME_HALF,
+    COL_TICKER,
     HORIZON_NEXT_WEEK_EXIT,
-    KR_MONTHLY_EXPIRY,
     US_MONTHLY_EXPIRY,
     Dataset,
 )
 from verify_lab.studies.option_expiry.runner import (
     _aggregate_by_month,
-    _aggregate_month_halves,
-    _annotate,
-    _month_day_index,
     _per_length,
 )
 
@@ -78,76 +71,6 @@ def _market(closes: Sequence[float], start: str = "2026-01-02") -> pd.DataFrame:
             COL_VOLUME: [1_000] * len(prices),
         }
     )
-
-
-def _dataset(rule: object) -> Dataset:
-    """실행 계층이 요구하는 최소 대상 정의를 만든다. 파일은 읽지 않는다."""
-    return Dataset(
-        key="synthetic",
-        ticker="SYN",
-        label="합성",
-        rule=rule,  # pyright: ignore[reportArgumentType]
-        file_name="none.csv",
-        price_decimals=4,
-    )
-
-
-class TestAnnotate:
-    """시세에 붙는 부가 컬럼의 계약을 고정한다."""
-
-    def test_일간_등락은_전날_종가만_쓴다(self) -> None:
-        """
-        목적: **앞날을 보지 않음**을 고정한다
-
-        Given: 종가 100 → 110 인 합성 시세
-        When: 부가 컬럼을 붙이면
-        Then: 둘째 날의 일간 등락이 0.1 이고 첫날은 비어 있다
-        """
-        # Given
-        df = _market([100.0, 110.0, 99.0])
-
-        # When
-        _, annotated = _annotate(df, _dataset(US_MONTHLY_EXPIRY))
-
-        # Then
-        assert pd.isna(annotated[COL_DAILY_RETURN].iloc[0])
-        assert float(annotated[COL_DAILY_RETURN].iloc[1]) == pytest.approx(0.1, abs=EXACT_TOLERANCE)
-
-    def test_표본이_보존된다(self) -> None:
-        """
-        목적: 만기 창 안 + 창 밖 = 전체 거래일 을 고정한다
-
-        Given: 6개월치 합성 시세
-        When: 부가 컬럼을 붙이면
-        Then: offset 이 있는 날과 없는 날의 합이 전체 거래일과 같다
-        """
-        # Given
-        df = _market([100.0 + index for index in range(130)])
-
-        # When
-        _, annotated = _annotate(df, _dataset(KR_MONTHLY_EXPIRY))
-
-        # Then
-        inside = int(annotated[COL_OFFSET].notna().sum())
-        outside = int(annotated[COL_OFFSET].isna().sum())
-        assert inside + outside == len(df)
-
-    def test_월중_서수는_달마다_1부터_다시_센다(self) -> None:
-        """
-        목적: 월중 서수 축의 정의를 고정한다
-
-        Given: 두 달에 걸친 거래일
-        When: 월중 서수를 매기면
-        Then: 달이 바뀌는 날에 1 로 돌아간다
-        """
-        # Given
-        dates = pd.Series(pd.to_datetime(["2026-01-29", "2026-01-30", "2026-02-02", "2026-02-03"]))
-
-        # When
-        result = _month_day_index(dates)
-
-        # Then
-        assert result.tolist() == [1, 2, 1, 2]
 
 
 class TestWeeklyTradeAssembly:
@@ -282,114 +205,6 @@ class TestWeeklyTradeAssembly:
         assert float(row[COL_MEAN]) < 0
         assert bool(row[COL_MEAN_RATE_CONFLICT]) is False
 
-    def test_시기_2등분은_표본이_모자란_달도_행을_남긴다(self) -> None:
-        """
-        목적: **행이 사라지면 그 구간을 못 봤다는 사실 자체를 사용자가 모른다** (측정의 원칙 17).
-
-        전에는 하한에 못 미치는 달을 통째로 버렸다. 그러면 「쪼갤 수 없었다」와
-        「애초에 신호가 없었다」가 산출물에서 구별되지 않는다. 원칙 17 은 행을 남기고
-        `판정가능` 을 「아니오」로 적으라고 정한다 — `leverage_tracking` 과 `strategy` 가
-        이미 쓰는 관용이다.
-
-        Given: 9월 신호가 하한 미만인 입력
-        When: 시기 2등분으로 집계하면
-        Then: 앞뒤 행이 남고 `판정가능` 이 전부 「아니오」다
-        """
-        # Given — 8건이라 절반이 4건씩이고 양쪽 다 검정 하한(10건) 아래다
-        dates = [f"2026-09-{day:02d}" for day in range(1, 9)]
-        signal = _long_form(dates, [-0.01] * len(dates))
-        baseline = _long_form([f"2026-09-{day:02d}" for day in range(20, 29)], [0.01] * 9)
-
-        # When
-        result = _aggregate_month_halves(signal, baseline, repeats=10, seed=0)
-
-        # Then
-        assert not result.empty, "표본이 모자란 달의 행이 사라졌습니다 (측정의 원칙 17)"
-        assert result[COL_TIME_HALF].tolist() == [PERIOD_FIRST_HALF, PERIOD_SECOND_HALF]
-        assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_NO, JUDGEABLE_NO]
-
-    def test_표본이_충분한_달은_판정가능이_예다(self) -> None:
-        """
-        목적: `판정가능` 이 상수로 굳지 않고 실제 표본을 반영함을 고정한다
-
-        Given: 앞뒤가 각각 검정 하한을 넘는 9월 신호 24건
-        When: 시기 2등분으로 집계하면
-        Then: 두 행 모두 `판정가능` 이 「예」다
-        """
-        # Given
-        early = [f"2020-09-{day:02d}" for day in range(1, 13)]
-        late = [f"2026-09-{day:02d}" for day in range(1, 13)]
-        signal = _long_form(early + late, [-0.02] * 12 + [0.02] * 12)
-        baseline = _long_form(
-            [f"2020-09-{day:02d}" for day in range(13, 25)] + [f"2026-09-{day:02d}" for day in range(13, 25)],
-            [0.01] * 24,
-        )
-
-        # When
-        result = _aggregate_month_halves(signal, baseline, repeats=20, seed=0)
-
-        # Then
-        assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_YES, JUDGEABLE_YES]
-
-    def test_시기_2등분은_앞뒤를_시간순으로_균등하게_가른다(self) -> None:
-        """
-        목적: 국면 축과 달리 **양쪽 표본을 맞춘다**를 고정한다.
-
-        국면은 달력 경계라 칸마다 표본이 들쭉날쭉하지만, 이 축은 신호를 시간순으로 세어
-        가르므로 기준 4 를 표본 하한을 지키며 잴 수 있다.
-
-        Given: 9월 신호 24건 (앞 12건은 내리고 뒤 12건은 오른다)
-        When: 시기 2등분으로 집계하면
-        Then: 앞뒤 두 행이 나오고 방향이 서로 반대로 갈린다
-        """
-        # Given
-        early = [f"2020-09-{day:02d}" for day in range(1, 13)]
-        late = [f"2026-09-{day:02d}" for day in range(1, 13)]
-        signal = _long_form(early + late, [-0.02] * 12 + [0.02] * 12)
-        baseline = _long_form(
-            [f"2020-09-{day:02d}" for day in range(13, 25)] + [f"2026-09-{day:02d}" for day in range(13, 25)],
-            [0.01] * 24,
-        )
-
-        # When
-        result = _aggregate_month_halves(signal, baseline, repeats=20, seed=0)
-
-        # Then
-        assert result[COL_TIME_HALF].tolist() == [PERIOD_FIRST_HALF, PERIOD_SECOND_HALF]
-        assert result[COL_SAMPLE_COUNT].tolist() == [12, 12], "앞뒤 표본이 균등하지 않습니다"
-        first, second = result.iloc[0], result.iloc[1]
-        assert float(first[COL_LOSS_RATE]) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
-        assert float(second[COL_WIN_RATE]) == pytest.approx(1.0, abs=EXACT_TOLERANCE)
-
-    def test_시기_2등분은_보유일수가_섞여도_한_칸으로_센다(self) -> None:
-        """
-        목적: 입력이 **보유일수를 구간 축으로** 갖고 있어도 한 달이 한 칸으로 집계된다.
-
-        그대로 집계하면 한 달이 보유일수별로 쪼개져 앞뒤 표본이 어긋난다.
-        실제 데이터에서 앞 14건 · 뒤 2건 처럼 갈라진 적이 있어 계약으로 고정한다.
-
-        Given: 9월 신호 24건의 보유일수가 4·5·6 으로 섞인 입력
-        When: 시기 2등분으로 집계하면
-        Then: 앞뒤 두 행만 나오고 표본이 12건씩 균등하다
-        """
-        # Given
-        early = [f"2020-09-{day:02d}" for day in range(1, 13)]
-        late = [f"2026-09-{day:02d}" for day in range(1, 13)]
-        signal = _long_form(early + late, [-0.02] * 12 + [0.02] * 12)
-        signal[COL_HORIZON] = [4, 5, 6] * 8
-        baseline = _long_form(
-            [f"2020-09-{day:02d}" for day in range(13, 25)] + [f"2026-09-{day:02d}" for day in range(13, 25)],
-            [0.01] * 24,
-        )
-        baseline[COL_HORIZON] = [4, 5, 6] * 8
-
-        # When
-        result = _aggregate_month_halves(signal, baseline, repeats=20, seed=0)
-
-        # Then
-        assert len(result) == 2, "한 달이 보유일수별로 쪼개졌습니다"
-        assert result[COL_SAMPLE_COUNT].tolist() == [12, 12]
-
 
 def _long_form(dates: Sequence[str], returns: Sequence[float]) -> pd.DataFrame:
     """만기월 집계가 요구하는 최소 long-form 을 만든다."""
@@ -404,49 +219,113 @@ def _long_form(dates: Sequence[str], returns: Sequence[float]) -> pd.DataFrame:
     )
 
 
-def test_월중_서수와_offset_이_함께_붙는다() -> None:
+class TestMeasureTableAssembly:
+    """`측정.csv` — 확정 칸의 «해석 재료»를 한 장에 담는다 (2026-09-21)
+
+    성적표가 「걸 만한가」에 답한다면 이 표는 **「그 값을 어떻게 읽나」**에 답한다.
+    중앙값(측정의 원칙 4) · 평균-비율 어긋남(원칙 13) · 기준선 · 우연확률 · 배당락이
+    그것이며, **성적표에는 그중 어느 것도 없다.**
+
+    [중요] **값은 1배 롱 기준 그대로 둔다.** 「아래」 칸이라고 부호를 뒤집지 않는다 —
+    뒤집으면 `기준선 오른 비율` 이 실제로는 내린 비율을 가리켜 **이름이 거짓이 된다.**
+    `방향` 컬럼은 「어느 쪽으로 거는가」를 표시만 하고, 읽는 법은 문서가 적는다.
+    그래서 **성적표의 평균과 이 표의 평균은 부호가 다를 수 있다** — 대조 대상이 아니다.
     """
-    목적: 만기 축과 월중 위치 축이 **함께** 산출되는지 고정한다
 
-    만기 창은 언제나 월 중순이라 두 축이 거의 붙어 다닌다. 둘을 함께 내야 독자가
-    "만기 때문인가 월 중순이라서인가"를 직접 볼 수 있다 (`docs/매매/옵션_만기일/설계.md` 결정 ⑭).
+    def test_확정_칸만_내고_식별_컬럼_셋이_앞에_온다(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: **코드가 격자를 훑지 않고 확정 칸만 낸다**는 것을 고정한다 (2026-09-21 사용자 확정).
 
-    Given: 3개월치 합성 시세
-    When: 부가 컬럼을 붙이면
-    Then: offset 과 월중 서수가 모두 들어 있다
-    """
-    # Given
-    df = _market([100.0 + index for index in range(70)])
+        전에는 대상 × 만기월 12 × 방향 2 를 전부 냈고, 사용자가 실제로 거는 것은 3칸이었다.
+        **칸을 줄이는 근거는 코드가 아니라 `docs/매매/옵션_만기일/규칙.md` §1 이 갖는다** —
+        코드는 그 목록을 받아 돌 뿐이다.
 
-    # When
-    _, annotated = _annotate(df, _dataset(US_MONTHLY_EXPIRY))
+        식별 컬럼이 빠진 표는 **예외 없이 정상으로 보이면서 해석이 불가능해진다**
+        (이 모듈 머리말). 방향이 없으면 같은 종목·같은 달의 두 행을 구별할 수 없다.
 
-    # Then
-    assert COL_OFFSET in annotated.columns
-    assert COL_MONTH_DAY_INDEX in annotated.columns
-    assert annotated[COL_MONTH_DAY_INDEX].min() == 1
+        Given: 합성 시세와 확정 칸 둘
+        When: 측정을 돌렸을 때
+        Then: 칸마다 한 행이고 종목·만기월·방향이 앞에 온다
+        """
+        # Given
+        from verify_lab.measure.screening import COL_DIRECTION
+        from verify_lab.studies.option_expiry import runner as expiry_runner
+        from verify_lab.studies.option_expiry.constants import ExpiryCell
 
+        rng = np.random.default_rng(20260921)
+        closes = 100.0 * np.cumprod(1.0 + rng.normal(0.0004, 0.008, 520))
+        market = _market(closes.tolist(), start="2024-01-02")
+        market.to_csv(tmp_path / "SYN_max.csv", index=False)
+        # 배당락을 재려면 수정주가가 있어야 한다 — 없으면 실행이 거부된다(아래 테스트)
+        market.to_csv(tmp_path / "SYN_adjusted_max.csv", index=False)
 
-def test_시기_절반이_비어도_행이_남는다() -> None:
-    """
-    목적: **한쪽 절반에 신호가 하나도 없는 경계**에서도 행이 사라지지 않음을 고정한다.
+        dataset = Dataset(
+            key="synthetic",
+            ticker="SYN",
+            label="합성",
+            rule=US_MONTHLY_EXPIRY,
+            file_name="SYN_max.csv",
+            price_decimals=4,
+        )
+        cells = (
+            ExpiryCell(dataset_key="synthetic", expiry_month=9, bet_down=True),
+            ExpiryCell(dataset_key="synthetic", expiry_month=12, bet_down=False),
+        )
+        monkeypatch.setattr(expiry_runner, "MARKET_DIR", tmp_path)
 
-    같은 날짜에 신호가 몰리면 시간순 경계가 한쪽 끝에 놓여 절반 하나가 빈다.
-    그때도 스키마가 갈라지지 않고 표본 수 0 과 `판정가능` 「아니오」가 남아야 한다
-    (측정의 원칙 3·17).
+        # When
+        outputs = expiry_runner.run_study((dataset,), cells=cells, repeats=10, seed=0)
 
-    Given: 9월 신호 2건이 같은 날짜인 입력
-    When: 시기 2등분으로 집계하면
-    Then: 앞뒤 두 행이 남고 앞 절반의 표본이 0 이다
-    """
-    # Given — 두 건이 같은 날이라 경계가 첫 날이 되고 「앞 절반」이 빈다
-    signal = _long_form(["2026-09-18", "2026-09-18"], [-0.01, 0.02])
-    baseline = _long_form(["2026-09-04", "2026-09-11"], [0.01, -0.01])
+        # Then
+        columns = list(outputs.measure.columns)
+        assert columns[:3] == [COL_TICKER, COL_EXPIRY_MONTH_NUMBER, COL_DIRECTION]
+        assert len(outputs.measure) == len(cells), "확정 칸 밖의 달이 섞였습니다"
+        assert outputs.measure[COL_EXPIRY_MONTH_NUMBER].tolist() == [9, 12]
 
-    # When
-    result = _aggregate_month_halves(signal, baseline, repeats=10, seed=0)
+    def test_배당락_두_컬럼이_함께_온다(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: **배당락을 매번 별도 스크립트로 재던 것을 산출물에 넣는다**는 결정을 고정한다.
 
-    # Then
-    assert result[COL_TIME_HALF].tolist() == [PERIOD_FIRST_HALF, PERIOD_SECOND_HALF]
-    assert int(result.loc[0, COL_SAMPLE_COUNT]) == 0
-    assert result[COL_JUDGEABLE].tolist() == [JUDGEABLE_NO, JUDGEABLE_NO]
+        `.claude/rules/trading.md` 가 배당·분배락을 **「확정 전 필수 항목」**으로 요구하는데
+        그 값이 어느 산출물에도 없어서, 칸을 뺄지 판단할 때마다 스크립트를 따로 돌려야 했다.
+
+        **「못 잰 것」을 0 으로 세지 않으려면 건수가 함께 있어야 한다** — 걸린 건수가 0 인 것과
+        수정주가가 없어 못 잰 것은 다른 사실이다.
+
+        Given: 합성 시세와 수정주가 (배당락 없음)
+        When: 측정을 돌렸을 때
+        Then: 걸린 건수와 평균 왜곡이 표에 있다
+        """
+        # Given
+        from verify_lab.studies.option_expiry import runner as expiry_runner
+        from verify_lab.studies.option_expiry.constants import (
+            COL_DIVIDEND_HIT_COUNT,
+            COL_DIVIDEND_MEAN_IMPACT,
+            ExpiryCell,
+        )
+
+        rng = np.random.default_rng(20260921)
+        closes = 100.0 * np.cumprod(1.0 + rng.normal(0.0004, 0.008, 520))
+        market = _market(closes.tolist(), start="2024-01-02")
+        market.to_csv(tmp_path / "SYN_max.csv", index=False)
+        # 배당락이 없는 대상이라 두 계열이 같다 — 「0건 확인」이 나와야 한다
+        market.to_csv(tmp_path / "SYN_adjusted_max.csv", index=False)
+
+        dataset = Dataset(
+            key="synthetic",
+            ticker="SYN",
+            label="합성",
+            rule=US_MONTHLY_EXPIRY,
+            file_name="SYN_max.csv",
+            price_decimals=4,
+        )
+        cells = (ExpiryCell(dataset_key="synthetic", expiry_month=9, bet_down=True),)
+        monkeypatch.setattr(expiry_runner, "MARKET_DIR", tmp_path)
+
+        # When
+        outputs = expiry_runner.run_study((dataset,), cells=cells, repeats=10, seed=0)
+
+        # Then
+        row = outputs.measure.iloc[0]
+        assert int(row[COL_DIVIDEND_HIT_COUNT]) == 0
+        assert float(row[COL_DIVIDEND_MEAN_IMPACT]) == pytest.approx(0.0, abs=1e-9)

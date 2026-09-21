@@ -5,7 +5,13 @@ forward return·베이스라인·통계·후보 판정을 담당한다. 어떤 �
 """
 
 from .baseline import BelowMovingAverage, below_moving_average
-from .distribution import DistributionShare, dividend_adjustment, measure_distribution_share
+from .distribution import (
+    DistributionShare,
+    DividendImpact,
+    dividend_adjustment,
+    dividend_impact,
+    measure_distribution_share,
+)
 from .forward_return import ReturnBasis, compute_forward_returns, count_excluded
 from .screening import direction_profile, screen_verdict
 from .statistics import excess, max_non_overlapping, permutation_test, summarize
@@ -13,12 +19,14 @@ from .statistics import excess, max_non_overlapping, permutation_test, summarize
 __all__ = [
     "BelowMovingAverage",
     "DistributionShare",
+    "DividendImpact",
     "ReturnBasis",
     "below_moving_average",
     "compute_forward_returns",
     "count_excluded",
     "direction_profile",
     "dividend_adjustment",
+    "dividend_impact",
     "excess",
     "max_non_overlapping",
     "measure_distribution_share",

@@ -35,7 +35,7 @@ from verify_lab.common_constants import (
 )
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
-from verify_lab.studies.option_expiry.constants import DATASETS, Dataset, ExpiryCell, all_cells
+from verify_lab.studies.option_expiry.constants import DATASETS, Dataset, ExpiryCell, trading_cells
 from verify_lab.studies.option_expiry.trading import collect_entries
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
@@ -150,10 +150,10 @@ def main() -> int:
     Returns:
         종료 코드 (성공 0)
     """
-    # **방향을 한 쪽만 돈다.** `_measure_cell` 이 원본가·수정주가 «둘 다»에 같은 부호를 곱하므로
-    # 그 차이에서 부호가 지워진다 — 두 방향을 다 돌면 부호만 뒤집힌 사본이 배로 쌓인다.
-    # 그래서 행 수는 **대상 수 × 만기월 12** 다
-    rows = [_measure_cell(cell) for cell in all_cells() if not cell.bet_down]
+    # **확정 칸을 그대로 돈다** (2026-09-21). 전에는 격자 전 칸이 대상이라 같은 칸의 두 방향이
+    # 부호만 뒤집힌 사본으로 쌓였고, 그래서 한쪽만 돌았다. 지금은 **칸마다 방향이 하나**라
+    # 그 필터가 오히려 칸을 빠뜨린다 — 「아래」 칸만 있는 종목이 통째로 사라졌다
+    rows = [_measure_cell(cell) for cell in trading_cells()]
 
     table = TableLogger(RESULT_COLUMNS, logger)
     table.print_header("보유 구간에 들어간 배당락 (원본가 − 수정주가 수익률)")

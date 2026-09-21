@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """옵션 만기일 실행 CLI — 측정과 체결을 한 번에 돈다
 
-만기월(1~12)로 쪼개 방향 비율을 재고 각 칸을 **게이트 둘**(적중률과 회당 기대값의 하한)로
-판정한 뒤, 대상 칸에 손절선을 걸어 체결 원자료와 성적표를 낸다.
-게이트를 넘지 못한 칸도 성적표에 값 그대로 남는다 — 화면에서만 빠진다.
+**확정 칸**의 해석 재료를 한 장으로 내고, 같은 칸에 손절선을 걸어 체결 원자료와 성적표를 낸다.
+게이트(회당 기대값의 하한)를 넘지 못한 칸도 성적표에 값 그대로 남는다 — 화면에서만 빠진다.
 **기준값의 소유자는 `measure/screening.py` 하나다** — 여기서 값을 다시 적지 않는다.
 
 **등급(검증·매매)은 분류일 뿐이라 실행을 가르지 않는다.** 한 번 돌리면 측정 표와
@@ -13,6 +12,9 @@
 **손절선은 격자가 기본이다** — 무손절 + -1.0%~-10.0% 를 전부 낸다. 값을 인자로 열지 않는다 —
 값을 옮겨 가며 성적을 보면 표본에 맞춘 튜닝이지만, **전부 내는 것은 고르는 것이 아니다.**
 확정 손절선이 무엇인지는 규칙 문서가 정하고 `손절선(%)` 한 컬럼으로 골라낸다.
+
+**거는 칸은 코드가 아니라 `docs/매매/옵션_만기일/규칙.md` §3 이 정한다** — 코드는 그 결론을
+옮겨 적을 뿐이고, 왜 그 칸인지는 그 문서의 「확정 / 탈락안 / 근거」가 갖는다.
 
 가격 기준은 **원본가 하나**다. 사용자가 증권앱·차트에서 보는 가격이 곧 신호를 판정하고
 주문을 거는 가격이기 때문이다 (루트 `CLAUDE.md` 측정의 원칙 14).
@@ -38,31 +40,28 @@ from verify_lab.execution.constants import (
     TRADES_FILENAME,
 )
 from verify_lab.execution.run_summary import KEY_ROW_COUNTS, KEY_RULE, merge_run_summary
-from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_SIGNAL_COUNT
-from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP, SCREEN_CANDIDATE
+from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP, SCREEN_CANDIDATE
 from verify_lab.measure.statistics import (
     COL_MEAN,
     COL_MEDIAN,
-    COL_WIN_RATE,
+    COL_SAMPLE_COUNT,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
 )
 from verify_lab.report.constants import (
-    DISPLAY_EXCLUDED,
     DISPLAY_MEAN,
-    DISPLAY_MEDIAN,
     DISPLAY_PERIOD,
     DISPLAY_SCREEN,
     DISPLAY_SIGNAL_COUNT,
-    DISPLAY_UP_RATE,
     PERCENT_DECIMALS,
 )
 from verify_lab.report.tables import print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
+    COL_DIVIDEND_HIT_COUNT,
+    COL_EXPIRY_MONTH_NUMBER,
     COL_TICKER,
     DATASETS,
-    DISPLAY_ENTRY_COUNT,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
     EXPIRY_STOP_LEVEL,
@@ -74,16 +73,14 @@ from verify_lab.studies.option_expiry.constants import (
     TRACK_NAME,
     Dataset,
     ExpiryCell,
-    all_cells,
+    trading_cells,
 )
 from verify_lab.studies.option_expiry.runner import (
     KEY_DATASETS,
-    KEY_MAX_OFFSET,
     KEY_PERMUTATION_REPEATS,
     KEY_PERMUTATION_SEED,
     StudyOutputs,
     run_study,
-    trade_headline,
 )
 from verify_lab.studies.option_expiry.trading import KEY_STOP_LEVELS, ExpiryOutputs, run_option_expiry_trading
 from verify_lab.utils.cli_helpers import cli_exception_handler
@@ -163,28 +160,27 @@ def _selected_datasets(keys: list[str] | None) -> tuple[Dataset, ...]:
 
 
 def _selected_cells(datasets: tuple[Dataset, ...]) -> list[ExpiryCell]:
-    """고른 대상의 **전 칸**(만기월 12 × 방향 2)을 만든다.
+    """고른 대상의 **확정 칸**을 만든다.
 
     **측정과 체결의 범위가 한 인자로 정해진다.** 따로 받으면 한 실행 안에서 둘이 갈릴 수 있고,
     그러면 같은 폴더의 두 표가 다른 범위를 재게 된다.
 
-    **칸을 고르지 않는다.** 격자를 전부 내는 것은 고르는 것이 아니며, 무엇을 실제로 거는지는
-    `docs/매매/옵션_만기일/규칙.md` §1 이 정한다. 목록 생성은 도메인 로직이라 CLI 가 아니라
-    `studies.option_expiry.constants.all_cells` 가 소유한다.
+    **목록 생성은 도메인 로직이라 CLI 가 아니라 `studies.option_expiry.constants.trading_cells`
+    가 소유한다.** 그 칸을 왜 고른 것인지는 `docs/매매/옵션_만기일/규칙.md` §3 이 갖는다.
 
     Args:
         datasets: 이번 실행의 측정 대상
 
     Returns:
-        그 대상들의 전 칸
+        그 대상들의 확정 칸
     """
-    return list(all_cells(datasets))
+    return list(trading_cells(datasets))
 
 
 def _print_scope(cells: list[ExpiryCell]) -> None:
     """무엇을 도는지 먼저 보여 준다.
 
-    **미국 9월 세 칸이 같은 날 같은 방향**이라는 사실을 함께 적는다 — 산출물을 세 번의
+    **같은 달 두 칸이 같은 날 같은 방향**이라는 사실을 함께 적는다 — 산출물을 두 번의
     확인으로 읽으면 안 되기 때문이다.
 
     Args:
@@ -196,8 +192,8 @@ def _print_scope(cells: list[ExpiryCell]) -> None:
         f"= 성적표 {len(cells) * stop_count * len(PERIODS):,}행 "
         f"(확정 손절선은 {-EXPIRY_STOP_LEVEL * RATE_TO_PERCENT:.1f}%)"
     )
-    logger.debug("전 칸을 냅니다 — 실제로 거는 칸은 docs/매매/옵션_만기일/규칙.md §1 이 정합니다")
-    logger.debug("같은 달 미국 세 칸(QQQ·SPY·DIA)은 같은 날 같은 방향이라 독립된 세 번의 기회가 아닙니다")
+    logger.debug("확정 칸만 냅니다 — 그 칸을 왜 고른 것인지는 docs/매매/옵션_만기일/규칙.md §3 이 갖습니다")
+    logger.debug("9월 두 칸(SPY·DIA)은 같은 날 같은 방향이고 상관 0.965 라 독립된 두 번의 기회가 아닙니다")
 
 
 def _print_candidates(outputs: ExpiryOutputs) -> None:
@@ -228,37 +224,36 @@ def _print_candidates(outputs: ExpiryOutputs) -> None:
     print_dataframe(
         ordered[CANDIDATE_COLUMNS],
         logger,
-        title=f"1차 후보 — {NO_STOP_LABEL} · 게이트 둘을 넘은 칸 (적중률 순)",
+        title=f"1차 후보 — {NO_STOP_LABEL} · 게이트를 넘은 칸 (적중률 순)",
     )
     logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {SUMMARY_FILENAME} 의 「1차 판정」 컬럼에 있습니다")
 
 
 def _display_headline(outputs: StudyOutputs) -> None:
-    """맨몸 매매 성적을 화면에 표시한다.
+    """측정 표에서 **해석에 먼저 필요한 몇 열만** 화면에 보여 준다.
+
+    전 열을 터미널에 쏟으면 읽을 수 없다. **전체는 측정 산출물에 있다.**
+
+    [중요] **여기 값은 1배 롱 기준이다** — 「아래」 칸의 평균은 음수로 나오고, 성적표의
+    같은 칸과 부호가 다르다. 둘은 대조 대상이 아니다.
 
     Args:
         outputs: 측정 산출물
     """
-    trade = trade_headline(outputs)
-    if trade.empty:
-        logger.debug("표시할 매매 요약 행이 없습니다")
+    if outputs.measure.empty:
+        logger.debug("표시할 측정 행이 없습니다")
         return
 
-    table = trade[[COL_TICKER, COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT, COL_MEAN, COL_MEDIAN, COL_WIN_RATE]].copy()
-    for column in (COL_MEAN, COL_MEDIAN, COL_WIN_RATE):
+    columns = [COL_TICKER, COL_EXPIRY_MONTH_NUMBER, COL_DIRECTION, COL_SAMPLE_COUNT, COL_MEAN, COL_MEDIAN]
+    table = outputs.measure[[*columns, COL_DIVIDEND_HIT_COUNT]].copy()
+    for column in (COL_MEAN, COL_MEDIAN):
         table[column] = (table[column] * RATE_TO_PERCENT).round(PERCENT_DECIMALS)
 
-    table = table.rename(
-        columns={
-            COL_TICKER: DISPLAY_TICKER,
-            COL_SIGNAL_COUNT: DISPLAY_ENTRY_COUNT,
-            COL_EXCLUDED_COUNT: DISPLAY_EXCLUDED,
-            COL_MEAN: DISPLAY_MEAN,
-            COL_MEDIAN: DISPLAY_MEDIAN,
-            COL_WIN_RATE: DISPLAY_UP_RATE,
-        }
+    print_dataframe(
+        table.rename(columns=OUTPUT_LABELS),
+        logger,
+        title=f"측정 — 1배 롱 기준 (전체는 {OUTPUT_FILES['measure']} 에)",
     )
-    print_dataframe(table, logger, title="만기일 종가 매수 → 다음주 청산 — 전체 월")
 
 
 def _print_performance(outputs: ExpiryOutputs) -> None:
@@ -340,7 +335,8 @@ def main() -> int:
     cells = _selected_cells(datasets)
 
     _print_scope(cells)
-    study = run_study(datasets, repeats=args.repeats, seed=args.seed)
+    # **측정과 체결이 같은 칸 목록을 받는다.** 따로 정하면 한 폴더의 두 표가 다른 범위를 잰다
+    study = run_study(datasets, cells=tuple(cells), repeats=args.repeats, seed=args.seed)
 
     # **손절선 목록을 CLI 가 다시 만들지 않는다.** 여기서 조립하면 runner 의 기본값을 좁혔을 때
     # 두 곳이 갈리고 `meta.json` 이 돌지 않은 격자를 적는다 — 예외는 나지 않는다
@@ -370,7 +366,6 @@ def main() -> int:
                 for cell in cells
             ],
             "stop_levels": trading.summary[KEY_RULE][KEY_STOP_LEVELS],
-            KEY_MAX_OFFSET: study.summary[KEY_MAX_OFFSET],
             KEY_PERMUTATION_REPEATS: study.summary[KEY_PERMUTATION_REPEATS],
             KEY_PERMUTATION_SEED: study.summary[KEY_PERMUTATION_SEED],
             KEY_ROW_COUNTS: counts,

@@ -50,7 +50,7 @@
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `usdkrw_equivalence` | `run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
-| `option_expiry` | `run_option_expiry.py` | 결과 폴더, 대상 종목과 **체결 대상 칸**, 만기 창 범위, **손절선 종 수**, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 진입·제외 건수·보유 거래일수 분포도 남는다 |
+| `option_expiry` | `run_option_expiry.py` | 결과 폴더, 대상 종목과 **확정 칸**, **손절선 종 수**, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 진입·제외 건수·보유 거래일수 분포도 남는다. **측정과 체결이 같은 칸 목록을 쓰므로 `cells` 가 양쪽 요약에 같은 모양으로 실린다** |
 | `reverse` | `run_reverse.py` | 결과 폴더, 대상 시세 목록과 **체결 대상(종목 × 순위 컷)**, 신호군 수와 **신호 0건이라 빠진 신호군 수**, **손절선 격자·보유 한도**, 산출물 행 수, 순열 검정 반복 수·시드 |
 | `expiry_dividend_probe` | `data/check_expiry_dividend.py` | 칸별로 보유 구간에 배당락이 걸린 건수와 그 규모 |
 | `month_end` | `run_month_end.py` | 결과 폴더, 측정 대상과 **체결 대상**(인버스가 빠져 갈린다), **시작 연도**(안 걸렀으면 `null`), 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |

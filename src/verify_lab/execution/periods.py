@@ -31,6 +31,7 @@ import pandas as pd
 
 from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.execution.constants import (
+    DISPLAY_BREAKEVEN_MARGIN,
     DISPLAY_BREAKEVEN_WIN_RATE,
     DISPLAY_EVENT_COUNT,
     DISPLAY_GAP_STOP_COUNT,
@@ -219,6 +220,14 @@ def _period_row(
     mean_value = np.nan if empty else round(float(percent.mean()), PERCENT_DECIMALS)
     win_rate = np.nan if empty else round(float((values > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS)
 
+    # **표에 실리는 값끼리 뺀다.** 원값으로 계산하면 승률 `72.73` · 손익분기 `43.10` 이 찍힌
+    # 행에 `29.62` 가 나올 수 있다 — 표가 자기 자신과 어긋난다.
+    #
+    # **어느 쪽이든 비면 결과도 빈다.** 전승 칸은 손익비가 무한대라 손익분기를 숫자로 못 적는데,
+    # 그때 `승률 − 0` 으로 계산하면 **「손익분기를 승률만큼 앞선다」는 거짓**이 표에 실린다.
+    # `nan` 산술이 그 전파를 그대로 해 주므로 따로 분기하지 않는다
+    breakeven_rate = np.nan if empty else round(payoff.breakeven_hit_rate * RATE_TO_PERCENT, PERCENT_DECIMALS)
+
     row: dict[str, Any] = {
         DISPLAY_PERIOD: period,
         DISPLAY_SIGNAL_COUNT: count,
@@ -228,9 +237,9 @@ def _period_row(
         # **산식은 `measure` 가 소유한다.** 여기서 다시 계산하면 판정 계층과 조용히 갈라진다.
         # 표본이 있는데 진 거래가 0 건인 것은 «사실»이므로 그때는 손익비만 비고 표본은 0 을 적는다
         DISPLAY_PAYOFF_RATIO: np.nan if empty else round(payoff.payoff_ratio, PAYOFF_DECIMALS),
-        DISPLAY_BREAKEVEN_WIN_RATE: (
-            np.nan if empty else round(payoff.breakeven_hit_rate * RATE_TO_PERCENT, PERCENT_DECIMALS)
-        ),
+        DISPLAY_BREAKEVEN_WIN_RATE: breakeven_rate,
+        # **재료 바로 옆에 둔다.** 표 끝에 붙이면 승률·손익분기와 함께 보려고 스크롤해야 한다
+        DISPLAY_BREAKEVEN_MARGIN: round(win_rate - breakeven_rate, PERCENT_DECIMALS),
         # **손익비의 분자와 분모를 그대로 낸다.** `docs/조사/투자금_결정/규칙.md` §1.2 가 이 두
         # 값의 출처를 성적표로 적어 두었는데 실제로는 없어서, 계산기 시트를 쓰는 사람이
         # 거래내역에서 직접 계산해야 했다. **`measure` 가 이미 구한 값이라 다시 세지 않는다.**

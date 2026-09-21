@@ -1,17 +1,21 @@
-"""검증 #7 실행 — 만기일 매수 → 다음주 청산 매매를 재고 산출물을 조립한다
+"""검증 #7 실행 — 확정 칸의 «해석 재료»를 한 장으로 조립한다
 
-이 모듈은 **계산 규칙을 새로 만들지 않는다.** 만기일 달력과 offset 배정(`studies`),
-forward return·통계·후보 판정(`measure`)이 이미 있으므로, 하는 일은 그것을 조합해 돌리고
-사람이 읽을 형태로 쌓는 것이다.
+이 모듈은 **계산 규칙을 새로 만들지 않는다.** 만기일 달력(`studies`), forward return·통계·
+배당락(`measure`)이 이미 있으므로, 하는 일은 그것을 조합해 돌리고 사람이 읽을 형태로 쌓는 것이다.
 
-**만기 창의 거래일을 하나도 빼지 않고 원자료로 남긴다.** 사용자가 차트로 직접 대조하는
-산출물이므로 창을 좁혀 내지 않는다 (`docs/매매/옵션_만기일/설계.md` 결정 ②).
+**산출물은 `측정.csv` 한 장이다** (2026-09-21). 성적표가 「걸 만한가」에 답한다면 이 표는
+**「그 값을 어떻게 읽나」**에 답한다 — 중앙값(측정의 원칙 4) · 평균-비율 어긋남(원칙 13) ·
+기준선 · 우연확률 · 배당락이며, **성적표에는 그중 어느 것도 없다.**
+무엇을 없앴고 왜인지는 `constants.OUTPUT_FILES` 의 주석이 표로 갖는다.
+
+[중요] **값은 1배 롱 기준 그대로 담는다.** 「아래」 칸이라고 부호를 뒤집지 않는다 — 뒤집으면
+`기준선 오른 비율` 이 실제로는 내린 비율을 가리켜 **이름이 거짓이 된다.** `방향` 컬럼은
+어느 쪽으로 거는지를 표시만 하고, 그래서 **성적표의 평균과 이 표의 평균은 부호가 다를 수 있다** —
+대조 대상이 아니다.
 
 **가격 기준은 원본가 하나다.** 사용자가 증권앱·차트에서 보는 가격이 곧 신호를 판정하고 주문을
-거는 가격이기 때문이다 (루트 `CLAUDE.md` 측정의 원칙 14).
-
-**자르는 것은 언제나 신호 선택이지 시세가 아니다.** 시기로 가를 때도 시세는 전 구간을
-그대로 두고 신호일만 고른다 — 시세를 먼저 자르면 경계에서 만기 간격이 달라져 offset 이 어긋난다.
+거는 가격이기 때문이다 (루트 `CLAUDE.md` 측정의 원칙 14). **배당락을 잴 때만 수정주가를
+함께 읽으며**, 그것은 원본가로 재서 생기는 왜곡의 크기를 보고하기 위해서다.
 """
 
 from dataclasses import dataclass, field
@@ -20,19 +24,23 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR
+from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
+    COL_CLOSE,
+    COL_DATE,
+    MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
+)
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_REASON,
     COL_HORIZON,
-    COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
-    PERIOD_FIRST_HALF,
-    PERIOD_SECOND_HALF,
     REASON_NONE,
 )
-from verify_lab.measure.forward_return import ReturnBasis, compute_forward_returns
+from verify_lab.measure.distribution import dividend_impact
+from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.measure.statistics import (
     COL_DOWN_RATE_P_VALUE,
     COL_LOSS_RATE_EXCESS,
@@ -40,14 +48,12 @@ from verify_lab.measure.statistics import (
     COL_MEAN_P_VALUE,
     COL_MEDIAN_EXCESS,
     COL_MEDIAN_P_VALUE,
-    COL_SAMPLE_COUNT,
     COL_TEST_NOTE,
     COL_UP_RATE_P_VALUE,
     COL_WIN_RATE_EXCESS,
     DEFAULT_RANDOM_SEED,
     DEFAULT_REPEAT_COUNT,
     excess,
-    judgeable,
     mean_rate_conflict,
     permutation_test,
     summarize,
@@ -56,30 +62,30 @@ from verify_lab.report.run_summary import KEY_TRACK, dataset_record
 from verify_lab.studies.option_expiry.constants import (
     BASELINE_SUFFIX,
     COL_ADVANCED_DAYS,
-    COL_BASELINE_KIND,
-    COL_DAILY_RETURN,
+    COL_DIVIDEND_HIT_COUNT,
+    COL_DIVIDEND_MEAN_IMPACT,
+    COL_DIVIDEND_MEASURED,
+    COL_EXIT_DATE,
     COL_EXPIRY_DATE,
-    COL_EXPIRY_MONTH,
     COL_EXPIRY_MONTH_NUMBER,
     COL_HOLD_DAYS,
-    COL_MONTH_DAY_INDEX,
-    COL_OFFSET,
     COL_RULE_DATE,
     COL_TICKER,
-    COL_TIME_HALF,
     DATASETS,
-    DISPLAY_HOLD_DAYS_POOLED,
     EXIT_WEEKDAY,
-    HORIZON_NEXT_WEEK_EXIT,
+    KEY_CELLS,
+    KEY_DIRECTION,
     KEY_EXCLUDED_COUNT,
-    MAX_OFFSET,
+    KEY_EXPIRY_MONTH,
+    KEY_LABEL,
     OUTPUT_FILES,
     TRACK_NAME,
     WEEKDAY_LABELS,
     Dataset,
+    ExpiryCell,
+    trading_cells,
 )
 from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
-from verify_lab.studies.option_expiry.offsets import expiry_offsets
 from verify_lab.studies.option_expiry.weekly_exit import (
     weekly_exit_returns,
     weekly_exit_schedule,
@@ -92,7 +98,6 @@ logger = get_logger(__name__)
 # summary.json 키 (영문 snake_case — `reverse` 와 같은 관용)
 # ============================================================
 
-KEY_MAX_OFFSET = "max_offset"
 KEY_PERMUTATION_REPEATS = "permutation_repeats"
 KEY_PERMUTATION_SEED = "permutation_seed"
 KEY_DATASETS = "datasets"
@@ -102,7 +107,6 @@ KEY_ROW_COUNTS = "row_counts"
 # 정의하지 않는다 — 이름을 한 벌 더 두면 옛 경로가 살아남아 소유자를 옮겨도 검사가 통과한다
 KEY_EXPIRY_COUNT = "expiry_count"
 KEY_ADVANCED_COUNT = "advanced_count"
-KEY_INSIDE_WINDOW_DAYS = "inside_window_days"
 KEY_EXPIRY_WEEKDAYS = "expiry_weekdays"
 KEY_WEEKLY_TRADE = "weekly_trade"
 
@@ -110,31 +114,24 @@ KEY_ENTRY_COUNT = "entry_count"
 KEY_HOLD_DAYS = "hold_days"
 KEY_BASELINE_ENTRY_COUNT = "baseline_entry_count"
 
+# 어느 기준선과 견줬는지 밝히는 이름 (`docs/매매/옵션_만기일/설계.md` §3.7)
+BASELINE_WEEKLY = "같은 요일 주간 보유"
+
+# 배당락 왜곡의 표시 자릿수. **백분율 2자리로는 뭉개진다** — 실측 왜곡이 0.05%p 대라
+# 2자리면 걸린 칸과 안 걸린 칸이 똑같이 `0.0` 으로 나온다
+DIVIDEND_IMPACT_DECIMALS = 4
+
 
 @dataclass(frozen=True)
 class StudyOutputs:
     """실행 산출물
 
     Attributes:
-        expiries: 종목별 만기일 목록 (규칙일·만기일·앞당김)
-        signals: 만기 창에 든 거래일 전체 목록 (사용자가 차트로 직접 대조하는 원자료)
-        trade_signals: 만기일 매수 → 다음주 청산 매매의 신호일 원자료
-        trade_summary: 그 매매의 묶음 집계와 보유 길이별 집계
-        trade_excess: 두 기준선 대비 차이 — 같은 요일 주간 보유 · 같은 길이 단순 보유
-        trade_test: 그 매매의 순열 검정
-        trade_by_month: 만기월(1~12)별 집계와 같은 달 기준선
-        trade_by_month_halves: 만기월 × 시기 앞뒤 절반 — **관찰용**이며 판정에 쓰이지 않는다
+        measure: 확정 칸의 해석 재료 — 칸마다 한 행
         summary: 실행 파라미터와 핵심 수치
     """
 
-    expiries: pd.DataFrame
-    signals: pd.DataFrame
-    trade_signals: pd.DataFrame
-    trade_summary: pd.DataFrame
-    trade_excess: pd.DataFrame
-    trade_test: pd.DataFrame
-    trade_by_month: pd.DataFrame
-    trade_by_month_halves: pd.DataFrame
+    measure: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -142,56 +139,7 @@ class StudyOutputs:
 class _Accumulator:
     """표별로 행을 모으는 자리"""
 
-    expiries: list[pd.DataFrame] = field(default_factory=list)
-    signals: list[pd.DataFrame] = field(default_factory=list)
-    trade_signals: list[pd.DataFrame] = field(default_factory=list)
-    trade_summary: list[pd.DataFrame] = field(default_factory=list)
-    trade_excess: list[pd.DataFrame] = field(default_factory=list)
-    trade_test: list[pd.DataFrame] = field(default_factory=list)
-    trade_by_month: list[pd.DataFrame] = field(default_factory=list)
-    trade_by_month_halves: list[pd.DataFrame] = field(default_factory=list)
-
-
-def _month_day_index(dates: pd.Series) -> pd.Series:
-    """각 거래일이 그 달의 몇 번째 거래일인지 센다 (1부터).
-
-    Args:
-        dates: 오름차순 날짜 Series
-
-    Returns:
-        같은 인덱스의 정수 Series
-    """
-    month_key = dates.dt.to_period("M")
-
-    return month_key.groupby(month_key).cumcount() + 1
-
-
-def _annotate(df: pd.DataFrame, dataset: Dataset) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """시세에 만기일·offset·월중 서수·일간 등락을 붙인다.
-
-    Args:
-        df: 날짜 오름차순 시세
-        dataset: 검증 대상 정의
-
-    Returns:
-        (만기일 목록, 부가 컬럼이 붙은 시세)
-    """
-    trading_days = pd.DatetimeIndex(df[COL_DATE])
-    expiries = monthly_expiry_dates(trading_days, dataset.rule)
-    assignment = expiry_offsets(trading_days, pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]), MAX_OFFSET)
-
-    annotated = df.merge(assignment.frame, on=COL_DATE, how="left")
-    annotated[COL_MONTH_DAY_INDEX] = _month_day_index(annotated[COL_DATE])
-
-    # 일간 등락은 앞날을 보지 않는다. 첫 행은 앞선 종가가 없어 비어 있는 것이 정상이다
-    annotated[COL_DAILY_RETURN] = annotated[COL_CLOSE].pct_change()
-
-    logger.debug(
-        f"{dataset.label}: 거래일 {assignment.total_days:,}, 만기 {len(expiries):,}, "
-        f"창 안 {assignment.assigned_count:,}, 겹침 {assignment.contested_count:,}, 동률 {assignment.tie_count:,}"
-    )
-
-    return expiries, annotated
+    measure: list[pd.DataFrame] = field(default_factory=list)
 
 
 def _count_labels(values: np.ndarray, labels: tuple[str, ...] | None = None) -> dict[str, int]:
@@ -232,66 +180,6 @@ def _identify(frame: pd.DataFrame, **values: Any) -> pd.DataFrame:
     return identified
 
 
-def _run_dataset(
-    dataset: Dataset,
-    accumulator: _Accumulator,
-    *,
-    repeats: int,
-    seed: int,
-) -> dict[str, Any]:
-    """종목 하나를 전부 돌린다.
-
-    Args:
-        dataset: 검증 대상 정의
-        accumulator: 결과를 쌓는 자리
-        repeats: 순열 검정 반복 수
-        seed: 순열 검정 시드
-
-    Returns:
-        이 종목의 요약 수치
-    """
-    df = load_market_csv(MARKET_DIR / dataset.file_name)
-    expiries, annotated = _annotate(df, dataset)
-
-    accumulator.expiries.append(_identify(expiries, **{COL_TICKER: dataset.label}))
-
-    inside_window = annotated[COL_OFFSET].notna()
-
-    # 신호일 원자료. 사용자가 차트로 직접 대조하는 산출물이라 창 안의 날을 하나도 빼지 않는다
-    signal_columns = [COL_DATE, COL_CLOSE, COL_DAILY_RETURN, COL_EXPIRY_DATE, COL_OFFSET, COL_MONTH_DAY_INDEX]
-    signals = annotated.loc[inside_window, signal_columns].copy()
-    signals[COL_EXPIRY_MONTH] = signals[COL_EXPIRY_DATE].dt.strftime("%Y-%m")
-    signals[COL_OFFSET] = signals[COL_OFFSET].astype(int)
-    accumulator.signals.append(_identify(signals, **{COL_TICKER: dataset.label}))
-
-    trade_records = _run_weekly_trade(df, dataset, expiries, accumulator, repeats=repeats, seed=seed)
-
-    expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
-    return {
-        # 공통 다섯 키는 **한 함수가 만든다.** 순서까지 그 함수가 정하므로 갈릴 수 없다 —
-        # JSON 은 넣은 순서를 보존해서, 순서가 갈리면 같은 구간의 두 요약을 diff 할 때
-        # 자리만 바뀐 줄이 섞인다
-        **dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.file_name, frame=df),
-        KEY_EXPIRY_COUNT: len(expiries),
-        KEY_ADVANCED_COUNT: int((expiries[COL_ADVANCED_DAYS] > 0).sum()),
-        KEY_INSIDE_WINDOW_DAYS: int(inside_window.sum()),
-        # 만기일이 실제로 무슨 요일이었나. 미국은 셋째 금요일, 한국은 둘째 목요일이 규칙이지만
-        # 휴장 앞당김으로 벗어나는 달이 있어 그 비율 자체가 보고 대상이다
-        KEY_EXPIRY_WEEKDAYS: _count_labels(np.asarray(expiry_weekdays), WEEKDAY_LABELS),
-        KEY_WEEKLY_TRADE: trade_records,
-    }
-
-
-# ============================================================
-# 만기일 매수 → 다음주 청산
-# ============================================================
-
-# 어느 기준선과 견줬는지 밝히는 이름. 둘은 묻는 질문이 다르다
-# (`docs/매매/옵션_만기일/설계.md` §3.7)
-BASELINE_WEEKLY = "같은 요일 주간 보유"
-BASELINE_MATCHED_LENGTH = "같은 길이 단순 보유"
-
-
 def _weekly_trade_frames(
     df: pd.DataFrame,
     dataset: Dataset,
@@ -300,9 +188,9 @@ def _weekly_trade_frames(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """매매 신호군과 「같은 요일 주간 보유」 베이스라인의 long-form 을 만든다.
 
-    베이스라인은 **만기 규칙 요일에 해당하는 모든 거래일**(미국 금요일·한국 목요일)에서 같은
-    달력 규칙으로 청산한 것이다. 보유 길이 분포가 신호와 같은 달력 구조에서 나오므로
-    묶음 비교에 가중치를 지어낼 필요가 없다 (`docs/매매/옵션_만기일/설계.md` 결정 ㉑).
+    베이스라인은 **만기 규칙 요일에 해당하는 모든 거래일**(미국 금요일)에서 같은 달력 규칙으로
+    청산한 것이다. 보유 길이 분포가 신호와 같은 달력 구조에서 나오므로 묶음 비교에 가중치를
+    지어낼 필요가 없다 (`docs/매매/옵션_만기일/설계.md` 결정 ㉑).
 
     Args:
         df: 날짜 오름차순 시세
@@ -335,9 +223,8 @@ def _weekly_trade_frames(
 def _per_length(frame: pd.DataFrame) -> pd.DataFrame:
     """묶음 표지를 실제 보유 거래일 수로 바꾼 유효 행만 남긴다.
 
-    「같은 길이 단순 보유」와 견주려면 칸 축이 실제 보유일수여야 한다. 제외된 행은 보유일수가
-    없어 어느 칸에도 속하지 못하므로 여기서 빠진다 — **제외 건수는 묶음 표와 신호일 원자료가
-    담당한다.**
+    제외된 행은 보유일수가 없어 어느 칸에도 속하지 못하므로 여기서 빠진다 —
+    **제외 건수는 `summary.json` 의 `rule` 이 담당한다.**
 
     Args:
         frame: `weekly_exit_returns` 의 결과
@@ -349,25 +236,6 @@ def _per_length(frame: pd.DataFrame) -> pd.DataFrame:
     valid[COL_HORIZON] = valid[COL_HOLD_DAYS].astype(int)
 
     return valid
-
-
-def _matched_length_baseline(market: pd.DataFrame, lengths: list[int]) -> pd.DataFrame:
-    """전 거래일을 신호와 같은 보유 길이로 잡은 베이스라인을 만든다.
-
-    종가 기준만 남긴다. 익일 시가 칸은 이 매매의 정의에 없고, 남겨두면 신호군과 칸 구성이
-    달라져 기준선 대비 차이 계산이 성립하지 않는다.
-
-    Args:
-        market: 시세 전체
-        lengths: 신호에 나타난 보유 거래일 수 목록
-
-    Returns:
-        길이별 칸을 갖는 long-form
-    """
-    every_day = pd.Series(True, index=market.index)
-    baseline = compute_forward_returns(market, every_day, horizons=sorted(set(lengths)))
-
-    return baseline[baseline[COL_BASIS] == ReturnBasis.CLOSE.value]
 
 
 def _aggregate_by_month(
@@ -383,13 +251,12 @@ def _aggregate_by_month(
     통계량 정의를 두 곳에서 구현하면 두 곳이 조용히 갈라지기 때문이다. 축 이름은 돌려주기
     직전에 만기월로 바꾼다.
 
-    같은 달 베이스라인이 반드시 필요하다 — 만기월별로 쪼개면 미국 세 ETF 모두 9월이 크게
-    음수인데, 9월 약세는 옵션 만기와 무관하게 알려진 계절성이라 **같은 달과 견주지 않으면
-    만기 효과와 가를 수 없다** (`docs/매매/옵션_만기일/설계.md` 결정 ㉓).
+    같은 달 베이스라인이 반드시 필요하다 — 만기월별로 쪼개면 미국 ETF 가 9월에 크게 음수인데,
+    9월 약세는 옵션 만기와 무관하게 알려진 계절성이라 **같은 달과 견주지 않으면 만기 효과와
+    가를 수 없다** (`docs/매매/옵션_만기일/설계.md` 결정 ㉓).
 
-    **검정을 함께 붙인다.** 이 축은 칸이 12개이고 칸당 표본이 수십 건이라, p 값 없이 내면
-    가장 큰 칸을 골라 읽게 된다. 귀무분포는 **같은 달의 베이스라인**에서 뽑으므로 검정이
-    묻는 것도 "그 달 안에서 만기 주가 특별한가" 이다.
+    **검정을 함께 붙인다.** 귀무분포는 **같은 달의 베이스라인**에서 뽑으므로 검정이 묻는 것도
+    "그 달 안에서 만기 주가 특별한가" 이다.
 
     Args:
         signal: 신호군 long-form (유효 행)
@@ -449,227 +316,171 @@ def _aggregate_by_month(
     return merged.rename(columns={COL_HORIZON: COL_EXPIRY_MONTH_NUMBER}).drop(columns=[COL_BASIS])
 
 
-def _aggregate_month_halves(
-    signal: pd.DataFrame,
-    baseline: pd.DataFrame,
-    *,
-    repeats: int,
-    seed: int,
-) -> pd.DataFrame:
-    """만기월별로 신호를 시간순 **앞뒤 절반**으로 갈라 방향 비율을 낸다.
+def _dividend_row(
+    valid_signal: pd.DataFrame,
+    raw_close: pd.Series,
+    adjusted_close: pd.Series,
+    cell: ExpiryCell,
+) -> dict[str, Any]:
+    """그 칸의 보유 구간에 들어간 배당락을 잰다.
 
-    후보 판정의 **시기 항목**(시기를 쪼개도 방향이 유지되는가)을 재는 축이다.
-    **달력 경계로 자르면 이 항목을 잴 수 없다** — 시장 구조가 바뀐 시점으로 나누면 칸마다
-    표본이 4~17건으로 들쭉날쭉하고, 10건 미만 칸에는 검정이 붙지 않는다
-    (측정의 원칙 12). 여기서는 신호를 시간순으로 세어 균등하게 갈라 양쪽 표본을 맞춘다.
-
-    **표본이 모자란 달도 행을 남긴다** (측정의 원칙 17). 버리면 「쪼갤 수 없었다」와
-    「애초에 신호가 없었다」가 산출물에서 구별되지 않는다. 행을 남기고
-    지표를 비운 뒤 `판정가능` 을 「아니오」로 적는다 — `leverage_tracking` 과 `strategy` 가
-    이미 쓰는 관용이다. **0 으로 채우지 않는다**(「손실도 이익도 없었다」로 읽힌다).
-
-    **판정에는 쓰이지 않는다.** 게이트는 전체 구간 하나만 보므로(`measure.screening`),
-    행을 복원해도 판정은 달라지지 않는다 — 시기는 사용자가 보는 관찰용 축이다.
+    **산식은 `measure/distribution.py` 가 소유한다** — 여기서 다시 계산하면 실측 스크립트와
+    조용히 갈라진다 (패키지 절대 원칙 5).
 
     Args:
-        signal: 신호군 long-form (유효 행)
-        baseline: 같은 요일 주간 보유 베이스라인 long-form (유효 행)
-        repeats: 순열 검정 반복 수
-        seed: 순열 검정 시드
+        valid_signal: 그 대상의 유효 신호 long-form
+        raw_close: 원본가 종가 (날짜 인덱스)
+        adjusted_close: 수정주가 종가 (날짜 인덱스)
+        cell: 대상 칸
 
     Returns:
-        만기월 × 앞뒤 절반 집계. 신호가 있는 달은 **언제나 두 행**이며,
-        쪼갤 수 없었던 달은 `판정가능` 이 「아니오」다
+        배당락 세 컬럼. 그 달의 체결이 없으면 값이 비어 있다
     """
-    blocks: list[pd.DataFrame] = []
-    months = sorted(set(signal[COL_DATE].dt.month.tolist()))
+    month_rows = valid_signal[valid_signal[COL_DATE].dt.month == cell.expiry_month]
 
-    for month in months:
-        month_signal = signal[signal[COL_DATE].dt.month == month].sort_values(COL_DATE)
-        month_baseline = baseline[baseline[COL_DATE].dt.month == month]
-        boundary = month_signal[COL_DATE].iloc[len(month_signal) // 2]
-        halves = (
-            (PERIOD_FIRST_HALF, month_signal[COL_DATE] < boundary, month_baseline[COL_DATE] < boundary),
-            (PERIOD_SECOND_HALF, month_signal[COL_DATE] >= boundary, month_baseline[COL_DATE] >= boundary),
-        )
-        for label, signal_mask, baseline_mask in halves:
-            # **구간 축을 만기월로 덮어쓴다.** 입력은 보유일수를 축으로 갖고 있어(`_per_length`)
-            # 그대로 집계하면 한 달이 보유일수별로 쪼개져 앞뒤 표본이 어긋난다.
-            # `_aggregate_by_month` 와 같은 관용이다
-            half_signal = month_signal[signal_mask].assign(**{COL_HORIZON: month})
-            half_baseline = month_baseline[baseline_mask].assign(**{COL_HORIZON: month})
-            blocks.append(_half_block(half_signal, half_baseline, month=month, label=label, repeats=repeats, seed=seed))
+    # **0 으로 채우지 않는다.** 체결이 없는 것과 왜곡이 0 인 것은 다른 사실이다
+    if month_rows.empty:
+        return {
+            COL_DIVIDEND_MEASURED: pd.NA,
+            COL_DIVIDEND_HIT_COUNT: pd.NA,
+            COL_DIVIDEND_MEAN_IMPACT: np.nan,
+        }
 
-    if not blocks:
-        return pd.DataFrame()
-
-    return pd.concat(blocks, ignore_index=True)
-
-
-def _half_block(
-    half_signal: pd.DataFrame,
-    half_baseline: pd.DataFrame,
-    *,
-    month: int,
-    label: str,
-    repeats: int,
-    seed: int,
-) -> pd.DataFrame:
-    """시기 절반 한 칸을 집계해 **반드시 한 행**을 만든다.
-
-    표본이 0건이어도 행을 남기는 것이 이 함수의 존재 이유다. 스키마는 `summarize` 와
-    `permutation_test` 가 소유하므로, 빈 칸도 **같은 병합을 거친 뒤 한 줄로 늘려**
-    컬럼 구성이 갈라지지 않게 한다.
-
-    Args:
-        half_signal: 그 절반의 신호군 long-form
-        half_baseline: 그 절반의 베이스라인 long-form
-        month: 만기월 (1~12)
-        label: 앞 절반·뒤 절반 표시 이름
-        repeats: 순열 검정 반복 수
-        seed: 순열 검정 시드
-
-    Returns:
-        집계 한 행. 표본이 하한에 못 미치면 `판정가능` 이 「아니오」다
-    """
-    summary = summarize(half_signal)
-    test = permutation_test(half_signal, half_baseline, repeats=repeats, seed=seed)
-    merged = summary.merge(
-        test[[COL_BASIS, COL_HORIZON, COL_UP_RATE_P_VALUE, COL_DOWN_RATE_P_VALUE, COL_TEST_NOTE]],
-        on=[COL_BASIS, COL_HORIZON],
+    impact = dividend_impact(
+        raw_close,
+        adjusted_close,
+        entry_dates=pd.DatetimeIndex(month_rows[COL_DATE]),
+        exit_dates=pd.DatetimeIndex(month_rows[COL_EXIT_DATE]),
+        bet_down=cell.bet_down,
     )
 
-    if merged.empty:
-        # 신호가 하나도 없는 절반이다. **행을 지우지 않고 지표만 비운다.**
-        # 표본 수는 0 이 사실이므로 적는다 (측정의 원칙 3 — 표본 수를 생략하지 않는다)
-        merged = merged.reindex([0])
-        merged[COL_SAMPLE_COUNT] = 0
-
-    merged[COL_EXPIRY_MONTH_NUMBER] = month
-    merged[COL_TIME_HALF] = label
-    merged[COL_JUDGEABLE] = judgeable(len(half_signal))
-
-    return merged.drop(columns=[COL_BASIS, COL_HORIZON])
+    return {
+        COL_DIVIDEND_MEASURED: impact.measured_count,
+        COL_DIVIDEND_HIT_COUNT: impact.hit_count,
+        # **여기서 반올림한다.** 이 값은 이미 %p 단위라 저장 계층의 비율→백분율 변환을 타지
+        # 않고, 그대로 두면 `1.78e-05` 같은 과학적 표기로 CSV 에 실려 읽히지 않는다.
+        # **백분율 2자리가 아니라 4자리다** — 실측 왜곡이 0.05%p 대라 2자리로는 전부 `0.0` 이 된다
+        COL_DIVIDEND_MEAN_IMPACT: round(impact.mean_percent, DIVIDEND_IMPACT_DECIMALS),
+    }
 
 
-def _run_weekly_trade(
-    df: pd.DataFrame,
+def _measure_block(
+    by_month: pd.DataFrame,
+    valid_signal: pd.DataFrame,
+    raw_close: pd.Series,
+    adjusted_close: pd.Series,
+    cells: tuple[ExpiryCell, ...],
+) -> pd.DataFrame:
+    """확정 칸마다 한 행을 만든다.
+
+    **칸이 축이고 만기월이 아니다.** 같은 달을 두 방향으로 걸면 두 행이 되며, 그 구별은
+    `방향` 컬럼이 한다.
+
+    Args:
+        by_month: 만기월별 집계
+        valid_signal: 그 대상의 유효 신호 long-form
+        raw_close: 원본가 종가
+        adjusted_close: 수정주가 종가
+        cells: 이 대상의 확정 칸
+
+    Returns:
+        칸마다 한 행인 표. 종목 컬럼은 호출 측이 붙인다
+    """
+    wanted = pd.DataFrame(
+        [
+            {
+                COL_EXPIRY_MONTH_NUMBER: cell.expiry_month,
+                COL_DIRECTION: DIRECTION_DOWN if cell.bet_down else DIRECTION_UP,
+                **_dividend_row(valid_signal, raw_close, adjusted_close, cell),
+            }
+            for cell in cells
+        ]
+    )
+
+    # **`how="left"` 다.** 확정 칸인데 그 달의 신호가 없으면 행이 조용히 사라지는 대신
+    # 지표가 빈 채로 남는다 — 「잴 수 없었다」가 산출물에서 드러나야 한다 (표본 보존)
+    merged = wanted.merge(by_month, on=COL_EXPIRY_MONTH_NUMBER, how="left")
+
+    missing = merged[merged[COL_MEAN_RATE_CONFLICT].isna()]
+    if not missing.empty:
+        logger.debug(f"확정 칸의 만기월에 신호가 없습니다: {missing[COL_EXPIRY_MONTH_NUMBER].tolist()}")
+
+    # 배당락 세 컬럼을 맨 뒤로 보낸다 — 식별 축과 집계 사이에 끼면 표가 읽히지 않는다
+    dividend_columns = [COL_DIVIDEND_MEASURED, COL_DIVIDEND_HIT_COUNT, COL_DIVIDEND_MEAN_IMPACT]
+    ordered = [column for column in merged.columns if column not in dividend_columns] + dividend_columns
+
+    return merged[ordered]
+
+
+def _run_dataset(
     dataset: Dataset,
-    expiries: pd.DataFrame,
+    cells: tuple[ExpiryCell, ...],
     accumulator: _Accumulator,
     *,
     repeats: int,
     seed: int,
 ) -> dict[str, Any]:
-    """만기일 매수 → 다음 주 금요일 청산 매매를 돌린다.
-
-    **청산 요일은 축이 아니라 확정 규칙이다** (`constants.EXIT_WEEKDAY`). 목요일 청산을 대조로
-    함께 내던 것을 그만뒀으므로 순회가 없고, 산출물에도 그 컬럼이 없다.
+    """종목 하나를 전부 돌린다.
 
     Args:
-        df: 날짜 오름차순 시세
         dataset: 검증 대상 정의
-        expiries: 만기일 표
+        cells: 이 대상의 확정 칸
         accumulator: 결과를 쌓는 자리
         repeats: 순열 검정 반복 수
         seed: 순열 검정 시드
 
     Returns:
-        이 매매의 요약 수치
+        이 종목의 요약 수치
+
+    Raises:
+        ValueError: 수정주가 파일이 없는 경우
     """
-    identity = {COL_TICKER: dataset.label}
+    df = load_market_csv(MARKET_DIR / dataset.file_name)
+    trading_days = pd.DatetimeIndex(df[COL_DATE])
+    expiries = monthly_expiry_dates(trading_days, dataset.rule)
 
     signal, baseline = _weekly_trade_frames(df, dataset, expiries, EXIT_WEEKDAY)
+    valid_signal = _per_length(signal)
+    by_month = _aggregate_by_month(valid_signal, _per_length(baseline), repeats=repeats, seed=seed)
 
-    # 신호일 원자료. 진입·청산 가격과 날짜를 전부 남겨 사용자가 차트로 대조한다 (측정의 원칙 8)
-    raw = signal.copy()
-    raw[COL_EXPIRY_MONTH_NUMBER] = raw[COL_DATE].dt.month
-    accumulator.trade_signals.append(_identify(raw.drop(columns=[COL_BASIS, COL_HORIZON]), **identity))
+    # **수정주가가 없으면 예외다.** 배당락을 0 으로 채우면 「안 걸림」과 「못 쟀다」가
+    # 구별되지 않고, 그것이 `.claude/rules/trading.md` 가 경고한 바로 그 사고다
+    adjusted_name = dataset.file_name.replace(
+        MARKET_FILE_TEMPLATE.format(ticker=""), ADJUSTED_FILE_TEMPLATE.format(ticker="")
+    )
+    adjusted_path = MARKET_DIR / adjusted_name
+    if not adjusted_path.is_file():
+        raise ValueError(f"배당락을 재려면 수정주가 파일이 필요합니다: {adjusted_path}")
 
-    # 시기 2등분은 **전 구간의 신호를 시간순으로** 갈라야 의미가 있다
-    halves = _aggregate_month_halves(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
-    if not halves.empty:
-        accumulator.trade_by_month_halves.append(_identify(halves, **identity))
+    raw_close = df.set_index(COL_DATE)[COL_CLOSE]
+    adjusted_close = load_market_csv(adjusted_path).set_index(COL_DATE)[COL_CLOSE]
 
-    # **판정표를 따로 내지 않는다** (2026-09-16 통합). 1차 판정은 `성적표.csv` 가 담으며,
-    # 이 표는 그 판정을 읽을 값(기준선·우연확률)을 담는다 — 묻는 질문이 다르다
-    by_month = _aggregate_by_month(_per_length(signal), _per_length(baseline), repeats=repeats, seed=seed)
-    accumulator.trade_by_month.append(_identify(by_month, **identity))
+    block = _measure_block(by_month, valid_signal, raw_close, adjusted_close, cells)
+    accumulator.measure.append(_identify(block, **{COL_TICKER: dataset.label}))
 
-    # 매매 하나의 묶음 성적. **시기 축 말고는 쪼개지 않는다** — 달력 경계로 자른 칸은
-    # 표본이 수십 건이라 판정력이 없고, 시기 2등분이 같은 질문에 더 균등한 표본으로 답한다
-    _record_trade_cell(signal, baseline, df, identity, accumulator, repeats=repeats, seed=seed)
-
-    valid = signal[signal[COL_EXCLUDED_REASON] == REASON_NONE]
+    expiry_weekdays = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE]).dayofweek
 
     return {
-        KEY_ENTRY_COUNT: len(signal),
-        KEY_EXCLUDED_COUNT: len(signal) - len(valid),
-        KEY_HOLD_DAYS: _count_labels(valid[COL_HOLD_DAYS].to_numpy(dtype=int)),
-        KEY_BASELINE_ENTRY_COUNT: len(baseline),
+        # 공통 다섯 키는 **한 함수가 만든다.** 순서까지 그 함수가 정하므로 갈릴 수 없다
+        **dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.file_name, frame=df),
+        KEY_EXPIRY_COUNT: len(expiries),
+        KEY_ADVANCED_COUNT: int((expiries[COL_ADVANCED_DAYS] > 0).sum()),
+        # 만기일이 실제로 무슨 요일이었나. 미국은 셋째 금요일이 규칙이지만 휴장 앞당김으로
+        # 벗어나는 달이 있어 그 비율 자체가 보고 대상이다
+        KEY_EXPIRY_WEEKDAYS: _count_labels(np.asarray(expiry_weekdays), WEEKDAY_LABELS),
+        KEY_WEEKLY_TRADE: {
+            KEY_ENTRY_COUNT: len(signal),
+            KEY_EXCLUDED_COUNT: len(signal) - len(valid_signal),
+            KEY_HOLD_DAYS: _count_labels(valid_signal[COL_HOLD_DAYS].to_numpy(dtype=int)),
+            KEY_BASELINE_ENTRY_COUNT: len(baseline),
+        },
     }
-
-
-def _record_trade_cell(
-    sliced: pd.DataFrame,
-    weekly_baseline: pd.DataFrame,
-    market: pd.DataFrame,
-    row_identity: dict[str, Any],
-    accumulator: _Accumulator,
-    *,
-    repeats: int,
-    seed: int,
-) -> None:
-    """매매 하나의 집계·기준선 대비 차이·검정을 쌓는다.
-
-    **묶음 비교와 길이별 비교의 베이스라인이 다르다** (`docs/매매/옵션_만기일/설계.md` 결정 ㉑).
-    묶음은 「같은 요일 주간 보유」와만 견준다 — 보유 길이가 섞인 묶음을 길이 매칭 베이스라인과
-    견주려면 표본 수를 부풀리는 가중이 필요한데, 그러면 보고되는 베이스라인 표본 수가 거짓이 된다.
-    길이 매칭은 **길이별 칸에서만** 정확히 성립한다.
-
-    Args:
-        sliced: 이 칸의 신호군 long-form
-        weekly_baseline: 「같은 요일 주간 보유」 long-form
-        market: 시세 전체
-        row_identity: 식별 컬럼 값
-        accumulator: 결과를 쌓는 자리
-        repeats: 순열 검정 반복 수
-        seed: 순열 검정 시드
-    """
-    # 1. 묶음 — 이 매매 하나의 성적이다
-    pooled_summary = summarize(sliced)
-    accumulator.trade_summary.append(_identify(pooled_summary, **row_identity))
-
-    pooled_excess = excess(pooled_summary, summarize(weekly_baseline))
-    accumulator.trade_excess.append(_identify(pooled_excess, **{**row_identity, COL_BASELINE_KIND: BASELINE_WEEKLY}))
-
-    pooled_test = permutation_test(sliced, weekly_baseline, repeats=repeats, seed=seed)
-    accumulator.trade_test.append(_identify(pooled_test, **{**row_identity, COL_BASELINE_KIND: BASELINE_WEEKLY}))
-
-    # 2. 보유 길이별 — 여기서만 「같은 길이 단순 보유」와 정확히 견줄 수 있다
-    per_length = _per_length(sliced)
-    if per_length.empty:
-        return
-
-    lengths = sorted({int(value) for value in per_length[COL_HORIZON]})
-    length_baseline = _matched_length_baseline(market, lengths)
-
-    length_summary = summarize(per_length)
-    accumulator.trade_summary.append(_identify(length_summary, **row_identity))
-    length_excess = excess(length_summary, summarize(length_baseline))
-    accumulator.trade_excess.append(
-        _identify(length_excess, **{**row_identity, COL_BASELINE_KIND: BASELINE_MATCHED_LENGTH})
-    )
-
-    length_test = permutation_test(per_length, length_baseline, repeats=repeats, seed=seed)
-    accumulator.trade_test.append(
-        _identify(length_test, **{**row_identity, COL_BASELINE_KIND: BASELINE_MATCHED_LENGTH})
-    )
 
 
 def run_study(
     datasets: tuple[Dataset, ...] = DATASETS,
     *,
+    cells: tuple[ExpiryCell, ...] | None = None,
     repeats: int = DEFAULT_REPEAT_COUNT,
     seed: int = DEFAULT_RANDOM_SEED,
 ) -> StudyOutputs:
@@ -677,6 +488,7 @@ def run_study(
 
     Args:
         datasets: 검증 대상 목록
+        cells: 확정 칸. `None` 이면 `trading_cells(datasets)` 가 정한다
         repeats: 순열 검정 반복 수
         seed: 순열 검정 시드
 
@@ -684,73 +496,68 @@ def run_study(
         실행 산출물
 
     Raises:
-        ValueError: 대상 목록이 빈 경우
+        ValueError: 대상 목록이 빈 경우, 또는 어느 대상에도 해당하지 않는 칸이 있는 경우
     """
     if not datasets:
         raise ValueError("검증 대상이 하나도 없습니다")
 
-    accumulator = _Accumulator()
-    dataset_summaries: list[dict[str, Any]] = [
-        _run_dataset(dataset, accumulator, repeats=repeats, seed=seed) for dataset in datasets
-    ]
+    targets = trading_cells(datasets) if cells is None else cells
 
+    keys = {dataset.key for dataset in datasets}
+    orphan = sorted({cell.dataset_key for cell in targets} - keys)
+    if orphan:
+        raise ValueError(f"칸이 가리키는 대상이 목록에 없습니다: {orphan}")
+
+    accumulator = _Accumulator()
+    dataset_summaries: list[dict[str, Any]] = []
+    for dataset in datasets:
+        dataset_cells = tuple(cell for cell in targets if cell.dataset_key == dataset.key)
+        if not dataset_cells:
+            logger.debug(f"확정 칸이 없어 건너뜁니다: {dataset.label}")
+            continue
+
+        dataset_summaries.append(_run_dataset(dataset, dataset_cells, accumulator, repeats=repeats, seed=seed))
+
+    measure = _concat(accumulator.measure)
     summary: dict[str, Any] = {
-        KEY_MAX_OFFSET: MAX_OFFSET,
         KEY_PERMUTATION_REPEATS: repeats,
         KEY_PERMUTATION_SEED: seed,
         KEY_TRACK: TRACK_NAME,
         KEY_DATASETS: dataset_summaries,
+        # **무엇을 냈는지 요약이 말한다.** 확정 칸을 코드가 갖게 된 뒤로는 이 목록이
+        # 「이번 실행이 어느 칸을 잰 것인가」의 유일한 기록이다
+        KEY_CELLS: [
+            {
+                KEY_LABEL: _label_of(datasets, cell.dataset_key),
+                KEY_EXPIRY_MONTH: cell.expiry_month,
+                KEY_DIRECTION: DIRECTION_DOWN if cell.bet_down else DIRECTION_UP,
+            }
+            for cell in targets
+        ],
+        KEY_ROW_COUNTS: {OUTPUT_FILES["measure"]: len(measure)},
     }
 
-    tables = {
-        "expiries": _concat(accumulator.expiries),
-        "signals": _concat(accumulator.signals),
-        "trade_signals": _concat(accumulator.trade_signals),
-        "trade_summary": _concat(accumulator.trade_summary),
-        "trade_excess": _concat(accumulator.trade_excess),
-        "trade_test": _concat(accumulator.trade_test),
-        "trade_by_month": _concat(accumulator.trade_by_month),
-        "trade_by_month_halves": _concat(accumulator.trade_by_month_halves),
-    }
-
-    # **요약을 먼저 완성한 뒤 산출물을 만든다.** 만들고 나서 그 안의 dict 를 고치면
-    # 동작은 하지만 `frozen` 이 막으려던 것을 우회하게 된다
-    # **키는 파일 이름이다.** `tables` 의 키는 `StudyOutputs` 의 «필드 이름»이라
-    # 그대로 쓰면 요약이 별칭으로 키잉된다. `OUTPUT_FILES` 가 둘을 잇는다
-    summary[KEY_ROW_COUNTS] = {OUTPUT_FILES[name]: len(table) for name, table in tables.items()}
-
-    # **표시값은 마지막에 붙인다** — 위의 집계가 표지를 정수로 쓴다
-    tables = {name: _label_pooled_rows(table) for name, table in tables.items()}
-
-    return StudyOutputs(**tables, summary=summary)
+    return StudyOutputs(measure=measure, summary=summary)
 
 
-def _label_pooled_rows(table: pd.DataFrame) -> pd.DataFrame:
-    """묶음 표지(`-1`)를 **표시값으로** 바꾼다.
-
-    이 축은 측정 구간 격자가 아니라 **그 신호가 실제로 몇 거래일 들렸는가**다 — 청산이 달력
-    기준이라 신호마다 다르고, 미국은 만기 다음 주에 휴장이 잦아 4거래일인 주가 섞인다.
-    묶음 행은 그 길이를 합친 것이라 **길이가 아니라 「전체」**다.
-
-    [중요] **`-1` 은 내부에서만 쓴다.** 실제 보유일로는 도달할 수 없는 음수라야 진짜 길이 칸과
-    섞이지 않는데(설계 결정 ㉑), 그 값이 그대로 나가면 사용자가 여는 CSV 에 `-1` 이 찍힌다.
+def _label_of(datasets: tuple[Dataset, ...], key: str) -> str:
+    """데이터셋 이름으로 표시 이름을 찾는다.
 
     Args:
-        table: 저장 직전의 표
+        datasets: 대상 목록
+        key: 데이터셋 이름
 
     Returns:
-        표지가 표시값으로 바뀐 새 표. 그 컬럼이 없으면 그대로
+        표시 이름
+
+    Raises:
+        RuntimeError: 그 이름의 대상이 없는 경우. 호출 전에 걸러지므로 도달할 수 없다
     """
-    if COL_HORIZON not in table.columns:
-        return table
+    for dataset in datasets:
+        if dataset.key == key:
+            return dataset.label
 
-    labelled = table.copy()
-    labelled[COL_HORIZON] = [
-        DISPLAY_HOLD_DAYS_POOLED if int(value) == HORIZON_NEXT_WEEK_EXIT else int(value)
-        for value in labelled[COL_HORIZON]
-    ]
-
-    return labelled
+    raise RuntimeError(f"내부 불변조건 위반 - 대상 목록에 없는 이름입니다: {key}")
 
 
 def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
@@ -768,22 +575,4 @@ def _concat(blocks: list[pd.DataFrame]) -> pd.DataFrame:
     return pd.concat(blocks, ignore_index=True)
 
 
-def trade_headline(outputs: StudyOutputs) -> pd.DataFrame:
-    """전체 월의 매매 묶음 성적을 뽑는다.
-
-    보유 길이별 칸은 빼고 **묶음 칸만** 남긴다 — 사용자가 물은 것은 매매 하나의 성적이다.
-
-    Args:
-        outputs: 실행 산출물
-
-    Returns:
-        종목별 요약표 (종목당 한 행)
-    """
-    summary = outputs.trade_summary
-    if summary.empty:
-        return summary
-
-    return summary[summary[COL_HORIZON] == DISPLAY_HOLD_DAYS_POOLED].reset_index(drop=True)
-
-
-__all__ = ["StudyOutputs", "run_study", "trade_headline"]
+__all__ = ["StudyOutputs", "run_study"]
