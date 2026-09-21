@@ -4,11 +4,13 @@
 체결은 `execution/trade_fill.py` 가 이미 하므로, 하는 일은 그것을 조합해 돌리고 사람이 읽을
 형태로 쌓는 것이다.
 
-**손절선은 격자가 기본이다** — 무손절 + `EXPIRY_STOP_LEVELS`. `.claude/rules/trading.md` 가
-「손절선 후보를 격자로 전부 돌려 평평한 구간을 찾는다」를 절차로 요구하고, 무손절을
-「손절이 무엇을 막았는가」의 대조축으로 요구하기 때문이다.
-**전부 내는 것은 고르는 것이 아니다** — 확정 손절선(`EXPIRY_STOP_LEVEL`)이 무엇인지는
-매매 규칙 문서가 정하고, 그 한 행은 `손절선(%)` 한 컬럼 필터로 고른다.
+**손절선은 확정 −5%(`EXPIRY_STOP_LEVEL`) 하나가 기본이다.** 사용자가 실제로 거는 것만
+내기로 정했고, 그 결정이 허용되는 조건은 `.claude/rules/trading.md` 「확정된 칸만 내는 것은
+사용자의 결정입니다」가 갖는다 — **값을 재선정하지 않는다 · 무손절 대조 수치를 규칙 문서가
+갖는다 · 재선정 수단을 남긴다.** 대조 수치의 자리는 `docs/매매/옵션_만기일/규칙.md` §2.6 이다.
+
+**격자(`EXPIRY_STOP_GRID`)는 인자로 낸다** — 시세를 재수집하면 성적이 바뀌어 손절선을
+다시 재야 하고, `scripts/run_option_expiry.py --stop-grid` 가 그 길이다.
 **값을 옮겨 가며 성적을 보는 노브를 만들지 않는다** — 그것이 과최적화다.
 """
 
@@ -54,7 +56,7 @@ from verify_lab.studies.option_expiry.constants import (
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TARGET_DATE,
     EXIT_WEEKDAY,
-    EXPIRY_STOP_LEVELS,
+    EXPIRY_STOP_DEFAULT,
     KEY_CELLS,
     KEY_DIRECTION,
     KEY_EXCLUDED_COUNT,
@@ -144,15 +146,14 @@ class _Block:
 
 def run_option_expiry_trading(
     cells: Sequence[ExpiryCell] | None = None,
-    stop_levels: Sequence[float | None] = (None, *EXPIRY_STOP_LEVELS),
+    stop_levels: Sequence[float | None] = EXPIRY_STOP_DEFAULT,
 ) -> ExpiryOutputs:
     """대상 칸마다 손절선을 적용해 성적표와 원자료를 낸다.
 
-    **기본이 격자다** — 무손절과 -1.0%~-10.0% 를 전부 낸다. `.claude/rules/trading.md` 가
-    「손절이 무엇을 막았는가」의 대조축으로 무손절 성적을 요구하고, 손절선 후보를 격자로
-    전부 돌려 「평평한 구간」을 찾는 것을 절차로 요구하기 때문이다.
-    **확정 손절선 하나만 보려면 `stop_levels=(EXPIRY_STOP_LEVEL,)` 를 넘긴다** —
-    무엇을 실제로 거는지는 규칙 문서가 정하고 코드는 볼 목록을 낸다.
+    **기본이 확정 손절선 하나다** — `EXPIRY_STOP_LEVEL`(−5%). 사용자가 실제로 거는 것만
+    내기로 정했고, 무손절과의 대조 수치는 `docs/매매/옵션_만기일/규칙.md` §2.6 이 갖는다.
+    **격자를 보려면 `stop_levels=EXPIRY_STOP_GRID` 를 넘긴다** —
+    시세를 재수집한 뒤 손절선을 다시 잴 때의 길이며, 그때도 무엇을 거는지는 규칙 문서가 정한다.
 
     `손절선(%)` 컬럼은 전 행이 같은 값일 때도 나온다 — 없으면 그 표가
     −5% 성적인지 무손절 성적인지 **산출물만 봐서는 판별되지 않는다.**
@@ -289,8 +290,8 @@ def collect_entries(dataset: Dataset, cell: ExpiryCell) -> Entries:
         RuntimeError: 진입일·청산일이 시세의 거래일에 없는 경우 (내부 불변조건 위반)
     """
     # **칸마다 다시 읽는 것을 종목 단위로 묶지 않는다.** 한 종목이 여러 칸에 걸쳐 있어
-    # 시세·만기 달력·청산 일정이 겹쳐 만들어지고, **전 칸(120칸)이 기본이라 그 중복이
-    # 대상 5개 × 24벌**이다. 그래도 묶지 않는 것은 `Entries` 를 칸들이 나눠 갖게 되어
+    # 시세·만기 달력·청산 일정이 겹쳐 만들어진다 — 기본이 확정 3칸이라 DIA 가 두 벌이고,
+    # `--stop-grid` 를 켜도 이 읽기는 칸 수만큼이다. 그래도 묶지 않는 것은 `Entries` 를 칸들이 나눠 갖게 되어
     # **한 칸의 수정이 다른 칸에 새는 길**이 생기기 때문이다 — 전체 실행이 몇 초라 그 위험이 크다.
     # 느려져서 문제가 되면 그때 **읽기만** 묶는다(`Entries` 는 칸마다 새로 만든다)
     df = load_market_csv(MARKET_DIR / dataset.file_name)

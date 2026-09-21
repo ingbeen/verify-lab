@@ -21,8 +21,10 @@
 (`tests/CLAUDE.md` 「픽스처가 코드와 같은 가정을 하면 그 버그는 영원히 안 잡힙니다」).
 """
 
+import inspect
 import json
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -92,7 +94,14 @@ from verify_lab.studies.month_end.trading import KEY_TARGETS as MONTH_END_KEY_TA
 from verify_lab.studies.month_end.trading import TradingOutputs, run_month_end_trading
 from verify_lab.studies.option_expiry import trading as option_expiry_runner
 from verify_lab.studies.option_expiry.constants import DATASETS as EXPIRY_DATASETS
-from verify_lab.studies.option_expiry.constants import EXPIRY_STOP_LEVEL, US_MONTHLY_EXPIRY, ExpiryCell
+from verify_lab.studies.option_expiry.constants import (
+    EXPIRY_STOP_DEFAULT,
+    EXPIRY_STOP_GRID,
+    EXPIRY_STOP_LEVEL,
+    EXPIRY_STOP_LEVELS,
+    US_MONTHLY_EXPIRY,
+    ExpiryCell,
+)
 from verify_lab.studies.option_expiry.constants import Dataset as ExpiryDataset
 from verify_lab.studies.option_expiry.trading import KEY_CELLS as EXPIRY_KEY_CELLS
 from verify_lab.studies.option_expiry.trading import ExpiryOutputs, run_option_expiry_trading
@@ -333,15 +342,23 @@ def reverse_outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs
     return run_reverse_trading([_reverse_target(_write_market(directory, "SYN"))], stop_levels=(STOP_LOSS_LEVEL,))
 
 
-@pytest.fixture(scope="module")
-def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryOutputs]:
-    """합성 시세로 돈 옵션 만기일 매매 결과.
+@contextmanager
+def _isolated_expiry(directory: Path) -> Generator[None]:
+    """옵션 만기일 체결을 합성 시세로 격리한다.
 
     `collect_entries` 가 `MARKET_DIR` 에서 파일을 찾고 `_dataset` 이 `DATASETS` 를 훑으므로
     **두 이름을 runner 모듈에서** 패치한다 — import 시점에 그 모듈이 값을 캡처한다.
+
+    **격리를 픽스처 «안»에 두지 않는다.** 두면 그 픽스처의 `yield` 가 열려 있는 동안에만
+    유효해서, 다른 테스트가 자기 호출을 하면서 그 부작용에 얹히게 된다 — 픽스처를 `return`
+    으로 바꾸는 순간 그 테스트가 **실 `storage/market/` 을 읽는다**(`tests/CLAUDE.md` 5절).
+
+    Args:
+        directory: 합성 시세를 쓴 폴더
+
+    Yields:
+        패치가 걸린 구간
     """
-    directory = tmp_path_factory.mktemp("expiry")
-    _write_market(directory, "SYN")
     dataset = ExpiryDataset(
         key="synthetic",
         ticker="SYN",
@@ -350,16 +367,42 @@ def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> Iterator[ExpiryO
         file_name=MARKET_FILE_TEMPLATE.format(ticker="SYN"),
         price_decimals=PRICE_DECIMALS_KRW,
     )
-
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(option_expiry_runner, "MARKET_DIR", directory)
         patch.setattr(option_expiry_runner, "DATASETS", (dataset,))
-        # **한 손절선으로 고정한다.** 격자 배수가 붙으면 구조 계약(구간 5행·신호마다 한 행)이
-        # 손절선 수만큼 늘어나 무엇을 재는지 흐려진다 — 격자 자체는 별도 테스트가 본다
-        yield run_option_expiry_trading(
-            [ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False)],
-            stop_levels=(EXPIRY_STOP_LEVEL,),
-        )
+        yield
+
+
+def _expiry_cell() -> ExpiryCell:
+    """합성 대상의 칸 하나.
+
+    Returns:
+        「위」 방향 칸
+    """
+    return ExpiryCell(dataset_key="synthetic", expiry_month=EXPIRY_MONTH, bet_down=False)
+
+
+@pytest.fixture(scope="module")
+def expiry_outputs(tmp_path_factory: pytest.TempPathFactory) -> ExpiryOutputs:
+    """합성 시세로 돈 옵션 만기일 매매 결과."""
+    directory = tmp_path_factory.mktemp("expiry")
+    _write_market(directory, "SYN")
+
+    with _isolated_expiry(directory):
+        # **인자를 넘기지 않아 «기본 경로»를 그대로 돈다.** 값이 같은 튜플을 손으로 만들면
+        # 기본값이 잘못 바뀌어도 이 픽스처가 만드는 계약 검사 수십 건이 전부 통과한다 —
+        # 기본이 확정 손절선 한 종이라 구조 계약(구간 5행·신호마다 한 행)도 배수가 붙지 않는다
+        return run_option_expiry_trading([_expiry_cell()])
+
+
+@pytest.fixture(scope="module")
+def expiry_grid_outputs(tmp_path_factory: pytest.TempPathFactory) -> ExpiryOutputs:
+    """같은 합성 시세를 **손절선 격자**로 돈 결과 — `--stop-grid` 가 가는 길."""
+    directory = tmp_path_factory.mktemp("expiry_grid")
+    _write_market(directory, "SYN")
+
+    with _isolated_expiry(directory):
+        return run_option_expiry_trading([_expiry_cell()], stop_levels=EXPIRY_STOP_GRID)
 
 
 @pytest.fixture(scope="module")
@@ -585,6 +628,61 @@ class TestStopLevelFormat:
         assert NO_STOP_LABEL in levels
         assert STOP_NOT_MEASURABLE_LABEL in levels
         assert numeric and all(isinstance(level, float) and level < 0 for level in numeric)
+
+    def test_옵션_만기일_기본_실행이_확정_손절선_한_종이다(self) -> None:
+        """
+        목적: 기본 실행이 격자로 되돌아가는 것을 막는다
+
+        사용자가 「실제 투자하는 것만 남긴다」로 정한 결과이며, 되돌아가면 성적표가
+        15행에서 300행이 된다 — **예외는 나지 않고 행만 늘어난다.**
+
+        Given: 체결 함수의 시그니처
+        When: `stop_levels` 의 기본값을 봤을 때
+        Then: 확정 손절선 하나뿐이고 무손절이 들어 있지 않다
+        """
+        # Given
+        signature = inspect.signature(run_option_expiry_trading)
+
+        # When
+        default = signature.parameters["stop_levels"].default
+
+        # Then
+        assert default is EXPIRY_STOP_DEFAULT
+        assert tuple(default) == (EXPIRY_STOP_LEVEL,)
+        assert None not in default
+
+    def test_옵션_만기일_격자를_넘기면_무손절_행이_나온다(self, expiry_outputs: ExpiryOutputs, expiry_grid_outputs: ExpiryOutputs) -> None:
+        """
+        목적: 재선정 경로(`--stop-grid`)가 실제로 도는지 고정한다
+
+        기본이 확정 손절선 하나가 되면서 **무손절 조립 경로를 기본 실행이 더 이상 밟지
+        않는다.** 회귀가 생기면 「시세를 재수집하고 손절선을 다시 재려는」 바로 그 순간에
+        처음 드러나는데, 그 수단을 남기는 것이 이 축소를 허용한 조건이다.
+
+        Given: 같은 합성 대상을 기본과 격자로 각각 돈 결과
+        When: 두 성적표를 견줬을 때
+        Then: 격자 쪽에만 `무손절` 이 있고 행이 격자 배수만큼 늘어난다
+        """
+        # Given / When / Then
+        assert NO_STOP_LABEL in self._levels(expiry_grid_outputs.performance)
+        assert NO_STOP_LABEL not in self._levels(expiry_outputs.performance)
+        assert len(expiry_grid_outputs.performance) == len(expiry_outputs.performance) * len(EXPIRY_STOP_GRID)
+
+    def test_옵션_만기일_격자가_확정_손절선을_품는다(self) -> None:
+        """
+        목적: `--stop-grid` 산출물에 확정 손절선 행이 반드시 들어가는지 고정한다
+
+        격자에 −5% 가 없으면 **규칙 문서가 인용한 행이 그 산출물에 없고**, 재수집 뒤
+        손절선을 다시 잴 때 지금 값과 견줄 대상이 사라진다.
+
+        Given: 재선정용 격자 상수
+        When: 그 목록을 봤을 때
+        Then: 무손절 대조축과 확정 손절선이 모두 들어 있고, 격자보다 정확히 하나 길다
+        """
+        # Given / When / Then
+        assert None in EXPIRY_STOP_GRID
+        assert EXPIRY_STOP_LEVEL in EXPIRY_STOP_GRID
+        assert len(EXPIRY_STOP_GRID) == len(EXPIRY_STOP_LEVELS) + 1
 
     def test_잴_수_없는_대상만_손절불가다(self, month_end_outputs: TradingOutputs) -> None:
         """

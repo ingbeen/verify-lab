@@ -29,10 +29,17 @@
 """
 
 import ast
+import contextlib
+import importlib.util
+import io
 import re
+import sys
 from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
+from types import ModuleType
+
+import pytest
 
 from verify_lab.common_constants import BASE_DIR
 from verify_lab.measure import constants as measure_constants
@@ -135,6 +142,26 @@ def _runner_scripts() -> list[Path]:
         `scripts/run_*.py` 목록 (정렬됨)
     """
     return sorted((BASE_DIR / "scripts").glob("run_*.py"))
+
+
+def _load_script(script: Path) -> ModuleType:
+    """실행 스크립트를 모듈로 읽어 온다.
+
+    [주의] **모듈 본문이 실제로 실행된다.** 지금 여섯 스크립트는 최상단이 import 와 상수뿐이라
+    안전하지만, 거기에 시세 로딩이나 외부 호출을 넣으면 **이 테스트가 실 storage 를 읽거나
+    네트워크를 탄다**(`tests/CLAUDE.md` 5·6절). 실행 스크립트의 최상단은 부작용이 없어야 한다.
+
+    Args:
+        script: `scripts/run_*.py` 경로
+
+    Returns:
+        읽어 온 모듈
+    """
+    spec = importlib.util.spec_from_file_location(script.stem, script)
+    assert spec is not None and spec.loader is not None, f"{script.name} 을 읽을 수 없습니다"
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _merged_summary_names(path: Path) -> set[str]:
@@ -1947,3 +1974,152 @@ class TestHorizonLabelOwnership:
             assert (
                 self._DICT_NAME in sources or "horizon_label" in sources
             ), f"{package.name} 이 구간 축을 이름표 없이 내보냅니다 — 거래일 수가 원값으로 나갑니다"
+
+
+class TestCliHelpRenders:
+    """`--help` 가 실제로 렌더링되는가
+
+    [중요] **`scripts/` 는 이 저장소의 다른 테스트가 닿지 않는 자리다**(`scripts/CLAUDE.md`).
+    그래서 CLI 가 깨져도 Ruff·PyRight·계약 테스트를 전부 통과한다 — 실측으로
+    `--stop-grid` 의 help 문자열에 `%` 를 escape 하지 않아 `--help` 가 `ValueError` 로
+    죽는 동안 **1,276건이 통과했다.**
+
+    argparse 는 help 문자열에 `%` 포매팅을 걸므로 `-1.0%~-10.0%` 처럼 적으면
+    **파서를 만들 때가 아니라 help 를 «그릴 때»** 터진다. 그래서 여기서 실제로 그려 본다.
+    """
+
+    @pytest.mark.parametrize("script", _runner_scripts(), ids=lambda path: path.stem)
+    def test_실행_스크립트의_help_가_그려진다(self, script: Path) -> None:
+        """
+        목적: help 문자열의 `%` 미escape 같은 고장을 잡는다
+
+        Given: 매매법 실행 스크립트
+        When: `--help` 로 인자를 파싱했을 때
+        Then: help 를 그리고 정상 종료한다 (`ValueError` 가 아니다)
+        """
+        # Given
+        module = _load_script(script)
+        assert hasattr(module, "parse_args"), f"{script.name} 에 parse_args 가 없습니다"
+
+        # When
+        original = sys.argv
+        sys.argv = [script.name, "--help"]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as rendered:
+                with pytest.raises(SystemExit) as exit_info:
+                    module.parse_args()
+        finally:
+            sys.argv = original
+
+        # Then
+        assert exit_info.value.code == 0
+        assert "--help" in rendered.getvalue()
+
+
+class TestStopGridWiring:
+    """`--stop-grid` 가 격자를, 기본이 확정 손절선을 고르는가
+
+    [중요] **이 배선이 뒤집혀도 ruff·pyright·pytest 가 전부 통과한다.** 성적표가 조용히
+    15행에서 300행이 되고, 유일한 신호는 `storage/results/` 의 git diff 다
+    (`scripts/CLAUDE.md` 「동작은 여전히 아무도 보지 않습니다」).
+
+    **동작(플래그 파싱)과 구조(어느 상수를 고르는가)를 함께 본다** — 플래그만 보면
+    삼항이 뒤집힌 것을 못 잡고, 구조만 보면 플래그 이름이 바뀐 것을 못 잡는다.
+    """
+
+    _SCRIPT = BASE_DIR / "scripts" / "run_option_expiry.py"
+
+    def test_stop_grid_는_기본이_꺼짐이다(self) -> None:
+        """
+        목적: 기본 실행이 격자를 내지 않는다는 것을 플래그 층에서 고정한다
+
+        Given: 옵션 만기일 실행 스크립트
+        When: 인자 없이 파싱했을 때와 `--stop-grid` 로 파싱했을 때
+        Then: 각각 거짓과 참이다
+        """
+        # Given
+        module = _load_script(self._SCRIPT)
+
+        # When
+        original = sys.argv
+        try:
+            sys.argv = [self._SCRIPT.name]
+            default = module.parse_args()
+            sys.argv = [self._SCRIPT.name, "--stop-grid"]
+            enabled = module.parse_args()
+        finally:
+            sys.argv = original
+
+        # Then
+        assert default.stop_grid is False
+        assert enabled.stop_grid is True
+
+    def test_플래그가_격자를_기본이_확정_손절선을_고른다(self) -> None:
+        """
+        목적: 삼항이 뒤집히는 것을 막는다
+
+        **CLI 가 목록을 조립하지 않고 이름 둘 중 하나를 고른다**는 계약도 함께 고정한다 —
+        조립하면 `constants.py` 의 소유자와 갈리고 `meta.json` 이 돌지 않은 격자를 적는다.
+
+        **소스 문자열로 보지 않는다** — 같은 문장이 주석에 있어도 통과하고(이 스크립트에는
+        바로 그 내용의 주석 블록이 있다), 이름을 바꾸거나 포매터가 줄을 접으면 실패한다.
+
+        Given: 옵션 만기일 실행 스크립트의 구문 트리
+        When: `stop_levels` 에 대입하는 삼항을 찾았을 때
+        Then: 조건이 `args.stop_grid` 이고 참일 때 격자, 거짓일 때 확정 손절선이다
+        """
+        # Given
+        tree = ast.parse(self._SCRIPT.read_text(encoding="utf-8"))
+
+        # When
+        chosen = [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "stop_levels" for target in node.targets)
+        ]
+
+        # Then
+        assert len(chosen) == 1, f"`stop_levels` 에 대입하는 자리가 하나가 아닙니다 ({len(chosen)}곳)"
+        ternary = chosen[0]
+        assert isinstance(ternary, ast.IfExp), "손절선을 삼항으로 고르지 않습니다 — 상수 이름 둘 중 하나여야 합니다"
+        assert isinstance(ternary.test, ast.Attribute) and ternary.test.attr == "stop_grid", "`--stop-grid` 로 가르지 않습니다"
+        assert isinstance(ternary.body, ast.Name) and ternary.body.id == "EXPIRY_STOP_GRID", "플래그가 참일 때 격자가 아닙니다"
+        assert isinstance(ternary.orelse, ast.Name) and ternary.orelse.id == "EXPIRY_STOP_DEFAULT", "기본이 확정 손절선이 아닙니다"
+
+    def test_고른_손절선이_체결과_화면에_실제로_넘어간다(self) -> None:
+        """
+        목적: **고르기만 하고 넘기지 않는** 상태를 막는다
+
+        삼항은 그대로 두고 `run_option_expiry_trading(cells)` 로 되돌리면 `--stop-grid` 가
+        조용히 기본 15행을 내면서 **화면은 「손절선 20종 · 성적표 300행」을 외친다.**
+
+        [중요] **인자의 «값»까지 본다.** 이름만 보면 `stop_levels=EXPIRY_STOP_DEFAULT` 로 박아
+        플래그를 무시하는 것을 못 잡는다 — 그것도 같은 고장이다.
+
+        Given: 옵션 만기일 실행 스크립트의 구문 트리
+        When: 체결 함수와 범위 출력 함수의 호출을 찾았을 때
+        Then: 둘 다 고른 목록(`stop_levels` 변수)을 그대로 받는다
+        """
+        # Given
+        tree = ast.parse(self._SCRIPT.read_text(encoding="utf-8"))
+
+        def _is_chosen(node: ast.expr | None) -> bool:
+            """고른 목록을 담은 변수 그대로인지 본다."""
+            return isinstance(node, ast.Name) and node.id == "stop_levels"
+
+        # When
+        passed: dict[str, bool] = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            if node.func.id == "run_option_expiry_trading":
+                passed["체결"] = any(
+                    keyword.arg == "stop_levels" and _is_chosen(keyword.value) for keyword in node.keywords
+                )
+            if node.func.id == "_print_scope":
+                passed["화면"] = len(node.args) >= 2 and _is_chosen(node.args[1])
+
+        # Then
+        assert passed.get("체결"), "체결 함수가 고른 손절선 목록을 그대로 받지 않습니다 — 플래그가 무시될 수 있습니다"
+        assert passed.get("화면"), "범위 출력이 고른 손절선 목록을 그대로 받지 않습니다 — 돌지 않은 행 수를 적게 됩니다"

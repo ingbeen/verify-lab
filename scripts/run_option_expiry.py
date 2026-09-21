@@ -9,9 +9,10 @@
 체결 산출물이 **한 폴더에** 함께 나오며, 어느 등급 폴더에 쌓일지는
 `verify_lab/tracks.py` 의 레지스트리가 정한다.
 
-**손절선은 격자가 기본이다** — 무손절 + -1.0%~-10.0% 를 전부 낸다. 값을 인자로 열지 않는다 —
-값을 옮겨 가며 성적을 보면 표본에 맞춘 튜닝이지만, **전부 내는 것은 고르는 것이 아니다.**
-확정 손절선이 무엇인지는 규칙 문서가 정하고 `손절선(%)` 한 컬럼으로 골라낸다.
+**손절선은 확정 -5% 하나가 기본이다.** 실제로 거는 것만 내며, 무손절과의 대조 수치는
+`docs/매매/옵션_만기일/규칙.md` 2.6 이 갖는다. **값을 인자로 열지 않는다** — 값을 옮겨 가며
+성적을 보면 표본에 맞춘 튜닝이다. `--stop-grid` 는 격자를 **전부** 켜는 스위치일 뿐이고
+값을 고르게 해 주지 않으며, 시세를 재수집한 뒤 손절선을 다시 잴 때 쓴다.
 
 **거는 칸은 코드가 아니라 `docs/매매/옵션_만기일/규칙.md` §3 이 정한다** — 코드는 그 결론을
 옮겨 적을 뿐이고, 왜 그 칸인지는 그 문서의 「확정 / 탈락안 / 근거」가 갖는다.
@@ -23,6 +24,7 @@
 """
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -38,6 +40,7 @@ from verify_lab.execution.constants import (
     PERIODS,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
+    stop_level_value,
 )
 from verify_lab.execution.run_summary import KEY_ROW_COUNTS, KEY_RULE, merge_run_summary
 from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP, SCREEN_CANDIDATE
@@ -64,8 +67,9 @@ from verify_lab.studies.option_expiry.constants import (
     DATASETS,
     DISPLAY_EXPIRY_MONTH,
     DISPLAY_TICKER,
+    EXPIRY_STOP_DEFAULT,
+    EXPIRY_STOP_GRID,
     EXPIRY_STOP_LEVEL,
-    EXPIRY_STOP_LEVELS,
     OUTPUT_FILES,
     OUTPUT_LABELS,
     PERCENT_OUTPUT_COLUMNS,
@@ -93,12 +97,18 @@ logger = get_logger(__name__)
 # 측정·체결로 키를 가르면 같은 실행이 두 줄로 남는다
 KEY_META_OPTION_EXPIRY = "option_expiry"
 
+# 화면에서 확정 손절선 행을 고를 때 쓰는 값. **표기 형식을 여기서 다시 만들지 않는다** —
+# `stop_level_value` 가 `손절선(%)` 값의 소유자이고, 직접 적으면 성적표와 갈려 필터가
+# 아무 행도 못 고른다. 그러면 화면만 조용히 비고 예외는 나지 않는다
+FIXED_STOP_DISPLAY = stop_level_value(EXPIRY_STOP_LEVEL, measurable=True)
+
 # 산출물 표의 컬럼 이름. **폭은 적지 않는다** — `print_dataframe` 이 내용에서 계산한다
 DISPLAY_FILE = "파일"
 DISPLAY_ROW_COUNT = "행 수"
 
 # 화면에 낼 후보 칸의 컬럼. **성적표 전 컬럼을 쏟으면 가로로 넘쳐 읽을 수 없고**,
-# 바로 뒤의 맨몸 성적 표가 같은 행을 다시 내므로 여기서는 판정에 필요한 것만 낸다
+# 같은 실행의 성적표 표(`_print_performance`)가 그 행을 전 컬럼으로 다시 내므로
+# 여기서는 판정에 필요한 것만 낸다
 CANDIDATE_COLUMNS = [
     DISPLAY_TICKER,
     DISPLAY_EXPIRY_MONTH,
@@ -113,8 +123,9 @@ CANDIDATE_COLUMNS = [
 def parse_args() -> argparse.Namespace:
     """명령행 인자를 파싱한다.
 
-    **손절선 값은 인자가 아니다.** 격자 전체를 내는 것이 설계이며, 값을 골라 넣는
-    노브로 쓰면 표본에 맞춘 튜닝이 된다 — **전부 내는 것은 고르는 것이 아니다.**
+    **손절선 «값» 은 인자가 아니다.** 값을 골라 넣는 노브로 쓰면 표본에 맞춘 튜닝이 된다.
+    `--stop-grid` 는 격자를 **전부** 켜는 스위치일 뿐이고 값을 고르게 해 주지 않는다 —
+    **전부 내는 것은 고르는 것이 아니다.**
 
     Returns:
         파싱된 인자
@@ -140,6 +151,16 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_RANDOM_SEED,
         help=f"무작위 뽑기 대조 시드 (기본값: {DEFAULT_RANDOM_SEED}). 결과 재현에 필요하다",
+    )
+    # **손절선을 고르는 노브가 아니다.** 켜면 격자 전체가 나올 뿐이고 값을 넘길 수는 없다 —
+    # 무엇을 거는지는 규칙 문서가 정한다. 시세를 재수집한 뒤 손절선을 다시 잴 때 쓴다
+    parser.add_argument(
+        "--stop-grid",
+        action="store_true",
+        # **`%` 를 `%%` 로 쓴다.** argparse 가 help 문자열에 `%` 포매팅을 걸어서
+        # 그냥 쓰면 `--help` 가 ValueError 로 죽는다 — 스크립트는 테스트 대상이 아니라
+        # 품질 검증을 통과하고도 살아남는다
+        help=("손절선 격자 전체를 낸다 (무손절 + -1.0%%~-10.0%%). 기본은 확정 손절선 한 종이다. " "[주의] 기본 산출물을 덮는다 — 인자 없이 다시 돌리면 복원된다"),
     )
     return parser.parse_args()
 
@@ -177,40 +198,48 @@ def _selected_cells(datasets: tuple[Dataset, ...]) -> list[ExpiryCell]:
     return list(trading_cells(datasets))
 
 
-def _print_scope(cells: list[ExpiryCell]) -> None:
+def _print_scope(cells: list[ExpiryCell], stop_levels: Sequence[float | None]) -> None:
     """무엇을 도는지 먼저 보여 준다.
 
     **같은 달 두 칸이 같은 날 같은 방향**이라는 사실을 함께 적는다 — 산출물을 두 번의
     확인으로 읽으면 안 되기 때문이다.
 
+    **손절선 종 수를 상수에서 세지 않고 실제로 돌 목록에서 센다** — 세는 곳과 도는 곳이
+    갈리면 화면이 돌지 않은 행 수를 적고, 예외는 나지 않는다.
+
     Args:
         cells: 실행할 칸 목록
+        stop_levels: 이번 실행이 돌 손절선 목록
     """
-    stop_count = len(EXPIRY_STOP_LEVELS) + 1
+    stop_count = len(stop_levels)
     logger.debug(
-        f"대상 {len(cells)}칸 × 손절선 {stop_count}종({NO_STOP_LABEL} 포함) × 시기 {len(PERIODS)}행 "
+        f"대상 {len(cells)}칸 × 손절선 {stop_count}종 × 시기 {len(PERIODS)}행 "
         f"= 성적표 {len(cells) * stop_count * len(PERIODS):,}행 "
         f"(확정 손절선은 {-EXPIRY_STOP_LEVEL * RATE_TO_PERCENT:.1f}%)"
     )
+    if None in stop_levels:
+        logger.debug(f"{NO_STOP_LABEL} 대조축을 포함한 격자입니다 — 손절선을 다시 고를 때만 씁니다")
+        logger.debug("[주의] 이 실행이 기본 산출물을 덮습니다 — 인자 없이 다시 돌리면 복원됩니다")
     logger.debug("확정 칸만 냅니다 — 그 칸을 왜 고른 것인지는 docs/매매/옵션_만기일/규칙.md §3 이 갖습니다")
     logger.debug("9월 두 칸(SPY·DIA)은 같은 날 같은 방향이고 상관 0.965 라 독립된 두 번의 기회가 아닙니다")
 
 
 def _print_candidates(outputs: ExpiryOutputs) -> None:
-    """성적표에서 **맨몸 후보 칸만** 뽑아 화면에 보여 준다.
+    """성적표에서 **확정 손절선의 후보 칸만** 뽑아 화면에 보여 준다.
 
     **판정표를 따로 내지 않으므로 성적표가 그 자리다** (2026-09-16 통합). 화면은 "지금 볼 것"을
     위한 자리이고, 제외된 칸을 포함한 전 칸은 성적표가 만기월 순서로 답한다.
 
-    **무손절 행을 보여 준다** — 게이트가 맨몸 성적으로 걸리기 때문이다(측정의 원칙 10).
-    같은 칸이 확정 손절선에서 어떻게 되는지는 CSV 에서 `손절선(%)` 을 바꿔 보면 된다.
+    **확정 손절선 행을 보여 준다** — 실제로 거는 조건의 성적이라야 판정과 집행이 같은 조건이다.
+    기본 실행은 손절선이 그 한 종뿐이라 거르는 것이 없고, `--stop-grid` 로 돌린 실행에서만
+    나머지 손절선이 CSV 에 남는다.
 
     Args:
         outputs: 체결 산출물
     """
     table = outputs.performance
     picked = table[
-        (table[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL)
+        (table[DISPLAY_STOP_LEVEL] == FIXED_STOP_DISPLAY)
         & (table[DISPLAY_PERIOD] == PERIOD_ALL)
         & (table[DISPLAY_SCREEN] == SCREEN_CANDIDATE)
     ]
@@ -224,7 +253,7 @@ def _print_candidates(outputs: ExpiryOutputs) -> None:
     print_dataframe(
         ordered[CANDIDATE_COLUMNS],
         logger,
-        title=f"1차 후보 — {NO_STOP_LABEL} · 게이트를 넘은 칸 (적중률 순)",
+        title=f"1차 후보 — 손절 {FIXED_STOP_DISPLAY}% · 게이트를 넘은 칸 (적중률 순)",
     )
     logger.debug(f"제외된 칸을 포함한 전 칸의 판정은 {SUMMARY_FILENAME} 의 「1차 판정」 컬럼에 있습니다")
 
@@ -257,16 +286,25 @@ def _display_headline(outputs: StudyOutputs) -> None:
 
 
 def _print_performance(outputs: ExpiryOutputs) -> None:
-    """성적표에서 **무손절 행만** 화면에 보여 준다.
+    """성적표에서 **확정 손절선 행만** 화면에 보여 준다.
 
-    전 행을 터미널에 쏟으면 읽을 수 없고, 무손절 행이 맨몸 성적이라 측정 표와 대조하는
-    자리이기 때문이다. **격자 전체는 CSV 에 있다.**
+    실제로 거는 조건의 성적이고, `--stop-grid` 로 돌린 실행에서 전 행(300행)을 터미널에
+    쏟으면 읽을 수 없기 때문이다. **기본 실행에서는 성적표 전체와 같다.**
+
+    [중요] **이 표는 맨몸 성적이 아니라 손절이 걸린 성적이다.** 측정 표(1배 롱 기준)와
+    부호부터 다르므로 대조 대상이 아니다. 무손절과의 대조 수치는
+    `docs/매매/옵션_만기일/규칙.md` 2.6 이 갖는다.
 
     Args:
         outputs: 체결 산출물
     """
-    no_stop = outputs.performance[outputs.performance[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL]
-    print_dataframe(no_stop, logger, title=f"{NO_STOP_LABEL} — 맨몸 성적 (격자 전체는 CSV 에)")
+    fixed = outputs.performance[outputs.performance[DISPLAY_STOP_LEVEL] == FIXED_STOP_DISPLAY]
+    # **비면 내부 불변조건 위반이다** — 기본 목록과 격자 «둘 다» 확정 손절선을 품는 것이
+    # 계약이므로(`EXPIRY_STOP_DEFAULT`·`EXPIRY_STOP_GRID`) 이 행은 언제나 있다.
+    # 조용히 건너뛰면 **산출물을 이미 저장한 뒤라 실행이 성공으로 끝나면서 화면만 빈다**
+    if fixed.empty:
+        raise RuntimeError(f"내부 불변조건 위반: 성적표에 손절선 {FIXED_STOP_DISPLAY} 행이 없습니다 (돌린 손절선 목록을 확인하세요)")
+    print_dataframe(fixed, logger, title=f"손절 {FIXED_STOP_DISPLAY}% — 성적표")
 
 
 def _save_study_table(directory: Path, filename: str, table: pd.DataFrame) -> None:
@@ -334,13 +372,22 @@ def main() -> int:
     datasets = _selected_datasets(args.dataset)
     cells = _selected_cells(datasets)
 
-    _print_scope(cells)
+    # **손절선 목록을 CLI 가 조립하지 않는다 — 이름 둘 중 하나를 고를 뿐이다.** 여기서
+    # 목록을 만들면 runner 의 기본값과 갈리고 `meta.json` 이 돌지 않은 격자를 적는다.
+    # 예외는 나지 않는다. **화면이 돌 목록을 미리 알아야 해서** 여기서 고른다
+    stop_levels = EXPIRY_STOP_GRID if args.stop_grid else EXPIRY_STOP_DEFAULT
+
+    # **확정 손절선이 빠진 목록으로 돌지 않는다 — 여기서 막는다.** 화면 단계에서 잡으면
+    # 이미 `create_run_directory` 가 산출물 폴더를 «비운 뒤»라, 커밋된 기본 산출물이
+    # 격자로 바뀐 채 실행만 실패로 끝난다. `meta.json` 도 갱신되지 않아 폴더와 어긋난다
+    if EXPIRY_STOP_LEVEL not in stop_levels:
+        raise RuntimeError(f"내부 불변조건 위반: 돌릴 손절선 목록에 확정 손절선({EXPIRY_STOP_LEVEL})이 없습니다 ({stop_levels})")
+
+    _print_scope(cells, stop_levels)
     # **측정과 체결이 같은 칸 목록을 받는다.** 따로 정하면 한 폴더의 두 표가 다른 범위를 잰다
     study = run_study(datasets, cells=tuple(cells), repeats=args.repeats, seed=args.seed)
 
-    # **손절선 목록을 CLI 가 다시 만들지 않는다.** 여기서 조립하면 runner 의 기본값을 좁혔을 때
-    # 두 곳이 갈리고 `meta.json` 이 돌지 않은 격자를 적는다 — 예외는 나지 않는다
-    trading = run_option_expiry_trading(cells)
+    trading = run_option_expiry_trading(cells, stop_levels=stop_levels)
 
     directory = create_run_directory(TRACK_NAME)
     counts = _save(study, trading, directory)

@@ -50,7 +50,7 @@
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `usdkrw_equivalence` | `run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
-| `option_expiry` | `run_option_expiry.py` | 결과 폴더, 대상 종목과 **확정 칸**, **손절선 종 수**, 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 진입·제외 건수·보유 거래일수 분포도 남는다. **측정과 체결이 같은 칸 목록을 쓰므로 `cells` 가 양쪽 요약에 같은 모양으로 실린다** |
+| `option_expiry` | `run_option_expiry.py` | 결과 폴더, 대상 종목과 **확정 칸**, **실제로 돈 손절선 목록**(기본은 확정 −5% 하나, `--stop-grid` 면 격자 전체), 순열 검정 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **만기일 요일 분포**와 진입·제외 건수·보유 거래일수 분포도 남는다. **측정과 체결이 같은 칸 목록을 쓰므로 `cells` 가 양쪽 요약에 같은 모양으로 실린다** |
 | `reverse` | `run_reverse.py` | 결과 폴더, 대상 시세 목록과 **체결 대상(종목 × 순위 컷)**, 신호군 수와 **신호 0건이라 빠진 신호군 수**, **손절선 격자·보유 한도**, 산출물 행 수, 순열 검정 반복 수·시드 |
 | `expiry_dividend_probe` | `data/check_expiry_dividend.py` | 칸별로 보유 구간에 배당락이 걸린 건수와 그 규모 |
 | `month_end` | `run_month_end.py` | 결과 폴더, 측정 대상과 **체결 대상**(인버스가 빠져 갈린다), **시작 연도**(안 걸렀으면 `null`), 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 **격자 두 축**과 대상별 **진입·제외 건수·보유 거래일수 분포·앞당김 수렴 달 수**도 남는다 |
@@ -143,9 +143,14 @@
   `run_usdkrw_equivalence.py` 가 `[EQUIVALENCE_FILENAME, counts['equivalence']]` 로
   손수 짝지었고, 한쪽만 고치면 화면 표가 엉뚱한 숫자를 보여줍니다
 
-> 🔴 **`scripts/` 는 테스트 대상이 아닙니다.** 이 저장소의 테스트는 `src` 모듈에 붙으므로
+> 🔴 **`scripts/` 는 거의 테스트 대상이 아닙니다.** 이 저장소의 테스트는 `src` 모듈에 붙으므로
 > CLI 가 깨져도 타입 검사와 계약 테스트를 통과합니다 — **실제로 실행해야만 드러납니다.**
 > CLI 를 고쳤으면 그 스크립트를 한 번 돌려 보고 넘깁니다.
+>
+> **예외는 둘뿐이고 «소스 모양»과 «`--help` 렌더링»만 봅니다** — `tests/test_layer_contracts.py` 의
+> `TestRunSummaryOwnership`(요약을 CLI 가 조립하지 않는지)과 `TestCliHelpRenders`(`run_*.py` 의
+> `--help` 가 실제로 그려지는지). **동작은 여전히 아무도 보지 않습니다** — 인자 배선을 뒤집어도
+> 전 검사가 통과하고, 그 신호는 `storage/results/` 의 git diff 뿐입니다.
 
 ---
 
