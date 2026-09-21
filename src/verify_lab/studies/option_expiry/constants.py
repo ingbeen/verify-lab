@@ -13,6 +13,9 @@ from typing import Final
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_FILE_TEMPLATE, PRICE_DECIMALS
 from verify_lab.measure.constants import (
     COL_BASIS,
+    COL_DIVIDEND_HIT_COUNT,
+    COL_DIVIDEND_MEAN_IMPACT,
+    COL_DIVIDEND_MEASURED,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
@@ -62,6 +65,9 @@ from verify_lab.report.constants import (
     DISPLAY_BASIS,
     DISPLAY_DATE,
     DISPLAY_DIRECTION,
+    DISPLAY_DIVIDEND_HIT_COUNT,
+    DISPLAY_DIVIDEND_MEAN_IMPACT,
+    DISPLAY_DIVIDEND_MEASURED,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
@@ -170,10 +176,9 @@ COL_DAILY_RETURN: Final = "daily_return"
 # 산출물의 식별 컬럼 — 어떤 조합에서 나온 행인지
 COL_TICKER: Final = "ticker"
 
-# 보유 구간에 들어간 배당락. 산식은 `measure/distribution.py` 의 `dividend_impact` 가 소유한다
-COL_DIVIDEND_MEASURED: Final = "dividend_measured"
-COL_DIVIDEND_HIT_COUNT: Final = "dividend_hit"
-COL_DIVIDEND_MEAN_IMPACT: Final = "dividend_mean_impact"
+# **보유 구간에 들어간 배당락의 컬럼 이름은 `measure/constants.py` 가 소유한다** —
+# 원칙 14 가 모든 매매법에 요구하는 축이라 검증마다 두면 절반짜리 통합이 되고,
+# 매매법끼리 이름을 빌려 쓰면 계층 계약이 깨진다. 산식은 `measure/distribution.py` 다
 
 
 # ============================================================
@@ -312,9 +317,7 @@ DISPLAY_TICKER: Final = "종목"
 # [중요] **대조 건수를 함께 낸다.** 「걸린 건수 0」과 「수정주가가 없어 못 쟀다」는 다른
 # 사실이고, 그 구별이 없으면 없는 안전을 보고한다 — 역방향이 실제로 신호 19건을
 # 못 잰 채 0건으로 셌다
-DISPLAY_DIVIDEND_MEASURED: Final = "배당락 대조 건수"
-DISPLAY_DIVIDEND_HIT_COUNT: Final = "배당락 걸린 건수"
-DISPLAY_DIVIDEND_MEAN_IMPACT: Final = "배당락 평균 왜곡(%p)"
+# **세 레이블은 `report/constants.py` 가 소유한다** — 위 컬럼 이름과 같은 이유다
 DISPLAY_MONTH_DAY_INDEX: Final = "월중 서수"
 DISPLAY_DAILY_RETURN: Final = "일간 등락률(%)"
 DISPLAY_CLOSE: Final = "종가"

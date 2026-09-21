@@ -297,12 +297,9 @@ class TestMeasureTableAssembly:
         Then: 걸린 건수와 평균 왜곡이 표에 있다
         """
         # Given
+        from verify_lab.measure.constants import COL_DIVIDEND_HIT_COUNT, COL_DIVIDEND_MEAN_IMPACT
         from verify_lab.studies.option_expiry import runner as expiry_runner
-        from verify_lab.studies.option_expiry.constants import (
-            COL_DIVIDEND_HIT_COUNT,
-            COL_DIVIDEND_MEAN_IMPACT,
-            ExpiryCell,
-        )
+        from verify_lab.studies.option_expiry.constants import ExpiryCell
 
         rng = np.random.default_rng(20260921)
         closes = 100.0 * np.cumprod(1.0 + rng.normal(0.0004, 0.008, 520))

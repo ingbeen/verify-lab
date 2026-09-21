@@ -1816,9 +1816,12 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "종료일": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
+    # **뜻이 같은 겹침이고 그것이 요점이다** — `측정.csv` 와 `성적표.csv` 가 같은 이름으로
+    # 조인되어야 한다. 소유자를 하나로 모으는 것은 다섯 파일을 함께 옮기는 별도 작업이다
     "종목": frozenset(
         {
             "verify_lab/execution/constants.py",
+            "verify_lab/studies/month_end/constants.py",
             "verify_lab/studies/option_expiry/constants.py",
             "verify_lab/studies/reverse/constants.py",
             "verify_lab/studies/usdkrw_equivalence/constants.py",

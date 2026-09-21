@@ -5,22 +5,19 @@
 `measure/forward_return.py` 의 고정 구간 틀에 들어가지 않는다.
 
 **하나의 칸을 고르지 않는다.** 「왜 하필 20일·말일인가」에 답하려면 이웃 칸도 함께 봐야 하므로
-진입 달력일과 청산 상대 거래일을 격자로 산출해 나란히 보고한다.
+확정 칸(9월 아래)을 재고 그 해석 재료를 한 장으로 낸다.
 
-확정 설계는 `docs/검증/월말_진입/설계.md` 가 SoT 다.
+확정 설계는 `docs/매매/월말_진입/설계.md` 가 SoT 다.
 """
 
 from .constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
-    ENTRY_CALENDAR_DAYS,
-    EXIT_OFFSETS,
     HORIZON_MONTH_END,
     TRACK_NAME,
 )
 from .schedule import (
     MonthExitSchedule,
-    converged_month_count,
     month_entry_dates,
     month_exit_returns,
     month_exit_schedule,
@@ -29,12 +26,9 @@ from .schedule import (
 __all__ = [
     "BASE_ENTRY_DAY",
     "BASE_EXIT_OFFSET",
-    "ENTRY_CALENDAR_DAYS",
-    "EXIT_OFFSETS",
     "HORIZON_MONTH_END",
     "TRACK_NAME",
     "MonthExitSchedule",
-    "converged_month_count",
     "month_entry_dates",
     "month_exit_returns",
     "month_exit_schedule",

@@ -285,20 +285,20 @@ class TestRegistryMatchesCode:
 class TestGradeSemantics:
     """등급이 뜻하는 것을 고정한다."""
 
-    def test_월말_진입은_검증_등급이다(self) -> None:
+    def test_월말_진입은_매매_등급이다(self) -> None:
         """
         목적: **등급은 「상태」다** — 검증은 진행 중, 매매는 걸기로 정한 것.
 
-        월말 진입은 `docs/검증/월말_진입/규칙.md` §1 이 스스로 「대상 달을 좁힌 **권고안**이며
-        손절선도 사용자 확정 전」이라고 적는다. 확정되지 않은 것이 매매 등급에 있으면
-        **등급이 상태를 말하지 못한다** (2026-09-16 사용자 결정).
+        월말 진입은 2026-09-21 에 **대상 달(9월 아래)과 손절선(기초자산 −5%)이 확정**돼
+        `docs/매매/월말_진입/규칙.md` §1 이 권고안이 아니라 확정 규칙이 됐다.
+        **승격은 이 한 줄을 바꾸는 것이고 성적 계산은 그대로다.**
 
         Given: 레지스트리
         When: 월말 진입의 등급을 조회한다
-        Then: 검증이다
+        Then: 매매다
         """
         # Given / When / Then
-        assert track_of("month_end").grade == GRADE_STUDY
+        assert track_of("month_end").grade == GRADE_TRADING
 
     def test_조사_등급은_종류도_조사다(self) -> None:
         """

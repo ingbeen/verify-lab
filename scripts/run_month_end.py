@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """월말 진입 실행 CLI — 측정과 체결을 한 번에 돈다 (20일 매수 → 말일 매도), 코스피·코스닥
 
-사용자가 전해 들은 매매법을 잰다. **하나의 칸을 고르지 않고** 진입 달력일 11칸 ×
-청산 상대 거래일 7칸을 전부 산출해 나란히 보고하고, 그 위에 **손절선 격자**를 걸어
-「손절이 무엇을 막았는가」를 수치로 낸다 — 20일만 튀는지 이웃도 같은지가
-오버피팅 판정의 근거다.
+**기본 실행은 확정 칸과 확정 손절선만 낸다** (2026-09-21 사용자 결정). 폴더에 생기는
+표는 **측정 한 장과 체결 둘**이며, 이름은 각 계층의 상수가 소유한다.
 
 **등급(검증·매매)은 분류일 뿐이라 실행을 가르지 않는다.** 한 번 돌리면 측정 표와
 체결 산출물이 **한 폴더에** 함께 나오며, 어느 등급 폴더에 쌓일지는
@@ -13,6 +11,10 @@
 **측정과 체결의 기본 대상이 다르다.** 측정은 8대상 전부(인버스·지수 포함)이고 체결은
 인버스를 뺀 여섯이다 — 인버스는 1배의 부호를 뒤집은 값과 차이가 잡음이라 같은 베팅이
 두 줄로 실린다. `--ticker` 로 지목하면 양쪽 다 그 대상으로 좁아진다.
+
+**`--stop-grid` 는 격자를 «전부» 켜는 스위치일 뿐이고 값을 고르게 해 주지 않는다** —
+손절선 값을 인자로 받으면 그것은 「성과가 좋아지는 값을 찾아 돌리기」가 된다
+(`.claude/rules/trading.md`).
 
 **맨몸 성적이다** — 수수료·슬리피지·세금을 넣지 않는다 (루트 `CLAUDE.md` 2026-09-06 확정).
 
@@ -33,39 +35,59 @@ from verify_lab.execution.constants import (
     DISPLAY_TOTAL,
     DISPLAY_WIN_RATE,
     DISPLAY_WORST_HOLD,
-    NO_STOP_LABEL,
     PERIOD_ALL,
     STOP_NOT_MEASURABLE_LABEL,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
+    stop_level_value,
 )
-from verify_lab.execution.run_summary import KEY_ROW_COUNTS, merge_run_summary
+from verify_lab.execution.run_summary import KEY_ROW_COUNTS, KEY_RULE, merge_run_summary
 from verify_lab.measure.screening import SCREEN_CANDIDATE, SCREEN_NOT_JUDGED
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.constants import (
+    DISPLAY_DIVIDEND_HIT_COUNT,
+    DISPLAY_DIVIDEND_MEAN_IMPACT,
+    DISPLAY_DIVIDEND_MEASURED,
+    DISPLAY_DOWN_RATE,
+    DISPLAY_DOWN_RATE_DIFF,
+    DISPLAY_DOWN_RATE_P_VALUE,
+    DISPLAY_JUDGEABLE,
     DISPLAY_MEAN,
+    DISPLAY_MEDIAN,
     DISPLAY_MIN,
     DISPLAY_PERIOD,
+    DISPLAY_SAMPLE_COUNT,
     DISPLAY_SCREEN,
     DISPLAY_SIGNAL_COUNT,
+    DISPLAY_UP_RATE,
 )
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.month_end.constants import (
+    BASELINE_PREFIX,
     DATASETS,
     DATASETS_TRADING,
     DISPLAY_MONTH_NUMBER,
+    MONTH_END_STOP_DEFAULT,
+    MONTH_END_STOP_GRID,
+    MONTH_END_STOP_LEVEL,
     OUTPUT_FILES,
     TRACK_NAME,
     Dataset,
 )
 from verify_lab.studies.month_end.runner import (
+    FIELD_MEASURE,
     StudyOutputs,
-    base_cell_headline,
     display_tables,
     run_study,
 )
-from verify_lab.studies.month_end.trading import KEY_FROM_YEAR, TradingOutputs, run_month_end_trading
+from verify_lab.studies.month_end.trading import (
+    KEY_CELLS,
+    KEY_FROM_YEAR,
+    KEY_STOP_LEVELS,
+    TradingOutputs,
+    run_month_end_trading,
+)
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.logger import get_logger
 from verify_lab.utils.meta_manager import save_metadata
@@ -80,19 +102,26 @@ KEY_META_MONTH_END = "month_end"
 DISPLAY_FILE = "파일"
 DISPLAY_ROW_COUNT = "행 수"
 
-# 화면에 낼 원 매매법 칸의 컬럼. 전 컬럼을 내면 가로로 넘쳐 읽을 수 없다
+# 화면에 낼 측정 표의 컬럼. 전 컬럼(40여 개)을 내면 가로로 넘쳐 읽을 수 없다.
+# **값은 1배 롱 기준 그대로**라 「아래」 칸이어도 부호가 뒤집히지 않는다
 HEADLINE_COLUMNS = [
-    "대상",
-    "격자 칸",
-    "표본",
-    "평균(%)",
-    "중앙값(%)",
-    "오른 비율(%)",
-    "내린 비율(%)",
-    "기준선 내린 비율(%)",
-    "내린 비율 차이(%p)",
-    "내린 비율 우연확률",
-    "판정가능",
+    DISPLAY_TICKER,
+    DISPLAY_MONTH_NUMBER,
+    DISPLAY_DIRECTION,
+    DISPLAY_SAMPLE_COUNT,
+    DISPLAY_MEAN,
+    DISPLAY_MEDIAN,
+    DISPLAY_UP_RATE,
+    DISPLAY_DOWN_RATE,
+    f"{BASELINE_PREFIX}{DISPLAY_DOWN_RATE}",
+    DISPLAY_DOWN_RATE_DIFF,
+    DISPLAY_DOWN_RATE_P_VALUE,
+    # **대조 건수를 함께 낸다.** 「걸린 건 0」과 「수정주가가 없어 못 쟀다」는 다른 사실이고,
+    # 그 구별이 없으면 화면이 «없는 안전»을 보고한다 (`measure/constants.py`)
+    DISPLAY_DIVIDEND_MEASURED,
+    DISPLAY_DIVIDEND_HIT_COUNT,
+    DISPLAY_DIVIDEND_MEAN_IMPACT,
+    DISPLAY_JUDGEABLE,
 ]
 
 # 화면에 낼 후보 칸의 컬럼. **성적표의 이름을 쓴다** — 판정이 그 표 안에 있기 때문이다
@@ -106,9 +135,12 @@ CANDIDATE_COLUMNS = [
     DISPLAY_TOTAL,
 ]
 
-# 맨몸 성적을 담은 행의 손절선 값 둘. **`무손절`(안 걸었다)과 `손절불가`(못 잰다)는 다른 사실**이라
-# 둘 다 골라야 지수 행을 잃지 않는다 (`.claude/rules/trading.md`)
-NO_STOP_LABELS = (NO_STOP_LABEL, STOP_NOT_MEASURABLE_LABEL)
+# 확정 손절선 행을 고르는 값 둘. **`손절불가`(지수라 못 잰다)를 함께 골라야 긴 기간 축을
+# 잃지 않는다** — 숫자만 고르면 지수 넷이 통째로 빠진다 (`.claude/rules/trading.md`).
+# **`무손절` 은 넣지 않는다** — 기본 실행이 그 행을 내지 않고, `--stop-grid` 로 돌린
+# 실행에서 함께 고르면 같은 대상이 두 번 실린다
+FIXED_STOP_DISPLAY = stop_level_value(MONTH_END_STOP_LEVEL, measurable=True)
+FIXED_STOP_LABELS = (FIXED_STOP_DISPLAY, STOP_NOT_MEASURABLE_LABEL)
 
 # 화면에 낼 성적표 컬럼
 PERFORMANCE_COLUMNS = [
@@ -126,11 +158,6 @@ PERFORMANCE_COLUMNS = [
     DISPLAY_INTRADAY_STOP_COUNT,
 ]
 
-# 화면에 낼 달. **산출물에는 12개월이 다 있고** 화면만 좁힌다.
-# 1차 게이트를 **가장 많은 대상에서** 통과한 셋이다. 나머지는 CSV 에서 본다.
-# **이 셋은 데이터 기간에 묶여 있다** — 시세를 재수집하면 달라지므로 결과 문서부터 본다
-HEADLINE_MONTHS = (5, 9, 12)
-
 
 def parse_args() -> argparse.Namespace:
     """명령행 인자를 파싱한다.
@@ -138,7 +165,7 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
-    parser = argparse.ArgumentParser(description="월 하순 진입(20일 매수 → 말일 매도)을 격자로 측정하고 손절 격자 성적을 함께 냅니다.")
+    parser = argparse.ArgumentParser(description="월말 진입(20일 매수 → 말일 매도)의 확정 칸을 측정하고 체결 성적을 함께 냅니다.")
     parser.add_argument(
         "--ticker",
         action="append",
@@ -157,6 +184,13 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_RANDOM_SEED,
         help=f"무작위 뽑기 대조 시드 (기본값: {DEFAULT_RANDOM_SEED}). 결과 재현에 필요하다",
+    )
+    parser.add_argument(
+        "--stop-grid",
+        action="store_true",
+        help="손절선 격자를 전부 돈다 (기본값: 확정 손절선 한 종). 시세를 재수집해 손절선을 "
+        "다시 골라야 할 때 쓰는 스위치이며, 무손절 대조축도 함께 나온다. "
+        "값을 고르는 노브가 아니다",
     )
     parser.add_argument(
         "--from-year",
@@ -196,7 +230,7 @@ def _known(tickers: list[str] | None) -> tuple[Dataset, ...] | None:
 
 
 def _print_study(tables: dict[str, pd.DataFrame]) -> None:
-    """원 매매법 칸의 성적을 화면에 보여 준다.
+    """확정 칸의 측정값을 화면에 보여 준다.
 
     **1차 판정은 여기서 내지 않는다** (2026-09-16 통합). 판정의 자리는 성적표 하나이며
     `_print_candidates` 가 그 표에서 후보 칸을 뽑는다.
@@ -207,16 +241,19 @@ def _print_study(tables: dict[str, pd.DataFrame]) -> None:
     Args:
         tables: 저장한 표시용 프레임
     """
-    headline = base_cell_headline(tables["grid"])
-    if not headline.empty:
-        print_dataframe(headline[HEADLINE_COLUMNS], logger, title="원 매매법 칸 — 20일 매수 → 말일 매도")
+    measure = tables.get(FIELD_MEASURE)
+    if measure is None or measure.empty:
+        return
+
+    print_dataframe(measure[HEADLINE_COLUMNS], logger, title="확정 칸 측정 — 20일 매수 → 말일 매도 (1배 롱 기준)")
 
 
 def _print_candidates(outputs: TradingOutputs) -> None:
     """성적표에서 **맨몸 후보 칸만** 뽑아 화면에 보여 준다.
 
     **판정표를 따로 내지 않으므로 성적표가 그 자리다** (2026-09-16 통합).
-    **무손절 행을 보여 준다** — 게이트가 맨몸 성적으로 걸리기 때문이다(측정의 원칙 10).
+    **확정 손절선 행을 보여 준다** — 기본 실행은 그 한 종뿐이라 거를 것이 없고,
+    `--stop-grid` 로 돌린 실행에서만 이 필터가 일한다.
 
     **분모는 «판정한» 칸이다.** 지수와 인버스는 참고용이라 판정하지 않으므로,
     전체 행 수를 분모로 쓰면 통과 비율이 실제보다 작아 보인다.
@@ -225,7 +262,7 @@ def _print_candidates(outputs: TradingOutputs) -> None:
         outputs: 체결 산출물
     """
     table = outputs.performance
-    whole = table[(table[DISPLAY_STOP_LEVEL].isin(NO_STOP_LABELS)) & (table[DISPLAY_PERIOD] == PERIOD_ALL)]
+    whole = table[(table[DISPLAY_STOP_LEVEL].isin(FIXED_STOP_LABELS)) & (table[DISPLAY_PERIOD] == PERIOD_ALL)]
     judged = int((whole[DISPLAY_SCREEN] != SCREEN_NOT_JUDGED).sum())
     picked = whole[whole[DISPLAY_SCREEN] == SCREEN_CANDIDATE]
 
@@ -237,7 +274,7 @@ def _print_candidates(outputs: TradingOutputs) -> None:
     print_dataframe(
         ordered[CANDIDATE_COLUMNS],
         logger,
-        title=f"1차 후보 — 맨몸 · 전체 구간 {len(picked)}칸 (판정한 {judged}칸 · 판정 안 함 {len(whole) - judged}칸)",
+        title=f"1차 후보 — 손절 {FIXED_STOP_DISPLAY}% · 전체 구간 {len(picked)}칸 (판정한 {judged}칸 · 판정 안 함 {len(whole) - judged}칸)",
     )
 
 
@@ -247,18 +284,11 @@ def _print_performance(outputs: TradingOutputs) -> None:
     Args:
         outputs: 체결 산출물
     """
-    overall = outputs.performance[
-        (outputs.performance[DISPLAY_PERIOD] == PERIOD_ALL)
-        & (outputs.performance[DISPLAY_MONTH_NUMBER].isin(HEADLINE_MONTHS))
-    ]
+    overall = outputs.performance[outputs.performance[DISPLAY_PERIOD] == PERIOD_ALL]
     if overall.empty:
         return
 
-    print_dataframe(
-        overall[PERFORMANCE_COLUMNS],
-        logger,
-        title=f"손절 격자 — 전체 구간, {', '.join(str(month) for month in HEADLINE_MONTHS)}월 (전 12개월은 CSV 에)",
-    )
+    print_dataframe(overall[PERFORMANCE_COLUMNS], logger, title="확정 칸 성적 — 전체 구간 (시기 5행은 CSV 에)")
 
 
 def _save(
@@ -309,7 +339,8 @@ def main() -> int:
 
     study = run_study(study_datasets, repeats=args.repeats, seed=args.seed)
     tables = display_tables(study)
-    trading = run_month_end_trading(trading_datasets, from_year=args.from_year)
+    stop_levels = MONTH_END_STOP_GRID if args.stop_grid else MONTH_END_STOP_DEFAULT
+    trading = run_month_end_trading(trading_datasets, stop_levels=stop_levels, from_year=args.from_year)
 
     directory = create_run_directory(TRACK_NAME)
     counts = _save(study, tables, trading, directory)
@@ -329,6 +360,11 @@ def main() -> int:
             "directory": str(directory),
             "tickers": [dataset.ticker for dataset in study_datasets],
             "trading_tickers": [dataset.ticker for dataset in trading_datasets],
+            # **스위치가 아니라 «무엇이 돌았는가»를 남긴다.** 켜졌다는 사실만으로는
+            # 아홉 손절선 중 무엇이 돌았는지 알 수 없고, 지수만 고른 실행에서는
+            # 그 불린이 오히려 거짓을 말한다 (실제로는 「손절불가」 한 줄만 돈다)
+            KEY_CELLS: trading.summary[KEY_RULE][KEY_CELLS],
+            KEY_STOP_LEVELS: trading.summary[KEY_RULE][KEY_STOP_LEVELS],
             KEY_FROM_YEAR: args.from_year,
             "repeats": args.repeats,
             "seed": args.seed,

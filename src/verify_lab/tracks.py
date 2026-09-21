@@ -79,10 +79,7 @@ class Track:
 TRACKS: Final = (
     Track("reverse", "역방향", GRADE_TRADING, KIND_METHOD),
     Track("option_expiry", "옵션_만기일", GRADE_TRADING, KIND_METHOD),
-    # 「검증」은 **진행 중**이라는 뜻이다. 확정 규칙이 아직 없으면 여기 있는다 —
-    # 월말은 대상 달이 권고안이고 손절선도 확정 전이라(`docs/검증/월말_진입/규칙.md` §1)
-    # 매매 등급에 두면 등급이 상태를 말하지 못한다
-    Track("month_end", "월말_진입", GRADE_STUDY, KIND_METHOD),
+    Track("month_end", "월말_진입", GRADE_TRADING, KIND_METHOD),
     Track("usdkrw_equivalence", "원달러_ETF_등가성", GRADE_SURVEY, KIND_PROPERTY),
     Track("leverage_tracking", "레버리지_ETF_괴리", GRADE_SURVEY, KIND_PROPERTY),
     Track("futures_leverage", "선물_대_레버리지_ETF", GRADE_SURVEY, KIND_PROPERTY),

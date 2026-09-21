@@ -16,18 +16,20 @@
 월말이 그쪽을 import 하게 되고, 옵션 만기일 사정으로 고칠 때 이 매매법 성적이 함께 바뀐다.
 
 **새 판정식을 만들지 않는다.** 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오는데,
-그 함정을 여러 곳에서 관리하게 된다 (`docs/검증/월말_진입/설계.md` 가 가리키는 결정 ㉝).
+그 함정을 여러 곳에서 관리하게 된다 (`docs/매매/월말_진입/설계.md` 가 가리키는 결정 ㉝).
 
-**방향을 고르지 않는다** (측정의 원칙 11). 달마다 「아래로 걸었을 때」와 「위로 걸었을 때」를
-나란히 내며, 어느 쪽으로 걸지는 결과를 읽는 쪽이 정한다. 고르는 코드를 두면 그 선택이
-결론에 숨고, 검증 #10 의 월별 집계를 다시 계산하면 판정식이 두 벌이 된다.
+**확정 칸만 돈다** (2026-09-21 사용자 결정). 전에는 12개월 × 두 방향을 전부 냈고,
+그 방침을 사용자가 뒤집어 **실제로 거는 칸 하나**로 좁혔다.
+[중요] **코드가 칸을 고르는 것은 아니다** — 목록은 `docs/매매/월말_진입/규칙.md` §3 의
+결론을 옮겨 적은 것이고, **재수집하면 성적표를 보고 다시 판단해야 한다.**
+**격자를 재는 수단은 남아 있다** — 손절선은 `--stop-grid`, 방향과 달은 그 문서의 근거다.
 
 **비용을 넣지 않는다.** 수수료·슬리피지·세금은 사용자가 별도로 요청할 때만 넣는다
 (루트 `CLAUDE.md` 2026-09-06 확정).
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Final
+from typing import Any
 
 import pandas as pd
 
@@ -54,7 +56,6 @@ from verify_lab.execution.periods import period_rows, to_summary_frame
 from verify_lab.execution.run_summary import build_run_summary
 from verify_lab.execution.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
-from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
 from verify_lab.report.run_summary import dataset_record
 from verify_lab.studies.month_end.constants import (
@@ -64,33 +65,25 @@ from verify_lab.studies.month_end.constants import (
     COL_MONTH,
     DATASETS_TRADING,
     DISPLAY_MONTH_NUMBER,
+    KEY_CELL_DIRECTION,
+    KEY_CELL_MONTH,
+    KEY_CELLS,
     KEY_ENTRY_COUNT,
     KEY_EXCLUDED_COUNT,
+    MONTH_END_STOP_DEFAULT,
     TRACK_NAME,
+    TRADING_CELLS,
     Dataset,
+    MonthEndCell,
 )
+from verify_lab.studies.month_end.runner import cell_direction
 from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_schedule
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# 월말 매매의 손절선 격자 (비율, 0.03 = 3%). **하나를 고르지 않고 전부 산출한다.**
-#
-# **이 파일에서만 쓰므로 여기 둔다** (`src/verify_lab/CLAUDE.md` 「상수 관리」 — 1개 파일에서만
-# 사용 → 해당 파일 상단). `execution/constants.py` 는 세 매매법이 함께 쓰는 자리라
-# 거기 두면 **매매법 이름이 붙은 값이 공유 모듈에 얹힌다.**
-#
-# **하한이 -3% 인 이유**: 검증 #7 의 손절 격자에서 **-1.0% 가 4칸의 적중률을 60% 아래로
-# 무너뜨렸다.** 그보다 좁은 구간은 이미 쓸모없다고 확인됐다.
-# **간격이 1%p 인 이유**: 이 매매는 월별 칸당 표본이 10~11건이라 0.5%p 해상도를 표본이
-# 지탱하지 못한다. 값 하나를 옮겼을 때 크게 흔들리면 그것은 「좋은 값을 찾았다」가 아니라
-# 「표본이 그 지점을 특정할 만큼 크지 않다」는 신호다 (`.claude/rules/trading.md`)
-MONTH_END_STOP_LEVELS: Final = (0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10)
-
-
-# 달력의 열두 달. 신호가 있는 달만 고르지 않는다 — 눈에 띄는 달만 돌리면 그 선택이
-# 손절 결과에도 그대로 실린다
-ALL_MONTHS = tuple(range(1, 13))
+# **손절선 목록도 확정 칸 목록도 `constants.py` 가 소유한다.** 여기서 만들면 CLI 와 두 벌이
+# 되고, 갈려도 예외가 나지 않는다 — `meta.json` 이 돌지 않은 격자를 적게 된다
 
 # `summary.json` 의 `rule` 안 — 무엇을 어떤 규칙으로 돌렸나.
 # **최상위 키와 비용 표기는 `execution/run_summary.py` 가 소유한다** — 매매법이 각자 가지면
@@ -121,7 +114,8 @@ class TradingOutputs:
         performance: 종목 × 월 × 방향 × 손절선 × 구간의 성적표.
             **손절선 하나만 보려면 `손절선(%)` 을 그 숫자와 `손절불가` 로 거른다** —
             지수는 숫자 행이 없으므로 그 값을 함께 걸어야 긴 기간 축이 남는다.
-            **이 매매법의 손절선은 아직 확정 전이다** (`docs/검증/월말_진입/규칙.md` §1)
+            **확정 손절선은 기초자산 기준 −5% 이고 2배 상품으로는 −10% 다**
+            (`docs/매매/월말_진입/규칙.md` §1.1)
         summary: 실행 요약
     """
 
@@ -194,10 +188,19 @@ def _collect_entries(
         usable = usable[usable[COL_MONTH].dt.year >= from_year]
         dropped = dropped[dropped[COL_MONTH].dt.year >= from_year]
 
+    # **제외 건수의 분모를 진입 건수와 맞춘다.** 아래에서 진입을 확정 칸의 달로만 세므로
+    # 제외를 열두 달로 세면 **두 숫자가 다른 모집단을 가리킨다** — `summary.json` 이
+    # 「진입 23, 제외 1」로 적어 9월 진입 하나가 빠진 것처럼 읽히는데 실제로는 다른 달이다.
+    # 표본 보존은 「몇 건이 왜 빠졌는지」가 맞아야 지켜진 것이다
+    wanted = {cell.month for cell in TRADING_CELLS}
+    dropped = dropped[dropped[COL_MONTH].dt.month.isin(wanted)]
+
     excluded_count = len(dropped)
 
+    # **확정 칸의 달만 만든다.** 안 거는 달의 진입을 모아 두면 아래 순회가 그것을 쓰지
+    # 않는데도 `resolve_positions` 가 도는 비용만 든다
     by_month: dict[int, _Entries] = {}
-    for month in ALL_MONTHS:
+    for month in sorted({cell.month for cell in TRADING_CELLS}):
         rows = usable[usable[COL_MONTH].dt.month == month]
         entry_dates = pd.DatetimeIndex(rows[COL_DATE])
         exit_dates = pd.DatetimeIndex(rows[COL_EXIT_DATE])
@@ -207,7 +210,10 @@ def _collect_entries(
             entry_dates=entry_dates,
         )
 
-    logger.debug(f"{dataset.ticker}: 진입 {len(usable):,}건, 제외 {excluded_count:,}건")
+    # **로그도 요약과 같은 모집단이어야 한다** — 달 축 전체를 찍으면 바로 위에서 맞춘
+    # 분모가 화면에서 다시 갈린다
+    cell_entries = sum(len(entries.entry_positions) for entries in by_month.values())
+    logger.debug(f"{dataset.ticker}: 확정 칸 진입 {cell_entries:,}건, 제외 {excluded_count:,}건")
 
     return by_month, excluded_count
 
@@ -250,7 +256,7 @@ def _trade_row(
     return {
         DISPLAY_TICKER: dataset.label,
         DISPLAY_MONTH_NUMBER: month,
-        DISPLAY_DIRECTION: DIRECTION_DOWN if bet_down else DIRECTION_UP,
+        DISPLAY_DIRECTION: cell_direction(MonthEndCell(month=month, bet_down=bet_down)),
         DISPLAY_STOP_LEVEL: stop_display,
         DISPLAY_ENTRY_DATE: pd.Timestamp(frame.iloc[entry_position][COL_DATE]).strftime(DATE_FORMAT),
         DISPLAY_ENTRY_PRICE: round(entry_price, dataset.price_decimals),
@@ -322,7 +328,7 @@ def _run_cell(
     identity = {
         DISPLAY_TICKER: dataset.label,
         DISPLAY_MONTH_NUMBER: month,
-        DISPLAY_DIRECTION: DIRECTION_DOWN if bet_down else DIRECTION_UP,
+        DISPLAY_DIRECTION: cell_direction(MonthEndCell(month=month, bet_down=bet_down)),
         DISPLAY_STOP_LEVEL: stop_display,
     }
 
@@ -347,22 +353,28 @@ def _run_cell(
 def run_month_end_trading(
     datasets: tuple[Dataset, ...] = DATASETS_TRADING,
     *,
-    stop_levels: tuple[float, ...] = MONTH_END_STOP_LEVELS,
+    stop_levels: tuple[float | None, ...] = MONTH_END_STOP_DEFAULT,
     from_year: int | None = None,
 ) -> TradingOutputs:
-    """월말 매매에 손절 격자를 걸어 성적을 낸다.
+    """월말 매매의 확정 칸 성적을 낸다.
 
-    **12개월 × 두 방향 × (손절선 + 무손절)** 을 전부 돈다. 눈에 띄는 달만 돌리면
-    그 선택이 손절 결과에도 그대로 실린다.
+    **확정 칸 × 확정 손절선**만 돈다 (2026-09-21 사용자 결정). 전에는 12개월 × 두 방향 ×
+    격자 9종을 전부 냈는데, 사용자가 실제로 거는 것만 남기기로 정했다.
+
+    [중요] **코드가 칸을 고르는 것이 아니다.** 목록은 `docs/매매/월말_진입/규칙.md` §3 의
+    결론을 옮겨 적은 것이고, **재수집하면 성적표를 보고 다시 판단해야 한다** —
+    시세가 늘면 성적이 바뀌는데 이 목록은 따라오지 않는다.
 
     Args:
         datasets: 대상 목록. 기본값은 **인버스를 뺀 여섯**(`DATASETS_TRADING`)이다 —
             성적표는 사용자가 판단하는 표인데 인버스는 1배의 부호를 뒤집은 값과 차이가 잡음이라
-            같은 베팅이 두 줄로 실린다. **검증 계층은 인버스를 그대로 받는다** —
-            `execution.csv` 가 「아래」를 인버스 실물로 재는 자리이기 때문이다.
+            같은 베팅이 두 줄로 실린다. **확정 전 교차검증이 필요하면 `--ticker` 로 지목한다** —
+            어긋나는 칸이 곧 분배락이 걸린 칸이다.
             **지수도 받는다** — 다만 장중 손절에 고가·저가가 필요하므로 지수는 한 줄로
             강등되고 `손절선(%)` 에 「손절불가」로 적힌다
-        stop_levels: 손절선 목록 (비율). 무손절은 자동으로 함께 산출된다
+        stop_levels: 손절선 목록 (비율). **`None` 이 무손절 행이고 호출 측이 목록에 넣는다** —
+            기본값은 확정 손절선 하나뿐이고 `MONTH_END_STOP_GRID` 가 무손절 + 격자 전부다.
+            **값을 하나씩 받는 인자가 아니다** — 그러면 「성과가 좋아지는 값을 찾아 돌리기」가 된다
         from_year: 이 연도의 진입부터 잰다 (포함). `None` 이면 전 기간이다.
             **성과가 좋아지는 값을 찾는 노브가 아니라 미리 정한 구간을 대조하는 축이며**,
             쓴 값은 `summary.json` 에 남는다
@@ -382,11 +394,13 @@ def run_month_end_trading(
     dataset_records: list[dict[str, Any]] = []
     target_records: list[dict[str, Any]] = []
 
-    # 무손절을 격자의 한 행으로 함께 돈다 — 「손절이 무엇을 막았는가」를 재려면 기준이 있어야 한다
-    etf_levels: tuple[float | None, ...] = (*stop_levels, None)
+    # **무손절을 여기서 붙이지 않는다.** 기본 실행은 확정 손절선 하나만 내고, 그 대가로
+    # 「손절이 무엇을 막았는가」의 수치는 `docs/매매/월말_진입/규칙.md` §2 가 갖는다 —
+    # 그것이 손절선 축을 좁히도록 허용한 세 조건 중 하나다 (`.claude/rules/trading.md`)
+    etf_levels: tuple[float | None, ...] = stop_levels
 
     # **지수는 한 줄뿐이고 「손절불가」로 적힌다.** 장중 손절에는 고가·저가가 필요한데 지수는 종가만 있고
-    # (`docs/검증/월말_진입/설계.md` §7.6), 종가로 근사하면 실제보다 손절이 덜 걸려
+    # (`docs/매매/월말_진입/설계.md` §7.6), 종가로 근사하면 실제보다 손절이 덜 걸려
     # 성적이 좋아진다. 거부하지 않고 강등하는 것은 **30년 축을 성적표에서 보기 위해서**다
     index_levels: tuple[float | None, ...] = (None,)
 
@@ -402,25 +416,23 @@ def run_month_end_trading(
         #
         # **원인을 지어내지 않는다** — 필터를 안 걸었는데 「시작 연도 None 이후」라고 적으면
         # 쓰지도 않은 인자를 가리키게 된다. 필터가 있을 때만 그 사실을 덧붙인다
-        entry_count = sum(len(by_month[month].entry_positions) for month in ALL_MONTHS)
+        entry_count = sum(len(entries.entry_positions) for entries in by_month.values())
         if not entry_count:
             scope = f" (시작 연도 {from_year} 이후)" if from_year is not None else ""
             raise ValueError(f"{dataset.label}: 진입이 하나도 없습니다{scope}")
 
-        for month in ALL_MONTHS:
-            entries = by_month[month]
-            for bet_down in (True, False):
-                for stop_level in levels:
-                    _run_cell(
-                        dataset,
-                        frame,
-                        entries,
-                        accumulator,
-                        month=month,
-                        bet_down=bet_down,
-                        stop_level=stop_level,
-                        last_day=last_day,
-                    )
+        for cell in TRADING_CELLS:
+            for stop_level in levels:
+                _run_cell(
+                    dataset,
+                    frame,
+                    by_month[cell.month],
+                    accumulator,
+                    month=cell.month,
+                    bet_down=cell.bet_down,
+                    stop_level=stop_level,
+                    last_day=last_day,
+                )
 
         dataset_records.append(
             dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.path.name, frame=frame)
@@ -450,6 +462,9 @@ def run_month_end_trading(
         track=TRACK_NAME,
         datasets=dataset_records,
         rule={
+            KEY_CELLS: [
+                {KEY_CELL_MONTH: cell.month, KEY_CELL_DIRECTION: cell_direction(cell)} for cell in TRADING_CELLS
+            ],
             KEY_STOP_LEVELS: stop_levels_run,
             # **안 걸렀으면 `None` 을 그대로 남긴다.** 데이터 시작 연도 같은 값으로 채우면
             # 「걸렀다」와 「안 걸렀다」가 구별되지 않는다

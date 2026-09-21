@@ -2,7 +2,7 @@
 
 `measure/forward_return.py` 는 **고정 거래일 구간**만 잰다. 이 매매는 진입도 청산도
 **달력 기준**이라 보유 거래일 수가 달마다 다르므로 그 틀에 들어가지 않는다 —
-실측에서 3~9거래일에 걸쳐 있었다 (`docs/검증/월말_진입/설계.md` §7.3).
+실측에서 3~9거래일에 걸쳐 있었다 (`docs/매매/월말_진입/설계.md` §7.3).
 
 **진입일은 목표 달력일이고 휴장이면 직전 거래일로 앞당긴다**(결정 ①). 앞당김은 **그 달
 안에서만** 일어난다 — 전월로 넘어가면 「그 달 20일에 산다」가 아닌 다른 매매가 된다.
@@ -391,27 +391,6 @@ def every_day_entries(trading_days: pd.DatetimeIndex, *, calendar_day: int) -> p
     return days[list(ENTRY_DTYPES)]
 
 
-def converged_month_count(entries: pd.DataFrame, other: pd.DataFrame) -> int:
-    """두 진입 달력일이 **같은 거래일로 수렴한** 달의 수를 센다.
-
-    앞당김 때문에 서로 다른 달력일 칸이 같은 표본을 공유한다(결정 ⑥). 격자의 칸들이
-    독립이 아니라는 사실의 근거값이므로 산출물에 남긴다.
-
-    Args:
-        entries: 한 달력일의 진입일 표
-        other: 다른 달력일의 진입일 표
-
-    Returns:
-        진입일이 같은 달의 수. 어느 한쪽이라도 진입일이 없는 달은 세지 않는다
-    """
-    merged = entries[[COL_MONTH, COL_DATE]].merge(
-        other[[COL_MONTH, COL_DATE]], on=COL_MONTH, how="inner", suffixes=("_left", "_right")
-    )
-    both = merged[f"{COL_DATE}_left"].notna() & merged[f"{COL_DATE}_right"].notna()
-
-    return int((both & (merged[f"{COL_DATE}_left"] == merged[f"{COL_DATE}_right"])).sum())
-
-
 def _empty_entries() -> pd.DataFrame:
     """진입일이 하나도 없을 때 돌려줄 빈 표를 만든다.
 
@@ -450,7 +429,6 @@ def _empty_returns() -> pd.DataFrame:
 
 __all__ = [
     "MonthExitSchedule",
-    "converged_month_count",
     "every_day_entries",
     "month_entry_dates",
     "month_exit_returns",

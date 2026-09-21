@@ -88,6 +88,7 @@ from verify_lab.studies.month_end.constants import (
     EXECUTION_ROLE_UP,
     KEY_EXCLUDED_COUNT,
     MARKET_KOSDAQ,
+    MONTH_END_STOP_GRID,
 )
 from verify_lab.studies.month_end.constants import Dataset as MonthEndDataset
 from verify_lab.studies.month_end.trading import KEY_TARGETS as MONTH_END_KEY_TARGETS
@@ -438,7 +439,9 @@ def month_end_outputs(tmp_path_factory: pytest.TempPathFactory) -> TradingOutput
         execution_role=EXECUTION_ROLE_NONE,
     )
 
-    return run_month_end_trading((etf, index))
+    # **격자로 돈다.** 기본 실행은 확정 손절선 한 종뿐이라 `무손절` 행이 없는데,
+    # 이 파일이 고정하는 계약은 **세 값이 갈려 있는가**라 대조축이 필요하다
+    return run_month_end_trading((etf, index), stop_levels=MONTH_END_STOP_GRID)
 
 
 def _expected_summary(axis: tuple[str, ...], tail: tuple[str, ...] = ()) -> list[str]:
@@ -1066,7 +1069,7 @@ class TestFilenames:
         assert STATISTICS_FILENAME == "통계.csv"
         assert MEASURE_FILENAME == "측정.csv"
 
-    def test_역방향과_월말은_통계_이름을_낸다(self) -> None:
+    def test_역방향은_통계_이름을_낸다(self) -> None:
         """
         목적: **같은 질문에 답하는 표가 매매법마다 다른 이름으로 불리던 상태를 닫는다.**
 
@@ -1077,29 +1080,45 @@ class TestFilenames:
         축을 이름에 넣지 않는다(`만기월별_통계` 가 아니라 `통계`) — 폴더가 매매법을 말하므로
         이름에 또 넣으면 중복이고, 넣는 순간 이름이 다시 갈린다.
 
-        **옵션 만기일은 여기서 빠진다** — 측정 표를 `측정.csv` 한 장으로 합쳤다(아래 테스트).
+        **옵션 만기일과 월말은 여기서 빠진다** — 확정 칸으로 좁히면서 측정 표를 `측정.csv`
+        한 장으로 합쳤다(아래 두 테스트). **격자를 재는 매매법만 축별 집계표가 필요하다.**
 
-        Given: 두 매매법의 산출물 파일 목록과 체결 산출물 이름
+        Given: 역방향의 산출물 파일 목록과 체결 산출물 이름
         When: 사용자가 보는 이름을 찾는다
-        Then: 둘 다 그 이름을 그대로 낸다
+        Then: 그 이름을 그대로 낸다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
         from verify_lab.report.constants import STATISTICS_FILENAME
-        from verify_lab.studies.month_end.constants import OUTPUT_FILES as MONTH_END_FILES
         from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
 
-        measured = {
-            "역방향": set(REVERSE_FILES.values()),
-            "월말 진입": set(MONTH_END_FILES.values()),
-        }
-
         # When / Then
-        for name, files in measured.items():
-            assert STATISTICS_FILENAME in files, f"{name} 의 산출물에 사용자가 보는 이름이 없습니다: {STATISTICS_FILENAME}"
+        assert STATISTICS_FILENAME in set(REVERSE_FILES.values()), f"역방향의 산출물에 사용자가 보는 이름이 없습니다: {STATISTICS_FILENAME}"
 
         # 체결 둘은 `execution/constants.py` 가 소유하므로 세 매매법이 자동으로 같다
         assert {SUMMARY_FILENAME, TRADES_FILENAME} == {"성적표.csv", "거래내역.csv"}
+
+    def test_월말은_파일_셋만_낸다(self) -> None:
+        """
+        목적: **사용자가 안 여는 표를 내지 않는다**는 결정을 계약으로 고정한다 (2026-09-21).
+
+        확정 칸이 하나가 되면서 격자 616칸·월별 96칸·시기 표가 전부 1칸짜리가 됐다.
+        **그 다섯 표를 `측정.csv` 한 장으로 합쳤다** — 옵션 만기일이 먼저 간 길과 같다.
+
+        Given: 월말의 산출물 파일 목록과 체결 산출물 이름
+        When: 폴더에 생기는 CSV 를 센다
+        Then: 측정 한 장 + 체결 둘 = 셋이다
+        """
+        # Given
+        from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
+        from verify_lab.report.constants import MEASURE_FILENAME
+        from verify_lab.studies.month_end.constants import OUTPUT_FILES as MONTH_END_FILES
+
+        # When
+        files = set(MONTH_END_FILES.values()) | {SUMMARY_FILENAME, TRADES_FILENAME}
+
+        # Then
+        assert files == {MEASURE_FILENAME, SUMMARY_FILENAME, TRADES_FILENAME}, f"산출물이 셋이 아닙니다: {sorted(files)}"
 
     def test_옵션_만기일은_파일_셋만_낸다(self) -> None:
         """

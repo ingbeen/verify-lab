@@ -1,7 +1,8 @@
 """검증 #10(월 하순 진입) 이벤트 정의와 실행이 공유하는 상수
 
-파라미터 값은 `docs/검증/월말_진입/설계.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
-격자 축을 나란히 산출해 보고하기 위한 목록이므로 하나를 골라 두지 않는다 (측정의 원칙 1).
+파라미터 값은 `docs/매매/월말_진입/설계.md` 가 확정한 것이며, **성과를 보며 돌리는 노브가 아니다.**
+**확정 칸과 확정 손절선은 `규칙.md` §3 의 결론을 옮겨 적은 것**이고, 손절선 격자는
+재선정 수단으로 남아 있다 (`--stop-grid`).
 
 표시용 한글 레이블도 여기 둔다. `report` 는 어떤 검증이 자기를 쓰는지 몰라야 하므로
 검증별 컬럼 이름을 알 수 없고, 그 이름을 정하는 것은 이 검증의 몫이다.
@@ -23,6 +24,9 @@ from verify_lab.common_constants import (
     SERIES_DIR,
 )
 from verify_lab.measure.constants import (
+    COL_DIVIDEND_HIT_COUNT,
+    COL_DIVIDEND_MEAN_IMPACT,
+    COL_DIVIDEND_MEASURED,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
@@ -30,6 +34,7 @@ from verify_lab.measure.constants import (
     COL_MEAN_RATE_CONFLICT,
     COL_SIGNAL_COUNT,
 )
+from verify_lab.measure.screening import COL_DIRECTION
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
     COL_DOWN_RATE_P_VALUE,
@@ -58,6 +63,10 @@ from verify_lab.measure.statistics import (
 from verify_lab.report.constants import (
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
+    DISPLAY_DIRECTION,
+    DISPLAY_DIVIDEND_HIT_COUNT,
+    DISPLAY_DIVIDEND_MEAN_IMPACT,
+    DISPLAY_DIVIDEND_MEASURED,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
@@ -74,7 +83,6 @@ from verify_lab.report.constants import (
     DISPLAY_MIN,
     DISPLAY_NEGATIVE_COUNT,
     DISPLAY_NEGATIVE_MEAN,
-    DISPLAY_PERIOD,
     DISPLAY_POSITIVE_COUNT,
     DISPLAY_POSITIVE_MEAN,
     DISPLAY_SAMPLE_COUNT,
@@ -85,7 +93,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE,
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
-    STATISTICS_FILENAME,
+    MEASURE_FILENAME,
 )
 
 # 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
@@ -93,7 +101,7 @@ TRACK_NAME: Final = "month_end"
 
 
 # ============================================================
-# 검증 대상 (`docs/검증/월말_진입/설계.md` §3.4)
+# 검증 대상 (`docs/매매/월말_진입/설계.md` §3.4)
 # ============================================================
 
 # 집행 역할 — **이 상품으로 어느 방향을 거는가.** 방향을 고르는 값이 아니라 상품의 성질이다
@@ -101,7 +109,7 @@ TRACK_NAME: Final = "month_end"
 #
 # 「아래」를 1배 ETF 의 하락률로 재면 분배락 하락이 이익으로 잡히는데 **인버스는 그만큼 오르지
 # 않는다** (코스닥 4월 실측 +0.65%p). 인버스 종가에는 분배락·총보수·일일 리밸런싱 손실이
-# 이미 들어 있어 따로 뺄 것이 없다. 근거는 `docs/검증/월말_진입/설계.md` §7.9 다
+# 이미 들어 있어 따로 뺄 것이 없다. 근거는 `docs/매매/월말_진입/설계.md` §7.9 다
 EXECUTION_ROLE_UP: Final = "위 집행"
 EXECUTION_ROLE_DOWN: Final = "아래 집행"
 EXECUTION_ROLE_NONE: Final = "불가"
@@ -287,36 +295,94 @@ DATASETS_KOSDAQ: Final = (
     ),
 )
 
-# **정의된 대상 전부이자 «검증» 계층의 기본값.** 인버스가 여기 드는 이유는 `execution.csv` 다 —
-# 「아래」 방향을 **인버스 실물로 재는 것이 그 표의 존재 이유**이며, 1배 ETF 의 하락률로 재면
-# 분배락 하락이 이익으로 잡히는데 인버스는 그만큼 오르지 않는다(4월 +18.63% 대 +10.44%).
-# `--ticker` 로 지목할 수 있는 것도 이 목록이다
+# **정의된 대상 전부이자 «측정» 계층의 기본값.** 인버스가 여기 드는 이유는 **「아래」를
+# 인버스 실물로도 재기 위해서**다 — 1배 ETF 의 하락률로 재면 분배락 하락이 이익으로 잡히는데
+# 인버스는 그만큼 오르지 않는다(4월 +18.63% 대 +10.44%). 그 값은 `측정.csv` 의 인버스 행이
+# 갖는다. `--ticker` 로 지목할 수 있는 것도 이 목록이다
 DATASETS: Final = DATASETS_KOSPI + DATASETS_KOSDAQ
 
 # **«매매» 계층의 기본값 — 인버스를 뺀 여섯.** 성적표는 사용자가 판단하는 표인데 인버스는
 # 1배의 부호를 뒤집은 값과 차이가 잡음이라(6월 0.01 · 9월 0.08 · 12월 0.02%p) 같은 베팅이
 # 두 줄로 실린다. 실제 집행도 2배 인버스라 1배 실물은 집행 상품이 아니다.
 # **`--ticker` 로 지목하면 매매에서도 돈다** — 확정 전 분배락 교차검증이 그 용도다
-# (`docs/검증/월말_진입/설계.md` §7.16)
+# (`docs/매매/월말_진입/설계.md` §7.16)
 DATASETS_TRADING: Final = tuple(dataset for dataset in DATASETS if dataset.execution_role != EXECUTION_ROLE_DOWN)
 
 
 # ============================================================
-# 격자 축 (`docs/검증/월말_진입/설계.md` §3.3 결정 ③)
+# 격자 축 (`docs/매매/월말_진입/설계.md` §3.3 결정 ③)
 # ============================================================
 
-# 진입 목표 달력일. 원 매매법인 20일 앞뒤를 감싼다 — 20일만 튀는지 이웃도 같은지가
-# 오버피팅 판정의 근거다 (측정의 원칙 7)
-ENTRY_CALENDAR_DAYS: Final = (15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25)
-
-# 청산 상대 거래일. **그 달 마지막 거래일이 0** 이고 음수는 그 이전, 양수는 익월이다.
-# 양수 칸은 「월말 효과를 통과했는가」를 함께 묻는다
-EXIT_OFFSETS: Final = (-3, -2, -1, 0, 1, 2, 3)
-
-# 원 매매법의 칸. 월별 분해는 **이 칸에만** 건다 — 격자 전부를 쪼개면 924칸이 되어
-# 다중 비교가 폭발하고 칸당 표본이 무너진다 (§3.7)
+# 확정 칸의 진입 달력일과 청산 상대 거래일. **격자 축이 아니라 값 하나씩이다** —
+# 「20일이 특별한가」는 `docs/매매/월말_진입/결과.md` §6 이 이미 답했고(**아니다**),
+# 그래서 2026-09-21 에 격자 축을 걷어냈다 (설계 결정 ⑮). **되살리려면 그 결정을 먼저 읽는다**
 BASE_ENTRY_DAY: Final = 20
 BASE_EXIT_OFFSET: Final = 0
+
+
+# ============================================================
+# 확정 칸과 확정 손절선 (2026-09-21 사용자 확정)
+# ============================================================
+
+
+@dataclass(frozen=True)
+class MonthEndCell:
+    """월말 매매의 대상 칸 하나
+
+    **대상을 가리지 않는다.** 옵션 만기일의 칸은 종목까지 지목하지만 여기서는 같은 달·같은
+    방향을 모든 대상에 건다 — 시장이 이 매매법의 축이지 다른 질문이 아니기 때문이다
+    (`docs/매매/월말_진입/설계.md` 결정 ⑪).
+
+    Attributes:
+        month: 진입 달 (1~12)
+        bet_down: 아래로 거는 칸인지 여부. 참이면 원지수가 내려야 이익이다
+    """
+
+    month: int
+    bet_down: bool
+
+
+# **실제로 거는 한 칸이다** (2026-09-21 사용자 확정).
+#
+# [중요] **전에는 코드가 12개월 × 두 방향을 전부 냈고, 그 방침을 사용자가 뒤집었다.**
+# 전부 내던 이유는 「눈에 띄는 달만 돌리면 그 선택이 결과에 실린다」였는데, 사용자가
+# **실제로 걸 것만 남기기로 정했다** — 안 거는 23칸의 성적이 판단을 돕지 않았다.
+#
+# **그 대신 두 가지를 지킨다.**
+#   - **왜 이 칸인가는 `docs/매매/월말_진입/규칙.md` §3 이 「확정 / 탈락안 / 근거」로 갖는다.**
+#     코드는 그 결론을 옮겨 적을 뿐이고, 목록만 보고 근거를 짐작하면 안 된다
+#   - **재수집하면 이 목록을 다시 판단한다** — 시세가 늘면 성적이 바뀌는데 이 목록은
+#     따라오지 않는다. 그것이 격자를 내던 이유였고 지금도 사실이다
+TRADING_CELLS: Final = (MonthEndCell(month=9, bet_down=True),)
+
+# 확정 손절선 (비율, 0.05 = 5%). **기초자산 기준이다** — 2배 상품으로 집행하면 그 상품
+# 가격으로는 −10% 이며, 그 환산은 `docs/매매/월말_진입/규칙.md` §1 이 갖는다.
+# 성적표의 1배 롱·지수는 이 값을 그대로 쓴다
+MONTH_END_STOP_LEVEL: Final = 0.05
+
+# **확정 규칙이 아니라 대조축이다.** 손절선을 다시 고를 때 쓰는 격자이고 **기본 실행은
+# 이것을 내지 않는다** — `scripts/run_month_end.py --stop-grid` 로 켠다.
+# [중요] **그래서 이 상수를 지우지 않는다.** 지우면 재선정하는 길이 함께 사라지고, 그것이
+# 확정 손절선 하나만 내는 것을 허용한 세 조건 중 하나다 (`.claude/rules/trading.md`).
+#
+# **하한이 −3% 인 이유**: 검증 #7 의 손절 격자에서 **−1.0% 가 4칸의 적중률을 60% 아래로
+# 무너뜨렸다.** 그보다 좁은 구간은 이미 쓸모없다고 확인됐다.
+# **간격이 1%p 인 이유**: 이 매매는 칸당 표본이 10~23건이라 0.5%p 해상도를 표본이 지탱하지
+# 못한다. 값 하나를 옮겼을 때 크게 흔들리면 그것은 「좋은 값을 찾았다」가 아니라
+# 「표본이 그 지점을 특정할 만큼 크지 않다」는 신호다 (`.claude/rules/trading.md`)
+MONTH_END_STOP_LEVELS: Final = (0.03, 0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.10)
+
+# 실행이 도는 두 목록이다. **CLI 도 trading 도 이것을 조립하지 않고 이름으로 고른다** —
+# 두 곳에서 만들면 갈리고, 갈려도 예외가 나지 않는다
+MONTH_END_STOP_DEFAULT: Final[tuple[float | None, ...]] = (MONTH_END_STOP_LEVEL,)
+# 재선정할 때 도는 격자 — 위 격자에 **무손절 대조축**(`None`)을 더한 것
+MONTH_END_STOP_GRID: Final[tuple[float | None, ...]] = (None, *MONTH_END_STOP_LEVELS)
+
+# 이번 실행이 어느 칸을 잰 것인가. **측정과 체결이 같은 목록을 받으므로 키도 하나다** —
+# 두 파일에 한 벌씩 두면 `summary.json` 의 `measure` 와 `trade` 가 다른 이름으로 같은 것을 적는다
+KEY_CELLS: Final = "cells"
+KEY_CELL_MONTH: Final = "month"
+KEY_CELL_DIRECTION: Final = "direction"
 
 # ============================================================
 # 일정표 컬럼 (내부 계산용 토큰)
@@ -372,21 +438,8 @@ REASON_NO_HOLDING: Final = "청산일이 진입일보다 뒤가 아님"
 
 COL_TICKER: Final = "ticker"
 
-# 격자 칸 하나를 가리키는 이름 (`20일 → 말일` 처럼). **판정 계층이 단일 축 컬럼을 받으므로**
-# 2차원 격자를 한 축으로 접어 넘긴다
-COL_GRID_CELL: Final = "grid_cell"
-
 # 월별 분해의 축 (1~12)
 COL_MONTH_NUMBER: Final = "month_number"
-
-# 시기 구분 이름이 들어가는 컬럼
-COL_PERIOD: Final = "period"
-
-# 그 행을 실제로 집행하는 상품이 무엇인가
-COL_EXECUTION_ROLE: Final = "execution_role"
-
-# 집행 축 표가 어느 시장의 행인가. 코스피와 코스닥을 나란히 읽으려면 축이 하나 더 필요하다
-COL_MARKET: Final = "market"
 
 # 기준선 집계를 신호 집계와 나란히 놓을 때 붙이는 접미사
 BASELINE_SUFFIX: Final = "_baseline"
@@ -400,42 +453,30 @@ BASELINE_SUFFIX: Final = "_baseline"
 # `PERIOD_FIRST_HALF`·`PERIOD_SECOND_HALF`). 원칙 17 이 모든 매매법에 요구하는 축이라
 # 검증마다 두면 같은 축이 다른 말로 불린다
 
-# 관찰용 최근 구간. **판정용에서 이미 무너진 칸을 확인하는 데에만 쓴다** —
-# 이 구간만으로 칸을 떨어뜨리지 않는다. 기준일은 실행 시각이 아니라 **데이터의 마지막 거래일**이다
-RECENT_WINDOWS_YEARS: Final = (10, 5)
-DISPLAY_PERIOD_RECENT: Final = "최근 {years}년"
-
 # **시기 구간은 판정에 쓰이지 않는다** (2026-09-12 개편). 게이트는 전체 구간 하나만 보고,
-# 앞/뒤 절반과 최근 N년은 **관찰용**으로 산출물(`periods.csv`·`month_halves.csv`)에만 남는다 —
+# 앞/뒤 절반과 최근 N년은 **관찰용**으로 `성적표.csv` 의 시기 5행에만 남는다 —
 # 쪼개면 칸당 표본이 5~6건까지 줄어 한 건이 20%p 를 움직이므로, 그 값으로 칸을 떨어뜨리면
 # 멀쩡한 매매법이 우연으로 죽는다. 과대평가 여부는 사용자가 표본 수를 보고 판단한다
 
 DISPLAY_MONTH: Final = "진입 달"
-DISPLAY_TARGET_DAY: Final = "진입 달력일"
 DISPLAY_MONTH_LAST_DATE: Final = "그 달 마지막 거래일"
 DISPLAY_EXIT_DATE: Final = "청산일"
-DISPLAY_EXIT_OFFSET: Final = "청산 상대 거래일"
 DISPLAY_HOLD_DAYS: Final = "보유 거래일"
 DISPLAY_ENTRY_CLOSE: Final = "진입 종가"
 DISPLAY_EXIT_CLOSE: Final = "청산 종가"
-DISPLAY_TICKER: Final = "대상"
+# **성적표와 같은 말을 쓴다** (`execution/constants.py` 의 같은 값). `측정.csv` 의 칸 한 행과
+# 성적표의 `시기 = 전체` 행이 1:1 로 조인되어야 하는데, 한쪽이 `대상` 이고 다른 쪽이 `종목` 이면
+# 두 표를 나란히 읽을 수 없다. **겹침은 테스트의 허용목록이 고정한다** — 이 저장소는 이 레이블을
+# 이미 네 파일이 나눠 갖고 있고, 소유자를 하나로 모으는 것은 이 계획서의 범위가 아니다
+DISPLAY_TICKER: Final = "종목"
 DISPLAY_MONTH_NUMBER: Final = "월"
-DISPLAY_MARKET: Final = "시장"
-DISPLAY_EXECUTION_ROLE: Final = "집행"
 
 # `report/constants.py` 에 없어 이 검증이 정한다 — 원자료 표에만 쓰인다
 DISPLAY_RETURN: Final = "수익률(%)"
 DISPLAY_EXCLUDED_REASON: Final = "제외 사유"
 
-DISPLAY_GRID_CELL: Final = "격자 칸"
-
-# 격자 칸 이름의 형식. 청산 상대 거래일 0 은 「말일」로 적어 원 매매법이 눈에 띄게 한다
-GRID_CELL_TEMPLATE: Final = "{day}일 → {exit}"
-GRID_EXIT_MONTH_END: Final = "말일"
-GRID_EXIT_RELATIVE: Final = "말일{offset:+d}"
-
 # 기준선 값 컬럼 앞에 붙이는 말
-_BASELINE_PREFIX: Final = "기준선 "
+BASELINE_PREFIX: Final = "기준선 "
 
 # ============================================================
 # 저장 직전 컬럼 헤더 (`COL_* → DISPLAY_*`)
@@ -448,11 +489,8 @@ _BASELINE_PREFIX: Final = "기준선 "
 COLUMN_LABELS: Final = {
     # 식별
     COL_TICKER: DISPLAY_TICKER,
-    COL_GRID_CELL: DISPLAY_GRID_CELL,
-    COL_TARGET_DAY: DISPLAY_TARGET_DAY,
-    COL_EXIT_OFFSET: DISPLAY_EXIT_OFFSET,
     COL_MONTH_NUMBER: DISPLAY_MONTH_NUMBER,
-    COL_PERIOD: DISPLAY_PERIOD,
+    COL_DIRECTION: DISPLAY_DIRECTION,
     # 원자료
     COL_MONTH: DISPLAY_MONTH,
     COL_DATE: DISPLAY_DATE,
@@ -482,7 +520,7 @@ COLUMN_LABELS: Final = {
     COL_JUDGEABLE: DISPLAY_JUDGEABLE,
     # 기준선 (merge 가 붙인 접미사)
     **{
-        f"{column}{BASELINE_SUFFIX}": f"{_BASELINE_PREFIX}{label}"
+        f"{column}{BASELINE_SUFFIX}": f"{BASELINE_PREFIX}{label}"
         for column, label in (
             (COL_SIGNAL_COUNT, DISPLAY_SIGNAL_COUNT),
             (COL_EXCLUDED_COUNT, DISPLAY_EXCLUDED),
@@ -513,6 +551,10 @@ COLUMN_LABELS: Final = {
     COL_UP_RATE_P_VALUE: DISPLAY_UP_RATE_P_VALUE,
     COL_DOWN_RATE_P_VALUE: DISPLAY_DOWN_RATE_P_VALUE,
     COL_TEST_NOTE: DISPLAY_TEST_NOTE,
+    # 배당락 (측정의 원칙 14) — 컬럼도 레이블도 공통 계층이 소유한다
+    COL_DIVIDEND_MEASURED: DISPLAY_DIVIDEND_MEASURED,
+    COL_DIVIDEND_HIT_COUNT: DISPLAY_DIVIDEND_HIT_COUNT,
+    COL_DIVIDEND_MEAN_IMPACT: DISPLAY_DIVIDEND_MEAN_IMPACT,
 }
 
 # 비율(0~1)로 들어와 백분율로 내보낼 컬럼. **기준선과 차이 컬럼도 빠짐없이 넣는다** —
@@ -555,17 +597,13 @@ PROBABILITY_COLUMNS: Final = (
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 # runner 가 `row_counts` 를 이것으로 키잉하고 CLI 가 이것을 돌며 저장한다 —
 # 왜 CLI 가 이름을 갖지 않는지는 `src/verify_lab/CLAUDE.md` 실행 요약 계약이 SoT 다.
-OUTPUT_FILES: Final[dict[str, str]] = {
-    "trades": "trades.csv",
-    "grid": "grid.csv",
-    # **달 축이 판정이 서는 축**이라 이 둘이 사용자가 보는 표다. 격자 축(11 × 7칸)과
-    # 집행 축은 달 축을 한 번 더 쪼갠 것이라 영문으로 남는다 —
-    # 이름은 `report/constants.py` 가 소유하고 세 매매법이 같은 상수를 쓴다
-    "months": STATISTICS_FILENAME,
-    "month_halves": "month_halves.csv",
-    "periods": "periods.csv",
-    "execution": "execution.csv",
-}
+# **측정 한 장뿐이다** (2026-09-21). 확정 칸이 하나가 되면서 격자 축(11 × 7칸)·월별 12칸·
+# 시기 분해·집행 축이 전부 1칸짜리가 됐고, 그 다섯 표를 `측정.csv` 로 합쳤다.
+# 체결 둘(`성적표.csv`·`거래내역.csv`)과 합쳐 폴더에 CSV 가 **셋**이다.
+#
+# **이름은 `report/constants.py` 가 소유하고 옵션 만기일과 같은 상수를 쓴다** —
+# 매매법마다 다른 말을 쓰면 두 산출물을 나란히 읽을 수 없다
+OUTPUT_FILES: Final[dict[str, str]] = {"measure": MEASURE_FILENAME}
 
 
 # ============================================================

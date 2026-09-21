@@ -51,17 +51,20 @@ from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_PERIOD
 from verify_lab.studies.month_end import trading as month_end_runner
 from verify_lab.studies.month_end.constants import (
     COL_EXIT_DATE,
+    COL_MONTH,
     DISPLAY_MONTH_NUMBER,
     EXECUTION_ROLE_NONE,
     EXECUTION_ROLE_UP,
     KEY_EXCLUDED_COUNT,
     MARKET_KOSDAQ,
+    MONTH_END_STOP_GRID,
+    MONTH_END_STOP_LEVELS,
+    TRADING_CELLS,
     Dataset,
 )
 from verify_lab.studies.month_end.schedule import MonthExitSchedule, month_exit_schedule
 from verify_lab.studies.month_end.trading import (
     KEY_TARGETS,
-    MONTH_END_STOP_LEVELS,
     TradingOutputs,
     run_month_end_trading,
 )
@@ -121,7 +124,7 @@ def _write_market(directory: Path, ticker: str, days: pd.DatetimeIndex | None = 
 def _write_index(directory: Path, ticker: str) -> Dataset:
     """합성 지수 계열을 만든다.
 
-    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/검증/월말_진입/설계.md` §7.6),
+    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고(`docs/매매/월말_진입/설계.md` §7.6),
     그래서 장중 손절을 잴 수 없다.
 
     Args:
@@ -172,6 +175,15 @@ def index_outputs(index_dataset: Dataset) -> TradingOutputs:
 
 
 @pytest.fixture(scope="module")
+def gridded_outputs(dataset: Dataset) -> TradingOutputs:
+    """손절선 격자를 전부 켠 산출물.
+
+    **기본 실행은 확정 손절선 한 종뿐이라** 손절 동작과 무손절 대조를 보려면 이쪽이 필요하다.
+    """
+    return run_month_end_trading((dataset,), stop_levels=MONTH_END_STOP_GRID)
+
+
+@pytest.fixture(scope="module")
 def outputs(dataset: Dataset) -> TradingOutputs:
     """격자를 한 번만 돌린 산출물.
 
@@ -184,55 +196,24 @@ def outputs(dataset: Dataset) -> TradingOutputs:
 class TestGridAxis:
     """격자 축 — 손절선 · 월 · 방향"""
 
-    def test_stop_grid_has_eight_levels_plus_no_stop(self, outputs: TradingOutputs) -> None:
+    def test_stop_grid_has_eight_levels_plus_no_stop(self, gridded_outputs: TradingOutputs) -> None:
         """
         목적: 손절선 격자가 **8종 + 무손절 = 9행**임을 고정한다.
 
         무손절이 빠지면 「손절이 무엇을 막았는가」를 잴 기준이 없어진다
-        (`.claude/rules/trading.md`).
+        (`.claude/rules/trading.md`). **기본 실행은 확정 손절선 한 종뿐이라** 그 수치는
+        `docs/매매/월말_진입/규칙.md` §2 가 갖고, 여기서는 **격자를 켜면 되살아나는지**를 본다.
 
         Given: 합성 ETF 하나
-        When: 격자를 돌린다
+        When: 격자를 전부 켜고 돌린다
         Then: 손절선 축의 값이 9개이고 무손절 표기가 들어 있다
         """
         # Given / When
-        levels = set(outputs.performance[DISPLAY_STOP_LEVEL])
+        levels = set(gridded_outputs.performance[DISPLAY_STOP_LEVEL])
 
         # Then
         assert len(levels) == len(MONTH_END_STOP_LEVELS) + 1
         assert NO_STOP_LABEL in levels
-
-    def test_all_twelve_months_are_present(self, outputs: TradingOutputs) -> None:
-        """
-        목적: **12개월이 전부** 나옴을 고정한다.
-
-        눈에 띄는 달만 돌리면 그 선택이 손절 결과에도 그대로 실린다.
-
-        Given: 합성 ETF 하나
-        When: 격자를 돌린다
-        Then: 월 축이 1~12 전부다
-        """
-        # Given / When
-        months = set(outputs.performance[DISPLAY_MONTH_NUMBER])
-
-        # Then
-        assert months == set(range(1, 13))
-
-    def test_both_directions_are_present(self, outputs: TradingOutputs) -> None:
-        """
-        목적: **두 방향이 모두** 나옴을 고정한다 (측정의 원칙 11).
-
-        방향을 고르는 코드를 두면 그 선택이 결론에 숨는다.
-
-        Given: 합성 ETF 하나
-        When: 격자를 돌린다
-        Then: 방향 축에 「위」와 「아래」가 다 있다
-        """
-        # Given / When
-        directions = set(outputs.performance[DISPLAY_DIRECTION])
-
-        # Then
-        assert directions == {DIRECTION_UP, DIRECTION_DOWN}
 
     def test_performance_covers_every_period(self, outputs: TradingOutputs) -> None:
         """
@@ -252,7 +233,7 @@ class TestGridAxis:
 class TestStopLoss:
     """손절 판정이 조립을 거쳐도 유지된다"""
 
-    def test_no_stop_trades_exit_on_the_scheduled_day(self, outputs: TradingOutputs) -> None:
+    def test_no_stop_trades_exit_on_the_scheduled_day(self, gridded_outputs: TradingOutputs) -> None:
         """
         목적: 무손절 체결이 **청산일까지 보유**됨을 고정한다.
 
@@ -263,7 +244,7 @@ class TestStopLoss:
         Then: 무손절 체결의 청산 사유가 전부 기한청산이다
         """
         # Given / When
-        no_stop = outputs.trades[outputs.trades[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL]
+        no_stop = gridded_outputs.trades[gridded_outputs.trades[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL]
 
         # Then
         assert not no_stop.empty
@@ -310,7 +291,7 @@ class TestStopLoss:
         assert DISPLAY_GAP_STOP_COUNT in outputs.performance.columns
         assert counted[DISPLAY_GAP_STOP_COUNT].notna().all()
 
-    def test_wider_stop_triggers_fewer_stops_in_total(self, outputs: TradingOutputs) -> None:
+    def test_wider_stop_triggers_fewer_stops_in_total(self, gridded_outputs: TradingOutputs) -> None:
         """
         목적: 손절선이 넓어지면 **손절 총 건수(갭 + 장중)가 줄어듦**을 고정한다.
 
@@ -335,9 +316,9 @@ class TestStopLoss:
             PERIOD_ALL,
         )
 
-        overall = outputs.performance[
-            (outputs.performance[DISPLAY_PERIOD] == PERIOD_ALL)
-            & (outputs.performance[DISPLAY_DIRECTION] == DIRECTION_DOWN)
+        overall = gridded_outputs.performance[
+            (gridded_outputs.performance[DISPLAY_PERIOD] == PERIOD_ALL)
+            & (gridded_outputs.performance[DISPLAY_DIRECTION] == DIRECTION_DOWN)
         ]
 
         def _total_stops(level: float) -> pd.Series:
@@ -363,12 +344,16 @@ class TestSamplePreservation:
         성적표에서 컬럼을 걷어냈지만(2026-09-12) 표본 보존은 그대로다 —
         표본을 줄이는 처리는 몇 건이 왜 빠졌는지 함께 내야 한다 (절대 원칙 「표본 보존」).
 
-        Given: 6월 20일 이전이 전부 휴장인 달력 — 그 달은 진입일을 잡을 수 없다
-        When: 격자를 돌린다
+        **확정 칸의 달로 구멍을 낸다.** 제외 건수는 진입 건수와 **같은 모집단**을 세야 하므로
+        (둘 다 확정 칸의 달), 안 거는 달에 구멍을 내면 요약이 「진입 23, 제외 1」처럼
+        **다른 모집단의 두 숫자**를 나란히 적게 된다.
+
+        Given: 9월 20일 이전이 전부 휴장인 해가 하나 있는 달력 — 그 해는 진입일을 잡을 수 없다
+        When: 확정 칸을 돌린다
         Then: 요약의 대상 기록에 제외 1건이 실린다
         """
         # Given
-        gap_year, gap_month = 2021, 6
+        gap_year, gap_month = 2021, 9
         days = pd.DatetimeIndex(
             [
                 day
@@ -506,7 +491,10 @@ class TestTradingDayPositions:
         ) -> MonthExitSchedule:
             original = month_exit_schedule(trading_days, entries, exit_offset=exit_offset)
             frame = original.frame.copy()
-            usable = frame.index[frame[COL_EXCLUDED_REASON] == REASON_NONE]
+            # **확정 칸의 달을 골라야 한다.** 다른 달의 행을 바꾸면 그 칸이 돌지 않아
+            # 가드가 발동할 기회조차 없다
+            wanted = {cell.month for cell in TRADING_CELLS}
+            usable = frame.index[(frame[COL_EXCLUDED_REASON] == REASON_NONE) & (frame[COL_MONTH].dt.month.isin(wanted))]
             frame.loc[usable[0], COL_EXIT_DATE] = pd.Timestamp("1999-01-04")
 
             return MonthExitSchedule(frame=frame, exit_offset=original.exit_offset)
@@ -557,7 +545,7 @@ class TestIndexDataset:
             assert DISPLAY_STOP_LEVEL in table.columns
             assert NO_STOP_LABEL not in set(table[DISPLAY_STOP_LEVEL])
 
-    def test_etf_keeps_the_no_stop_row_as_the_control(self, outputs: TradingOutputs) -> None:
+    def test_etf_keeps_the_no_stop_row_as_the_control(self, gridded_outputs: TradingOutputs) -> None:
         """
         목적: ETF 는 **대조축 `무손절` 행을 갖고** 「손절불가」는 쓰지 않음을 고정한다.
 
@@ -569,7 +557,7 @@ class TestIndexDataset:
         Then: 무손절은 있고 손절불가는 없다
         """
         # Given / When
-        levels = set(outputs.performance[DISPLAY_STOP_LEVEL])
+        levels = set(gridded_outputs.performance[DISPLAY_STOP_LEVEL])
 
         # Then
         assert NO_STOP_LABEL in levels
@@ -751,11 +739,12 @@ class TestFromYear:
 
         합성 시세는 2018-01 ~ 2023-12 인데 **데이터의 마지막 달은 진입을 만들지 않으므로**
         (`schedule.py` 결정 ⑧) 12월만 한 해 적다. 시작 연도 2021 이면 1~11월이 3건,
-        12월이 2건이다. 이 비대칭이 맞아야 필터가 «달력»으로 동작한 것이다.
+        확정 칸은 9월이고 시세가 2018~2023 이므로 2021·2022·2023 세 해만 남아야 한다.
+        **거르는 기준이 진입일이 아니라 「진입 달」**이라 달력과 정확히 맞는다.
 
         Given: 2018~2023 합성 ETF
-        When: 시작 연도 2021 로 격자를 돌린다
-        Then: 1~11월 전체 행이 3건, 12월이 2건이다
+        When: 시작 연도 2021 로 돌린다
+        Then: 확정 칸의 전체 행이 3건이다
         """
         # Given
         from verify_lab.report.constants import DISPLAY_SIGNAL_COUNT
@@ -766,25 +755,24 @@ class TestFromYear:
         counts = overall.groupby(DISPLAY_MONTH_NUMBER)[DISPLAY_SIGNAL_COUNT].max()
 
         # Then
-        assert counts[12] == 2
-        assert set(counts.drop(12)) == {3}, f"1~11월이 3건이 아닙니다: {counts.to_dict()}"
+        assert set(counts) == {3}, f"확정 칸의 표본이 3건이 아닙니다: {counts.to_dict()}"
 
     def test_grid_axes_survive_the_filter(self, dataset: Dataset) -> None:
         """
         목적: 걸러도 **격자 축이 그대로**임을 고정한다.
 
-        표본이 준다고 달이나 손절선이 사라지면 「돌리지 않은 칸」과 「표본이 없는 칸」이
+        표본이 준다고 칸이나 손절선이 사라지면 「돌리지 않은 칸」과 「표본이 없는 칸」이
         구별되지 않는다 (측정의 원칙 17).
 
         Given: 2018~2023 합성 ETF
-        When: 시작 연도 2021 로 격자를 돌린다
-        Then: 월 12개 · 손절선 9개 · 구간 5개가 그대로다
+        When: 시작 연도 2021 로 격자를 전부 켜고 돌린다
+        Then: 확정 칸 · 손절선 9개 · 구간 5개가 그대로다
         """
         # Given / When
-        performance = run_month_end_trading((dataset,), from_year=2021).performance
+        performance = run_month_end_trading((dataset,), stop_levels=MONTH_END_STOP_GRID, from_year=2021).performance
 
         # Then
-        assert set(performance[DISPLAY_MONTH_NUMBER]) == set(range(1, 13))
+        assert set(performance[DISPLAY_MONTH_NUMBER]) == {cell.month for cell in TRADING_CELLS}
         assert len(set(performance[DISPLAY_STOP_LEVEL])) == len(MONTH_END_STOP_LEVELS) + 1
         assert set(performance[DISPLAY_PERIOD]) == set(PERIODS)
 
@@ -853,3 +841,115 @@ def test_empty_dataset_list_raises() -> None:
     # Given / When / Then
     with pytest.raises(ValueError, match="대상"):
         run_month_end_trading(())
+
+
+# ============================================================
+# 확정 칸 개편 (2026-09-21) — 아래 계약이 새 규격이다
+# ============================================================
+
+
+class TestFixedCellTrading:
+    """기본 실행은 «확정 칸 하나 · 확정 손절선 하나»만 낸다"""
+
+    def test_기본_실행은_확정_칸만_돈다(self, outputs: TradingOutputs) -> None:
+        """
+        목적: 사용자가 실제로 거는 칸만 나옴을 고정한다 (2026-09-21 사용자 결정).
+
+        **코드가 칸을 고르는 것이 아니다** — `규칙.md` §3 의 결론을 옮겨 적은 것이고,
+        그 근거는 문서가 갖는다 (`.claude/rules/trading.md`).
+
+        Given: 인자 없이 돌린 산출물
+        When: 성적표의 월·방향 값을 모은다
+        Then: 확정 칸의 값 하나씩이다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import TRADING_CELLS
+
+        cell = TRADING_CELLS[0]
+
+        # When
+        months = set(outputs.performance[DISPLAY_MONTH_NUMBER])
+        directions = set(outputs.performance[DISPLAY_DIRECTION])
+
+        # Then
+        assert months == {cell.month}, f"확정 칸 밖의 달이 나왔습니다: {sorted(months)}"
+        assert directions == {DIRECTION_DOWN if cell.bet_down else DIRECTION_UP}
+
+    def test_기본_손절선이_확정값_하나다(self, outputs: TradingOutputs) -> None:
+        """
+        목적: 기본 실행이 격자를 내지 않음을 고정한다.
+
+        **무손절 대조축이 사라지는 대가**는 `규칙.md` §2 가 수치로 갖는다 —
+        그것이 손절선 축을 좁히도록 허용한 세 조건 중 하나다 (`.claude/rules/trading.md`).
+
+        Given: 인자 없이 돌린 ETF 산출물
+        When: 손절선 값을 모은다
+        Then: 확정 손절선 하나뿐이고 무손절 행이 없다
+        """
+        # Given
+        from verify_lab.execution.constants import stop_level_value
+        from verify_lab.studies.month_end.constants import MONTH_END_STOP_LEVEL
+
+        expected = stop_level_value(MONTH_END_STOP_LEVEL, measurable=True)
+
+        # When
+        levels = set(outputs.performance[DISPLAY_STOP_LEVEL])
+
+        # Then
+        assert levels == {expected}, f"기본 실행에 확정 손절선 밖의 값이 있습니다: {levels}"
+        assert NO_STOP_LABEL not in levels
+
+    def test_격자_스위치가_전부를_되살린다(self, dataset: Dataset) -> None:
+        """
+        목적: **재선정 수단이 남아 있음**을 고정한다.
+
+        시세를 재수집하면 성적이 바뀌는데 코드의 목록은 따라오지 않으므로,
+        손절선을 다시 고를 길이 없으면 좁히는 것이 허용되지 않는다.
+
+        Given: 격자 목록
+        When: 그것으로 돌린다
+        Then: 무손절 + 격자 전부가 나온다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import MONTH_END_STOP_GRID
+
+        # When
+        gridded = run_month_end_trading((dataset,), stop_levels=MONTH_END_STOP_GRID)
+
+        # Then
+        levels = set(gridded.performance[DISPLAY_STOP_LEVEL])
+        assert NO_STOP_LABEL in levels, "격자를 켰는데 무손절 대조축이 없습니다"
+        assert len(levels) == len(MONTH_END_STOP_GRID), f"격자가 전부 돌지 않았습니다: {sorted(levels, key=str)}"
+
+    def test_성적표가_칸당_구간_다섯_행이다(self, outputs: TradingOutputs) -> None:
+        """
+        목적: 확정 칸으로 좁혀도 **시기 5행은 그대로**임을 고정한다 (측정의 원칙 17).
+
+        Given: 인자 없이 돌린 산출물
+        When: 행 수를 센다
+        Then: 확정 칸 수 × 구간 5 이다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import TRADING_CELLS
+
+        # When
+        rows = len(outputs.performance)
+
+        # Then
+        assert rows == len(TRADING_CELLS) * len(PERIODS), f"성적표가 칸당 5행이 아닙니다: {rows}행"
+
+    def test_지수는_손절불가_한_줄로_남는다(self, index_outputs: TradingOutputs) -> None:
+        """
+        목적: 확정 칸으로 좁혀도 **긴 기간 축이 성적표에 남음**을 고정한다.
+
+        지수를 잃으면 「식고 있는가」를 물을 대상이 사라진다 (`.claude/rules/trading.md`).
+
+        Given: 지수만 돌린 산출물
+        When: 손절선 값을 본다
+        Then: 「손절불가」 한 값뿐이다
+        """
+        # Given / When
+        levels = set(index_outputs.performance[DISPLAY_STOP_LEVEL])
+
+        # Then
+        assert levels == {STOP_NOT_MEASURABLE_LABEL}, f"지수 행의 손절선 표기가 어긋납니다: {levels}"

@@ -5,11 +5,11 @@
 
 고정하는 계약은 다섯이다.
 
-- 격자 칸 수는 진입 달력일 × 청산 상대 거래일이다
-- 월별 분해와 원자료는 **원 매매법 칸에서만** 나온다 (축을 동시에 쪼개지 않는다)
-- 후보 판정은 **전체 구간 하나만** 본다 (구간은 산출물에 관찰용으로만 남는다)
+- 측정은 **확정 칸만** 내고 칸마다 한 행이다
+- 식별 컬럼이 **성적표와 같은 이름**으로 앞에 온다 (두 표가 조인되어야 한다)
+- 값은 **1배 롱 기준 그대로**다 — 「아래」 칸이라고 부호를 뒤집지 않는다
+- 배당락 세 컬럼은 ETF 에서 채워지고 **지수에서는 비어 있다** (잴 수 없는 것과 0 은 다르다)
 - 저장 표의 헤더가 전부 한글이다 (영문 토큰이 사용자에게 나가지 않는다)
-- 지수와 ETF 는 스키마가 달라도 같은 격자를 낸다
 """
 
 from collections.abc import Callable
@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
     COL_CLOSE,
     COL_DATE,
     COL_HIGH,
@@ -31,38 +32,16 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
-from verify_lab.measure.constants import (
-    COL_BASIS,
-    COL_EXCLUDED_REASON,
-    COL_FORWARD_RETURN,
-    COL_HORIZON,
-    COL_JUDGEABLE,
-    JUDGEABLE_NO,
-    PERIOD_FIRST_HALF,
-    PERIOD_SECOND_HALF,
-)
-from verify_lab.measure.forward_return import ReturnBasis
 from verify_lab.measure.statistics import COL_MEAN, COL_SAMPLE_COUNT
-from verify_lab.studies.month_end import runner as month_end_runner
 from verify_lab.studies.month_end.constants import (
-    BASE_ENTRY_DAY,
-    BASE_EXIT_OFFSET,
-    COL_GRID_CELL,
-    COL_TARGET_DAY,
-    DISPLAY_PERIOD_RECENT,
-    ENTRY_CALENDAR_DAYS,
     EXECUTION_ROLE_NONE,
     EXECUTION_ROLE_UP,
-    EXIT_OFFSETS,
     MARKET_KOSDAQ,
-    RECENT_WINDOWS_YEARS,
     Dataset,
 )
-from verify_lab.studies.month_end.constants import COL_EXIT_OFFSET as COL_OFFSET
 from verify_lab.studies.month_end.runner import (
     StudyOutputs,
     display_tables,
-    grid_cell_label,
     run_study,
 )
 
@@ -70,7 +49,7 @@ from verify_lab.studies.month_end.runner import (
 FAST_REPEATS = 20
 FIXED_SEED = 0
 
-# 합성 시세의 구간. 월별 분해가 12칸을 채우려면 몇 해가 필요하다
+# 합성 시세의 구간. 확정 칸(9월)이 여러 해 나오려면 몇 해가 필요하다
 SYNTHETIC_START = "2016-01-01"
 SYNTHETIC_END = "2021-12-31"
 
@@ -98,6 +77,19 @@ def _write_market(directory: Path, ticker: str) -> Dataset:
             COL_VOLUME: [1_000] * len(days),
         }
     ).to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker=ticker), index=False)
+
+    # **수정주가 파일을 함께 만든다.** 실제 ETF 는 전부 갖고 있고, 없으면 배당락을 잴 수 없어
+    # 측정이 거부한다 — 「안 걸림」과 「못 쟀다」를 구별하는 계약이 그것을 요구한다
+    pd.DataFrame(
+        {
+            COL_DATE: days.date,
+            COL_OPEN: prices,
+            COL_HIGH: prices,
+            COL_LOW: prices,
+            COL_CLOSE: prices,
+            COL_VOLUME: [1_000] * len(days),
+        }
+    ).to_csv(directory / ADJUSTED_FILE_TEMPLATE.format(ticker=ticker), index=False)
 
     return Dataset(
         ticker=ticker,
@@ -144,37 +136,12 @@ def _write_index(directory: Path, ticker: str) -> Dataset:
     )
 
 
-def _long_form(dates: pd.DatetimeIndex) -> pd.DataFrame:
-    """`measure` 계약의 long-form 한 칸(기준 × 구간)을 만든다.
-
-    **여집합이 아닌 값을 여집합으로 만들지 않는다** (`tests/CLAUDE.md`) — 수익률에
-    0 을 섞지 않아 오른 비율과 내린 비율의 합이 1 이 되는 착시를 만들지 않는다.
-
-    Args:
-        dates: 신호일
-
-    Returns:
-        `Date`·`Basis`·`Horizon`·`ForwardReturn`·`ExcludedReason` 다섯 컬럼
-    """
-    count = len(dates)
-
-    return pd.DataFrame(
-        {
-            COL_DATE: dates,
-            COL_BASIS: [ReturnBasis.CLOSE.value] * count,
-            COL_HORIZON: [5] * count,
-            COL_FORWARD_RETURN: [0.01 if order % 3 else -0.007 for order in range(count)],
-            COL_EXCLUDED_REASON: [""] * count,
-        }
-    )
-
-
 @pytest.fixture(scope="module")
 def etf_dataset(tmp_path_factory: pytest.TempPathFactory) -> Dataset:
     """합성 ETF 대상 (파일은 임시 폴더에 격리된다).
 
-    **모듈 스코프인 이유**: 격자 77칸 × 순열 검정이라 한 번 도는 데 수십 초가 걸린다.
-    테스트마다 새로 돌리면 이 파일 하나가 몇 분을 먹는다. 입력이 불변이라 공유해도 안전하다.
+    **모듈 스코프인 이유**: 순열 검정이 붙어 한 번 도는 데 시간이 걸린다.
+    입력이 불변이라 공유해도 안전하다.
     """
     return _write_market(tmp_path_factory.mktemp("market"), "999900")
 
@@ -189,292 +156,6 @@ def index_dataset(tmp_path_factory: pytest.TempPathFactory) -> Dataset:
 def etf_outputs(etf_dataset: Dataset) -> StudyOutputs:
     """합성 ETF 하나를 돌린 산출물. **한 번만 실행한다.**"""
     return run_study((etf_dataset,), repeats=FAST_REPEATS, seed=FIXED_SEED)
-
-
-class TestGridAxis:
-    """격자 축 — 진입 달력일 × 청산 상대 거래일"""
-
-    def test_grid_has_one_row_per_cell(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: 격자 칸 수가 두 축의 곱임을 고정한다.
-
-        칸이 조용히 줄면 「그 칸을 못 봤다」는 사실 자체가 산출물에서 사라진다.
-
-        Given: 합성 ETF 하나
-        When: 검증을 돌린다
-        Then: 격자 행 수가 진입 달력일 수 × 청산 상대 거래일 수다
-        """
-        # Given / When
-        outputs = etf_outputs
-
-        # Then
-        assert len(outputs.grid) == len(ENTRY_CALENDAR_DAYS) * len(EXIT_OFFSETS)
-
-    def test_grid_cell_label_marks_the_month_end(self) -> None:
-        """
-        목적: 청산 0 이 「말일」로 적힘을 고정한다.
-
-        원 매매법이 격자 안에서 눈에 띄어야 사용자가 그 칸을 찾을 수 있다.
-
-        Given: 원 매매법의 두 축 값
-        When: 칸 이름을 만든다
-        Then: 「말일」이 들어가고 상대 거래일 숫자가 나오지 않는다
-        """
-        # Given / When
-        label = grid_cell_label(BASE_ENTRY_DAY, BASE_EXIT_OFFSET)
-
-        # Then
-        assert label == "20일 → 말일"
-        assert grid_cell_label(20, -1) == "20일 → 말일-1"
-
-    def test_index_and_etf_produce_the_same_grid_shape(self, etf_dataset: Dataset, index_dataset: Dataset) -> None:
-        """
-        목적: 스키마가 달라도 같은 격자를 냄을 고정한다.
-
-        지수는 종가 계열이라 시가가 없다. 대상마다 칸 구성이 갈리면 두 결과를 나란히 읽을 수 없다.
-
-        Given: 합성 ETF 와 합성 지수
-        When: 함께 돌린다
-        Then: 두 대상의 격자 칸 이름 집합이 같다
-        """
-        # Given / When
-        outputs = run_study((etf_dataset, index_dataset), repeats=FAST_REPEATS, seed=FIXED_SEED)
-
-        # Then
-        cells = outputs.grid.groupby("ticker")[COL_GRID_CELL].apply(set)
-        assert cells.iloc[0] == cells.iloc[1]
-
-
-class TestAxisSeparation:
-    """축을 동시에 쪼개지 않는다"""
-
-    def test_month_split_covers_only_the_base_cell(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: 월별 분해가 **원 매매법 칸에서만** 나옴을 고정한다.
-
-        격자 전체를 월별로 쪼개면 924칸이 되어 다중 비교가 폭발하고 칸당 표본이 무너진다.
-
-        Given: 합성 ETF 하나
-        When: 검증을 돌린다
-        Then: 월별 표가 12칸을 넘지 않는다 (격자 칸 수만큼 불어나지 않는다)
-        """
-        # Given / When
-        outputs = etf_outputs
-
-        # Then
-        assert len(outputs.months) <= 12
-
-    def test_raw_trades_cover_only_the_base_cell(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: 원자료가 원 매매법 칸의 것임을 고정한다.
-
-        Given: 합성 ETF 하나
-        When: 검증을 돌린다
-        Then: 원자료의 진입 달력일이 20일 하나뿐이다
-        """
-        # Given / When
-        outputs = etf_outputs
-
-        # Then
-        assert set(outputs.trades[COL_TARGET_DAY]) == {BASE_ENTRY_DAY}
-
-    def test_periods_cover_every_grid_cell(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: 시기 분해는 격자 전체에 걸림을 고정한다.
-
-        Given: 합성 ETF 하나
-        When: 검증을 돌린다
-        Then: 시기 표의 격자 칸 수가 격자 표와 같다
-        """
-        # Given / When
-        outputs = etf_outputs
-
-        # Then
-        assert set(outputs.periods[COL_GRID_CELL]) == set(outputs.grid[COL_GRID_CELL])
-
-
-class TestPeriodSplit:
-    """시기 분해 — 판정용과 관찰용의 구분"""
-
-    def test_all_four_periods_are_kept_in_the_output(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: 산출물에 네 구간이 모두 남음을 고정한다 (측정의 원칙 17).
-
-        관찰용을 판정에서 빼는 것과 산출물에서 지우는 것은 다르다.
-
-        Given: 합성 ETF 하나
-        When: 검증을 돌린다
-        Then: 균등 2분할과 최근 10년·5년이 모두 있다
-        """
-        # Given / When
-        outputs = etf_outputs
-
-        # Then
-        expected = {PERIOD_FIRST_HALF, PERIOD_SECOND_HALF} | {
-            DISPLAY_PERIOD_RECENT.format(years=years) for years in RECENT_WINDOWS_YEARS
-        }
-        assert set(outputs.periods["period"]) == expected
-
-    def test_표본이_0건인_구간도_전체_스키마를_갖는다(self) -> None:
-        """
-        목적: 빈 구간 행의 **모양**을 옵션 만기일과 맞춘 것을 고정한다 (측정의 원칙 17).
-
-        전에는 이 검증만 빈 구간에 **두 컬럼짜리 표**(`표본`·`판정가능`)를 붙였고, 옵션
-        만기일은 전체 스키마를 유지했다. 값은 `pd.concat` 이 결측으로 채워 같아 보이지만,
-        **그 두 컬럼짜리 표가 맨 앞에 오면 산출물의 컬럼 순서가 거기서부터 시작한다** —
-        같은 원칙이 검증마다 다른 산출물을 내는 상태였다.
-
-        **[중요] 이 경로는 실제 데이터로 재현되지 않는다.** 월말 신호는 매달 나오므로
-        「최근 N년」이 비는 일이 없고, 그래서 두 구현이 갈라진 채로 아무도 밟지 않았다.
-        그러니 `_split_by_period` 를 직접 불러 **결정적으로** 그 경로를 태운다 —
-        「최근 N년」의 기준일이 인자라, 신호보다 한참 뒤를 주면 두 관찰 구간이 비워진다.
-
-        Given: 2016년 신호와 **2030년을 마지막 거래일로 준** 입력
-        When: 시기 분해를 돌린다
-        Then: 최근 10년·5년 행이 남고, 다른 행과 **같은 컬럼**을 가지며 지표가 비어 있다
-        """
-        # Given
-        signal = _long_form(pd.bdate_range("2016-01-04", periods=30))
-        last_date = pd.Timestamp("2030-12-31")
-
-        # When
-        periods = month_end_runner._split_by_period(signal, signal, last_date, repeats=FAST_REPEATS, seed=FIXED_SEED)
-
-        # Then
-        blank = periods[periods[COL_SAMPLE_COUNT] == 0]
-        assert len(blank) == len(RECENT_WINDOWS_YEARS), "표본 0건 구간이 사라졌습니다"
-        assert (blank[COL_JUDGEABLE] == JUDGEABLE_NO).all()
-        assert blank[COL_MEAN].isna().all(), "잰 적이 없는 칸은 0 이 아니라 빈칸이어야 합니다"
-
-    def test_빈_구간_행이_이웃의_컬럼을_그대로_갖는다(self) -> None:
-        """
-        목적: 빈 행이 **전체 스키마**를 갖는 것을 고정한다 (측정의 원칙 17).
-
-        [중요] **합쳐진 표에서 보면 이 계약을 검사할 수 없다.** `pd.concat` 이 없는 컬럼을
-        결측으로 채우므로 「빈 행의 컬럼 == 표의 컬럼」은 **무엇을 만들었든 참**이다 —
-        두 컬럼짜리 표를 붙여도 통과한다. 그래서 **행을 만드는 함수를 직접** 본다.
-
-        차이가 산출물에 드러나는 경우는 **빈 블록이 맨 앞에 올 때**뿐이다. 그때 두 컬럼짜리
-        표가 `concat` 의 컬럼 순서를 정해 산출물이 `표본`·`판정가능` 부터 시작한다.
-
-        Given: 정상 집계 한 장 (컬럼 구성을 빌려줄 이웃)
-        When: 빈 구간 행을 만든다
-        Then: 이웃과 **컬럼이 같고 순서까지 같다**
-        """
-        # Given
-        signal = _long_form(pd.bdate_range("2016-01-04", periods=30))
-        template = month_end_runner._aggregate(signal, signal, repeats=FAST_REPEATS, seed=FIXED_SEED)
-        assert not template.empty, "이웃으로 쓸 집계를 만들지 못했습니다"
-
-        # When
-        blank = month_end_runner._blank_period_row(template)
-
-        # Then
-        assert list(blank.columns) == list(template.columns), "빈 행이 이웃과 다른 컬럼을 갖습니다"
-        assert len(blank) == 1
-        assert blank[COL_SAMPLE_COUNT].tolist() == [0]
-        assert blank[COL_JUDGEABLE].tolist() == [JUDGEABLE_NO]
-        assert blank[COL_MEAN].isna().all(), "잰 적이 없는 칸은 0 이 아니라 빈칸이어야 합니다"
-
-
-class TestBaseCellRecord:
-    """기준 칸이 요약에 진입·제외 건수를 남기는지 — 표본 보존의 마지막 자리
-
-    월별 분해와 원자료는 **원 매매법 칸(20일 → 말일)에서만** 낸다. 그 칸에 도달하지 못하면
-    요약의 `진입`·`제외`·`보유일`·`기준선 진입`·`수렴한 달` 다섯이 통째로 빠지는데,
-    **`summary.json` 은 나머지 키가 멀쩡해 정상으로 보인다.**
-
-    현재 데이터에서는 도달할 수 없다 — 격자가 기준 칸을 포함하고 그 칸에 신호가 있다.
-    **그래서 격자를 기준 칸이 없는 것으로 갈아끼운다** (전역 `python.md` — 불가능 조건은
-    `RuntimeError` 로 즉시 인지시킨다).
-    """
-
-    def test_base_cell_missing_from_the_grid_raises(
-        self, etf_dataset: Dataset, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """
-        목적: 기준 칸에 한 번도 닿지 못한 실행이 **조용히 요약을 내지 않는지** 고정한다.
-
-        Given: 기준 칸(20일 → 말일)을 포함하지 않는 격자
-        When: 검증을 돌린다
-        Then: RuntimeError 이고 메시지에 「내부 불변조건 위반」과 기준 칸이 담긴다
-        """
-        # Given
-        assert BASE_ENTRY_DAY not in (15,), "기준 칸이 축소한 격자에 들어가면 이 테스트가 무의미해진다"
-        monkeypatch.setattr(month_end_runner, "ENTRY_CALENDAR_DAYS", (15,))
-        monkeypatch.setattr(month_end_runner, "EXIT_OFFSETS", (BASE_EXIT_OFFSET,))
-
-        # When / Then
-        with pytest.raises(RuntimeError, match="내부 불변조건 위반") as caught:
-            run_study((etf_dataset,), repeats=FAST_REPEATS, seed=FIXED_SEED)
-
-        assert grid_cell_label(BASE_ENTRY_DAY, BASE_EXIT_OFFSET) in str(caught.value)
-
-    def test_base_cell_with_no_valid_signal_raises(self, etf_dataset: Dataset, monkeypatch: pytest.MonkeyPatch) -> None:
-        """
-        목적: **실제로 일어날 수 있는 쪽**을 고정한다 — 기준 칸의 유효 신호가 0건인 경우.
-
-        그때 격자 순회는 그 칸에 «닿지만» 집계가 비어 `continue` 하므로 `base_record` 가
-        빈 채로 남는다. 앞 테스트(격자에 기준 칸이 없는 경우)와 도달 경로가 다르므로
-        둘을 함께 건다 — 한쪽만 걸면 `block.empty` 처리를 바꿨을 때 조용히 통과한다.
-
-        Given: 어느 칸에서도 집계가 나오지 않는 실행
-        When: 검증을 돌린다
-        Then: 경고로 끝나지 않고 RuntimeError 가 난다
-        """
-
-        # Given
-        def _no_aggregate(*_args: object, **_kwargs: object) -> pd.DataFrame:
-            return pd.DataFrame()
-
-        monkeypatch.setattr(month_end_runner, "_aggregate", _no_aggregate)
-
-        # When / Then
-        with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
-            run_study((etf_dataset,), repeats=FAST_REPEATS, seed=FIXED_SEED)
-
-
-class TestDisplayTables:
-    """저장 표의 헤더는 전부 한글이다"""
-
-    def test_every_saved_table_has_korean_headers(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: 영문 토큰이 사용자에게 나가지 않음을 고정한다.
-
-        검증 #7 이 `COL_* → DISPLAY_*` 연결을 빠뜨려 `ticker,price_basis,SignalCount,…` 로
-        나간 적이 있다. 사용자가 직접 여는 파일이라 무슨 값인지 알 수 없게 된다.
-
-        Given: 합성 ETF 하나
-        When: 표시용 표를 만든다
-        Then: 어떤 표에도 ASCII 로만 된 헤더가 없다
-        """
-        # Given
-        outputs = etf_outputs
-
-        # When
-        tables = display_tables(outputs)
-
-        # Then
-        assert tables, "저장할 표가 하나도 없습니다"
-        for name, table in tables.items():
-            ascii_only = [column for column in table.columns if column.isascii()]
-            assert not ascii_only, f"{name} 에 영문 헤더가 남았습니다: {ascii_only}"
-
-    def test_grid_keeps_both_axes_as_columns(self, etf_outputs: StudyOutputs) -> None:
-        """
-        목적: 격자의 두 축이 컬럼으로 남음을 고정한다.
-
-        칸 이름만 남기면 사용자가 진입일이나 청산일로 정렬·필터할 수 없다.
-
-        Given: 합성 ETF 하나
-        When: 검증을 돌린다
-        Then: 진입 달력일과 청산 상대 거래일이 격자 표에 있다
-        """
-        # Given / When
-        outputs = etf_outputs
-
-        # Then
-        assert {COL_TARGET_DAY, COL_OFFSET} <= set(outputs.grid.columns)
 
 
 class TestDatasetIdentity:
@@ -636,3 +317,335 @@ class TestRunSummaryPaths:
         Then: 절대경로가 하나도 없다
         """
         assert_no_absolute_paths(etf_outputs.summary, "월말 진입 검증")
+
+
+# ============================================================
+# 확정 칸 개편 (2026-09-21) — 아래 계약이 새 규격이다
+# ============================================================
+
+
+def _write_adjusted(dataset: Dataset, *, shift_from: str, ratio: float) -> None:
+    """그 대상의 수정주가 파일을 만든다.
+
+    **원본가와 «다르게» 만든다.** 같으면 배당락이 0 으로 나와 「걸렸다」와 「안 걸렸다」를
+    구별하는 계약을 검사할 수 없다. 특정 날짜부터 배율을 곱해 계단 하나를 심는다.
+
+    Args:
+        dataset: 시세 스키마 대상
+        shift_from: 이 날짜부터 배율을 적용한다
+        ratio: 곱할 배율 (1 보다 작으면 배당락 방향)
+    """
+    raw = pd.read_csv(dataset.path, parse_dates=[COL_DATE])
+    adjusted = raw.copy()
+    mask = adjusted[COL_DATE] < pd.Timestamp(shift_from)
+    adjusted.loc[mask, COL_CLOSE] = (adjusted.loc[mask, COL_CLOSE] * ratio).round(PRICE_DECIMALS_KRW)
+
+    adjusted.to_csv(
+        dataset.directory / ADJUSTED_FILE_TEMPLATE.format(ticker=dataset.ticker),
+        index=False,
+    )
+
+
+@pytest.fixture(scope="module")
+def fixed_cell_etf(tmp_path_factory: pytest.TempPathFactory) -> Dataset:
+    """확정 칸 측정용 합성 ETF. **수정주가에 계단을 심어** 배당락이 잡히게 한다."""
+    dataset = _write_market(tmp_path_factory.mktemp("fixed_market"), "999901")
+    _write_adjusted(dataset, shift_from="2019-09-25", ratio=0.99)
+
+    return dataset
+
+
+@pytest.fixture(scope="module")
+def fixed_cell_outputs(fixed_cell_etf: Dataset) -> StudyOutputs:
+    """확정 칸만 돈 산출물. **한 번만 실행한다.**"""
+    return run_study((fixed_cell_etf,), repeats=FAST_REPEATS, seed=FIXED_SEED)
+
+
+class TestFixedCellMeasure:
+    """측정은 «확정 칸»만 낸다 — 축은 종목 × 월 × 방향"""
+
+    def test_확정_칸은_9월_아래_하나다(self) -> None:
+        """
+        목적: 코드가 내는 칸 목록이 `규칙.md` §3 의 결론과 같음을 고정한다.
+
+        **목록만 보고 근거를 짐작하면 안 된다** — 왜 이 칸인지는 그 문서가 갖는다
+        (`.claude/rules/trading.md`). 여기서는 **몇 칸이고 무엇인지**만 못 박는다.
+
+        Given: 확정 칸 상수
+        When: 목록을 읽는다
+        Then: 9월 · 아래 한 칸이다
+        """
+        # Given / When
+        from verify_lab.studies.month_end.constants import TRADING_CELLS
+
+        # Then
+        assert len(TRADING_CELLS) == 1, f"확정 칸이 하나가 아닙니다: {TRADING_CELLS}"
+        assert TRADING_CELLS[0].month == 9
+        assert TRADING_CELLS[0].bet_down is True
+
+    def test_측정표는_대상당_한_행이다(self, fixed_cell_outputs: StudyOutputs) -> None:
+        """
+        목적: `측정.csv` 가 **칸마다 한 행**임을 고정한다.
+
+        성적표의 `시기 = 전체` 행과 1:1 로 조인되려면 그래야 한다.
+
+        Given: 합성 ETF 하나를 확정 칸으로 돌린 산출물
+        When: 측정 표의 행 수를 센다
+        Then: 대상 1개 × 확정 칸 1개 = 1행이다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import TRADING_CELLS
+
+        # When
+        rows = len(fixed_cell_outputs.measure)
+
+        # Then
+        assert rows == len(TRADING_CELLS), f"측정 표가 칸당 한 행이 아닙니다: {rows}행"
+
+    def test_식별_컬럼이_성적표와_같은_이름으로_앞에_온다(self, fixed_cell_outputs: StudyOutputs) -> None:
+        """
+        목적: 측정 표와 성적표를 **같은 이름으로 조인**할 수 있게 한다.
+
+        이름이 갈리면(`대상` 대 `종목`) 두 표를 나란히 읽을 수 없다.
+
+        Given: 산출물
+        When: 표시용 측정 표의 앞 세 컬럼을 본다
+        Then: 종목 · 월 · 방향이다
+        """
+        # Given
+        from verify_lab.execution.constants import DISPLAY_DIRECTION, DISPLAY_TICKER
+        from verify_lab.studies.month_end.constants import DISPLAY_MONTH_NUMBER  # noqa: F401
+
+        # When
+        table = display_tables(fixed_cell_outputs)["measure"]
+
+        # Then
+        assert list(table.columns[:3]) == [DISPLAY_TICKER, DISPLAY_MONTH_NUMBER, DISPLAY_DIRECTION]
+
+    def test_값은_1배_롱_기준_그대로다(self, fixed_cell_outputs: StudyOutputs) -> None:
+        """
+        목적: 「아래」 칸이라고 **부호를 뒤집지 않음**을 고정한다.
+
+        뒤집으면 `기준선 오른 비율` 이 실제로는 내린 비율을 가리켜 **이름이 거짓이 된다.**
+        `방향` 은 표시일 뿐이고, 그래서 성적표의 평균과 이 표의 평균은 부호가 다를 수 있다.
+
+        Given: 아래로 거는 확정 칸의 산출물
+        When: 측정 표의 평균과 같은 칸을 1배 롱으로 직접 집계한 평균을 견준다
+        Then: 두 값이 같다 (뒤집히지 않았다)
+        """
+        # Given
+        from verify_lab.measure.statistics import (
+            COL_NEGATIVE_COUNT,
+            COL_NEGATIVE_MEAN,
+            COL_POSITIVE_COUNT,
+            COL_POSITIVE_MEAN,
+        )
+
+        row = fixed_cell_outputs.measure.iloc[0]
+
+        # When — 평균은 오른 쪽과 내린 쪽의 가중 합이다 (`내린 평균` 은 절대값이라 뺀다).
+        # **한쪽 건수가 0 이면 그쪽 평균은 `NaN` 이므로 그 항을 0 으로 둔다** —
+        # `measure` 계약이 「해당 건이 없으면 NaN 이며 0 이 아니다」로 정한 값이다
+        def weighted(mean_column: str, count_column: str) -> float:
+            count = int(row[count_column])
+
+            return 0.0 if count == 0 else float(row[mean_column]) * count
+
+        rebuilt = (
+            weighted(COL_POSITIVE_MEAN, COL_POSITIVE_COUNT) - weighted(COL_NEGATIVE_MEAN, COL_NEGATIVE_COUNT)
+        ) / int(row[COL_SAMPLE_COUNT])
+
+        # Then — 「아래」라고 평균만 뒤집으면 이 항등식이 깨진다
+        assert float(row[COL_MEAN]) == pytest.approx(rebuilt, abs=1e-9), "「아래」 칸에서 평균이 뒤집혔습니다"
+
+    def test_ETF는_배당락_세_컬럼이_채워진다(self, fixed_cell_outputs: StudyOutputs) -> None:
+        """
+        목적: 확정 전 필수 항목인 배당락이 산출물에 실림을 고정한다
+              (`.claude/rules/trading.md`).
+
+        Given: 수정주가 파일이 있는 ETF 의 산출물
+        When: 배당락 세 컬럼을 읽는다
+        Then: 대조 건수가 1건 이상이고 값이 비어 있지 않다
+        """
+        # Given
+        from verify_lab.measure.constants import (
+            COL_DIVIDEND_HIT_COUNT,
+            COL_DIVIDEND_MEAN_IMPACT,
+            COL_DIVIDEND_MEASURED,
+        )
+
+        row = fixed_cell_outputs.measure.iloc[0]
+
+        # When / Then
+        assert int(row[COL_DIVIDEND_MEASURED]) > 0, "수정주가가 있는데 대조 건수가 0입니다"
+        assert not pd.isna(row[COL_DIVIDEND_HIT_COUNT])
+        assert not pd.isna(row[COL_DIVIDEND_MEAN_IMPACT])
+
+    def test_지수는_배당락_세_컬럼이_비어_있다(self, index_dataset: Dataset) -> None:
+        """
+        목적: **지수는 상품이 아니라 분배금을 지급할 일이 없다.** 수정주가 파일도 없다.
+
+        0 으로 채우면 「안 걸림」과 「잴 수 없음」이 구별되지 않는다 —
+        그것이 `.claude/rules/trading.md` 가 경고한 바로 그 사고다.
+
+        Given: 지수 대상 (수정주가 파일이 없다)
+        When: 확정 칸으로 돌린다
+        Then: 예외 없이 돌고 배당락 세 컬럼이 비어 있다
+        """
+        # Given
+        from verify_lab.measure.constants import (
+            COL_DIVIDEND_HIT_COUNT,
+            COL_DIVIDEND_MEAN_IMPACT,
+            COL_DIVIDEND_MEASURED,
+        )
+
+        # When
+        outputs = run_study((index_dataset,), repeats=FAST_REPEATS, seed=FIXED_SEED)
+
+        # Then
+        row = outputs.measure.iloc[0]
+        assert pd.isna(row[COL_DIVIDEND_MEASURED]), "지수인데 배당락 대조 건수가 채워졌습니다"
+        assert pd.isna(row[COL_DIVIDEND_HIT_COUNT])
+        assert pd.isna(row[COL_DIVIDEND_MEAN_IMPACT])
+
+
+class TestMeasureOutputFiles:
+    """산출물은 «측정 한 장»뿐이다 — 체결 둘과 합쳐 셋이 된다"""
+
+    def test_출력_파일이_하나다(self) -> None:
+        """
+        목적: 측정 계층이 내는 파일이 `측정.csv` 하나임을 고정한다.
+
+        Given: 산출물 이름 사전
+        When: 값을 읽는다
+        Then: 측정 한 장이고 파일 이름이 공통 상수와 같다
+        """
+        # Given
+        from verify_lab.report.constants import MEASURE_FILENAME
+        from verify_lab.studies.month_end.constants import OUTPUT_FILES
+
+        # When / Then
+        assert OUTPUT_FILES == {"measure": MEASURE_FILENAME}, f"산출물이 하나가 아닙니다: {OUTPUT_FILES}"
+
+    def test_저장_표의_헤더가_전부_한글이다(self, fixed_cell_outputs: StudyOutputs) -> None:
+        """
+        목적: 영문 토큰이 사용자에게 나가지 않게 한다 (내부/출력 분리).
+
+        Given: 산출물
+        When: 표시용 표의 컬럼을 훑는다
+        Then: ASCII 로만 된 컬럼이 없다
+        """
+        # Given
+        tables = display_tables(fixed_cell_outputs)
+
+        # When / Then
+        for name, table in tables.items():
+            ascii_only = [column for column in table.columns if column.isascii()]
+            assert not ascii_only, f"{name} 표에 영문 헤더가 남아 있습니다: {ascii_only}"
+
+
+class TestDatasetInvariants:
+    """대상 정의의 불변조건 — 「집행 역할」이 체결 대상 목록을 정하므로 오타가 조용히 새면 안 된다
+
+    **집행 축 표를 없애면서 그 테스트 파일이 사라졌고, 이 불변조건들이 함께 사라질 뻔했다.**
+    `DATASETS_TRADING` 이 `execution_role` 문자열 비교로 유도되므로, 그 값이 한 글자만 달라도
+    **인버스가 성적표 대상에 조용히 들어온다** — 예외가 나지 않는다.
+    """
+
+    def test_집행_역할은_선언된_셋_중_하나다(self) -> None:
+        """
+        목적: 오타가 새 역할을 만들지 못하게 한다.
+
+        Given: 기본 대상 목록
+        When: 집행 역할을 모은다
+        Then: 선언된 셋 안에 있다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import DATASETS, EXECUTION_ROLES
+
+        # When
+        roles = {dataset.execution_role for dataset in DATASETS}
+
+        # Then
+        assert roles <= set(EXECUTION_ROLES), f"선언되지 않은 집행 역할입니다: {roles - set(EXECUTION_ROLES)}"
+
+    def test_지수는_집행할_수_없다(self) -> None:
+        """
+        목적: **살 수 없는 대상이 집행 상품으로 표시되지 않게** 한다 (측정의 원칙 9).
+
+        Given: 기본 대상 목록
+        When: 지수의 집행 역할을 본다
+        Then: 전부 「불가」다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import DATASETS, EXECUTION_ROLE_NONE
+
+        # When
+        roles = {dataset.execution_role for dataset in DATASETS if dataset.is_index}
+
+        # Then
+        assert roles == {EXECUTION_ROLE_NONE}, f"지수에 집행 역할이 붙어 있습니다: {roles}"
+
+    def test_시장마다_위와_아래_상품이_하나씩이다(self) -> None:
+        """
+        목적: 같은 방향의 집행 상품이 둘이면 **어느 것으로 잰 값인지 산출물만 봐서는 모른다.**
+
+        Given: 기본 대상 목록
+        When: 시장 × 집행 역할로 센다
+        Then: 「불가」가 아닌 칸이 시장마다 하나씩이다
+        """
+        # Given
+        from collections import Counter
+
+        from verify_lab.studies.month_end.constants import DATASETS, EXECUTION_ROLE_NONE
+
+        # When
+        counted = Counter(
+            (dataset.market, dataset.execution_role)
+            for dataset in DATASETS
+            if dataset.execution_role != EXECUTION_ROLE_NONE
+        )
+
+        # Then
+        duplicated = {key: count for key, count in counted.items() if count != 1}
+        assert not duplicated, f"같은 시장에 같은 역할의 상품이 둘 이상입니다: {duplicated}"
+
+    def test_전체_대상은_두_시장의_합이고_체결은_그_부분집합이다(self) -> None:
+        """
+        목적: 목록 셋이 갈라지지 않게 한다.
+
+        Given: 세 목록
+        When: 관계를 본다
+        Then: `DATASETS` 는 두 시장의 합이고 `DATASETS_TRADING` 은 그 진부분집합이다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import (
+            DATASETS,
+            DATASETS_KOSDAQ,
+            DATASETS_KOSPI,
+            DATASETS_TRADING,
+        )
+
+        # When / Then
+        assert DATASETS == DATASETS_KOSPI + DATASETS_KOSDAQ
+        assert set(DATASETS_TRADING) < set(DATASETS), "체결 기본값이 측정 기본값의 진부분집합이 아닙니다"
+
+    def test_모든_대상이_시장을_갖는다(self) -> None:
+        """
+        목적: **조용히 빈칸이 되는 사고를 막는다.**
+
+        시장이 조회표였을 때 `.get(label, "")` 가 빈 문자열을 내는데 바로 옆 줄은 같은 라벨로
+        `KeyError` 를 내 **가드 강도가 정반대**였다 (`src/verify_lab/CLAUDE.md` 출력 계약).
+
+        Given: 기본 대상 목록
+        When: 시장 값을 본다
+        Then: 빈 값이 없고 선언된 둘 중 하나다
+        """
+        # Given
+        from verify_lab.studies.month_end.constants import DATASETS, MARKET_KOSDAQ, MARKET_KOSPI
+
+        # When
+        markets = {dataset.market for dataset in DATASETS}
+
+        # Then
+        assert markets == {MARKET_KOSPI, MARKET_KOSDAQ}, f"시장 값이 어긋납니다: {markets}"

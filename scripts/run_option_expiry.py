@@ -43,6 +43,7 @@ from verify_lab.execution.constants import (
     stop_level_value,
 )
 from verify_lab.execution.run_summary import KEY_ROW_COUNTS, KEY_RULE, merge_run_summary
+from verify_lab.measure.constants import COL_DIVIDEND_HIT_COUNT
 from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP, SCREEN_CANDIDATE
 from verify_lab.measure.statistics import (
     COL_MEAN,
@@ -61,7 +62,6 @@ from verify_lab.report.constants import (
 from verify_lab.report.tables import print_dataframe, to_display_columns
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.option_expiry.constants import (
-    COL_DIVIDEND_HIT_COUNT,
     COL_EXPIRY_MONTH_NUMBER,
     COL_TICKER,
     DATASETS,

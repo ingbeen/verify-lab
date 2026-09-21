@@ -34,9 +34,13 @@ from verify_lab.common_constants import (
 from verify_lab.data.loader import load_market_csv
 from verify_lab.measure.constants import (
     COL_BASIS,
+    COL_DIVIDEND_HIT_COUNT,
+    COL_DIVIDEND_MEAN_IMPACT,
+    COL_DIVIDEND_MEASURED,
     COL_EXCLUDED_REASON,
     COL_HORIZON,
     COL_MEAN_RATE_CONFLICT,
+    DIVIDEND_IMPACT_DECIMALS,
     REASON_NONE,
 )
 from verify_lab.measure.distribution import dividend_impact
@@ -62,9 +66,6 @@ from verify_lab.report.run_summary import KEY_TRACK, dataset_record
 from verify_lab.studies.option_expiry.constants import (
     BASELINE_SUFFIX,
     COL_ADVANCED_DAYS,
-    COL_DIVIDEND_HIT_COUNT,
-    COL_DIVIDEND_MEAN_IMPACT,
-    COL_DIVIDEND_MEASURED,
     COL_EXIT_DATE,
     COL_EXPIRY_DATE,
     COL_EXPIRY_MONTH_NUMBER,
@@ -116,10 +117,6 @@ KEY_BASELINE_ENTRY_COUNT = "baseline_entry_count"
 
 # 어느 기준선과 견줬는지 밝히는 이름 (`docs/매매/옵션_만기일/설계.md` §3.7)
 BASELINE_WEEKLY = "같은 요일 주간 보유"
-
-# 배당락 왜곡의 표시 자릿수. **백분율 2자리로는 뭉개진다** — 실측 왜곡이 0.05%p 대라
-# 2자리면 걸린 칸과 안 걸린 칸이 똑같이 `0.0` 으로 나온다
-DIVIDEND_IMPACT_DECIMALS = 4
 
 
 @dataclass(frozen=True)
