@@ -57,6 +57,10 @@ poetry run python scripts/data/collect_yfinance.py --ticker DIA
 
 # 수정주가로 받기 (본검증에는 쓰지 않습니다. 대조·실측용)
 poetry run python scripts/data/collect_yfinance.py --adjusted
+
+# 지수 — 종가 하나짜리 계열로 storage/series/ 에 저장 (중간선거_사이클용)
+poetry run python scripts/data/collect_yfinance.py --index '^GSPC'
+poetry run python scripts/data/collect_yfinance.py --index '^IXIC'
 ```
 
 - 전 기간(`period="max"`)을 받아 `storage/market/<종목>_max.csv` 에 저장합니다. 기존 파일은 덮어씁니다
@@ -66,6 +70,12 @@ poetry run python scripts/data/collect_yfinance.py --adjusted
   원본가 파일을 덮어쓰지 않습니다 (`pykrx` 쪽과 같은 규칙)
 - **확정되지 않은 최근 며칠은 저장하지 않습니다.** 제외된 행 수는 실행 결과 표의 "최근 제외"에 표시됩니다
 - 이상치가 발견되면 **파일을 만들지 않고 예외로 중단**합니다. 반쪽짜리 파일이 남지 않습니다
+- 🔴 **`--index` 는 «종가만» 남기고 `storage/series/<이름>_index.csv` 에 저장합니다** (파일명에서 접두 `^` 를 뗍니다).
+  OHLCV 로 받지 않는 이유는 **미국 지수가 0 이 하나도 없어 시세 스키마 검증을 «그대로 통과하는데»
+  옛 구간의 고가·저가가 종가로 채워져 있기** 때문입니다 — `^GSPC` 는 34.5%, `^IXIC` 는 24.7% 가 그렇습니다.
+  그 상태로 장중 최악을 재면 「한 번도 안 밀렸다」로 읽히고 **예외도 경고도 나지 않습니다**
+  ([검증/중간선거_사이클/설계.md](검증/중간선거_사이클/설계.md) §3.2).
+  **심볼에 작은따옴표를 씌웁니다** — `^` 는 셸 메타문자입니다
 
 ### pykrx (국내 종목)
 
@@ -458,6 +468,43 @@ poetry run python scripts/run_expiry_monthend.py --repeats 2000 --seed 1
 - 선행 조건은 **ETF 네 파일**(SPY·DIA·069500·229200)과 **지수 두 파일**(1028·2203)입니다 —
   확정 칸은 그중 넷만 쓰지만 넓혀 돌리려면 여섯이 다 있어야 합니다
 - 결과와 확정 설계는 `docs/매매/만기_말일/결과.md` 와 `docs/매매/만기_말일/설계.md` 입니다
+
+---
+
+### 검증 — 중간선거_사이클 (10월 첫 거래일 매수 → 다음해 6월 마지막 거래일 매도, 위)
+
+**측정과 체결을 한 번에 돕니다.** 산출물은 `storage/results/검증/중간선거_사이클/` 에
+`측정.csv`·`거래내역.csv`·`성적표.csv`·`summary.json` 넷으로 나옵니다.
+
+```bash
+# 기본 실행 — 대상 다섯 × 사이클 위치 넷 × 손절선 격자 (방향은 「위」 하나)
+poetry run python scripts/run_midterm_cycle.py
+
+# 대상을 좁혀서 (여러 번 줄 수 있습니다. 전체는 SPY·DIA·QQQ·GSPC·IXIC)
+poetry run python scripts/run_midterm_cycle.py --ticker SPY --ticker GSPC
+
+# 무작위 뽑기 대조의 반복 수·시드 (기본값 1000 / 0)
+poetry run python scripts/run_midterm_cycle.py --repeats 5000 --seed 42
+```
+
+- **규칙은 하나이고 진입·청산 격자가 없습니다** — 10월 첫 거래일 종가 매수 → 다음해 6월
+  마지막 거래일 종가 매도. **휴장 처리 방향이 반대입니다** (진입은 미룸, 청산은 앞당김)
+- **축은 「사이클 위치」 넷입니다** — 중간선거해·대선전해·대선해·대선다음해.
+  같은 창을 네 자리에서 재야 **「Best Six Months(11~4월)라 좋았다」와 「중간선거 뒤라 좋았다」가
+  갈립니다.** 이 축은 좁힐 수 없습니다(좁히면 그 분리가 사라집니다)
+- 🔴 **살 수 있는 대상의 중간선거 칸이 6~8건이라 칸당 하한(10)에 미달합니다.**
+  `판정가능` 이 전 구간 「아니오」이고 우연확률도 붙지 않습니다 — **결론의 일부이지 버그가 아닙니다**
+- 🔴 **1차 판정에 변별력이 없습니다.** 게이트가 회당 +1% 인데 9개월 보유 평균이 15~29% 라
+  **판정한 108칸 중 101칸이 후보**가 됩니다. 며칠짜리 이벤트형에 맞춰진 기준이라 그대로 읽으면 안 됩니다
+- **방향은 「위」 하나입니다.** 두 방향을 함께 내면 `측정.csv` 와의 1:1 조인이 깨지고
+  같은 칸이 위·아래 둘 다 후보가 되는 표가 나옵니다 — 반대 방향은 `측정.csv` 의
+  **오른 비율·내린 비율**(1배 롱 기준)로 되짚습니다
+- **지수 둘은 판정하지 않습니다**(살 수 없음). 긴 축을 보려고 함께 재며 `손절불가` 한 줄만 나옵니다
+- 선행 조건은 **ETF 세 파일**(SPY·DIA·QQQ)과 각각의 `_adjusted_max.csv`(배당락 측정용),
+  그리고 **지수 두 파일**(`storage/series/GSPC_index.csv`·`IXIC_index.csv`)입니다 —
+  지수는 위 yfinance 절의 `--index` 로 받습니다
+- 결과와 확정 설계는 `docs/검증/중간선거_사이클/결과.md` 와 `docs/검증/중간선거_사이클/설계.md`,
+  아직 확정 전인 규칙은 `docs/검증/중간선거_사이클/규칙.md` 입니다
 
 ---
 

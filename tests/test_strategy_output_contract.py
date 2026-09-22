@@ -95,6 +95,9 @@ from verify_lab.studies.expiry_monthend.trading import (
     TradingOutputs as ExpiryMonthEndOutputs,
 )
 from verify_lab.studies.expiry_monthend.trading import run_expiry_monthend_trading
+from verify_lab.studies.midterm_cycle.constants import Dataset as MidtermCycleDataset
+from verify_lab.studies.midterm_cycle.trading import TradingOutputs as MidtermCycleOutputs
+from verify_lab.studies.midterm_cycle.trading import run_midterm_cycle_trading
 from verify_lab.studies.reverse.constants import DATASETS as REVERSE_DATASETS
 from verify_lab.studies.reverse.constants import (
     DISPLAY_DIRECTION_REVERSE_ALL,
@@ -167,6 +170,10 @@ AXIS_REVERSE = ("파라미터", "시작연도")
 AXIS_OPTION_EXPIRY = ("만기월",)
 AXIS_MONTH_END = ("월",)
 AXIS_EXPIRY_MONTHEND = ("조합", "월")
+# 중간선거_사이클 — 성적표는 사이클 위치 하나, **거래내역은 진입 연도가 더 붙는다**
+# (신호가 4년에 한 번이라 어느 사이클의 체결인지 날짜만으로는 바로 읽히지 않는다)
+AXIS_MIDTERM_CYCLE = ("사이클 위치",)
+AXIS_MIDTERM_CYCLE_TRADES = ("사이클 위치", "진입 연도")
 
 # 합성 지수 대상의 표시 이름. **살 수 없어 판정하지 않는 행**을 고르는 데 쓴다
 INDEX_LABEL = "합성 지수"
@@ -377,6 +384,47 @@ def expiry_monthend_outputs(tmp_path_factory: pytest.TempPathFactory) -> ExpiryM
     return run_expiry_monthend_trading((etf, index), combos=EXPIRY_MONTHEND_COMBOS, months=months)
 
 
+@pytest.fixture(scope="module")
+def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCycleOutputs:
+    """합성 시세와 합성 지수로 돈 중간선거_사이클 결과.
+
+    **세 번째 체결 모듈이다.** 이 파일이 셋을 검사한다고 `src/verify_lab/CLAUDE.md` 가
+    적어 두었는데 새 매매법을 넣고 여기 픽스처를 안 만들면 **그 문장이 거짓이 되고,
+    성적표·거래내역의 컬럼이 비어 나가도 통과한다** — 이 파일 자신이 적어 둔 실패 방식이다.
+
+    **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
+
+    합성 시세가 2016-01 ~ 2025-12 라 10월 진입이 2016 ~ 2024 로 아홉 번 생기고
+    **사이클 네 자리에 모두 표본이 들어간다.**
+    """
+    directory = tmp_path_factory.mktemp("midterm_cycle")
+    _write_market(directory, "SYN")
+    _write_index(directory, "SYNIDX")
+
+    etf = MidtermCycleDataset(
+        ticker="SYN",
+        label="합성 ETF",
+        symbol="SYN",
+        directory=directory,
+        file_template=MARKET_FILE_TEMPLATE,
+        price_column=COL_CLOSE,
+        price_decimals=PRICE_DECIMALS_KRW,
+        is_index=False,
+    )
+    index = MidtermCycleDataset(
+        ticker="SYNIDX",
+        label=INDEX_LABEL,
+        symbol="^SYNIDX",
+        directory=directory,
+        file_template=INDEX_FILE_TEMPLATE,
+        price_column=COL_VALUE,
+        price_decimals=PRICE_DECIMALS,
+        is_index=True,
+    )
+
+    return run_midterm_cycle_trading((etf, index))
+
+
 def _expected_summary(axis: tuple[str, ...], tail: tuple[str, ...] = ()) -> list[str]:
     """그 매매법의 성적표 기대 컬럼을 만든다.
 
@@ -431,10 +479,22 @@ class TestSummaryColumns:
         # Given / When / Then
         assert list(expiry_monthend_outputs.performance.columns) == _expected_summary(AXIS_EXPIRY_MONTHEND)
 
-    def test_두_성적표의_공통_부분이_완전히_같다(
+    def test_중간선거_사이클_성적표가_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
+        """
+        목적: 세 번째 매매법도 같은 순서를 쓰는지 고정한다
+
+        Given: 합성 시세로 돈 중간선거_사이클 성적표
+        When: 컬럼 목록을 봤을 때
+        Then: 종목 · 사이클 위치 다음에 공통 컬럼이 그 순서로 온다
+        """
+        # Given / When / Then
+        assert list(midterm_cycle_outputs.performance.columns) == _expected_summary(AXIS_MIDTERM_CYCLE)
+
+    def test_세_성적표의_공통_부분이_완전히_같다(
         self,
         reverse_outputs: StrategyOutputs,
         expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
         목적: 매매법 축과 고유 컬럼을 뺀 나머지가 한 벌임을 고정한다
@@ -444,21 +504,25 @@ class TestSummaryColumns:
         **같은 표를 두 이름으로 두 번 세지 않는다** — 이름만 늘리면 검사는 그대로인데
         「넷을 봤다」로 읽힌다.
 
-        Given: 두 매매법의 성적표
+        Given: 세 매매법의 성적표
         When: 매매법 축과 고유 컬럼을 뺀 컬럼 목록을 비교했을 때
-        Then: 둘이 같고 공통 컬럼 목록과도 같다
+        Then: 셋이 같고 공통 컬럼 목록과도 같다
         """
         # Given
-        axes = {*AXIS_REVERSE, *AXIS_EXPIRY_MONTHEND, "종목", *TAIL_REVERSE_SUMMARY}
+        axes = {*AXIS_REVERSE, *AXIS_EXPIRY_MONTHEND, *AXIS_MIDTERM_CYCLE, "종목", *TAIL_REVERSE_SUMMARY}
 
         # When
         common = [
             [column for column in table.columns if column not in axes]
-            for table in (reverse_outputs.performance, expiry_monthend_outputs.performance)
+            for table in (
+                reverse_outputs.performance,
+                expiry_monthend_outputs.performance,
+                midterm_cycle_outputs.performance,
+            )
         ]
 
         # Then
-        assert common[0] == common[1] == list(SUMMARY_COMMON_COLUMNS)
+        assert common[0] == common[1] == common[2] == list(SUMMARY_COMMON_COLUMNS)
 
 
 class TestTradeColumns:
@@ -487,6 +551,17 @@ class TestTradeColumns:
         """
         # Given / When / Then
         assert list(expiry_monthend_outputs.trades.columns) == _expected_trades(AXIS_EXPIRY_MONTHEND)
+
+    def test_중간선거_사이클_거래내역이_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
+        """
+        목적: 세 번째 매매법의 거래내역 컬럼과 «순서»를 고정한다
+
+        Given: 합성 시세로 돈 중간선거_사이클 거래내역
+        When: 컬럼 목록을 봤을 때
+        Then: 종목 · 사이클 위치 · 진입 연도 다음에 공통 컬럼이 그 순서로 온다
+        """
+        # Given / When / Then
+        assert list(midterm_cycle_outputs.trades.columns) == _expected_trades(AXIS_MIDTERM_CYCLE_TRADES)
 
 
 class TestStopLevelFormat:
@@ -1163,7 +1238,7 @@ class TestWorstHoldColumn:
 
     @pytest.mark.parametrize(
         "fixture_name",
-        ["reverse_outputs", "expiry_monthend_outputs", "expiry_monthend_outputs", "expiry_monthend_outputs"],
+        ["reverse_outputs", "expiry_monthend_outputs", "midterm_cycle_outputs"],
     )
     def test_보유_중_최악이_결과_최악보다_나쁘거나_같다(self, fixture_name: str, request: pytest.FixtureRequest) -> None:
         """
@@ -1269,12 +1344,13 @@ class TestRunSummary:
         self,
         reverse_outputs: StrategyOutputs,
         expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> dict[str, dict[str, object]]:
         """세 매매법의 실행 요약."""
         return {
             "역방향": reverse_outputs.summary,
-            "옵션 만기일": expiry_monthend_outputs.summary,
-            "월말": expiry_monthend_outputs.summary,
+            "만기_말일": expiry_monthend_outputs.summary,
+            "중간선거_사이클": midterm_cycle_outputs.summary,
         }
 
     def test_세_요약이_같은_최상위_키를_갖는다(self, summaries: dict[str, dict[str, object]]) -> None:

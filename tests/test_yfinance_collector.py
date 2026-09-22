@@ -22,13 +22,15 @@ from verify_lab.common_constants import (
     COL_HIGH,
     COL_LOW,
     COL_OPEN,
+    COL_VALUE,
     COL_VOLUME,
     PRICE_DECIMALS,
     REQUIRED_COLUMNS,
+    SERIES_REQUIRED_COLUMNS,
 )
 from verify_lab.data import yfinance_collector
-from verify_lab.data.loader import load_market_csv
-from verify_lab.data.yfinance_collector import collect_yfinance_history
+from verify_lab.data.loader import load_market_csv, load_series_csv
+from verify_lab.data.yfinance_collector import collect_yfinance_history, collect_yfinance_index
 
 # 테스트에서 오늘로 고정하는 날짜. 최근 제외 기준일은 이 날짜에서 계산된다
 FROZEN_TODAY = "2026-08-11"
@@ -580,3 +582,175 @@ def test_high_low_columns_are_preserved(
     saved = pd.read_csv(result.path)
     assert saved[COL_HIGH].tolist() == saved[COL_CLOSE].tolist()
     assert saved[COL_LOW].tolist() == saved[COL_OPEN].tolist()
+
+
+# ============================================================
+# 지수 — 종가 하나짜리 계열로 저장한다
+# ============================================================
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_is_saved_as_close_only_series(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
+) -> None:
+    """
+    목적: 지수의 저장 스키마를 고정한다.
+
+    OHLCV 로 받으면 옛 구간의 고가·저가가 종가로 채워져 있어도 검증을 통과하고,
+    그 상태로 「보유 중 최악」을 재면 장중 낙폭이 통째로 사라진다 (예외도 경고도 없다).
+
+    Given: OHLCV 를 돌려주는 스텁
+    When: 지수를 수집한다
+    Then: 날짜와 값 두 컬럼만 저장된다
+    """
+    # Given
+    _stub_yfinance(monkeypatch, _history_frame(old_rows))
+
+    # When
+    result = collect_yfinance_index("^GSPC", output_dir=tmp_path)
+
+    # Then
+    saved = pd.read_csv(result.path)
+    assert list(saved.columns) == SERIES_REQUIRED_COLUMNS
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_file_name_drops_caret_prefix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
+) -> None:
+    """
+    목적: 파일명 규칙을 고정한다.
+
+    `^` 는 셸에서 이스케이프가 필요해 grep·ls 양쪽에서 성가시다.
+
+    Given: 접두가 붙은 심볼
+    When: 수집한다
+    Then: 파일명에서는 접두가 빠지고, 조회에는 접두가 붙은 심볼을 그대로 쓴다
+    """
+    # Given
+    recorded = _stub_yfinance(monkeypatch, _history_frame(old_rows))
+
+    # When
+    result = collect_yfinance_index(" ^gspc ", output_dir=tmp_path)
+
+    # Then
+    assert recorded["symbol"] == "^GSPC"
+    assert result.symbol == "^GSPC"
+    assert result.ticker == "GSPC"
+    assert result.path == tmp_path / "GSPC_index.csv"
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_value_column_holds_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
+) -> None:
+    """
+    목적: 값 컬럼에 «종가»가 들어감을 고정한다.
+
+    Given: 종가가 100·101·102 인 응답
+    When: 수집한다
+    Then: 저장된 값이 그대로다
+    """
+    # Given
+    _stub_yfinance(monkeypatch, _history_frame(old_rows))
+
+    # When
+    result = collect_yfinance_index("^GSPC", output_dir=tmp_path)
+
+    # Then
+    saved = load_series_csv(result.path)
+    assert saved[COL_VALUE].tolist() == [close for _, close in old_rows]
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_call_pins_result_affecting_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
+) -> None:
+    """
+    목적: 결과를 좌우하는 인자를 기본값에 맡기지 않음을 고정한다.
+
+    yfinance 는 웹 API 래퍼라 기본값이 버전 사이에 조용히 바뀐다.
+
+    Given: 호출 인자를 기록하는 스텁
+    When: 지수를 수집한다
+    Then: 전 기간·원본가·예외 전파가 명시돼 있다
+    """
+    # Given
+    recorded = _stub_yfinance(monkeypatch, _history_frame(old_rows))
+
+    # When
+    collect_yfinance_index("^GSPC", output_dir=tmp_path)
+
+    # Then
+    assert recorded["kwargs"] == {"period": "max", "auto_adjust": False, "raise_errors": True}
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_excludes_unconfirmed_recent_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, old_rows: list[tuple[str, float]]
+) -> None:
+    """
+    목적: 최근 미확정 구간 제외가 ETF 와 같은 기준임을 고정한다.
+
+    Given: 오늘과 어제가 섞인 응답
+    When: 수집한다
+    Then: 제외 건수가 반환되고 저장 행에서 빠진다
+    """
+    # Given
+    rows = [*old_rows, (FROZEN_TODAY, 200.0), ("2026-08-10", 199.0)]
+    _stub_yfinance(monkeypatch, _history_frame(rows))
+
+    # When
+    result = collect_yfinance_index("^GSPC", output_dir=tmp_path)
+
+    # Then
+    assert result.excluded_recent_count == 2
+    assert result.row_count == len(old_rows)
+    assert result.end_date == date.fromisoformat(OLD_DATES[-1])
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_empty_response_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    목적: 빈 파일을 남기지 않음을 고정한다.
+
+    Given: 빈 응답
+    When: 수집한다
+    Then: ValueError 가 나고 파일이 만들어지지 않는다
+    """
+    # Given
+    _stub_yfinance(monkeypatch, pd.DataFrame())
+
+    # When / Then
+    with pytest.raises(ValueError, match="비어 있습니다"):
+        collect_yfinance_index("^GSPC", output_dir=tmp_path)
+
+    assert not (tmp_path / "GSPC_index.csv").exists()
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_symbol_must_not_be_empty(tmp_path: Path) -> None:
+    """
+    목적: 입력 검증을 고정한다.
+
+    Given: 공백뿐인 심볼
+    When: 수집한다
+    Then: ValueError 가 난다
+    """
+    # Given / When / Then
+    with pytest.raises(ValueError, match="비어 있습니다"):
+        collect_yfinance_index("   ", output_dir=tmp_path)
+
+
+@freeze_time(FROZEN_TODAY)
+def test_index_symbol_of_only_prefix_raises(tmp_path: Path) -> None:
+    """
+    목적: 경계 조건 — 접두를 뗀 뒤 빈 파일명이 되는 것을 막는다.
+
+    Given: 접두뿐인 심볼
+    When: 수집한다
+    Then: ValueError 가 난다
+    """
+    # Given / When / Then
+    with pytest.raises(ValueError, match="남는 이름이 없습니다"):
+        collect_yfinance_index("^", output_dir=tmp_path)

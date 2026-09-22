@@ -28,15 +28,19 @@ import yfinance as yf
 
 from verify_lab.common_constants import (
     ADJUSTED_FILE_TEMPLATE,
+    COL_CLOSE,
     COL_DATE,
+    COL_VALUE,
+    INDEX_FILE_TEMPLATE,
     KST,
     MARKET_DIR,
     MARKET_FILE_TEMPLATE,
     PRICE_COLUMNS,
     PRICE_DECIMALS,
     REQUIRED_COLUMNS,
+    SERIES_DIR,
 )
-from verify_lab.data.loader import validate_market_data
+from verify_lab.data.loader import validate_market_data, validate_series_data
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -47,6 +51,10 @@ logger = get_logger(__name__)
 # **국내(`data/constants.DOMESTIC_RECENT_EXCLUSION_DAYS`)보다 하루 많다** — 그 하루가 시차다.
 # 여기 두는 것은 미국 수집기가 이 파일뿐이라서다 (`src/verify_lab/CLAUDE.md` 「상수 관리」)
 RECENT_EXCLUSION_DAYS = 2
+
+# yfinance 가 지수 심볼에 붙이는 접두 (`^GSPC`). **파일명에서는 뗀다** — 셸에서 이스케이프가
+# 필요해 `grep`·`ls` 양쪽에서 성가시고, 원래 심볼은 `summary.json` 의 `datasets.ticker` 가 갖는다
+INDEX_SYMBOL_PREFIX = "^"
 
 
 @dataclass(frozen=True)
@@ -153,4 +161,121 @@ def collect_yfinance_history(
         end_date=end_date,
         excluded_recent_count=excluded_recent_count,
         adjusted=adjusted,
+    )
+
+
+@dataclass(frozen=True)
+class IndexCollectionResult:
+    """지수 수집 결과 요약.
+
+    Attributes:
+        symbol: 조회한 yfinance 심볼 (`^GSPC`). 차트와 대조할 때 필요하다
+        ticker: 파일명에 쓴 이름 (`GSPC`). 접두 `^` 를 뗀 값이다
+        path: 저장된 CSV 경로
+        row_count: 저장된 행 수
+        start_date: 저장 구간의 첫 거래일
+        end_date: 저장 구간의 마지막 거래일
+        excluded_recent_count: 최근 구간 제외로 빠진 행 수
+    """
+
+    symbol: str
+    ticker: str
+    path: Path
+    row_count: int
+    start_date: date
+    end_date: date
+    excluded_recent_count: int
+
+
+def collect_yfinance_index(symbol: str, output_dir: Path = SERIES_DIR) -> IndexCollectionResult:
+    """미국 지수를 **종가 하나짜리 계열**로 받아 `storage/series/` 에 저장한다.
+
+    국내 지수의 `pykrx_collector.collect_pykrx_index` 와 **같은 계약**이다 — 종가만 남기고,
+    `validate_series_data` 를 통과한 뒤에만 저장하며, 최근 미확정 구간의 제외 건수를
+    함께 돌려준다. 계층 계약은 `src/verify_lab/CLAUDE.md` 「단일 값 시계열 계층 계약」이 SoT다.
+
+    [중요] **OHLCV 로 받지 않는다. 그리고 이유가 국내 지수와 «다르다».**
+    국내 지수는 소급 산출 구간의 시가·고가·저가가 **0** 이라 시세 스키마 검증에 걸려
+    **예외로 드러난다.** 미국 지수는 반대다 — 0 이 하나도 없어 검증을 **그대로 통과하는데**
+    옛 구간의 고가·저가가 **종가로 채워져** 있다. `[실측] 2026-09-22` `^GSPC` 는 24,797행 중
+    **8,547행(34.5%)이 고가 == 저가**이고 장중폭이 실제로 있는 첫 날이 **1962-01-02**,
+    `^IXIC` 는 14,023행 중 **3,459행(24.7%)** 이고 첫 날이 **1984-10-11** 이다.
+
+    그 상태로 OHLCV 를 받으면 **`보유 중 최악` 이 「장중에 한 번도 안 밀렸다」로 읽히는데
+    예외도 경고도 나지 않는다.** 종가로 받으면 그 사실이 `손절선(%)` 의 「손절불가」 표기로
+    표에 드러난다 — **값을 지우는 것이 아니라 어떻게 잰 값인지 밝히는 것**이다.
+
+    Args:
+        symbol: yfinance 지수 심볼 (`^GSPC`. 대소문자·앞뒤 공백 무관)
+        output_dir: 저장 디렉터리. 기본값은 단일 값 시계열 폴더
+
+    Returns:
+        저장 결과 요약
+
+    Raises:
+        ValueError: 심볼이 비었거나 접두를 뗀 뒤 남는 이름이 없는 경우, 조회 결과가 비었거나,
+            종가 컬럼이 없거나, 최근 구간 제외 후 남는 행이 없거나, 결측이 발견된 경우
+    """
+    normalized = symbol.strip().upper()
+    if not normalized:
+        raise ValueError("지수 심볼이 비어 있습니다")
+
+    ticker = normalized.lstrip(INDEX_SYMBOL_PREFIX)
+    if not ticker:
+        raise ValueError(f"접두 {INDEX_SYMBOL_PREFIX!r} 를 뗀 뒤 남는 이름이 없습니다: {normalized}")
+
+    # 1. 전 기간 조회. 결과를 좌우하는 인자는 기본값에 맡기지 않는다 (모듈 docstring 참고).
+    #    **지수는 분배금이 없어 `auto_adjust` 가 값을 바꾸지 않지만 그래도 명시한다** —
+    #    라이브러리가 기본값을 바꿔도 이 호출의 뜻이 흔들리지 않아야 한다
+    raw = yf.Ticker(normalized).history(period="max", auto_adjust=False, raise_errors=True)
+
+    if raw.empty:
+        raise ValueError(f"수집 결과가 비어 있습니다 - 지수: {normalized}")
+
+    df = raw.reset_index()
+
+    if COL_CLOSE not in df.columns:
+        raise ValueError(f"응답에 종가 컬럼이 없습니다 (반환 컬럼: {list(df.columns)}, 지수: {normalized})")
+
+    # 2. 종가만 꺼내 단일 값 스키마로 정규화한다. 거래소 타임존을 떼고 날짜만 남긴다
+    df[COL_DATE] = pd.to_datetime(df[COL_DATE]).dt.date
+    df = df.rename(columns={COL_CLOSE: COL_VALUE})[[COL_DATE, COL_VALUE]]
+
+    # 3. 확정되지 않은 최근 구간을 제외한다. **ETF 와 같은 기준을 쓴다** — 같은 시장이라
+    #    시차도 같고, 수집기마다 경계가 갈리면 두 파일의 마지막 날이 어긋난다
+    cutoff_date = datetime.now(KST).date() - timedelta(days=RECENT_EXCLUSION_DAYS)
+    total_count = len(df)
+    df = df.loc[df[COL_DATE] <= cutoff_date].reset_index(drop=True)
+    excluded_recent_count = total_count - len(df)
+
+    if df.empty:
+        raise ValueError(f"최근 {RECENT_EXCLUSION_DAYS}일 제외 후 남는 데이터가 없습니다 - 지수: {normalized}")
+
+    # 4. 저장 직전 반올림. **정수화하지 않는다** — 지수는 소수 둘째 자리까지 있는 계산된 값이라
+    #    정수로 반올림하면 그만큼이 사라진다 (국내 지수 수집기와 같은 이유)
+    df[COL_VALUE] = df[COL_VALUE].astype(float).round(PRICE_DECIMALS)
+
+    # 5. 검증. 로더와 같은 함수를 써서 판정이 갈라지지 않게 한다
+    validate_series_data(df)
+
+    # 6. 저장. 검증을 통과한 뒤에만 실행한다
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / INDEX_FILE_TEMPLATE.format(ticker=ticker)
+    df.to_csv(path, index=False)
+
+    start_date = df[COL_DATE].iloc[0]
+    end_date = df[COL_DATE].iloc[-1]
+
+    logger.debug(f"지수 수집 완료: {normalized}, {len(df):,}행, 기간 {start_date} ~ {end_date}, 저장 위치 {path}")
+    if excluded_recent_count > 0:
+        logger.debug(f"최근 {RECENT_EXCLUSION_DAYS}일 데이터 {excluded_recent_count}행을 제외했습니다")
+
+    return IndexCollectionResult(
+        symbol=normalized,
+        ticker=ticker,
+        path=path,
+        row_count=len(df),
+        start_date=start_date,
+        end_date=end_date,
+        excluded_recent_count=excluded_recent_count,
     )

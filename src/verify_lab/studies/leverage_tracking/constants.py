@@ -212,7 +212,6 @@ DISPLAY_REALIZED_MULTIPLE: Final = "실현 배수"
 DISPLAY_REALIZED_MULTIPLE_COUNT: Final = "실현 배수 표본"
 
 # 롤링 전수는 이웃끼리 겹치므로 표본 수만 적으면 실제보다 단단해 보인다
-DISPLAY_NON_OVERLAPPING: Final = "비중첩 표본"
 
 DISPLAY_AXIS: Final = "축"
 DISPLAY_AXIS_VALUE: Final = "구분"

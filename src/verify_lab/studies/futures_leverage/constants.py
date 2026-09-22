@@ -24,6 +24,7 @@ from verify_lab.report.constants import (
     DISPLAY_EXCLUDED_REASON,
     DISPLAY_HORIZON,
     DISPLAY_JUDGEABLE,
+    DISPLAY_NON_OVERLAPPING,
     DISPLAY_SAMPLE_COUNT,
 )
 
@@ -266,7 +267,6 @@ DISPLAY_START_DATE: Final = "시작일"
 DISPLAY_END_DATE: Final = "종료일"
 
 # 롤링 전수는 이웃끼리 겹치므로 표본 수만 적으면 실제보다 단단해 보인다
-DISPLAY_NON_OVERLAPPING: Final = "비중첩 표본"
 
 # ============================================================
 # 산출물 파일명

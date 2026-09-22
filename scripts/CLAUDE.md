@@ -37,7 +37,7 @@
 
 | 타입 | 기록하는 스크립트 | 내용 |
 | --- | --- | --- |
-| `yfinance_collect` | `data/collect_yfinance.py` | 수집한 종목, 가격 기준, 저장 경로, 행 수, 기간, 최근 제외 건수 |
+| `yfinance_collect` | `data/collect_yfinance.py` | 수집한 종목, 가격 기준, 저장 경로, 행 수, 기간, 최근 제외 건수. **지수(`--index`)는 `symbol`(`^GSPC`)과 `ticker`(`GSPC`)를 따로 남기고 `kind` 가 「종가 계열」이다** — 파일명에서 접두 `^` 를 떼므로 둘이 다르다 |
 | `pykrx_etf_probe` | `data/check_pykrx_etf.py` | 실측한 종목·기간, 원자료 저장 폴더, 함수별 반환 행 수 |
 | `pykrx_splice_probe` | `data/check_pykrx_splice.py` | 실측한 종목·시작일·분할 종료일, 원자료 저장 폴더, 세그먼트별 행 수, 겹침 불일치 건수, 덮지 못한 거래일 수 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
@@ -50,6 +50,7 @@
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `usdkrw_equivalence` | `run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
 | `reverse` | `run_reverse.py` | 결과 폴더, 대상 시세 목록과 **체결 대상(종목 × 순위 컷)**, 신호군 수와 **신호 0건이라 빠진 신호군 수**, **손절선 격자·보유 한도**, 산출물 행 수, 순열 검정 반복 수·시드 |
+| `midterm_cycle` | `run_midterm_cycle.py` | 결과 폴더, 대상 종목, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. **기본은 전부**(대상 다섯 × 사이클 위치 넷 × 손절선 격자. 방향은 「위」 하나)이고 `--ticker` 로 좁힌다 — **사이클 위치 축은 좁힐 수 없다**(좁히면 달력 효과와 선거 효과의 분리가 사라진다). `summary.json` 에는 대상별 **진입·제외 건수**와 지수의 **원 심볼**(`^GSPC`)도 남는다 |
 | `expiry_monthend` | `run_expiry_monthend.py` | 결과 폴더, 대상 종목, **돌린 조합**과 **재는 달**과 **방향**, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. **기본은 확정 칸 넷**(9월 · c2 · 아래 · SPY·DIA·KODEX 코스닥150·코스닥150 지수)이고 `--ticker`·`--combo`·`--month` 로 넓힌다. `summary.json` 에는 대상별 **진입·제외 건수**도 남는다. **측정과 체결이 같은 조합·달 목록을 쓰므로 `combos`·`months` 가 양쪽 요약에 같은 모양으로 실린다** |
 
 > **옵션 만기일·월말 진입의 두 타입과 그 전용 프로브 셋(`expiry_dividend_probe` ·

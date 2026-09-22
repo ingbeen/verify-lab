@@ -1306,13 +1306,13 @@ class TestExecutionLayerComposition:
 
         Given: `studies/` 폴더
         When: 실행 모듈이 든 패키지 이름을 본다
-        Then: 확정 이름표의 네 매매법이 각각 하나씩 있다
+        Then: 성적표를 내는 매매법이 각각 하나씩 있다
         """
         # When
         slugs = {path.parent.name for path in _trading_modules()}
 
         # Then
-        assert slugs == {"reverse", "expiry_monthend"}
+        assert slugs == {"reverse", "expiry_monthend", "midterm_cycle"}
 
     def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
         """
@@ -1751,7 +1751,8 @@ class TestKrxCommonOwnership:
 #
 # 성격은 셋이다.
 #   ㉮ 달력형 두 검증이 공유하는 어휘 — `진입 종가` · `청산 종가` · `보유 거래일` · `제외 사유`
-#   ㉯ 배수형 두 검증이 공유하는 어휘 — `배수` · `지수` · `1배 종목` · `비중첩 표본` · `시작일` · `종료일`
+#   ㉯ 배수형 두 검증이 공유하는 어휘 — `배수` · `지수` · `1배 종목` · `시작일` · `종료일`
+#     (`비중첩 표본` 은 2026-09-22 에 세 번째 검증이 오면서 `report/constants.py` 로 올라가 빠졌다)
 #   ㉰ 같은 매매법의 «검증과 매매»가 같은 말을 쓰는 것 — `사건` · `파라미터` · `만기월` · `청산일`
 #
 # **여기 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다**(부분집합 검사) —
@@ -1779,9 +1780,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
     "배수": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
-    "비중첩 표본": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
     "사건": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),

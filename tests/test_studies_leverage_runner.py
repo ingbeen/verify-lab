@@ -12,7 +12,13 @@ import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
 from verify_lab.measure.constants import COL_EXCLUDED_COUNT, COL_HORIZON, COL_JUDGEABLE, JUDGEABLE_YES
-from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT, HORIZON_LABELS
+from verify_lab.report.constants import (
+    DISPLAY_HORIZON,
+    DISPLAY_JUDGEABLE,
+    DISPLAY_NON_OVERLAPPING,
+    DISPLAY_SAMPLE_COUNT,
+    HORIZON_LABELS,
+)
 from verify_lab.studies.leverage_tracking import runner
 from verify_lab.studies.leverage_tracking.constants import (
     COL_NON_OVERLAPPING_COUNT,
@@ -22,7 +28,6 @@ from verify_lab.studies.leverage_tracking.constants import (
     DISPLAY_DIVIDEND_ADJUSTMENT,
     DISPLAY_INDEX_NAME,
     DISPLAY_MULTIPLE,
-    DISPLAY_NON_OVERLAPPING,
     DISPLAY_PRODUCT_TYPE,
     DISPLAY_TARGET_TICKER,
     DISTRIBUTION_MEASURED_NO,
