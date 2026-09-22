@@ -1,21 +1,21 @@
 """중간선거_사이클 — 달력 진입·청산과 사이클 위치 라벨링
 
-**이 매매법은 정의 자체가 달력이다.** 진입은 10월 첫 거래일, 청산은 다음해 6월 마지막
+**이 매매법은 정의 자체가 달력이다.** 진입은 9월 마지막 거래일, 청산은 다음해 6월 마지막
 거래일이고 둘 다 시세와 무관하게 정해진다. 그래서 여기가 틀리면 **모든 숫자가 조용히 틀린다.**
 
-[중요] **두 규칙의 휴장 처리 방향이 «반대»다.**
+[중요] **두 규칙의 휴장 처리 방향이 같다 — 둘 다 «앞당김»이다.**
 
 | | 목표일이 휴장이면 |
 | --- | --- |
-| 진입 (10월 첫 거래일) | **미룬다** — 10월 1일 이후 첫 거래일 |
+| 진입 (9월 마지막 거래일) | **앞당긴다** — 9월 30일 이전 마지막 거래일 |
 | 청산 (6월 마지막 거래일) | **앞당긴다** — 6월 30일 이전 마지막 거래일 |
 
-`measure/calendar_entry.month_entry_dates` 는 **앞당김**이라 진입에 쓸 수 없다 —
-`calendar_day=1` 로 부르면 10월 1일이 휴장인 해가 전부 「진입일 없음」이 된다.
-그래서 이 매매법이 자기 달력을 갖는다.
+**대신 끝이 잘린 달을 빼는 쪽이 뒤집혔다.** 진입이 「그 달 마지막 거래일」이므로 빼야 하는 것은
+데이터의 **마지막** 달이다 — 그 달이 끝났는지 데이터만으로 알 수 없어, 「데이터가 끊긴 날」을
+월말로 삼으면 보유가 짧은 가짜 표본이 된다.
 
-**경계 픽스처를 손으로 박는다.** 10월 1일이 토요일인 해·일요일인 해·거래일인 해를 모두
-넣어 **「미룸/앞당김」이 하드코딩돼도 걸리게** 한다.
+**경계 픽스처를 손으로 박는다.** 9월 30일이 토요일인 해·일요일인 해·거래일인 해를 모두
+넣어 **「앞당김」이 하드코딩돼도 걸리게** 한다.
 """
 
 import pandas as pd
@@ -38,6 +38,7 @@ from verify_lab.studies.midterm_cycle.constants import (
     COL_CYCLE_YEAR,
     CYCLE_ELECTION,
     CYCLE_MIDTERM,
+    CYCLE_POSITIONS,
     CYCLE_POST_ELECTION,
     CYCLE_PRE_ELECTION,
     ENTRY_MONTH,
@@ -48,8 +49,9 @@ from verify_lab.studies.midterm_cycle.constants import (
 from verify_lab.studies.midterm_cycle.cycle_calendar import (
     cycle_position,
     cycle_returns,
-    month_first_entries,
+    month_last_entries,
     month_offset_exit_schedule,
+    select_positions,
 )
 
 
@@ -153,97 +155,97 @@ class TestCyclePosition:
         assert all(positions[year] == positions[year + 4] for year in range(2014, 2022))
 
 
-class TestMonthFirstEntries:
-    """10월 «첫 거래일» 진입 — 휴장이면 «미룬다»."""
+class TestMonthLastEntries:
+    """9월 «마지막 거래일» 진입 — 휴장이면 «앞당긴다»."""
 
-    def test_목표_달의_1일이_거래일이면_그날이다(self) -> None:
+    def test_목표_달의_말일이_거래일이면_그날이다(self) -> None:
         """
         목적: 휴장이 없는 평범한 해의 진입일을 고정한다
 
-        Given: 2025-10-01 은 수요일이다
-        When: 10월 첫 거래일을 구하면
-        Then: 2025-10-01 이다
+        Given: 2025-09-30 은 화요일이다
+        When: 9월 마지막 거래일을 구하면
+        Then: 2025-09-30 이다
         """
         # Given
-        assert pd.Timestamp("2025-10-01").dayofweek == 2
+        assert pd.Timestamp("2025-09-30").dayofweek == 1
         days = _trading_days("2025-01-02", "2026-12-31")
 
         # When
-        result = month_first_entries(days, month=ENTRY_MONTH)
+        result = month_last_entries(days, month=ENTRY_MONTH)
 
         # Then
-        assert _entry_of(result, 2025)[COL_DATE] == pd.Timestamp("2025-10-01")
+        assert _entry_of(result, 2025)[COL_DATE] == pd.Timestamp("2025-09-30")
 
-    def test_1일이_토요일이면_다음_월요일로_미룬다(self) -> None:
+    def test_말일이_토요일이면_직전_금요일로_앞당긴다(self) -> None:
         """
-        목적: [중요] **앞당김으로 구현하면 틀린다**는 것을 고정한다 — 앞당기면 9월로 넘어간다
+        목적: [중요] **미룸으로 구현하면 틀린다**는 것을 고정한다 — 미루면 10월로 넘어간다
 
-        Given: 2022-10-01 은 토요일이다
-        When: 10월 첫 거래일을 구하면
-        Then: 2022-10-03(월) 이다 — 9월 30일이 아니다
-        """
-        # Given
-        assert pd.Timestamp("2022-10-01").dayofweek == 5
-        days = _trading_days("2022-01-03", "2023-12-29")
-
-        # When
-        result = month_first_entries(days, month=ENTRY_MONTH)
-
-        # Then
-        assert _entry_of(result, 2022)[COL_DATE] == pd.Timestamp("2022-10-03")
-
-    def test_1일이_일요일이면_다음_월요일로_미룬다(self) -> None:
-        """
-        목적: 주말 두 형태를 모두 고정한다
-
-        Given: 2023-10-01 은 일요일이다
-        When: 10월 첫 거래일을 구하면
-        Then: 2023-10-02(월) 이다
+        Given: 2023-09-30 은 토요일이다
+        When: 9월 마지막 거래일을 구하면
+        Then: 2023-09-29(금) 이다 — 10월 2일이 아니다
         """
         # Given
-        assert pd.Timestamp("2023-10-01").dayofweek == 6
+        assert pd.Timestamp("2023-09-30").dayofweek == 5
         days = _trading_days("2023-01-02", "2024-12-31")
 
         # When
-        result = month_first_entries(days, month=ENTRY_MONTH)
+        result = month_last_entries(days, month=ENTRY_MONTH)
 
         # Then
-        assert _entry_of(result, 2023)[COL_DATE] == pd.Timestamp("2023-10-02")
+        assert _entry_of(result, 2023)[COL_DATE] == pd.Timestamp("2023-09-29")
 
-    def test_연휴가_길어도_그_달_안에서_미룬다(self) -> None:
+    def test_말일이_일요일이면_직전_금요일로_앞당긴다(self) -> None:
         """
-        목적: 경계 조건 — 미룸 간격이 하루로 하드코딩돼 있지 않은지 고정한다
+        목적: 주말 두 형태를 모두 고정한다
 
-        Given: 2026-10-01 ~ 10-07 이 전부 휴장인 달력
-        When: 10월 첫 거래일을 구하면
-        Then: 2026-10-08 이다
+        Given: 2018-09-30 은 일요일이다
+        When: 9월 마지막 거래일을 구하면
+        Then: 2018-09-28(금) 이다
+        """
+        # Given
+        assert pd.Timestamp("2018-09-30").dayofweek == 6
+        days = _trading_days("2018-01-01", "2019-12-31")
+
+        # When
+        result = month_last_entries(days, month=ENTRY_MONTH)
+
+        # Then
+        assert _entry_of(result, 2018)[COL_DATE] == pd.Timestamp("2018-09-28")
+
+    def test_연휴가_길어도_그_달_안에서_앞당긴다(self) -> None:
+        """
+        목적: 경계 조건 — 앞당김 간격이 하루로 하드코딩돼 있지 않은지 고정한다
+
+        Given: 2026-09-24 ~ 09-30 이 전부 휴장인 달력
+        When: 9월 마지막 거래일을 구하면
+        Then: 2026-09-23 이다
         """
         # Given
         days = _trading_days(
             "2026-01-01",
             "2027-12-31",
-            holidays=["2026-10-01", "2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07"],
+            holidays=["2026-09-24", "2026-09-25", "2026-09-28", "2026-09-29", "2026-09-30"],
         )
 
         # When
-        result = month_first_entries(days, month=ENTRY_MONTH)
+        result = month_last_entries(days, month=ENTRY_MONTH)
 
         # Then
-        assert _entry_of(result, 2026)[COL_DATE] == pd.Timestamp("2026-10-08")
+        assert _entry_of(result, 2026)[COL_DATE] == pd.Timestamp("2026-09-23")
 
     def test_진입일은_모두_목표_달에_있다(self) -> None:
         """
-        목적: [중요] 전월로 넘어가지 않음을 고정한다 — 넘어가면 다른 매매가 된다
+        목적: [중요] 익월로 넘어가지 않음을 고정한다 — 넘어가면 다른 매매가 된다
 
         Given: 휴장이 여럿 섞인 10년치 달력
-        When: 10월 첫 거래일들을 구하면
-        Then: 전부 10월이다
+        When: 9월 마지막 거래일들을 구하면
+        Then: 전부 9월이다
         """
         # Given
-        days = _trading_days("2016-01-01", "2026-12-31", holidays=["2018-10-01", "2020-10-01", "2020-10-02"])
+        days = _trading_days("2016-01-01", "2026-12-31", holidays=["2020-09-30", "2021-09-29", "2021-09-30"])
 
         # When
-        result = month_first_entries(days, month=ENTRY_MONTH)
+        result = month_last_entries(days, month=ENTRY_MONTH)
 
         # Then
         assert (pd.DatetimeIndex(result[COL_DATE]).month == ENTRY_MONTH).all()
@@ -257,44 +259,44 @@ class TestMonthFirstEntries:
         Then: 모든 진입일이 거래일 목록 안에 있다
         """
         # Given
-        days = _trading_days("2016-01-01", "2026-12-31", holidays=["2018-10-01", "2022-10-03"])
+        days = _trading_days("2016-01-01", "2026-12-31", holidays=["2018-09-28", "2022-09-30"])
 
         # When
-        result = month_first_entries(days, month=ENTRY_MONTH)
+        result = month_last_entries(days, month=ENTRY_MONTH)
 
         # Then
         assert result[COL_DATE].isin(days).all()
 
-    def test_데이터의_첫_달은_빠진다(self) -> None:
+    def test_데이터의_마지막_달은_빠진다(self) -> None:
         """
-        목적: [중요] 경계 조건 — 데이터가 달 중간부터 시작하면 그 달의 «첫 거래일»을 알 수 없다
+        목적: [중요] 경계 조건 — 데이터가 달 중간에서 끝나면 그 달의 «마지막 거래일»을 알 수 없다
 
-        Given: 2020-10-15 부터 시작하는 달력
-        When: 10월 첫 거래일을 구하면
-        Then: 2020년 행이 없다 — 10-15 를 첫 거래일로 삼으면 다른 매매가 된다
+        Given: 2026-09-15 에서 끝나는 달력
+        When: 9월 마지막 거래일을 구하면
+        Then: 2026년 행이 없다 — 09-15 를 마지막 거래일로 삼으면 다른 매매가 된다
         """
         # Given
-        days = _trading_days("2020-10-15", "2026-12-31")
+        days = _trading_days("2020-01-01", "2026-09-15")
 
         # When
-        result = month_first_entries(days, month=ENTRY_MONTH)
+        result = month_last_entries(days, month=ENTRY_MONTH)
 
         # Then
-        assert (result[COL_CYCLE_YEAR] == 2020).sum() == 0
+        assert (result[COL_CYCLE_YEAR] == 2026).sum() == 0
 
     def test_달을_지정하지_않으면_모든_달을_낸다(self) -> None:
         """
         목적: 기준선이 같은 함수를 쓸 수 있는지 고정한다
 
         Given: 1년치 달력
-        When: 달을 지정하지 않고 첫 거래일을 구하면
-        Then: 첫 달을 뺀 나머지 달마다 한 행이다
+        When: 달을 지정하지 않고 마지막 거래일을 구하면
+        Then: 마지막 달을 뺀 나머지 달마다 한 행이다
         """
         # Given
         days = _trading_days("2025-01-02", "2025-12-31")
 
         # When
-        result = month_first_entries(days)
+        result = month_last_entries(days)
 
         # Then
         assert len(result) == len(pd.DatetimeIndex(days).to_period("M").unique()) - 1
@@ -308,13 +310,13 @@ class TestMonthFirstEntries:
         Then: 짧은 쪽에 있는 모든 진입 연도의 진입일이 긴 쪽과 같다
         """
         # Given
-        holidays = ["2018-10-01", "2020-10-01", "2022-10-03"]
+        holidays = ["2018-09-28", "2020-09-30", "2022-09-30"]
         short_days = _trading_days("2016-01-01", "2019-12-31", holidays=holidays)
         long_days = _trading_days("2016-01-01", "2026-12-31", holidays=holidays)
 
         # When
-        short_result = month_first_entries(short_days, month=ENTRY_MONTH)
-        long_result = month_first_entries(long_days, month=ENTRY_MONTH)
+        short_result = month_last_entries(short_days, month=ENTRY_MONTH)
+        long_result = month_last_entries(long_days, month=ENTRY_MONTH)
 
         # Then
         merged = short_result.merge(long_result, on=COL_CYCLE_YEAR, suffixes=("_short", "_long"))
@@ -333,7 +335,7 @@ class TestMonthFirstEntries:
         """
         # Given / When / Then
         with pytest.raises(ValueError, match="비어 있어"):
-            month_first_entries(pd.DatetimeIndex([]), month=ENTRY_MONTH)
+            month_last_entries(pd.DatetimeIndex([]), month=ENTRY_MONTH)
 
     def test_정렬되지_않은_거래일_목록은_예외다(self) -> None:
         """
@@ -348,7 +350,7 @@ class TestMonthFirstEntries:
 
         # When / Then
         with pytest.raises(ValueError, match="오름차순"):
-            month_first_entries(days, month=ENTRY_MONTH)
+            month_last_entries(days, month=ENTRY_MONTH)
 
     def test_달이_범위를_벗어나면_예외다(self) -> None:
         """
@@ -363,7 +365,69 @@ class TestMonthFirstEntries:
 
         # When / Then
         with pytest.raises(ValueError, match="달은"):
-            month_first_entries(days, month=13)
+            month_last_entries(days, month=13)
+
+
+class TestSelectPositions:
+    """산출 축에 있는 사이클 위치의 진입만 남긴다."""
+
+    def test_중간선거해만_남는다(self) -> None:
+        """
+        목적: 축 축소가 진입 단계에서 일어남을 고정한다 (설계 결정 ⑬)
+
+        Given: 네 위치가 모두 들어 있는 8년치 진입 표
+        When: 산출 축으로 거르면
+        Then: 진입 연도가 전부 4로 나눈 나머지 2 다
+        """
+        # Given
+        days = _trading_days("2016-01-01", "2026-12-31")
+        entries = month_last_entries(days, month=ENTRY_MONTH)
+        assert entries[COL_CYCLE_YEAR].map(lambda year: int(year) % 4).nunique() == 4
+
+        # When
+        result = select_positions(entries, CYCLE_POSITIONS)
+
+        # Then
+        assert len(result) > 0
+        assert (result[COL_CYCLE_YEAR] % 4 == 2).all()
+
+    def test_거르고_나서도_컬럼_구성이_같다(self) -> None:
+        """
+        목적: 아래 계층이 스키마 분기를 하지 않아도 되게 고정한다
+
+        Given: 진입 표
+        When: 산출 축으로 거르면
+        Then: 컬럼 구성과 dtype 이 그대로다
+        """
+        # Given
+        days = _trading_days("2016-01-01", "2026-12-31")
+        entries = month_last_entries(days, month=ENTRY_MONTH)
+
+        # When
+        result = select_positions(entries, CYCLE_POSITIONS)
+
+        # Then
+        assert list(result.columns) == list(entries.columns)
+        assert result.dtypes.to_dict() == entries.dtypes.to_dict()
+
+    def test_해당하는_해가_없으면_빈_표다(self) -> None:
+        """
+        목적: 경계 조건 — 값을 지어내지 않음을 고정한다
+
+        Given: 중간선거해가 없는 3년치 진입 표
+        When: 산출 축으로 거르면
+        Then: 행이 0개이고 컬럼은 그대로다
+        """
+        # Given
+        days = _trading_days("2023-01-02", "2025-12-31")
+        entries = month_last_entries(days, month=ENTRY_MONTH)
+
+        # When
+        result = select_positions(entries, CYCLE_POSITIONS)
+
+        # Then
+        assert len(result) == 0
+        assert list(result.columns) == list(entries.columns)
 
 
 class TestMonthOffsetExitSchedule:
@@ -373,14 +437,14 @@ class TestMonthOffsetExitSchedule:
         """
         목적: 청산일 규칙을 고정한다
 
-        Given: 2025-10 진입, 8개월 뒤는 2026-06 이고 그 마지막 거래일은 2026-06-30(화)이다
+        Given: 2025-09 진입, 9개월 뒤는 2026-06 이고 그 마지막 거래일은 2026-06-30(화)이다
         When: 청산 일정을 만들면
         Then: 청산일이 2026-06-30 이다
         """
         # Given
         assert pd.Timestamp("2026-06-30").dayofweek == 1
         days = _trading_days("2025-01-02", "2026-12-31")
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
 
         # When
         result = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
@@ -392,14 +456,14 @@ class TestMonthOffsetExitSchedule:
         """
         목적: [중요] **미룸으로 구현하면 틀린다**는 것을 고정한다 — 미루면 7월로 넘어간다
 
-        Given: 2024-06-30 은 일요일이다 (2023-10 진입의 청산 달)
+        Given: 2024-06-30 은 일요일이다 (2023-09 진입의 청산 달)
         When: 청산 일정을 만들면
         Then: 2024-06-28(금) 이다 — 7월 1일이 아니다
         """
         # Given
         assert pd.Timestamp("2024-06-30").dayofweek == 6
         days = _trading_days("2023-01-02", "2024-12-31")
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
 
         # When
         result = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
@@ -412,12 +476,12 @@ class TestMonthOffsetExitSchedule:
         목적: 주말이 아닌 휴장에서도 같은 방향임을 고정한다
 
         Given: 2026-06-29·06-30 이 휴장인 달력
-        When: 2025-10 진입의 청산 일정을 만들면
+        When: 2025-09 진입의 청산 일정을 만들면
         Then: 2026-06-26(금) 이다
         """
         # Given
         days = _trading_days("2025-01-02", "2026-12-31", holidays=["2026-06-29", "2026-06-30"])
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
 
         # When
         result = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
@@ -435,7 +499,7 @@ class TestMonthOffsetExitSchedule:
         """
         # Given
         days = _trading_days("2015-01-01", "2026-12-31", holidays=["2020-06-30", "2024-06-28"])
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
 
         # When
         result = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
@@ -448,13 +512,13 @@ class TestMonthOffsetExitSchedule:
         """
         목적: [중요] 표본 보존 — 값을 지어내지 않고 「진입 = 유효 + 제외」가 성립함을 고정한다
 
-        Given: 2025-10 진입은 있는데 데이터가 2026-03 에서 끝나는 달력
+        Given: 2025-09 진입은 있는데 데이터가 2026-03 에서 끝나는 달력
         When: 청산 일정을 만들면
         Then: 2025년 행이 남아 있고 청산일이 비어 있으며 사유가 붙는다
         """
         # Given
         days = _trading_days("2024-01-01", "2026-03-31")
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
 
         # When
         result = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
@@ -474,7 +538,7 @@ class TestMonthOffsetExitSchedule:
         """
         # Given
         days = _trading_days("2015-01-01", "2026-03-31")
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
 
         # When
         result = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
@@ -492,7 +556,7 @@ class TestMonthOffsetExitSchedule:
         """
         # Given
         days = _trading_days("2015-01-01", "2026-12-31")
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
 
         # When
         result = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
@@ -510,16 +574,16 @@ class TestMonthOffsetExitSchedule:
         Then: 짧은 쪽에서 «유효한» 행의 청산일이 긴 쪽과 같다
         """
         # Given
-        holidays = ["2020-06-30", "2022-10-03"]
+        holidays = ["2020-06-30", "2022-09-30"]
         short_days = _trading_days("2016-01-01", "2020-12-31", holidays=holidays)
         long_days = _trading_days("2016-01-01", "2026-12-31", holidays=holidays)
 
         # When
         short_result = month_offset_exit_schedule(
-            short_days, month_first_entries(short_days, month=ENTRY_MONTH), month_offset=EXIT_MONTH_OFFSET
+            short_days, month_last_entries(short_days, month=ENTRY_MONTH), month_offset=EXIT_MONTH_OFFSET
         )
         long_result = month_offset_exit_schedule(
-            long_days, month_first_entries(long_days, month=ENTRY_MONTH), month_offset=EXIT_MONTH_OFFSET
+            long_days, month_last_entries(long_days, month=ENTRY_MONTH), month_offset=EXIT_MONTH_OFFSET
         )
 
         # Then
@@ -540,7 +604,7 @@ class TestMonthOffsetExitSchedule:
         """
         # Given
         days = _trading_days("2025-01-02", "2026-12-31")
-        entries = month_first_entries(days, month=ENTRY_MONTH).drop(columns=[COL_MONTH])
+        entries = month_last_entries(days, month=ENTRY_MONTH).drop(columns=[COL_MONTH])
 
         # When / Then
         with pytest.raises(ValueError, match="필수 컬럼"):
@@ -561,7 +625,7 @@ class TestCycleReturns:
         # Given
         days = _trading_days("2025-01-02", "2026-12-31")
         frame = _prices(days, values=[100.0] * len(days))
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
         schedule = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
         exit_date = _entry_of(schedule, 2025)[COL_EXIT_DATE]
         frame.loc[frame[COL_DATE] == exit_date, COL_CLOSE] = 120.0
@@ -586,7 +650,7 @@ class TestCycleReturns:
         # Given
         days = _trading_days("2024-01-01", "2026-03-31")
         frame = _prices(days)
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
         schedule = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
 
         # When
@@ -607,7 +671,7 @@ class TestCycleReturns:
         # Given
         days = _trading_days("2021-01-01", "2026-12-31")
         frame = _prices(days)
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
         schedule = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
 
         # When
@@ -628,7 +692,7 @@ class TestCycleReturns:
         # Given
         days = _trading_days("2025-01-02", "2026-12-31")
         frame = _prices(days).drop(columns=[COL_CLOSE])
-        entries = month_first_entries(days, month=ENTRY_MONTH)
+        entries = month_last_entries(days, month=ENTRY_MONTH)
         schedule = month_offset_exit_schedule(days, entries, month_offset=EXIT_MONTH_OFFSET)
 
         # When / Then

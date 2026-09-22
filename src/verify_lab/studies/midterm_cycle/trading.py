@@ -1,4 +1,4 @@
-"""중간선거_사이클 체결 조립 — 사이클 네 칸의 성적을 낸다
+"""중간선거_사이클 체결 조립 — 중간선거해의 성적과 분기 분해를 낸다
 
 **계산하지 않는다.** 판정식과 성적 산식이 이미 있으므로 그것들을 조합해 돌리고,
 어느 행이 어떤 설정의 결과인지를 붙여 쌓기만 한다.
@@ -8,6 +8,14 @@
 | 진입일·청산일 정의 | `studies/midterm_cycle/runner.signal_returns` — 측정과 **같은 날에 들어간다** |
 | 손절 판정 (시가 → 장중 → 청산일) | `execution/trade_fill.simulate_scheduled_trade` |
 | 구간별 성적 산식 | `execution/periods.period_rows` |
+| 분기 분해와 낙폭 분포 | `studies/midterm_cycle/quarters` |
+
+**표를 넷 낸다.** 성적표·거래내역은 세 매매법이 공유하는 규격이고,
+**분기 표 둘은 이 매매법의 것**이다 — 진입이 9월 마지막 거래일이라 보유가
+4분기·1분기·2분기에 맞아떨어져 그 분해가 성립한다.
+
+[중요] **분기 표는 «무손절» 경로 하나로만 낸다** (`설계.md` 결정 ⑮). 손절이 걸리면 보유가
+중간에 끊겨 남은 분기의 표본이 사라진다. 그래서 그 두 표에 `손절선(%)` 축이 없다.
 
 **손절선은 격자다** (`.claude/rules/trading.md` 「경계는 행위」 — 고르지 않으므로 허용).
 무손절 대조와 −5 ~ −30% 여덟 종이며, **다른 매매법의 −2 ~ −10% 가 9개월 보유에 너무
@@ -52,6 +60,7 @@ from verify_lab.execution.constants import (
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
+    DISPLAY_TOTAL,
     DISPLAY_WORST_HOLD,
     NOTE_STOP_BASE,
     SUMMARY_FILENAME,
@@ -68,7 +77,16 @@ from verify_lab.measure.constants import (
     REASON_NONE,
 )
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
-from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.report.constants import (
+    DATE_FORMAT,
+    DISPLAY_MAX,
+    DISPLAY_MEAN,
+    DISPLAY_MEDIAN,
+    DISPLAY_MIN,
+    DISPLAY_SAMPLE_COUNT,
+    DISPLAY_UP_RATE,
+    PERCENT_DECIMALS,
+)
 from verify_lab.report.run_summary import dataset_record
 from verify_lab.studies.midterm_cycle.constants import (
     BET_DOWN,
@@ -78,6 +96,23 @@ from verify_lab.studies.midterm_cycle.constants import (
     DATASETS,
     DISPLAY_CYCLE_POSITION,
     DISPLAY_CYCLE_YEAR,
+    DISPLAY_QUARTER,
+    DISPLAY_SEGMENT_END_DATE,
+    DISPLAY_SEGMENT_END_PRICE,
+    DISPLAY_SEGMENT_START_DATE,
+    DISPLAY_SEGMENT_START_PRICE,
+    DISPLAY_SEGMENT_WORST_DEEPEST,
+    DISPLAY_SEGMENT_WORST_MEAN,
+    DISPLAY_SEGMENT_WORST_MEDIAN,
+    DISPLAY_WORST_DEEPEST,
+    DISPLAY_WORST_MEAN,
+    DISPLAY_WORST_MEDIAN,
+    DISPLAY_WORST_Q25,
+    DISPLAY_WORST_Q75,
+    DISPLAY_WORST_SHALLOWEST,
+    DISPLAY_WORST_VS_ENTRY,
+    DISPLAY_WORST_VS_SEGMENT,
+    DRAWDOWN_BUCKETS,
     ENTRY_MONTH,
     EXIT_MONTH,
     KEY_ENTRY_COUNT,
@@ -85,11 +120,17 @@ from verify_lab.studies.midterm_cycle.constants import (
     KEY_EXCLUDED_COUNT,
     KEY_EXIT_MONTH,
     KEY_LABEL,
+    PERIOD_WHOLE,
+    QUARTER_LABELS,
+    QUARTER_SUMMARY_FILENAME,
+    QUARTER_TRADES_FILENAME,
     STOP_LEVELS_ETF,
     STOP_LEVELS_INDEX,
     TRACK_NAME,
     Dataset,
+    bucket_label,
 )
+from verify_lab.studies.midterm_cycle.quarters import QuarterTrade, drawdown_profile, quarter_trades
 from verify_lab.studies.midterm_cycle.runner import load_dataset, signal_returns
 from verify_lab.utils.logger import get_logger
 
@@ -102,14 +143,17 @@ KEY_TARGETS = "targets"
 KEY_DIRECTION = "direction"
 
 # 산출물만 보고는 알 수 없는 실행 조건
-NOTE_ENTRY = (
-    "진입은 10월 첫 거래일 종가(1일이 휴장이면 그 이후 첫 거래일로 «미룬다»)이고, "
-    "청산은 다음해 6월 마지막 거래일 종가(말일이 휴장이면 직전 거래일로 «앞당긴다») 다 — "
-    "측정과 같은 날에 들어간다"
-)
+NOTE_ENTRY = "진입은 9월 마지막 거래일 종가, 청산은 다음해 6월 마지막 거래일 종가다 — " "둘 다 말일이 휴장이면 직전 거래일로 «앞당긴다». 측정과 같은 날에 들어간다"
 NOTE_AXIS = (
-    "사이클 위치 네 칸을 모두 낸다 — 10월~6월 창은 잘 알려진 「Best Six Months」(11~4월)를 "
-    "통째로 품고 있어, 네 칸을 견주지 않으면 「달력이라 좋았다」와 「중간선거 뒤라 좋았다」가 섞인다"
+    "사이클 위치는 중간선거해 한 칸만 낸다 (사용자 결정). "
+    "사이클 네 칸을 견주어 「달력이라 좋았다」와 「중간선거 뒤라 좋았다」를 가른 대조는 "
+    "10월 첫 거래일 진입으로 잰 기록이며 `docs/검증/중간선거_사이클/결과.md` 가 갖는다 — "
+    "지금 구성으로는 재현되지 않는다"
+)
+NOTE_QUARTER = (
+    "분기 표 둘(`분기.csv`·`분기내역.csv`)은 «무손절» 경로 하나로만 낸다 — 손절이 걸리면 "
+    "보유가 중간에 끊겨 남은 분기의 표본이 사라지고, 끊긴 분기는 「그 분기 성적」이 아니라 "
+    "「손절까지의 성적」이 된다. 그래서 그 두 표에는 「손절선(%)」 축이 없다"
 )
 # **하한을 리터럴로 적지 않는다.** 값의 소유자는 `measure/constants.MIN_SAMPLE_PER_CELL` 하나이고,
 # 여기 숫자를 박으면 그 상수를 바꿨을 때 **`summary.json` 이 같은 파일 안의 `판정가능` 과
@@ -134,11 +178,15 @@ class TradingOutputs:
     Attributes:
         trades: 체결 원자료. 진입·청산 날짜와 실제 체결가가 들어 있다 (측정의 원칙 8)
         performance: 종목 × 사이클 위치 × 손절선 × 구간의 성적표. **방향은 「위」 하나다**
+        quarter_trades: 분기 원자료. 종목 × 진입 연도 × 분기마다 한 행이다
+        quarter_summary: 분기 집계. 종목 × (전체 보유 · 분기 셋) 마다 한 행이다
         summary: 실행 요약
     """
 
     trades: pd.DataFrame
     performance: pd.DataFrame
+    quarter_trades: pd.DataFrame
+    quarter_summary: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -148,6 +196,8 @@ class _Accumulator:
 
     trades: list[dict[str, Any]] = field(default_factory=list)
     performance: list[dict[str, Any]] = field(default_factory=list)
+    quarter_trades: list[dict[str, Any]] = field(default_factory=list)
+    quarter_summary: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -344,10 +394,179 @@ def _run_cell(
         accumulator.performance.append({**identity, **row})
 
 
-def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> TradingOutputs:
-    """중간선거_사이클 체결 성적을 낸다.
+def _quarter_detail_row(
+    dataset: Dataset, frame: pd.DataFrame, *, position: str, entry_year: int, trade: QuarterTrade
+) -> dict[str, Any]:
+    """분기 체결 하나를 표 행으로 바꾼다.
 
-    **대상 × 사이클 위치 네 칸 × 손절선 격자**를 돈다. 방향은 「위」 하나다 (모듈 docstring).
+    **`진입가`·`청산가` 가 아니라 `시작가`·`종료가` 다** — 분기의 시작가는 «직전 분기의 종가»이지
+    이 매매의 진입가가 아니다. 이름을 같이 쓰면 두 값이 같은 것으로 읽힌다.
+
+    Args:
+        dataset: 대상 종목
+        frame: 가격 데이터
+        position: 사이클 위치
+        entry_year: 진입 연도
+        trade: 분기 체결
+
+    Returns:
+        표 한 줄
+    """
+    return {
+        DISPLAY_TICKER: dataset.label,
+        DISPLAY_CYCLE_POSITION: position,
+        DISPLAY_CYCLE_YEAR: entry_year,
+        DISPLAY_QUARTER: trade.label,
+        DISPLAY_DIRECTION: DIRECTION_DOWN if BET_DOWN else DIRECTION_UP,
+        DISPLAY_SEGMENT_START_DATE: pd.Timestamp(frame.iloc[trade.start_position][COL_DATE]).strftime(DATE_FORMAT),
+        DISPLAY_SEGMENT_START_PRICE: round(trade.start_price, dataset.price_decimals),
+        DISPLAY_SEGMENT_END_DATE: pd.Timestamp(frame.iloc[trade.end_position][COL_DATE]).strftime(DATE_FORMAT),
+        DISPLAY_SEGMENT_END_PRICE: round(trade.end_price, dataset.price_decimals),
+        DISPLAY_HOLD_DAYS: trade.hold_days,
+        DISPLAY_RETURN: round(trade.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_VS_ENTRY: round(trade.worst_vs_entry * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_VS_SEGMENT: round(trade.worst_vs_start * RATE_TO_PERCENT, PERCENT_DECIMALS),
+    }
+
+
+def _quarter_summary_row(
+    dataset: Dataset,
+    *,
+    position: str,
+    label: str,
+    returns: list[float],
+    worst_vs_entry: list[float],
+    worst_vs_segment: list[float],
+) -> dict[str, Any]:
+    """한 구간(전체 보유 또는 분기 하나)의 수익과 낙폭 분포를 표 행으로 바꾼다.
+
+    **`가장 깊게` 는 성적표의 `보유 중 최악(%)` 과 같은 값이다** — 전체 보유 행에서 두 표가
+    이어지는 지점이며, 나머지 분포 컬럼이 「보통 얼마나 밀리나」를 답한다.
+
+    Args:
+        dataset: 대상 종목
+        position: 사이클 위치
+        label: 구간 이름
+        returns: 그 구간의 수익률 (비율)
+        worst_vs_entry: **진입가** 대비 보유 중 최악 (비율)
+        worst_vs_segment: **그 구간 시작가** 대비 보유 중 최악 (비율).
+            전체 보유 행에서는 진입가가 곧 시작가라 두 목록이 같다
+
+    Returns:
+        표 한 줄
+    """
+    percent = pd.Series(returns, dtype="float64") * RATE_TO_PERCENT
+    versus_entry = drawdown_profile(worst_vs_entry)
+    versus_segment = drawdown_profile(worst_vs_segment)
+
+    return {
+        DISPLAY_TICKER: dataset.label,
+        DISPLAY_CYCLE_POSITION: position,
+        DISPLAY_QUARTER: label,
+        DISPLAY_DIRECTION: DIRECTION_DOWN if BET_DOWN else DIRECTION_UP,
+        DISPLAY_SAMPLE_COUNT: len(percent),
+        DISPLAY_TOTAL: round(float(percent.sum()), PERCENT_DECIMALS),
+        DISPLAY_MEAN: round(float(percent.mean()), PERCENT_DECIMALS),
+        DISPLAY_MEDIAN: round(float(percent.median()), PERCENT_DECIMALS),
+        DISPLAY_UP_RATE: round(float((percent > 0).mean()) * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_MAX: round(float(percent.max()), PERCENT_DECIMALS),
+        DISPLAY_MIN: round(float(percent.min()), PERCENT_DECIMALS),
+        DISPLAY_WORST_MEAN: round(versus_entry.mean * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_MEDIAN: round(versus_entry.median * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_Q25: round(versus_entry.quantile_25 * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_Q75: round(versus_entry.quantile_75 * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_SHALLOWEST: round(versus_entry.shallowest * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_WORST_DEEPEST: round(versus_entry.deepest * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_SEGMENT_WORST_MEAN: round(versus_segment.mean * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_SEGMENT_WORST_MEDIAN: round(versus_segment.median * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        DISPLAY_SEGMENT_WORST_DEEPEST: round(versus_segment.deepest * RATE_TO_PERCENT, PERCENT_DECIMALS),
+        # **헤더를 손으로 적지 않는다** — 격자를 고치면 컬럼이 따라온다
+        **{
+            bucket_label(threshold): count
+            for threshold, count in zip(DRAWDOWN_BUCKETS, versus_entry.within, strict=True)
+        },
+    }
+
+
+def _run_quarters(
+    dataset: Dataset, frame: pd.DataFrame, entries: _Entries, accumulator: _Accumulator, *, position: str
+) -> None:
+    """보유 구간을 분기로 갈라 원자료와 집계를 쌓는다.
+
+    **무손절 경로 하나뿐이다** (`설계.md` 결정 ⑮). 손절이 걸리면 보유가 중간에 끊겨 남은 분기의
+    표본이 사라지고, 끊긴 분기는 「그 분기 성적」이 아니라 「손절까지의 성적」이 된다.
+
+    **전체 보유 행을 여기서 함께 낸다.** 같은 체결에서 나와야 `가장 깊게` 가 성적표의
+    `보유 중 최악(%)` 과 맞고, 세 분기의 검산이 그 값을 겨눌 수 있다.
+
+    Args:
+        dataset: 대상 종목
+        frame: 가격 데이터
+        entries: 그 위치의 진입 목록
+        accumulator: 결과를 쌓는 자리
+        position: 사이클 위치
+    """
+    whole_returns: list[float] = []
+    whole_worst: list[float] = []
+    by_label: dict[str, list[QuarterTrade]] = {label: [] for label in QUARTER_LABELS}
+
+    for entry_position, exit_position, entry_year in zip(
+        entries.entry_positions, entries.exit_positions, entries.entry_years, strict=True
+    ):
+        whole = simulate_scheduled_trade(
+            frame,
+            entry_position,
+            exit_position,
+            bet_down=BET_DOWN,
+            stop_level=None,
+            price_column=dataset.price_column,
+        )
+        whole_returns.append(whole.return_rate)
+        whole_worst.append(whole.worst_hold_rate)
+
+        for trade in quarter_trades(
+            frame,
+            entry_position=entry_position,
+            exit_position=exit_position,
+            bet_down=BET_DOWN,
+            price_column=dataset.price_column,
+        ):
+            by_label[trade.label].append(trade)
+            accumulator.quarter_trades.append(
+                _quarter_detail_row(dataset, frame, position=position, entry_year=entry_year, trade=trade)
+            )
+
+    # **전체 보유가 첫 행이다** — 사용자가 먼저 보는 값이고, 분기 셋이 그것을 쪼갠 것이다.
+    # 전체 행에서는 진입가가 곧 시작가라 두 낙폭 목록이 같다
+    accumulator.quarter_summary.append(
+        _quarter_summary_row(
+            dataset,
+            position=position,
+            label=PERIOD_WHOLE,
+            returns=whole_returns,
+            worst_vs_entry=whole_worst,
+            worst_vs_segment=whole_worst,
+        )
+    )
+    for label in QUARTER_LABELS:
+        trades = by_label[label]
+        accumulator.quarter_summary.append(
+            _quarter_summary_row(
+                dataset,
+                position=position,
+                label=label,
+                returns=[trade.return_rate for trade in trades],
+                worst_vs_entry=[trade.worst_vs_entry for trade in trades],
+                worst_vs_segment=[trade.worst_vs_start for trade in trades],
+            )
+        )
+
+
+def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> TradingOutputs:
+    """중간선거_사이클 체결 성적과 분기 분해를 낸다.
+
+    **대상 × 중간선거해 × 손절선 격자**를 돌고, 그와 별도로 **무손절 경로에서 분기 표 둘**을
+    낸다. 방향은 「위」 하나다 (모듈 docstring).
 
     Args:
         datasets: 대상 목록
@@ -393,6 +612,10 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> Tradi
                     last_day=last_day,
                 )
 
+            # **손절선 루프 «밖»이다** — 분기 분해는 무손절 경로 하나뿐이다 (설계 결정 ⑮).
+            # 안에 두면 같은 표가 손절선 수만큼 중복으로 쌓인다
+            _run_quarters(dataset, frame, by_position[position], accumulator, position=position)
+
         # **`ticker` 는 반드시 `dataset.ticker` 에서 온다** — 둘 다 `str` 이라 다른 필드를
         # 넘겨도 키 이름은 그대로고 값만 조용히 뒤바뀐다 (계층 계약 검사가 출처를 본다)
         dataset_records.append(
@@ -405,12 +628,14 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> Tradi
 
     trades = pd.DataFrame(accumulator.trades)
     performance = to_summary_frame(accumulator.performance)
+    quarter_detail = pd.DataFrame(accumulator.quarter_trades)
+    quarter_summary = pd.DataFrame(accumulator.quarter_summary)
 
     # **성적표에 실제로 나온 값을 적는다.** 격자를 그대로 적으면 지수만 고른 실행에서
     # 돌지도 않은 손절선을 적게 된다
     stop_levels_run = list(dict.fromkeys(performance[DISPLAY_STOP_LEVEL]))
 
-    notes = [NOTE_ENTRY, NOTE_AXIS, NOTE_STOP_BASE, NOTE_SAMPLE]
+    notes = [NOTE_ENTRY, NOTE_AXIS, NOTE_QUARTER, NOTE_STOP_BASE, NOTE_SAMPLE]
     if any(not dataset.is_index for dataset in datasets):
         notes.append(NOTE_DIVIDEND)
     if any(dataset.is_index for dataset in datasets):
@@ -426,13 +651,27 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> Tradi
             KEY_STOP_LEVELS: stop_levels_run,
             KEY_TARGETS: target_records,
         },
-        row_counts={TRADES_FILENAME: len(trades), SUMMARY_FILENAME: len(performance)},
+        row_counts={
+            TRADES_FILENAME: len(trades),
+            SUMMARY_FILENAME: len(performance),
+            QUARTER_TRADES_FILENAME: len(quarter_detail),
+            QUARTER_SUMMARY_FILENAME: len(quarter_summary),
+        },
         notes=notes,
     )
 
-    logger.debug(f"체결 완료: 거래내역 {len(trades):,}행, 성적표 {len(performance):,}행")
+    logger.debug(
+        f"체결 완료: 거래내역 {len(trades):,}행, 성적표 {len(performance):,}행, "
+        f"분기내역 {len(quarter_detail):,}행, 분기 {len(quarter_summary):,}행"
+    )
 
-    return TradingOutputs(trades=trades, performance=performance, summary=summary)
+    return TradingOutputs(
+        trades=trades,
+        performance=performance,
+        quarter_trades=quarter_detail,
+        quarter_summary=quarter_summary,
+        summary=summary,
+    )
 
 
 __all__ = ["TradingOutputs", "run_midterm_cycle_trading"]

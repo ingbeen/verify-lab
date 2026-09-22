@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """중간선거_사이클 실행 CLI — 측정과 체결을 한 번에 돈다
 
-**규칙은 하나다** — 10월 첫 거래일 종가 매수 → 다음해 6월 마지막 거래일 종가 매도.
+**규칙은 하나다** — 9월 마지막 거래일 종가 매수 → 다음해 6월 마지막 거래일 종가 매도.
 진입·청산 격자를 두지 않는다. 한 번 돌리면 측정 표와 체결 산출물이 **한 폴더에** 함께
 나오며, 어느 등급 폴더에 쌓일지는 `verify_lab/tracks.py` 의 레지스트리가 정한다.
 
-**축은 사이클 위치 넷이다** — 같은 10월 → 6월 창을 중간선거해·대선전해·대선해·대선다음해에서
-각각 잰다. **네 칸의 차이가 곧 선거 사이클 고유 기여분**이며, 그 창이 잘 알려진
-「Best Six Months」(11~4월)를 통째로 품고 있어 대조 없이는 달력 효과와 섞인다.
+**축은 중간선거해 한 칸이다** (사용자 결정). 사이클 네 칸을 견주어 달력 효과와 선거 효과를
+가른 대조는 10월 첫 거래일 진입으로 잰 기록이며 `docs/검증/중간선거_사이클/결과.md` 가 갖는다.
+
+**보유가 달력 분기에 맞아떨어진다** — 9월 말에 사서 6월 말에 팔므로 4분기·1분기·2분기 셋이다.
+그 분해와 「보통 얼마나 밀리나」를 **분기 표 둘**이 낸다 (이름의 소유자는 그 매매법의 `constants`).
 
 [중요] **살 수 있는 대상의 중간선거 칸 표본이 6~8건이라 칸당 하한(10)에 못 미친다.**
 「판정가능」이 전 구간에서 「아니오」가 되고 우연확률도 붙지 않는다 — **결론의 일부이지
@@ -52,7 +54,15 @@ from verify_lab.report.writer import create_run_directory, save_run_summary, sav
 from verify_lab.studies.midterm_cycle.constants import (
     DATASETS,
     DISPLAY_CYCLE_POSITION,
+    DISPLAY_QUARTER,
+    DISPLAY_WORST_DEEPEST,
+    DISPLAY_WORST_MEAN,
+    DISPLAY_WORST_MEDIAN,
+    DISPLAY_WORST_Q25,
+    DISPLAY_WORST_Q75,
     OUTPUT_FILES,
+    QUARTER_SUMMARY_FILENAME,
+    QUARTER_TRADES_FILENAME,
     TRACK_NAME,
     datasets_of,
 )
@@ -82,7 +92,7 @@ def parse_args() -> argparse.Namespace:
         파싱된 인자
     """
     parser = argparse.ArgumentParser(
-        description="중간선거_사이클 — 10월 첫 거래일에 사서 다음해 6월 마지막 거래일에 파는 매매법을 " "사이클 위치 네 칸으로 측정하고 체결 성적을 함께 냅니다."
+        description="중간선거_사이클 — 9월 마지막 거래일에 사서 다음해 6월 마지막 거래일에 파는 매매법을 " "중간선거해에서 측정하고, 체결 성적과 분기 분해를 함께 냅니다."
     )
     parser.add_argument(
         "--ticker",
@@ -124,7 +134,7 @@ def _print_statistics(tables: dict[str, pd.DataFrame]) -> None:
         DISPLAY_JUDGEABLE,
     ]
     for table in tables.values():
-        print_dataframe(table[columns], logger, title="측정 — 1배 롱 기준 (사이클 네 칸을 나란히 읽는다)")
+        print_dataframe(table[columns], logger, title="측정 — 1배 롱 기준 (기준선은 그 해 아무 달 진입이다)")
 
 
 def _print_candidates(trading: TradingOutputs) -> None:
@@ -158,6 +168,35 @@ def _print_candidates(trading: TradingOutputs) -> None:
     print_dataframe(picked[columns].head(PREVIEW_LIMIT), logger, title=f"1차 판정 「후보」 ({len(picked)}칸)")
 
 
+def _print_quarters(trading: TradingOutputs) -> None:
+    """분기별 수익과 보유 중 최악의 분포를 화면에 띄운다.
+
+    **성적표의 `보유 중 최악(%)` 은 가장 깊은 한 건**이라 「보통 얼마나 밀리나」에 답하지
+    못한다 — 평균·중앙값·분위가 그 자리를 채운다.
+
+    Args:
+        trading: 체결 산출물
+    """
+    columns = [
+        DISPLAY_TICKER,
+        DISPLAY_QUARTER,
+        DISPLAY_SAMPLE_COUNT,
+        DISPLAY_MEAN,
+        DISPLAY_MEDIAN,
+        DISPLAY_UP_RATE,
+        DISPLAY_WORST_MEAN,
+        DISPLAY_WORST_MEDIAN,
+        DISPLAY_WORST_Q25,
+        DISPLAY_WORST_Q75,
+        DISPLAY_WORST_DEEPEST,
+    ]
+    print_dataframe(
+        trading.quarter_summary[columns],
+        logger,
+        title="분기 분해 — 수익과 «진입가 대비» 보유 중 최악의 분포 (무손절)",
+    )
+
+
 def _save(
     study: StudyOutputs,
     tables: dict[str, pd.DataFrame],
@@ -180,6 +219,8 @@ def _save(
 
     save_table(directory, TRADES_FILENAME, trading.trades)
     save_table(directory, SUMMARY_FILENAME, trading.performance)
+    save_table(directory, QUARTER_TRADES_FILENAME, trading.quarter_trades)
+    save_table(directory, QUARTER_SUMMARY_FILENAME, trading.quarter_summary)
 
     summary = merge_run_summary(study.summary, trading.summary)
     save_run_summary(directory, summary)
@@ -208,6 +249,7 @@ def main() -> int:
     counts = _save(study, tables, trading, directory)
 
     _print_statistics(tables)
+    _print_quarters(trading)
     _print_candidates(trading)
     print_dataframe(
         pd.DataFrame([{DISPLAY_FILE: name, DISPLAY_ROW_COUNT: rows} for name, rows in counts.items()]),

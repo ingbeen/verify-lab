@@ -1,4 +1,4 @@
-"""중간선거_사이클 측정 조립 — 사이클 위치 네 칸을 한 장으로 낸다
+"""중간선거_사이클 측정 조립 — 중간선거해 한 칸을 한 장으로 낸다
 
 **계산하지 않는다.** 달력은 `cycle_calendar`, 통계는 `measure/statistics`,
 배당락은 `measure/distribution` 이 소유하고 여기서는 조립만 한다.
@@ -7,18 +7,15 @@
 그대로이며 부호를 뒤집지 않는다 — 뒤집으면 `기준선 오른 비율` 이 실제로는 내린 비율을
 가리켜 이름이 거짓이 된다.
 
-**기준선은 「그 사이클 해에 아무 달 첫 거래일 진입」이다.** 청산 규칙은 신호와 같다
-(진입 달 + 8개월의 마지막 거래일). 그래서 이 대조가 답하는 것은
-**「그 해가 원래 그런가, 아니면 10월 진입이 특별한가」**다.
+**사이클 위치는 중간선거해 하나다** (`설계.md` 결정 ⑬). 그래도 컬럼을 남기는 것은
+**산출물만 봐서 무엇을 잰 표인지 판별되어야** 하기 때문이다 — 축을 넓혀 돌린 실행과
+좁힌 실행이 같은 자리를 덮는다.
 
-[중요] **사이클 네 칸 대조와 이 기준선은 다른 질문이다.**
+**기준선은 「중간선거해에 아무 달 마지막 거래일 진입」이다.** 청산 규칙은 신호와 같다
+(진입 달 + 9개월의 마지막 거래일). 그래서 이 대조가 답하는 것은
+**「그 해가 원래 그런가, 아니면 9월 말 진입이 특별한가」**다 — 12달을 모두 계산한다.
 
-| 무엇 | 답하는 것 |
-| --- | --- |
-| **축** (사이클 위치 네 칸) | 「10~6월이라 좋았나, 중간선거 뒤라 좋았나」 — 달력 효과를 분리한다 |
-| **기준선 컬럼** | 「그 해 아무 달에 9개월 들어도 같은가」 — 진입 달의 특별함을 묻는다 |
-
-둘 다 **판정에 쓰지 않는다** (루트 `CLAUDE.md` 「기준선은 탈락 사유가 아니다」).
+**판정에 쓰지 않는다** (루트 `CLAUDE.md` 「기준선은 탈락 사유가 아니다」).
 게이트는 회당 기대값 하나뿐이고, 이 값들은 사용자가 읽는 해석 재료다.
 """
 
@@ -97,8 +94,9 @@ from verify_lab.studies.midterm_cycle.constants import (
 )
 from verify_lab.studies.midterm_cycle.cycle_calendar import (
     cycle_returns,
-    month_first_entries,
+    month_last_entries,
     month_offset_exit_schedule,
+    select_positions,
 )
 from verify_lab.utils.logger import get_logger
 
@@ -153,10 +151,13 @@ def load_dataset(dataset: Dataset) -> pd.DataFrame:
 
 
 def signal_returns(df: pd.DataFrame, dataset: Dataset) -> pd.DataFrame:
-    """신호(10월 첫 거래일 진입)의 long-form 수익률을 낸다.
+    """신호(9월 마지막 거래일 진입)의 long-form 수익률을 낸다.
 
     **측정과 체결이 이 함수를 함께 쓴다** — 진입일 정의를 두 벌 만들면 두 계층이
     다른 날에 들어간다.
+
+    **산출 축으로 거르는 것도 여기서 한다** — 뒤에서 거르면 쓰지도 않을 해의 체결과
+    시기 5행이 먼저 쌓이고 「제외 건수」가 축 밖의 진입까지 세게 된다.
 
     Args:
         df: 날짜 오름차순 가격 데이터
@@ -166,17 +167,20 @@ def signal_returns(df: pd.DataFrame, dataset: Dataset) -> pd.DataFrame:
         `CYCLE_RETURN_COLUMNS` 구성의 long-form. 제외된 진입도 행으로 남는다
     """
     trading_days = pd.DatetimeIndex(df[COL_DATE])
-    entries = month_first_entries(trading_days, month=ENTRY_MONTH)
+    entries = select_positions(month_last_entries(trading_days, month=ENTRY_MONTH), CYCLE_POSITIONS)
     schedule = month_offset_exit_schedule(trading_days, entries, month_offset=EXIT_MONTH_OFFSET)
 
     return cycle_returns(df, schedule, horizon=HORIZON_POOLED, price_column=dataset.price_column)
 
 
 def _baseline_returns(df: pd.DataFrame, dataset: Dataset) -> pd.DataFrame:
-    """기준선(아무 달 첫 거래일 진입)의 long-form 수익률을 낸다.
+    """기준선(아무 달 마지막 거래일 진입)의 long-form 수익률을 낸다.
 
-    **청산 규칙이 신호와 같다** — 진입 달 + 8개월의 마지막 거래일이다. 달리하면 보유 길이가
+    **청산 규칙이 신호와 같다** — 진입 달 + 9개월의 마지막 거래일이다. 달리하면 보유 길이가
     어긋나 그 차이가 그대로 기준선 대비 차이와 우연확률에 실린다.
+
+    **산출 축으로 거르지 않는다.** 12달을 모두 계산해야 「그 해 아무 달에 9개월 들어도
+    같은가」에 답할 수 있다 — 신호에 있는 사이클 위치만 남기는 것은 집계 단계가 한다.
 
     Args:
         df: 날짜 오름차순 가격 데이터
@@ -186,7 +190,7 @@ def _baseline_returns(df: pd.DataFrame, dataset: Dataset) -> pd.DataFrame:
         `CYCLE_RETURN_COLUMNS` 구성의 long-form
     """
     trading_days = pd.DatetimeIndex(df[COL_DATE])
-    entries = month_first_entries(trading_days)
+    entries = month_last_entries(trading_days)
     schedule = month_offset_exit_schedule(trading_days, entries, month_offset=EXIT_MONTH_OFFSET)
 
     return cycle_returns(df, schedule, horizon=HORIZON_POOLED, price_column=dataset.price_column)
