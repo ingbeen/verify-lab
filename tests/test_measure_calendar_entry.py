@@ -1,28 +1,20 @@
-"""검증 #7 의 월물 만기일 산출을 고정한다.
+"""달력 진입 — 만기 달력(N번째 지정 요일)
 
-만기일은 시세가 아니라 달력 규칙이며, **규칙일이 휴장이면 직전 거래일로 앞당겨진다.**
-여기서 가장 쉽게 나는 실수가 "달력상 하루 전"으로 구현하는 것이다 — 연휴가 걸리면 직전 거래일이
-일주일 넘게 떨어진 달이 실제로 있다.
-
-고정하는 계약은 넷이다.
-- 규칙일이 거래일이면 그날이 만기일이고 앞당김은 0 이다
-- 휴장이면 **직전 거래일**이 만기일이며, 앞당김은 달력일 수로 기록된다
-- 데이터 범위를 벗어나거나 그 달의 앞 구간이 없는 달은 값을 지어내지 않고 제외한다
-- 뒤에 데이터가 더 붙어도 이미 확정된 달의 만기일이 달라지지 않는다 (look-ahead 감시)
+**공유 계층의 테스트다.** 세 매매법이 같은 달력을 쓰므로 어느 한 매매법의 것이 아니다.
+달력일 진입(`month_entry_dates`)과 말일 청산은 `test_measure_calendar_month.py` 가 본다.
 """
 
 import pandas as pd
 import pytest
 
-from verify_lab.studies.option_expiry.constants import (
+from verify_lab.measure.calendar_entry import monthly_expiry_dates, nth_weekday_of_month
+from verify_lab.measure.constants import (
     COL_ADVANCED_DAYS,
     COL_EXPIRY_DATE,
     COL_EXPIRY_MONTH,
     COL_RULE_DATE,
-    KR_MONTHLY_EXPIRY,
-    US_MONTHLY_EXPIRY,
 )
-from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates, nth_weekday_of_month
+from verify_lab.studies.option_expiry.constants import KR_MONTHLY_EXPIRY, US_MONTHLY_EXPIRY
 
 
 def _trading_days(start: str, end: str, holidays: list[str] | None = None) -> pd.DatetimeIndex:

@@ -14,7 +14,7 @@
 만든 것이라 인버스로는 못 먹는다. 「위」로 걸면 반대로 **과소평가**이며 실제로는 분배금을
 현금으로 받아 보전된다.
 
-**진입일·청산일은 `studies/month_end/schedule.py` 를 그대로 부른다** — 검증과 같은 날에
+**진입일·청산일은 `measure/calendar_entry.py`·`calendar_exit.py` 를 그대로 부른다** — 검증과 같은 날에
 들어가지 않으면 이 실측이 다른 매매를 재게 된다 (판정식 단일화).
 
 **지수는 대상이 아니다.** 지수는 상품이 아니라 계산값이라 분배금을 지급할 일이 없고
@@ -40,15 +40,18 @@ from verify_lab.common_constants import (
     RATE_TO_PERCENT,
 )
 from verify_lab.data.loader import load_market_csv
+from verify_lab.measure.calendar_entry import month_entry_dates
+from verify_lab.measure.calendar_exit import month_exit_schedule
+from verify_lab.measure.constants import (
+    COL_EXIT_DATE,
+    COL_MONTH,
+)
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
-    COL_EXIT_DATE,
-    COL_MONTH,
     DATASETS,
     Dataset,
 )
-from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_schedule
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger

@@ -80,7 +80,7 @@ def resolve_positions(trading_days: pd.DatetimeIndex, dates: pd.DatetimeIndex, *
     (`month_end_runner` 는 `month_exit_schedule` 을 지난 날짜를, `option_expiry_runner` 는
     스스로 읽은 시세의 날짜를 쓴다). 따라서 `-1` 은 잘못된 입력이 아니라 **일정 모듈의 버그**로만
     생긴다. 같은 사고를 날짜 목록을 **파라미터로 받는** `studies/` 세 곳
-    (`month_end/schedule.py` · `option_expiry/weekly_exit.py` · `option_expiry/offsets.py`)은
+    (`measure/calendar_entry.py` · `measure/calendar_exit.py` · `option_expiry/offsets.py`)은
     `ValueError` 로 던진다 — 거기서는 외부에서 잘못된 값이 올 수 있다. **메시지 본문은 맞춘다.**
 
     Args:
@@ -333,8 +333,8 @@ def simulate_scheduled_trade(
 
     **청산 위치는 호출 측이 정한다.** 달력이 지목한 날이 휴장이면 직전 거래일로 당기는 것도,
     목표일이 데이터 끝을 넘는 진입을 제외하는 것도 각 매매법의 일정 모듈이 한다
-    (옵션 만기일은 `studies/option_expiry/weekly_exit.py`, 월말은
-    `studies/month_end/schedule.py`). 여기까지 넘어온 진입은 이미 청산일이 확정된 것이므로,
+    (`measure/calendar_entry.py` 와 `measure/calendar_exit.py` — 세 매매법이 공유한다).
+    여기까지 넘어온 진입은 이미 청산일이 확정된 것이므로,
     범위를 벗어나면 계약 위반으로 본다.
 
     Args:

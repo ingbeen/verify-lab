@@ -414,7 +414,7 @@ class TestFixedCellMeasure:
         """
         # Given
         from verify_lab.execution.constants import DISPLAY_DIRECTION, DISPLAY_TICKER
-        from verify_lab.studies.month_end.constants import DISPLAY_MONTH_NUMBER  # noqa: F401
+        from verify_lab.report.constants import DISPLAY_MONTH_NUMBER
 
         # When
         table = display_tables(fixed_cell_outputs)["measure"]

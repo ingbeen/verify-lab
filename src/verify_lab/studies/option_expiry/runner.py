@@ -32,14 +32,21 @@ from verify_lab.common_constants import (
     MARKET_FILE_TEMPLATE,
 )
 from verify_lab.data.loader import load_market_csv
+from verify_lab.measure.calendar_entry import monthly_expiry_dates
+from verify_lab.measure.calendar_exit import weekly_exit_returns, weekly_exit_schedule
 from verify_lab.measure.constants import (
+    COL_ADVANCED_DAYS,
     COL_BASIS,
     COL_DIVIDEND_HIT_COUNT,
     COL_DIVIDEND_MEAN_IMPACT,
     COL_DIVIDEND_MEASURED,
     COL_EXCLUDED_REASON,
+    COL_EXIT_DATE,
+    COL_EXPIRY_DATE,
+    COL_HOLD_DAYS,
     COL_HORIZON,
     COL_MEAN_RATE_CONFLICT,
+    COL_RULE_DATE,
     DIVIDEND_IMPACT_DECIMALS,
     REASON_NONE,
 )
@@ -65,15 +72,11 @@ from verify_lab.measure.statistics import (
 from verify_lab.report.run_summary import KEY_TRACK, dataset_record
 from verify_lab.studies.option_expiry.constants import (
     BASELINE_SUFFIX,
-    COL_ADVANCED_DAYS,
-    COL_EXIT_DATE,
-    COL_EXPIRY_DATE,
     COL_EXPIRY_MONTH_NUMBER,
-    COL_HOLD_DAYS,
-    COL_RULE_DATE,
     COL_TICKER,
     DATASETS,
     EXIT_WEEKDAY,
+    HORIZON_NEXT_WEEK_EXIT,
     KEY_CELLS,
     KEY_DIRECTION,
     KEY_EXCLUDED_COUNT,
@@ -85,11 +88,6 @@ from verify_lab.studies.option_expiry.constants import (
     Dataset,
     ExpiryCell,
     trading_cells,
-)
-from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
-from verify_lab.studies.option_expiry.weekly_exit import (
-    weekly_exit_returns,
-    weekly_exit_schedule,
 )
 from verify_lab.utils.logger import get_logger
 
@@ -211,8 +209,8 @@ def _weekly_trade_frames(
     weekday_days = trading_days[trading_days.dayofweek == dataset.rule.weekday]
     baseline_schedule = weekly_exit_schedule(trading_days, weekday_days, weekday_days, exit_weekday=exit_weekday)
 
-    signal = weekly_exit_returns(df, signal_schedule)
-    baseline = weekly_exit_returns(df, baseline_schedule)
+    signal = weekly_exit_returns(df, signal_schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
+    baseline = weekly_exit_returns(df, baseline_schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
 
     return signal, baseline
 

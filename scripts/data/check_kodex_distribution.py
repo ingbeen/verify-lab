@@ -29,8 +29,9 @@ import pandas as pd
 
 from verify_lab.common_constants import ADJUSTED_FILE_TEMPLATE, COL_CLOSE, COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE
 from verify_lab.data.loader import load_market_csv
-from verify_lab.studies.option_expiry.constants import COL_EXPIRY_DATE, COL_OFFSET, KR_MONTHLY_EXPIRY, MAX_OFFSET
-from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
+from verify_lab.measure.calendar_entry import monthly_expiry_dates
+from verify_lab.measure.constants import COL_EXPIRY_DATE
+from verify_lab.studies.option_expiry.constants import COL_OFFSET, KR_MONTHLY_EXPIRY, MAX_OFFSET
 from verify_lab.studies.option_expiry.offsets import expiry_offsets
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger

@@ -7,6 +7,10 @@
 **하나의 칸을 고르지 않는다.** 「왜 하필 20일·말일인가」에 답하려면 이웃 칸도 함께 봐야 하므로
 확정 칸(9월 아래)을 재고 그 해석 재료를 한 장으로 낸다.
 
+**달력 계산 자체는 `measure/calendar_entry.py`·`calendar_exit.py` 가 소유한다** —
+세 매매법이 같은 달력을 쓰므로 한 자리에 있어야 하고, 매매법끼리는 서로를 가져올 수 없다
+(`tests/test_layer_contracts.py`). 여기 남는 것은 **이 매매법의 파라미터**뿐이다.
+
 확정 설계는 `docs/매매/월말_진입/설계.md` 가 SoT 다.
 """
 
@@ -16,20 +20,10 @@ from .constants import (
     HORIZON_MONTH_END,
     TRACK_NAME,
 )
-from .schedule import (
-    MonthExitSchedule,
-    month_entry_dates,
-    month_exit_returns,
-    month_exit_schedule,
-)
 
 __all__ = [
     "BASE_ENTRY_DAY",
     "BASE_EXIT_OFFSET",
     "HORIZON_MONTH_END",
     "TRACK_NAME",
-    "MonthExitSchedule",
-    "month_entry_dates",
-    "month_exit_returns",
-    "month_exit_schedule",
 ]

@@ -54,6 +54,7 @@
 | `reverse` | `run_reverse.py` | 결과 폴더, 대상 시세 목록과 **체결 대상(종목 × 순위 컷)**, 신호군 수와 **신호 0건이라 빠진 신호군 수**, **손절선 격자·보유 한도**, 산출물 행 수, 순열 검정 반복 수·시드 |
 | `expiry_dividend_probe` | `data/check_expiry_dividend.py` | 칸별로 보유 구간에 배당락이 걸린 건수와 그 규모 |
 | `month_end` | `run_month_end.py` | 결과 폴더, 측정 대상과 **체결 대상**(인버스가 빠져 갈린다), **확정 칸**, **실제로 돈 손절선 목록**(기본은 확정 −5% 하나, `--stop-grid` 면 격자 전체), **시작 연도**(안 걸렀으면 `null`), 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 대상별 **진입·제외 건수·보유 거래일수 분포**도 남는다. **측정과 체결이 같은 칸 목록을 쓰므로 `cells` 가 양쪽 요약에 같은 모양으로 실린다** |
+| `expiry_monthend` | `run_expiry_monthend.py` | 결과 폴더, 대상 종목, **돌린 조합**과 **재는 달**, 무작위 뽑기 대조 반복 수·시드, 표별 산출 행 수. `summary.json` 에는 대상별 **진입·제외 건수**도 남는다. **측정과 체결이 같은 조합·달 목록을 쓰므로 `combos`·`months` 가 양쪽 요약에 같은 모양으로 실린다** |
 | `month_end_leverage_probe` | `data/check_month_end_leverage.py` | 확정 칸, 대조한 계열 목록, 배수별·손절선별 성적 한 줄씩 |
 
 > **원달러 그리드의 두 타입(`usdkrw_grid_strategy`·`usdkrw_grid_robustness`)은 목록에서 빠졌다** —

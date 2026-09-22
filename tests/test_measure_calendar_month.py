@@ -1,19 +1,9 @@
-"""검증 #10 의 월 하순 진입과 말일 기준 청산을 고정한다.
+"""달력 «월» 기준 — 달력일 진입과 말일 청산
 
-진입일·청산일 판정은 **이 검증의 결과를 통째로 정하는 정의**다. 틀려도 예외가 나지 않고
-숫자만 조용히 달라지므로 구현보다 먼저 고정한다.
-
-고정하는 계약은 여덟이다.
-
-- 목표 달력일이 거래일이면 그날이 진입일이다
-- 목표 달력일이 휴장이면 **직전 거래일로 앞당긴다** (`docs/매매/월말_진입/설계.md` 결정 ①)
-- **데이터의 마지막 달에는 진입일을 만들지 않는다** (결정 ⑧) — 그 달의 「말일」은
-  실제 월말이 아니라 데이터가 끊긴 지점이라 보유 0 의 가짜 표본이 된다
-- 청산 상대 거래일 0 은 그 달 마지막 거래일, +1 은 익월 첫 거래일이다 (결정 ②)
-- 청산이 진입보다 뒤가 아니면 값을 비우고 사유를 남긴다 (결정 ④)
-- 청산이 데이터 끝을 넘으면 값을 지어내지 않는다
-- 진입 수 = 유효 표본 + 제외 표본 (표본 보존)
-- 뒤에 데이터가 더 붙어도 이미 확정된 달의 판정이 달라지지 않는다 (look-ahead 감시)
+**공유 계층의 테스트다.** 세 매매법이 같은 달력을 쓰므로 어느 한 매매법의 것이 아니다.
+**두 모듈에 걸쳐 있다** — 진입은 `calendar_entry`, 청산은 `calendar_exit` 이지만
+한 쌍으로만 쓰이므로 함께 본다 (`test_strategy_trade_fill_scheduled.py` 와 같은 관용).
+만기 달력은 `test_measure_calendar_entry.py` 가 본다.
 """
 
 from collections.abc import Callable, Sequence
@@ -22,32 +12,26 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
+from verify_lab.measure.calendar_entry import month_entry_dates
+from verify_lab.measure.calendar_exit import MonthExitSchedule, month_exit_returns, month_exit_schedule
 from verify_lab.measure.constants import (
     COL_BASIS,
-    COL_EXCLUDED_REASON,
-    COL_FORWARD_RETURN,
-    COL_HORIZON,
-    REASON_NONE,
-    REASON_OUT_OF_RANGE,
-)
-from verify_lab.studies.month_end.constants import (
     COL_ENTRY_CLOSE,
+    COL_EXCLUDED_REASON,
     COL_EXIT_CLOSE,
     COL_EXIT_DATE,
+    COL_FORWARD_RETURN,
     COL_HOLD_DAYS,
+    COL_HORIZON,
     COL_MONTH,
     COL_MONTH_LAST_DATE,
     COL_TARGET_DAY,
-    HORIZON_MONTH_END,
     REASON_NO_ENTRY_DAY,
     REASON_NO_HOLDING,
+    REASON_NONE,
+    REASON_OUT_OF_RANGE,
 )
-from verify_lab.studies.month_end.schedule import (
-    MonthExitSchedule,
-    month_entry_dates,
-    month_exit_returns,
-    month_exit_schedule,
-)
+from verify_lab.studies.month_end.constants import HORIZON_MONTH_END
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12
@@ -478,7 +462,7 @@ class TestMonthExitReturns:
         schedule = _schedule(days, ENTRY_DAY_20, exit_offset=0)
 
         # When
-        returns = month_exit_returns(market, schedule)
+        returns = month_exit_returns(market, schedule, horizon=HORIZON_MONTH_END)
 
         # Then
         row = _entry_on(returns, "2024-02")
@@ -500,7 +484,7 @@ class TestMonthExitReturns:
         schedule = _schedule(days, ENTRY_DAY_20, exit_offset=0)
 
         # When
-        returns = month_exit_returns(market, schedule)
+        returns = month_exit_returns(market, schedule, horizon=HORIZON_MONTH_END)
 
         # Then
         row = _entry_on(returns, "2024-03")
@@ -521,7 +505,7 @@ class TestMonthExitReturns:
         schedule = _schedule(days, 25, exit_offset=-3)
 
         # When
-        returns = month_exit_returns(market, schedule)
+        returns = month_exit_returns(market, schedule, horizon=HORIZON_MONTH_END)
 
         # Then
         assert len(returns) == schedule.entry_count
@@ -544,7 +528,7 @@ class TestMonthExitReturns:
         schedule = _schedule(days, ENTRY_DAY_20, exit_offset=0)
 
         # When
-        returns = month_exit_returns(market, schedule)
+        returns = month_exit_returns(market, schedule, horizon=HORIZON_MONTH_END)
 
         # Then
         assert set(returns[COL_HORIZON]) == {HORIZON_MONTH_END}
@@ -566,7 +550,7 @@ class TestMonthExitReturns:
         schedule = _schedule(days, ENTRY_DAY_20, exit_offset=0)
 
         # When
-        returns = month_exit_returns(market, schedule)
+        returns = month_exit_returns(market, schedule, horizon=HORIZON_MONTH_END)
 
         # Then
         assert returns[COL_BASIS].nunique() == 1
@@ -592,7 +576,7 @@ class TestLookAhead:
             trading_days = pd.DatetimeIndex(frame[COL_DATE])
             schedule = _schedule(trading_days, ENTRY_DAY_20, exit_offset=0)
 
-            return month_exit_returns(frame, schedule)
+            return month_exit_returns(frame, schedule, horizon=HORIZON_MONTH_END)
 
         # When / Then
         assert_stable_under_truncation(

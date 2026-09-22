@@ -20,7 +20,12 @@ from verify_lab.data.krx_futures_collector import PRODUCT_KOSDAQ150, PRODUCT_KOS
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HORIZON, COL_JUDGEABLE
 
 # 표시 레이블은 공통 계층이 소유한다 — 검증마다 다른 말을 쓰면 두 결과를 나란히 읽을 수 없다
-from verify_lab.report.constants import DISPLAY_HORIZON, DISPLAY_JUDGEABLE, DISPLAY_SAMPLE_COUNT
+from verify_lab.report.constants import (
+    DISPLAY_EXCLUDED_REASON,
+    DISPLAY_HORIZON,
+    DISPLAY_JUDGEABLE,
+    DISPLAY_SAMPLE_COUNT,
+)
 
 # ============================================================
 # 측정 대상
@@ -387,7 +392,6 @@ DISPLAY_WINDOW_COUNT: Final = "잰 시작일 수"
 # **「시기」가 아니라 무엇으로 나눴는지를 이름에 담는다** — 검증 #8 과 같은 금리 경계이며,
 # 측정의 원칙 17 의 시기 구간과는 다른 축이다 (그쪽 헤더는 `report/constants.DISPLAY_PERIOD`)
 DISPLAY_RATE_REGIME: Final = "금리 환경"
-DISPLAY_EXCLUDED_REASON: Final = "제외 사유"
 DISPLAY_AS_OF_DATE: Final = "기준일"
 DISPLAY_PRICE: Final = "정산가"
 DISPLAY_CONTRACT_MULTIPLIER: Final = "거래승수"

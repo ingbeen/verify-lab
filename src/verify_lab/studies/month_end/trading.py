@@ -5,7 +5,7 @@
 
 | 빌려 쓰는 것 | 어디서 |
 | --- | --- |
-| 진입일·청산일 정의 | `studies/month_end/schedule.py` — 검증 #10 과 **같은 날에 들어간다** |
+| 진입일·청산일 정의 | `measure/calendar_entry.py`·`calendar_exit.py` — 측정과 **같은 날에 들어간다** |
 | 손절 판정 (시가 → 장중 → 청산일) | `execution/trade_fill.simulate_scheduled_trade` |
 | 구간별 성적 산식 | `execution/periods.period_rows` |
 
@@ -55,16 +55,20 @@ from verify_lab.execution.constants import (
 from verify_lab.execution.periods import period_rows, to_summary_frame
 from verify_lab.execution.run_summary import build_run_summary
 from verify_lab.execution.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
-from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
-from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.measure.calendar_entry import month_entry_dates
+from verify_lab.measure.calendar_exit import month_exit_schedule
+from verify_lab.measure.constants import (
+    COL_EXCLUDED_REASON,
+    COL_EXIT_DATE,
+    COL_MONTH,
+    REASON_NONE,
+)
+from verify_lab.report.constants import DATE_FORMAT, DISPLAY_MONTH_NUMBER, PERCENT_DECIMALS
 from verify_lab.report.run_summary import dataset_record
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
-    COL_EXIT_DATE,
-    COL_MONTH,
     DATASETS_TRADING,
-    DISPLAY_MONTH_NUMBER,
     KEY_CELL_DIRECTION,
     KEY_CELL_MONTH,
     KEY_CELLS,
@@ -77,7 +81,6 @@ from verify_lab.studies.month_end.constants import (
     MonthEndCell,
 )
 from verify_lab.studies.month_end.runner import cell_direction
-from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_schedule
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)

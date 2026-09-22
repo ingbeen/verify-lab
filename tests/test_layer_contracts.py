@@ -1306,13 +1306,13 @@ class TestExecutionLayerComposition:
 
         Given: `studies/` 폴더
         When: 실행 모듈이 든 패키지 이름을 본다
-        Then: 확정 이름표의 세 매매법이 각각 하나씩 있다
+        Then: 확정 이름표의 네 매매법이 각각 하나씩 있다
         """
         # When
         slugs = {path.parent.name for path in _trading_modules()}
 
         # Then
-        assert slugs == {"reverse", "option_expiry", "month_end"}
+        assert slugs == {"reverse", "option_expiry", "month_end", "expiry_monthend"}
 
     def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
         """
@@ -1783,7 +1783,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "배수": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "보유 거래일": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
     "비중첩 표본": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
@@ -1805,13 +1804,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "실제(%)": frozenset(
         {"verify_lab/studies/leverage_tracking/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}
     ),
-    "제외 사유": frozenset(
-        {
-            "verify_lab/studies/futures_leverage/constants.py",
-            "verify_lab/studies/month_end/constants.py",
-            "verify_lab/studies/option_expiry/constants.py",
-        }
-    ),
     "종가": frozenset({"verify_lab/studies/option_expiry/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "종료일": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
@@ -1830,8 +1822,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "지수": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "진입 종가": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
-    "청산 종가": frozenset({"verify_lab/studies/month_end/constants.py", "verify_lab/studies/option_expiry/constants.py"}),
     "청산일": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/month_end/constants.py"}),
     "파라미터": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "표본": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),

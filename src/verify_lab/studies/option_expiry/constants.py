@@ -11,18 +11,29 @@ from dataclasses import dataclass
 from typing import Final
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_FILE_TEMPLATE, PRICE_DECIMALS
+from verify_lab.measure.calendar_entry import ExpiryRule
 from verify_lab.measure.constants import (
+    COL_ADVANCED_DAYS,
     COL_BASIS,
     COL_DIVIDEND_HIT_COUNT,
     COL_DIVIDEND_MEAN_IMPACT,
     COL_DIVIDEND_MEASURED,
+    COL_ENTRY_CLOSE,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
+    COL_EXIT_CLOSE,
+    COL_EXIT_DATE,
+    COL_EXPIRY_DATE,
+    COL_EXPIRY_MONTH,
     COL_FORWARD_RETURN,
+    COL_HOLD_DAYS,
     COL_HORIZON,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
+    COL_RULE_DATE,
     COL_SIGNAL_COUNT,
+    COL_TARGET_DATE,
+    COL_WEEK_REFERENCE,
 )
 from verify_lab.measure.screening import COL_DIRECTION
 from verify_lab.measure.statistics import (
@@ -72,7 +83,11 @@ from verify_lab.report.constants import (
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
     DISPLAY_DOWN_RATE_PERCENTILE,
+    DISPLAY_ENTRY_CLOSE,
     DISPLAY_EXCLUDED,
+    DISPLAY_EXCLUDED_REASON,
+    DISPLAY_EXIT_CLOSE,
+    DISPLAY_HOLD_DAYS_EXACT,
     DISPLAY_JUDGEABLE,
     DISPLAY_MAX,
     DISPLAY_MEAN,
@@ -107,25 +122,9 @@ from verify_lab.report.constants import (
     MEASURE_FILENAME,
 )
 
-
-@dataclass(frozen=True)
-class ExpiryRule:
-    """월물 만기일을 정하는 달력 규칙
-
-    만기일은 시세와 무관한 **달력 규칙**이다. 규칙일이 휴장이면 직전 거래일까지 앞당겨지며,
-    그 판정에 필요한 거래일 목록은 시세 파일의 날짜 인덱스에서 온다
-    (`docs/매매/옵션_만기일/설계.md` 결정 ⑤).
-
-    Attributes:
-        label: 표시 이름
-        weekday: 요일 (월=0 ~ 일=6). `pandas` 의 `dayofweek` 와 같은 기준이다
-        ordinal: 그 달에서 몇 번째 해당 요일인가 (1부터)
-    """
-
-    label: str
-    weekday: int
-    ordinal: int
-
+# **만기 규칙의 «형태»는 공통 계층이 갖는다** (`measure/calendar_entry.ExpiryRule`) —
+# 세 매매법이 같은 달력을 쓰므로 그 계산은 한 자리에 있어야 한다.
+# **어느 시장이 어느 요일을 쓰는가는 이 매매법의 파라미터**라 아래 값이 여기 남는다.
 
 # 요일 번호 (월=0 ~ 일=6). `pandas` 의 `dayofweek` 와 같은 기준이다
 THURSDAY: Final = 3
@@ -160,10 +159,10 @@ MAX_OFFSET: Final = 10
 # DataFrame 컬럼
 # ============================================================
 
-COL_EXPIRY_MONTH: Final = "expiry_month"
-COL_RULE_DATE: Final = "rule_date"
-COL_EXPIRY_DATE: Final = "expiry_date"
-COL_ADVANCED_DAYS: Final = "advanced_days"
+# **만기 달력의 네 컬럼은 `measure/constants.py` 가 소유한다** — 세 매매법이 같은 달력을
+# 쓰므로 이름도 한 벌이어야 한다. 여기서 다시 정의하면 절반짜리 통합이 되고, 한쪽이 바뀌어도
+# 예외가 나지 않는다 (`src/verify_lab/CLAUDE.md` 상수 관리)
+
 COL_OFFSET: Final = "offset"
 
 # 그날이 그 달의 몇 번째 거래일인가. 만기 창은 언제나 월 중순이라 offset 과 거의 붙어 다니므로,
@@ -185,22 +184,11 @@ COL_TICKER: Final = "ticker"
 # 달력 기준 청산 (만기일 매수 → 다음주 금요일 매도)
 # ============================================================
 
-# 목표일을 셀 때 기준이 되는 날. 만기 진입에서는 **규칙일**이며 실제 만기일이 아니다 —
-# 앞당김은 만기 쪽 사정이라 목표 주까지 끌고 가면 한국 추석 달의 보유가 1거래일로 무너진다
+# **달력 청산의 여섯 컬럼도 `measure/constants.py` 가 소유한다** (`COL_WEEK_REFERENCE` ·
+# `COL_TARGET_DATE` · `COL_EXIT_DATE` · `COL_HOLD_DAYS` · `COL_ENTRY_CLOSE` · `COL_EXIT_CLOSE`).
+# **주 기준일이 실제 만기일이 아니라 규칙일인 이유**는 앞당김이 만기 쪽 사정이라 목표 주까지
+# 끌고 가면 한국 추석 달의 보유가 1거래일로 무너지기 때문이다
 # (`docs/매매/옵션_만기일/설계.md` 결정 ⑰)
-COL_WEEK_REFERENCE: Final = "week_reference"
-
-# 달력이 지목한 청산일. 그날이 휴장이면 실제 청산일과 달라진다
-COL_TARGET_DATE: Final = "target_date"
-
-# 실제로 판 날. 목표일이 휴장이면 직전 거래일이다 (결정 ⑱)
-COL_EXIT_DATE: Final = "exit_date"
-
-# 진입일부터 청산일까지의 거래일 수. **신호마다 다르다** — 청산이 달력 기준이기 때문이다
-COL_HOLD_DAYS: Final = "hold_days"
-
-COL_ENTRY_CLOSE: Final = "entry_close"
-COL_EXIT_CLOSE: Final = "exit_close"
 
 # 기준선 대비 차이 표에서 어느 기준선과 견줬는지 밝히는 축. 둘은 묻는 질문이 다르다
 # (`docs/매매/옵션_만기일/설계.md` §3.7)
@@ -346,11 +334,7 @@ DISPLAY_BASELINE_KIND: Final = "기준선 종류"
 DISPLAY_WEEK_REFERENCE: Final = "주 기준일"
 DISPLAY_TARGET_DATE: Final = "청산 목표일"
 DISPLAY_EXIT_DATE: Final = "실제 청산일"
-DISPLAY_HOLD_DAYS: Final = "보유 거래일"
-DISPLAY_ENTRY_CLOSE: Final = "진입 종가"
-DISPLAY_EXIT_CLOSE: Final = "청산 종가"
 DISPLAY_FORWARD_RETURN: Final = "수익률(%)"
-DISPLAY_EXCLUDED_REASON: Final = "제외 사유"
 
 # 기준선 쪽 통계에 붙는 접두사. `_aggregate_by_month` 가 merge 하며 만드는 `_baseline` 접미사를
 # 사람이 읽는 말로 바꾼다
@@ -380,14 +364,14 @@ OUTPUT_LABELS: Final = {
     COL_WEEK_REFERENCE: DISPLAY_WEEK_REFERENCE,
     COL_TARGET_DATE: DISPLAY_TARGET_DATE,
     COL_EXIT_DATE: DISPLAY_EXIT_DATE,
-    COL_HOLD_DAYS: DISPLAY_HOLD_DAYS,
+    COL_HOLD_DAYS: DISPLAY_HOLD_DAYS_EXACT,
     COL_ENTRY_CLOSE: DISPLAY_ENTRY_CLOSE,
     COL_EXIT_CLOSE: DISPLAY_EXIT_CLOSE,
     COL_FORWARD_RETURN: DISPLAY_FORWARD_RETURN,
     COL_EXCLUDED_REASON: DISPLAY_EXCLUDED_REASON,
     # 집계
     COL_BASIS: DISPLAY_BASIS,
-    COL_HORIZON: DISPLAY_HOLD_DAYS,
+    COL_HORIZON: DISPLAY_HOLD_DAYS_EXACT,
     COL_SIGNAL_COUNT: DISPLAY_SIGNAL_COUNT,
     COL_EXCLUDED_COUNT: DISPLAY_EXCLUDED,
     COL_SAMPLE_COUNT: DISPLAY_SAMPLE_COUNT,

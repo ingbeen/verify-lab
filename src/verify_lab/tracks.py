@@ -80,6 +80,9 @@ TRACKS: Final = (
     Track("reverse", "역방향", GRADE_TRADING, KIND_METHOD),
     Track("option_expiry", "옵션_만기일", GRADE_TRADING, KIND_METHOD),
     Track("month_end", "월말_진입", GRADE_TRADING, KIND_METHOD),
+    # 위 둘을 2×2 로 교차한 검증. **재 보는 중이라 검증 등급**이며, 승격은 결과를 보고
+    # 사용자가 정한다
+    Track("expiry_monthend", "만기_말일", GRADE_STUDY, KIND_METHOD),
     Track("usdkrw_equivalence", "원달러_ETF_등가성", GRADE_SURVEY, KIND_PROPERTY),
     Track("leverage_tracking", "레버리지_ETF_괴리", GRADE_SURVEY, KIND_PROPERTY),
     Track("futures_leverage", "선물_대_레버리지_ETF", GRADE_SURVEY, KIND_PROPERTY),

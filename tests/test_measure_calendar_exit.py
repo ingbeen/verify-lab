@@ -1,16 +1,7 @@
-"""검증 #7 의 달력 기준 청산(만기일 매수 → 다음주 금요일 매도)을 고정한다.
+"""달력 청산 — 주 기준(다음 주 지정 요일)
 
-이 매매는 **청산이 달력 기준**이라 보유 거래일 수가 신호마다 다르다. 고정 구간으로 재면
-미국의 4분의 1이 틀린 값이 된다 — 만기 다음 주에 휴장이 잦기 때문이다
-(`docs/매매/옵션_만기일/설계.md` 결정 ⑯).
-
-고정하는 계약은 여섯이다.
-- 목표일은 **주 기준일이 속한 주**의 다음 주 지정 요일이다 (만기 진입에서는 규칙일이 주 기준일이다)
-- 목표일이 거래일이 아니면 **직전 거래일**에 청산한다
-- 목표일이 데이터 끝을 넘으면 값을 지어내지 않고 **제외하며 사유를 남긴다**
-- 뒤에 데이터가 더 붙어도 이미 확정된 진입일의 청산 판정이 달라지지 않는다 (look-ahead 감시)
-- 진입 수 = 유효 표본 + 제외 표본 (표본 보존)
-- 수익률은 `청산 종가 ÷ 진입 종가 − 1` 이다
+**공유 계층의 테스트다.** 세 매매법이 같은 달력을 쓰므로 어느 한 매매법의 것이 아니다.
+달력일 진입과 말일 청산은 `test_measure_calendar_month.py` 가 본다.
 """
 
 from collections.abc import Sequence
@@ -19,33 +10,32 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
+from verify_lab.measure.calendar_entry import ExpiryRule, monthly_expiry_dates
+from verify_lab.measure.calendar_exit import (
+    WeeklyExitSchedule,
+    weekly_exit_returns,
+    weekly_exit_schedule,
+)
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_REASON,
+    COL_EXIT_DATE,
+    COL_EXPIRY_DATE,
     COL_FORWARD_RETURN,
+    COL_HOLD_DAYS,
     COL_HORIZON,
+    COL_RULE_DATE,
+    COL_TARGET_DATE,
+    COL_WEEK_REFERENCE,
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
 from verify_lab.studies.option_expiry.constants import (
-    COL_EXIT_DATE,
-    COL_EXPIRY_DATE,
-    COL_HOLD_DAYS,
-    COL_RULE_DATE,
-    COL_TARGET_DATE,
-    COL_WEEK_REFERENCE,
     FRIDAY,
     HORIZON_NEXT_WEEK_EXIT,
     KR_MONTHLY_EXPIRY,
     THURSDAY,
     US_MONTHLY_EXPIRY,
-    ExpiryRule,
-)
-from verify_lab.studies.option_expiry.expiry_calendar import monthly_expiry_dates
-from verify_lab.studies.option_expiry.weekly_exit import (
-    WeeklyExitSchedule,
-    weekly_exit_returns,
-    weekly_exit_schedule,
 )
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
@@ -387,7 +377,7 @@ class TestWeeklyExitReturns:
         schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
 
         # When
-        result = weekly_exit_returns(df, schedule)
+        result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
 
         # Then
         row = result[result[COL_DATE] == pd.Timestamp("2026-07-17")].iloc[0]
@@ -409,7 +399,7 @@ class TestWeeklyExitReturns:
         schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
 
         # When
-        result = weekly_exit_returns(df, schedule)
+        result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
 
         # Then
         assert schedule.frame[COL_HOLD_DAYS].nunique() > 1, "보유 길이가 섞이는 달력이어야 합니다"
@@ -432,7 +422,7 @@ class TestWeeklyExitReturns:
         schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
 
         # When
-        result = weekly_exit_returns(df, schedule)
+        result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
 
         # Then
         assert len(result) == schedule.entry_count
@@ -454,7 +444,7 @@ class TestWeeklyExitReturns:
 
         # When
         schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
-        result = weekly_exit_returns(df, schedule)
+        result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
 
         # Then
         assert schedule.entry_count == 0

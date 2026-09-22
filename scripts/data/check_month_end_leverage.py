@@ -13,7 +13,7 @@
 같은 규칙을 만든다 — 상품 가격 기준 −5% 를 그대로 옮기면 기초자산 −2.5% 에서 자르는
 훨씬 타이트한 규칙이 된다.
 
-**진입일·청산일은 `studies/month_end/schedule.py`, 체결은 `execution/trade_fill.py` 를
+**진입일·청산일은 `measure/calendar_entry.py`·`calendar_exit.py`, 체결은 `execution/trade_fill.py` 를
 그대로 부른다** — 판정식을 새로 만들면 성적표와 다른 것을 재게 된다 (절대 원칙 5).
 
 **인버스 실물은 그 상품을 «사는» 것**이므로 아래로 걸지 않는다. 1배 롱만 부호를 뒤집는다.
@@ -31,18 +31,22 @@ from verify_lab.common_constants import COL_CLOSE, COL_DATE, MARKET_DIR, MARKET_
 from verify_lab.data.loader import load_market_csv
 from verify_lab.execution.constants import EXIT_LIMIT
 from verify_lab.execution.trade_fill import resolve_positions, simulate_scheduled_trade
-from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
+from verify_lab.measure.calendar_entry import month_entry_dates
+from verify_lab.measure.calendar_exit import month_exit_schedule
+from verify_lab.measure.constants import (
+    COL_EXCLUDED_REASON,
+    COL_EXIT_DATE,
+    COL_MONTH,
+    REASON_NONE,
+)
 from verify_lab.report.constants import PERCENT_DECIMALS
 from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
-    COL_EXIT_DATE,
-    COL_MONTH,
     MONTH_END_STOP_GRID,
     MONTH_END_STOP_LEVEL,
     TRADING_CELLS,
 )
-from verify_lab.studies.month_end.schedule import month_entry_dates, month_exit_schedule
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger

@@ -27,11 +27,17 @@ from verify_lab.measure.constants import (
     COL_DIVIDEND_HIT_COUNT,
     COL_DIVIDEND_MEAN_IMPACT,
     COL_DIVIDEND_MEASURED,
+    COL_ENTRY_CLOSE,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
+    COL_EXIT_CLOSE,
+    COL_EXIT_DATE,
     COL_FORWARD_RETURN,
+    COL_HOLD_DAYS,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
+    COL_MONTH,
+    COL_MONTH_LAST_DATE,
     COL_SIGNAL_COUNT,
 )
 from verify_lab.measure.screening import COL_DIRECTION
@@ -70,7 +76,11 @@ from verify_lab.report.constants import (
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
+    DISPLAY_ENTRY_CLOSE,
     DISPLAY_EXCLUDED,
+    DISPLAY_EXCLUDED_REASON,
+    DISPLAY_EXIT_CLOSE,
+    DISPLAY_HOLD_DAYS_EXACT,
     DISPLAY_JUDGEABLE,
     DISPLAY_MAX,
     DISPLAY_MEAN,
@@ -81,6 +91,7 @@ from verify_lab.report.constants import (
     DISPLAY_MEDIAN_DIFF,
     DISPLAY_MEDIAN_P_VALUE,
     DISPLAY_MIN,
+    DISPLAY_MONTH_NUMBER,
     DISPLAY_NEGATIVE_COUNT,
     DISPLAY_NEGATIVE_MEAN,
     DISPLAY_POSITIVE_COUNT,
@@ -385,27 +396,12 @@ KEY_CELL_MONTH: Final = "month"
 KEY_CELL_DIRECTION: Final = "direction"
 
 # ============================================================
-# 일정표 컬럼 (내부 계산용 토큰)
+# 일정표 컬럼 — **공통 계층이 소유한다**
 # ============================================================
-
-# 진입 달. 청산이 익월로 넘어가도 **그 매매가 속한 달은 진입 달**이다
-COL_MONTH: Final = "month"
-
-# 목표 달력일. 앞당김 전의 값이라 격자 축으로 그대로 쓴다
-COL_TARGET_DAY: Final = "target_day"
-
-# 그 달의 마지막 거래일. 청산 상대 거래일의 기준점이다
-COL_MONTH_LAST_DATE: Final = "month_last_date"
-
-COL_EXIT_DATE: Final = "exit_date"
-COL_EXIT_OFFSET: Final = "exit_offset"
-
-# 실제 보유 거래일 수. 달마다 다르므로 구간 축이 아니라 별도 컬럼으로 남긴다
-COL_HOLD_DAYS: Final = "hold_days"
-
-# 사용자가 차트로 직접 대조하는 원자료 (측정의 원칙 8)
-COL_ENTRY_CLOSE: Final = "entry_close"
-COL_EXIT_CLOSE: Final = "exit_close"
+#
+# 진입 달·목표 달력일·마지막 거래일·청산 상대 거래일·청산일·보유 거래일·진입 종가·청산 종가는
+# `measure/constants.py` 가 갖는다. 세 매매법이 같은 달력을 쓰므로 이름도 한 벌이어야 하고,
+# 여기서 다시 정의하면 절반짜리 통합이 되어 한쪽이 바뀌어도 예외가 나지 않는다
 
 # ============================================================
 # 구간 표지
@@ -417,16 +413,11 @@ COL_EXIT_CLOSE: Final = "exit_close"
 HORIZON_MONTH_END: Final = -1
 
 # ============================================================
-# 제외 사유
+# 제외 사유 — **공통 계층이 소유한다**
 # ============================================================
-
-# 그 달에 목표 달력일 이전 거래일이 없는 경우. 앞당김은 **그 달 안에서만** 일어나므로
-# 전월로 넘어가지 않고 여기서 멈춘다
-REASON_NO_ENTRY_DAY: Final = "그 달에 목표 달력일 이전 거래일이 없음"
-
-# 청산일이 진입일보다 뒤가 아닌 경우. 격자의 극단 칸에서 생기며, 값을 지어내는 대신
-# 제외하고 사유를 남긴다 (결정 ④)
-REASON_NO_HOLDING: Final = "청산일이 진입일보다 뒤가 아님"
+#
+# `REASON_NO_ENTRY_DAY`·`REASON_NO_HOLDING` 은 `measure/constants.py` 가 갖는다.
+# 달력 일정이 내는 사유라 그 계산과 같은 자리에 있어야 한다 (결정 ④)
 
 # ============================================================
 # 표시용 한글 레이블
@@ -461,19 +452,14 @@ BASELINE_SUFFIX: Final = "_baseline"
 DISPLAY_MONTH: Final = "진입 달"
 DISPLAY_MONTH_LAST_DATE: Final = "그 달 마지막 거래일"
 DISPLAY_EXIT_DATE: Final = "청산일"
-DISPLAY_HOLD_DAYS: Final = "보유 거래일"
-DISPLAY_ENTRY_CLOSE: Final = "진입 종가"
-DISPLAY_EXIT_CLOSE: Final = "청산 종가"
 # **성적표와 같은 말을 쓴다** (`execution/constants.py` 의 같은 값). `측정.csv` 의 칸 한 행과
 # 성적표의 `시기 = 전체` 행이 1:1 로 조인되어야 하는데, 한쪽이 `대상` 이고 다른 쪽이 `종목` 이면
 # 두 표를 나란히 읽을 수 없다. **겹침은 테스트의 허용목록이 고정한다** — 이 저장소는 이 레이블을
 # 이미 네 파일이 나눠 갖고 있고, 소유자를 하나로 모으는 것은 이 계획서의 범위가 아니다
 DISPLAY_TICKER: Final = "종목"
-DISPLAY_MONTH_NUMBER: Final = "월"
 
 # `report/constants.py` 에 없어 이 검증이 정한다 — 원자료 표에만 쓰인다
 DISPLAY_RETURN: Final = "수익률(%)"
-DISPLAY_EXCLUDED_REASON: Final = "제외 사유"
 
 # 기준선 값 컬럼 앞에 붙이는 말
 BASELINE_PREFIX: Final = "기준선 "
@@ -496,7 +482,7 @@ COLUMN_LABELS: Final = {
     COL_DATE: DISPLAY_DATE,
     COL_MONTH_LAST_DATE: DISPLAY_MONTH_LAST_DATE,
     COL_EXIT_DATE: DISPLAY_EXIT_DATE,
-    COL_HOLD_DAYS: DISPLAY_HOLD_DAYS,
+    COL_HOLD_DAYS: DISPLAY_HOLD_DAYS_EXACT,
     COL_ENTRY_CLOSE: DISPLAY_ENTRY_CLOSE,
     COL_EXIT_CLOSE: DISPLAY_EXIT_CLOSE,
     COL_FORWARD_RETURN: DISPLAY_RETURN,

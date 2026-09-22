@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import COL_DATE
-from verify_lab.studies.option_expiry.constants import COL_EXPIRY_DATE, COL_OFFSET
+from verify_lab.measure.constants import COL_EXPIRY_DATE
+from verify_lab.studies.option_expiry.constants import COL_OFFSET
 
 # 어느 쪽 만기와도 이어지지 않는 자리를 채우는 거리. 실제 거리와 섞이지 않도록
 # 거래일 수로 도달할 수 없는 값을 쓴다

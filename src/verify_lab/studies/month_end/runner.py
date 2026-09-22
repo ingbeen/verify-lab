@@ -26,12 +26,16 @@ import pandas as pd
 
 from verify_lab.common_constants import ADJUSTED_FILE_TEMPLATE, COL_CLOSE, COL_DATE
 from verify_lab.data.loader import load_market_csv, load_series_csv
+from verify_lab.measure.calendar_entry import every_day_entries, month_entry_dates
+from verify_lab.measure.calendar_exit import month_exit_returns, month_exit_schedule
 from verify_lab.measure.constants import (
     COL_BASIS,
     COL_DIVIDEND_HIT_COUNT,
     COL_DIVIDEND_MEAN_IMPACT,
     COL_DIVIDEND_MEASURED,
     COL_EXCLUDED_REASON,
+    COL_EXIT_DATE,
+    COL_HOLD_DAYS,
     COL_HORIZON,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
@@ -65,13 +69,12 @@ from verify_lab.studies.month_end.constants import (
     BASE_ENTRY_DAY,
     BASE_EXIT_OFFSET,
     BASELINE_SUFFIX,
-    COL_EXIT_DATE,
-    COL_HOLD_DAYS,
     COL_MONTH_NUMBER,
     COL_TICKER,
     COLUMN_LABELS,
     DATASETS,
     EXECUTION_ROLE_DOWN,
+    HORIZON_MONTH_END,
     KEY_CELL_DIRECTION,
     KEY_CELL_MONTH,
     KEY_CELLS,
@@ -84,12 +87,6 @@ from verify_lab.studies.month_end.constants import (
     TRADING_CELLS,
     Dataset,
     MonthEndCell,
-)
-from verify_lab.studies.month_end.schedule import (
-    every_day_entries,
-    month_entry_dates,
-    month_exit_returns,
-    month_exit_schedule,
 )
 from verify_lab.utils.logger import get_logger
 
@@ -199,8 +196,8 @@ def _frames(df: pd.DataFrame, dataset: Dataset) -> tuple[pd.DataFrame, pd.DataFr
     baseline_entries = every_day_entries(trading_days, calendar_day=BASE_ENTRY_DAY)
     baseline_schedule = month_exit_schedule(trading_days, baseline_entries, exit_offset=BASE_EXIT_OFFSET)
 
-    signal = month_exit_returns(df, signal_schedule, price_column=dataset.price_column)
-    baseline = month_exit_returns(df, baseline_schedule, price_column=dataset.price_column)
+    signal = month_exit_returns(df, signal_schedule, horizon=HORIZON_MONTH_END, price_column=dataset.price_column)
+    baseline = month_exit_returns(df, baseline_schedule, horizon=HORIZON_MONTH_END, price_column=dataset.price_column)
 
     return signal, baseline
 

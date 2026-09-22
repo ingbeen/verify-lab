@@ -16,7 +16,8 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_DATE
-from verify_lab.studies.option_expiry.constants import COL_EXPIRY_DATE, COL_OFFSET
+from verify_lab.measure.constants import COL_EXPIRY_DATE
+from verify_lab.studies.option_expiry.constants import COL_OFFSET
 from verify_lab.studies.option_expiry.offsets import expiry_offsets
 
 

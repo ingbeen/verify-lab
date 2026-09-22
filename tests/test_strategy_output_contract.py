@@ -72,7 +72,13 @@ from verify_lab.execution.run_summary import (
     KEY_RULE,
 )
 from verify_lab.measure.constants import JUDGEABLE_NO
-from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_JUDGEABLE, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
+from verify_lab.report.constants import (
+    DISPLAY_EXCLUDED,
+    DISPLAY_JUDGEABLE,
+    DISPLAY_MONTH_NUMBER,
+    DISPLAY_PERIOD,
+    DISPLAY_SIGNAL_COUNT,
+)
 from verify_lab.report.run_summary import (
     KEY_DATASET_FILE,
     KEY_DATASET_LABEL,
@@ -81,9 +87,16 @@ from verify_lab.report.run_summary import (
     KEY_DATASET_TICKER,
     KEY_TRACK,
 )
+from verify_lab.studies.expiry_monthend.constants import COMBOS as EXPIRY_MONTHEND_COMBOS
+from verify_lab.studies.expiry_monthend.constants import MARKET_KOSDAQ as EXPIRY_MONTHEND_MARKET
+from verify_lab.studies.expiry_monthend.constants import MONTHS as EXPIRY_MONTHEND_MONTHS
+from verify_lab.studies.expiry_monthend.constants import Dataset as ExpiryMonthEndDataset
+from verify_lab.studies.expiry_monthend.trading import (
+    TradingOutputs as ExpiryMonthEndOutputs,
+)
+from verify_lab.studies.expiry_monthend.trading import run_expiry_monthend_trading
 from verify_lab.studies.month_end.constants import DATASETS as MONTH_END_DATASETS
 from verify_lab.studies.month_end.constants import (
-    DISPLAY_MONTH_NUMBER,
     EXECUTION_ROLE_NONE,
     EXECUTION_ROLE_UP,
     KEY_EXCLUDED_COUNT,
@@ -177,6 +190,7 @@ TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "보
 AXIS_REVERSE = ("파라미터", "시작연도")
 AXIS_OPTION_EXPIRY = ("만기월",)
 AXIS_MONTH_END = ("월",)
+AXIS_EXPIRY_MONTHEND = ("조합", "월")
 
 # 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향만 있다
 TAIL_REVERSE_SUMMARY = ("사건",)
@@ -444,6 +458,47 @@ def month_end_outputs(tmp_path_factory: pytest.TempPathFactory) -> TradingOutput
     return run_month_end_trading((etf, index), stop_levels=MONTH_END_STOP_GRID)
 
 
+@pytest.fixture(scope="module")
+def expiry_monthend_outputs(tmp_path_factory: pytest.TempPathFactory) -> ExpiryMonthEndOutputs:
+    """합성 시세와 합성 지수로 돈 만기_말일 결과.
+
+    **네 번째 체결 모듈이다.** 계약 테스트가 셋만 돌면 새 매매법의 성적표·거래내역이
+    **컬럼이 비어 나가도 통과한다** — 이 파일 자신이 적어 둔 실패 방식이다.
+
+    **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
+    """
+    directory = tmp_path_factory.mktemp("expiry_monthend")
+    _write_market(directory, "SYN")
+    _write_index(directory, "SYNIDX")
+
+    etf = ExpiryMonthEndDataset(
+        ticker="SYN",
+        label="합성 ETF",
+        market=EXPIRY_MONTHEND_MARKET,
+        directory=directory,
+        file_template=MARKET_FILE_TEMPLATE,
+        price_column=COL_CLOSE,
+        price_decimals=PRICE_DECIMALS_KRW,
+        is_index=False,
+    )
+    index = ExpiryMonthEndDataset(
+        ticker="SYNIDX",
+        label="합성 지수",
+        market=EXPIRY_MONTHEND_MARKET,
+        directory=directory,
+        file_template=INDEX_FILE_TEMPLATE,
+        price_column=COL_VALUE,
+        price_decimals=PRICE_DECIMALS,
+        is_index=True,
+    )
+
+    # **기본값 9·12월을 그대로 쓴다.** 합성 시세가 2016-01 ~ 2025-12 라 두 달 모두 표본이 있고,
+    # 계약 검사는 「실제로 도는 구성」에서 하는 편이 낫다
+    months = EXPIRY_MONTHEND_MONTHS
+
+    return run_expiry_monthend_trading((etf, index), combos=EXPIRY_MONTHEND_COMBOS, months=months)
+
+
 def _expected_summary(axis: tuple[str, ...], tail: tuple[str, ...] = ()) -> list[str]:
     """그 매매법의 성적표 기대 컬럼을 만든다.
 
@@ -509,32 +564,56 @@ class TestSummaryColumns:
         # Given / When / Then
         assert list(month_end_outputs.performance.columns) == _expected_summary(AXIS_MONTH_END)
 
-    def test_세_성적표의_공통_부분이_완전히_같다(
+    def test_만기_말일_성적표가_공통_컬럼을_순서대로_쓴다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+        """
+        목적: **네 번째 체결 모듈**이 같은 계약을 쓰는지 고정한다
+
+        Given: 합성 시세와 지수로 돈 만기_말일 결과
+        When: 성적표의 컬럼을 봤을 때
+        Then: 종목 · 조합 · 월 · 공통 24개다. `사건` 은 없다
+        """
+        # Given / When / Then
+        assert list(expiry_monthend_outputs.performance.columns) == _expected_summary(AXIS_EXPIRY_MONTHEND)
+
+    def test_네_성적표의_공통_부분이_완전히_같다(
         self,
         reverse_outputs: StrategyOutputs,
         expiry_outputs: ExpiryOutputs,
         month_end_outputs: TradingOutputs,
+        expiry_monthend_outputs: ExpiryMonthEndOutputs,
     ) -> None:
         """
         목적: 매매법 축과 고유 컬럼을 뺀 나머지가 한 벌임을 고정한다
 
-        이 계약이 깨지면 세 산출물을 나란히 놓고 읽을 수 없다.
+        이 계약이 깨지면 네 산출물을 나란히 놓고 읽을 수 없다.
 
-        Given: 세 매매법의 성적표
+        Given: 네 매매법의 성적표
         When: 매매법 축과 고유 컬럼을 뺀 컬럼 목록을 비교했을 때
-        Then: 셋이 같다
+        Then: 넷이 같다
         """
         # Given
-        axes = {*AXIS_REVERSE, *AXIS_OPTION_EXPIRY, *AXIS_MONTH_END, "종목", *TAIL_REVERSE_SUMMARY}
+        axes = {
+            *AXIS_REVERSE,
+            *AXIS_OPTION_EXPIRY,
+            *AXIS_MONTH_END,
+            *AXIS_EXPIRY_MONTHEND,
+            "종목",
+            *TAIL_REVERSE_SUMMARY,
+        }
 
         # When
         common = [
             [column for column in table.columns if column not in axes]
-            for table in (reverse_outputs.performance, expiry_outputs.performance, month_end_outputs.performance)
+            for table in (
+                reverse_outputs.performance,
+                expiry_outputs.performance,
+                month_end_outputs.performance,
+                expiry_monthend_outputs.performance,
+            )
         ]
 
         # Then
-        assert common[0] == common[1] == common[2] == list(SUMMARY_COMMON_COLUMNS)
+        assert common[0] == common[1] == common[2] == common[3] == list(SUMMARY_COMMON_COLUMNS)
 
 
 class TestTradeColumns:
@@ -574,6 +653,17 @@ class TestTradeColumns:
         """
         # Given / When / Then
         assert list(month_end_outputs.trades.columns) == _expected_trades(AXIS_MONTH_END)
+
+    def test_만기_말일_거래내역이_공통_컬럼을_순서대로_쓴다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+        """
+        목적: 네 번째 체결 모듈의 원자료가 같은 계약을 쓰는지 고정한다
+
+        Given: 합성 시세와 지수로 돈 만기_말일 결과
+        When: 거래내역의 컬럼을 봤을 때
+        Then: 종목 · 조합 · 월 · 공통 순이다. 청산 목표일도 등락률도 없다
+        """
+        # Given / When / Then
+        assert list(expiry_monthend_outputs.trades.columns) == _expected_trades(AXIS_EXPIRY_MONTHEND)
 
 
 class TestStopLevelFormat:
@@ -1393,6 +1483,16 @@ class TestWorstHoldColumn:
         """
         self._assert_filled(month_end_outputs.performance)
 
+    def test_만기_말일_성적표가_값을_채운다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+        """
+        목적: 네 번째 체결 모듈도 선택 인자를 빠뜨리지 않았는지 고정한다
+
+        Given: 합성 시세와 지수로 돈 만기_말일 성적표
+        When: 표본이 있는 행을 봤을 때
+        Then: 보유 중 최악이 비어 있지 않다
+        """
+        self._assert_filled(expiry_monthend_outputs.performance)
+
     def test_지수_행도_값을_갖는다(self, month_end_outputs: TradingOutputs) -> None:
         """
         목적: 「손절불가」 행이 조용히 빠지지 않는지 고정한다 (엣지 케이스)
@@ -1409,14 +1509,17 @@ class TestWorstHoldColumn:
         # When / Then
         self._assert_filled(index_rows)
 
-    @pytest.mark.parametrize("fixture_name", ["reverse_outputs", "expiry_outputs", "month_end_outputs"])
+    @pytest.mark.parametrize(
+        "fixture_name",
+        ["reverse_outputs", "expiry_outputs", "month_end_outputs", "expiry_monthend_outputs"],
+    )
     def test_보유_중_최악이_결과_최악보다_나쁘거나_같다(self, fixture_name: str, request: pytest.FixtureRequest) -> None:
         """
         목적: 두 컬럼이 **같은 체결 목록**을 보고 있음을 고정한다
 
         청산가는 보유 중에 실제로 지난 가격이므로 보유 중 최악은 언제나 그보다 나쁘거나 같다.
         이 부등식이 깨지면 구간(진입 다음 날 ~ 청산일)이나 방향 부호가 틀린 것이다.
-        **세 매매법에 한꺼번에 건다** — 한 곳만 틀려도 잡힌다.
+        **네 매매법에 한꺼번에 건다** — 한 곳만 틀려도 잡힌다.
 
         Given: 합성 시세로 돈 성적표
         When: 표본이 있는 행의 두 컬럼을 견줬을 때

@@ -26,6 +26,7 @@ from verify_lab.measure.constants import (
     COL_BASIS,
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
+    COL_HOLD_DAYS,
     COL_HORIZON,
     COL_MEAN_RATE_CONFLICT,
     REASON_NONE,
@@ -42,7 +43,6 @@ from verify_lab.measure.statistics import (
 )
 from verify_lab.studies.option_expiry.constants import (
     COL_EXPIRY_MONTH_NUMBER,
-    COL_HOLD_DAYS,
     COL_TICKER,
     HORIZON_NEXT_WEEK_EXIT,
     US_MONTHLY_EXPIRY,
