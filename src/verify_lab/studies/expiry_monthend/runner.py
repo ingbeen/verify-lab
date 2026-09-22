@@ -3,9 +3,9 @@
 **계산하지 않는다.** 달력은 `measure/calendar_*`, 통계는 `measure/statistics`,
 배당락은 `measure/distribution` 이 소유하고 여기서는 조립만 한다.
 
-**축은 (종목 × 조합 × 달) 하나다.** 방향 컬럼을 두지 않는 것은 측정 계층이 방향을 모르고
-오른 비율과 내린 비율을 나란히 내기 때문이다 (출력 계약). 방향은 성적표의 축이고,
-두 표는 `(종목, 조합, 월)` 로 조인된다.
+**축은 (종목 × 조합 × 달) 하나이고 `방향` 은 식별 «라벨»로 붙는다.** 값은 1배 롱 기준
+그대로이며 부호를 뒤집지 않는다 — 뒤집으면 `기준선 오른 비율` 이 실제로는 내린 비율을
+가리켜 이름이 거짓이 된다. 라벨이 있어야 성적표의 `시기 = 전체` 행과 **1:1** 로 읽힌다.
 
 **기준선은 「그 달 아무 날 진입」이다.** 계절성이 있는 달은 매매법과 무관하게 방향이 치우치므로,
 같은 달과 견주지 않으면 「그 달이 원래 그런 것」과 「그 달의 이 매매가 특별한 것」을 가를 수 없다.
@@ -33,6 +33,7 @@ from verify_lab.measure.constants import (
     REASON_NONE,
 )
 from verify_lab.measure.distribution import dividend_impact
+from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.measure.statistics import (
     COL_BASIS,
     COL_DOWN_RATE_P_VALUE,
@@ -65,6 +66,7 @@ from verify_lab.studies.expiry_monthend.constants import (
     COLUMN_LABELS,
     COMBOS,
     DATASETS,
+    DEFAULT_BET_DOWN,
     FIELD_STATISTICS,
     KEY_COMBO_ENTRY,
     KEY_COMBO_EXIT,
@@ -304,16 +306,18 @@ def _run_dataset(
     months: tuple[int, ...],
     accumulator: _Accumulator,
     *,
+    bet_down: bool,
     repeats: int,
     seed: int,
 ) -> dict[str, Any]:
-    """대상 하나를 네 조합으로 돌린다.
+    """대상 하나를 주어진 조합으로 돌린다.
 
     Args:
         dataset: 검증 대상 정의
         combos: 돌릴 조합 목록
         months: 재는 달 목록
         accumulator: 결과를 쌓는 자리
+        bet_down: 아래로 거는 칸인지 여부. **표시용 라벨일 뿐 값을 바꾸지 않는다**
         repeats: 순열 검정 반복 수
         seed: 순열 검정 시드
 
@@ -377,16 +381,31 @@ def _run_dataset(
         entry_count += len(in_months)
         excluded_count += int((in_months[COL_EXCLUDED_REASON] != REASON_NONE).sum())
 
-    # **조합 붕괴는 달마다 따로 센다** — 같은 조합이 9월에는 갈리고 12월에는 겹칠 수 있다
-    counts_by_month = {month: shared_year_counts(valid_by_combo, month) for month in months}
+    # **조합 붕괴는 달마다 따로 센다** — 같은 조합이 9월에는 갈리고 12월에는 겹칠 수 있다.
+    #
+    # [중요] **네 조합을 다 돌렸을 때만 이 값이 성립한다.** 부분집합으로 세면 그 안에서만의
+    # 붕괴가 되는데 산출물에는 그 사실이 남지 않아 **전체 격자의 값처럼 읽힌다.**
+    # 조합이 하나뿐이면 더 분명하다 — 견줄 다른 조합이 없어
+    # 「이 조합만 다른 해」가 신호 수와 같아지는데, 그것은 **독립 관측이 그만큼 있다는 뜻이
+    # 아니라 비교 대상이 없다는 뜻**이다 — 실측으로 SPY 9월의 실제 값은 넷을 다 돌렸을 때
+    # 15해이고 하나만 돌리면 33 으로 나온다. **0 이나 신호 수로 채우면 거짓이 실리므로 비운다**
+    # (이 저장소에서 빈칸은 「잴 수 없었다」는 뜻이다)
+    comparable = len(combos) == len(COMBOS)
+    counts_by_month = {month: shared_year_counts(valid_by_combo, month) for month in months} if comparable else {}
 
     for combo in combos:
         block = blocks[combo.label].copy()
-        # **루프 변수를 람다에 가두지 않는다** — 늦은 바인딩이면 전 조합이 마지막 조합의 값을
-        # 받는데 예외가 나지 않고 숫자만 틀린다. 리스트로 먼저 펼쳐 그 자리에서 읽는다
-        counted = [counts_by_month[int(month)][combo.label] for month in block[COL_MONTH_NUMBER]]
-        block[COL_SHARED_YEARS] = pd.array([shared for shared, _ in counted], dtype="Int64")
-        block[COL_UNIQUE_YEARS] = pd.array([unique for _, unique in counted], dtype="Int64")
+        if comparable:
+            # **루프 변수를 람다에 가두지 않는다** — 늦은 바인딩이면 전 조합이 마지막 조합의 값을
+            # 받는데 예외가 나지 않고 숫자만 틀린다. 리스트로 먼저 펼쳐 그 자리에서 읽는다
+            counted = [counts_by_month[int(month)][combo.label] for month in block[COL_MONTH_NUMBER]]
+            shared = [value for value, _ in counted]
+            unique = [value for _, value in counted]
+        else:
+            shared = [pd.NA] * len(block)
+            unique = [pd.NA] * len(block)
+        block[COL_SHARED_YEARS] = pd.array(shared, dtype="Int64")
+        block[COL_UNIQUE_YEARS] = pd.array(unique, dtype="Int64")
 
         dividend = pd.DataFrame(
             [_dividend_row(dataset, valid_by_combo[combo.label], int(month)) for month in block[COL_MONTH_NUMBER]],
@@ -396,6 +415,12 @@ def _run_dataset(
 
         block.insert(0, COL_COMBO, combo.label)
         block.insert(0, COL_TICKER, dataset.label)
+
+        # **방향은 식별 컬럼이고 값을 바꾸지 않는다.** 측정 표의 수치는 1배 롱 기준 그대로이며,
+        # 부호를 뒤집으면 `기준선 오른 비율` 이 실제로는 내린 비율을 가리켜 이름이 거짓이 된다.
+        # 이 컬럼이 있어야 성적표의 `시기 = 전체` 행과 1:1 로 읽힌다 (매매 산출물 계약)
+        block.insert(3, COL_DIRECTION, DIRECTION_DOWN if bet_down else DIRECTION_UP)
+
         accumulator.statistics.append(block)
 
     return {
@@ -412,6 +437,7 @@ def run_study(
     *,
     combos: tuple[Combo, ...] = COMBOS,
     months: tuple[int, ...] = MONTHS,
+    bet_down: bool = DEFAULT_BET_DOWN,
     repeats: int = DEFAULT_REPEAT_COUNT,
     seed: int = DEFAULT_RANDOM_SEED,
 ) -> StudyOutputs:
@@ -421,6 +447,7 @@ def run_study(
         datasets: 검증 대상 목록
         combos: 돌릴 조합 목록
         months: 재는 달 목록
+        bet_down: 아래로 거는 칸인지 여부. **표시용 라벨일 뿐 값을 바꾸지 않는다**
         repeats: 순열 검정 반복 수
         seed: 순열 검정 시드
 
@@ -439,7 +466,8 @@ def run_study(
 
     accumulator = _Accumulator()
     dataset_summaries = [
-        _run_dataset(dataset, combos, months, accumulator, repeats=repeats, seed=seed) for dataset in datasets
+        _run_dataset(dataset, combos, months, accumulator, bet_down=bet_down, repeats=repeats, seed=seed)
+        for dataset in datasets
     ]
 
     statistics = pd.concat(accumulator.statistics, ignore_index=True)

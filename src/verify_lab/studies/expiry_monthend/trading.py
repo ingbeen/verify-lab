@@ -1,4 +1,4 @@
-"""만기_말일 체결 조립 — 네 조합 × 두 달 × 두 방향의 성적을 낸다
+"""만기_말일 체결 조립 — 확정 칸의 성적을 낸다
 
 **계산하지 않는다.** 판정식과 성적 산식이 이미 있으므로 그것들을 조합해 돌리고,
 어느 행이 어떤 설정의 결과인지를 붙여 쌓기만 한다.
@@ -9,10 +9,10 @@
 | 손절 판정 (시가 → 장중 → 청산일) | `execution/trade_fill.simulate_scheduled_trade` |
 | 구간별 성적 산식 | `execution/periods.period_rows` |
 
-**손절선은 두 종뿐이고 격자가 아니다.** 확정 −5% 와 무손절 대조이며, −5% 는 이 검증이 고른
+**손절선은 두 종뿐이고 격자가 아니다.** 확정 −5% 와 무손절 대조이며, −5% 는 이 매매법이 고른
 값이 아니라 두 매매법이 이미 확정한 값이다. 무손절을 함께 내는 것은
-`.claude/rules/trading.md` 가 「손절이 무엇을 막았는가」를 수치로 요구하고 이 트랙에는
-`규칙.md` 가 없어 산출로 메우기 때문이다.
+`.claude/rules/trading.md` 가 「손절이 무엇을 막았는가」를 수치로 요구하기 때문이고,
+산출물이 그것을 직접 낸다 — `docs/매매/만기_말일/규칙.md` §2.3 이 같은 값을 문서로도 갖는다.
 
 **지수는 한 줄뿐이다** — 장중 손절에 고가·저가가 필요한데 지수는 종가만 있어
 `손절선(%)` 에 「손절불가」로 적힌다. 거부하지 않고 강등하는 것은 **긴 기간 축을 성적표에서
@@ -55,6 +55,7 @@ from verify_lab.report.run_summary import dataset_record
 from verify_lab.studies.expiry_monthend.constants import (
     COMBOS,
     DATASETS,
+    DEFAULT_BET_DOWN,
     DISPLAY_COMBO,
     KEY_COMBO_ENTRY,
     KEY_COMBO_EXIT,
@@ -91,7 +92,12 @@ NOTE_INDEX = (
     "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다. "
     "같은 이유로 「보유 중 최악(%)」 도 종가로 재므로 ETF 행(장중 고가·저가 기준)보다 얕게 나온다"
 )
-NOTE_MONTHS = "9월·12월은 두 매매법이 이미 가리킨 뒤에 고른 달이라 사후 선택이다 — " "이 성적으로 「우위가 있다」를 새로 주장할 수 없고, 용도는 조합 간 비교다"
+NOTE_MONTHS = "재는 달은 두 매매법이 이미 가리킨 뒤에 고른 것이라 사후 선택이다 — " "이 성적으로 「우위가 있다」를 새로 주장할 수 없다"
+
+# **방향은 격자로 돌지 않는다.** 확정 칸의 방향 하나만 내므로, 축을 넓혀 돌린 실행에서
+# 「그 칸을 반대로 걸면 어떤가」는 이 산출물이 답하지 않는다 — 판정도 그 방향의 것이다.
+# **좁혀 돌린 실행이 전체 실행 폴더를 덮으므로 요약이 유일한 기록이다**
+NOTE_DIRECTION = "방향은 확정 칸의 한 값으로 고정해 돌았다 — 반대 방향의 성적과 판정은 이 산출물에 없다. " "그 방향을 다시 고를 재료는 측정 표의 오른 비율·내린 비율(1배 롱 기준)이다"
 
 
 @dataclass(frozen=True)
@@ -318,16 +324,18 @@ def run_expiry_monthend_trading(
     *,
     combos: tuple[Combo, ...] = COMBOS,
     months: tuple[int, ...] = MONTHS,
+    bet_down: bool = DEFAULT_BET_DOWN,
 ) -> TradingOutputs:
     """만기_말일 체결 성적을 낸다.
 
-    **네 조합 × 두 달 × 두 방향 × 손절선 두 종**을 돈다. 조합을 고르지 않는 것이 이 검증의
-    목적이므로 격자를 전부 내며, 손절선만 확정값과 그 대조로 좁혀 둔다.
+    **대상 × 조합 × 달 × 손절선 두 종**을 돈다. 방향은 확정 칸의 값 하나이며,
+    손절선은 확정 −5% 와 무손절 대조 둘이다 (`.claude/rules/trading.md` 가 요구하는 대조축).
 
     Args:
         datasets: 대상 목록
         combos: 돌릴 조합 목록
         months: 재는 달 목록
+        bet_down: 아래로 거는지 여부. 기본값의 SoT 는 `TRADING_CELLS` 다
 
     Returns:
         체결 원자료와 성적표
@@ -369,19 +377,21 @@ def run_expiry_monthend_trading(
             entry_count += sum(len(entries.entry_positions) for entries in by_month.values()) + dropped
 
             for month in months:
-                for bet_down in (False, True):
-                    for stop_level in levels:
-                        _run_cell(
-                            dataset,
-                            frame,
-                            by_month[month],
-                            accumulator,
-                            combo=combo,
-                            month=month,
-                            bet_down=bet_down,
-                            stop_level=stop_level,
-                            last_day=last_day,
-                        )
+                # **방향을 격자로 돌지 않는다.** 확정 칸의 방향 하나만 내며, 반대 방향의 성적은
+                # 측정 표의 오른 비율·내린 비율(1배 롱 기준)로 되짚는다. 두 방향을 함께 내면
+                # 측정 표의 한 행에 성적표 두 행이 붙어 1:1 조인이 깨진다
+                for stop_level in levels:
+                    _run_cell(
+                        dataset,
+                        frame,
+                        by_month[month],
+                        accumulator,
+                        combo=combo,
+                        month=month,
+                        bet_down=bet_down,
+                        stop_level=stop_level,
+                        last_day=last_day,
+                    )
 
         dataset_records.append(
             dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.path.name, frame=frame)
@@ -401,12 +411,14 @@ def run_expiry_monthend_trading(
     # **실제로 돈 것만 적는다.** `notes` 는 「산출물만 보고는 알 수 없는 실행 조건」이고,
     # 좁혀 돌린 실행이 전체 실행 폴더를 덮으므로 **`summary.json` 이 유일한 기록**이다 —
     # 안 돈 달과 안 쓴 대상의 주의를 적으면 그 기록이 거짓이 된다
-    notes = [NOTE_ENTRY, NOTE_STOP_BASE]
+    notes = [NOTE_ENTRY, NOTE_STOP_BASE, NOTE_DIRECTION]
     if len(combos) > 1:
         notes.append(NOTE_COLLAPSE)
     if any(dataset.is_index for dataset in datasets):
         notes.append(NOTE_INDEX)
-    if set(months) == set(MONTHS):
+    # **부분집합에도 붙인다.** 「9월·12월 전부일 때만」으로 두면 기본 실행(9월 하나)에서
+    # **사후 선택 경고가 통째로 빠진다** — 그 한 달이 바로 사후에 고른 달인데도 그렇다
+    if set(months) <= set(MONTHS):
         notes.append(NOTE_MONTHS)
 
     summary = build_run_summary(

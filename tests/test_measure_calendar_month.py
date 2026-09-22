@@ -31,7 +31,11 @@ from verify_lab.measure.constants import (
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
-from verify_lab.studies.month_end.constants import HORIZON_MONTH_END
+
+# 묶음 집계의 구간 표지. **이 테스트가 소유한다** — 공유 계층의 검사가 매매법 상수에
+# 매달리면 그 매매법이 사라질 때 함께 무너진다. 실제 보유일수로는 도달할 수 없는 음수를 쓴다
+HORIZON_MONTH_END = -1
+
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12

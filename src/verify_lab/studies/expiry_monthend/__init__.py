@@ -9,7 +9,7 @@
 세 매매법이 같은 달력을 쓰므로 한 자리에 있어야 하고, 매매법끼리는 서로를 가져올 수 없다
 (`tests/test_layer_contracts.py`). 여기 있는 것은 **이 검증의 파라미터와 조립**뿐이다.
 
-확정 설계는 `docs/검증/만기_말일/설계.md` 가 SoT 다.
+확정 설계는 `docs/매매/만기_말일/설계.md` 가 SoT 다.
 """
 
 from .constants import COMBOS, DATASETS, MONTHS, TRACK_NAME

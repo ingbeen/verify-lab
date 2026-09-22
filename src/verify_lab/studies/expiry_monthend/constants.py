@@ -13,7 +13,7 @@
 
 **9월·12월만 잰다** (같은 날 결정). 두 매매법이 이미 그 두 달을 가리킨 뒤에 고른 것이라
 **사후 선택**이고, 그래서 이 검증의 용도는 「우위가 있다」가 아니라 **「조합 선택이 결과를
-만드는가」**다. 그 한계는 `docs/검증/만기_말일/결과.md` 가 적는다.
+만드는가」**다. 그 한계는 `docs/매매/만기_말일/결과.md` 가 적는다.
 
 **달력 계산 자체는 `measure/calendar_entry.py`·`calendar_exit.py` 가 소유한다** —
 세 매매법이 같은 달력을 쓰므로 한 자리에 있어야 하고, 매매법끼리는 서로를 가져올 수 없다
@@ -123,7 +123,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE,
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
-    STATISTICS_FILENAME,
+    MEASURE_FILENAME,
 )
 
 # 이 매매법의 이름(slug). 규약은 `src/verify_lab/CLAUDE.md` 「매매법 이름 계약」이 SoT다
@@ -196,7 +196,7 @@ class Combo:
 #
 # **그 크기를 여기 숫자로 적지 않는다** — 산출물이 매 실행 다시 세므로 시세를 재수집하면
 # 산문만 낡는다. 값의 자리는 `통계.csv` 의 **「다른 조합과 같은 해」·「이 조합만 다른 해」**
-# 두 컬럼이고, 그때의 수치는 `docs/검증/만기_말일/결과.md` §5 가 데이터 기간과 함께 갖는다.
+# 두 컬럼이고, 그때의 수치는 `docs/매매/만기_말일/결과.md` §5 가 데이터 기간과 함께 갖는다.
 # 그래서 산출물이 **「다른 조합과 같은 해」와 「이 조합만 다른 해」를 세어 함께 낸다** —
 # 조합 간 성적 차이가 실제로 몇 건에서 나온 것인지 그 자리에서 보이지 않으면 판단할 수 없다
 COMBOS: Final = (
@@ -274,7 +274,7 @@ MARKET_KOSDAQ: Final = "코스닥"
 # **대가는 긴 축이 짧아지는 것**이다 (코스피 46해 → 36해 · 코스닥 30해 → 16해).
 #
 # **QQQ 를 넣지 않는다** — 배당락이 보유 구간에 들어와 측정값이 오염된 것이 이미 실측됐고
-# (`docs/매매/옵션_만기일/규칙.md` §3.4), 만기→말일 조합에서는 더 걸린다.
+# (`docs/조사/옵션_만기일/규칙.md` §3.4), 만기→말일 조합에서는 더 걸린다.
 #
 # **인버스를 넣지 않는다** — 「아래」는 1배의 부호를 뒤집어 재고, 실물 대조는 월말 진입이
 # 이미 갖고 있다
@@ -343,6 +343,134 @@ DATASETS: Final = (
 
 
 # ============================================================
+# 확정 칸 — 기본 실행이 내는 범위
+# ============================================================
+
+
+@dataclass(frozen=True)
+class Cell:
+    """걸기로 정한 칸 하나
+
+    Attributes:
+        ticker: 대상의 종목코드. `DATASETS` 안에 있어야 한다
+        combo_key: 조합의 `key`. `COMBOS` 안에 있어야 한다
+        month: 재는 달
+        bet_down: 아래로 거는 칸인지 여부
+    """
+
+    ticker: str
+    combo_key: str
+    month: int
+    bet_down: bool
+
+
+# **사용자가 실제로 거는 것만 낸다** (2026-09-22 사용자 결정).
+#
+# [중요] **근거는 코드가 아니라 `docs/매매/만기_말일/규칙.md` §3 이 갖는다** —
+# 「확정 / 탈락안 / 근거」로 적혀 있고, **이 목록만 보고 근거를 짐작하면 사후 선택과
+# 구별되지 않는다** (`.claude/rules/trading.md`).
+#
+# [중요] **시세를 재수집하면 이 목록을 다시 판단한다.** 기간이 늘면 성적이 바뀌는데
+# 이 목록은 따라오지 않는다 — 그것이 격자를 내던 이유였고 지금도 사실이다.
+#
+# **격자 상수(`DATASETS`·`COMBOS`·`MONTHS`)를 지우지 않았다.** 다시 판단할 때
+# `--ticker`·`--combo`·`--month` 로 넓혀 돌린다. **방향은 「아래」로 고정**이며, 방향을
+# 다시 고를 재료는 측정 표의 **오른 비율·내린 비율**(1배 롱 기준)이 그대로 준다
+TRADING_CELLS: Final = (
+    Cell(ticker="SPY", combo_key="c2", month=9, bet_down=True),
+    Cell(ticker="DIA", combo_key="c2", month=9, bet_down=True),
+    Cell(ticker="229200", combo_key="c2", month=9, bet_down=True),
+    # 살 수 없어 판정하지 않는다. 긴 축(16해)을 보려고 함께 잰다 — ETF 표본 10건이 전부
+    # 2016년 이후라 이 계열이 그 앞을 보여주는 유일한 자리다
+    Cell(ticker="2203", combo_key="c2", month=9, bet_down=True),
+)
+
+
+@dataclass(frozen=True)
+class TradingAxes:
+    """확정 칸을 축 셋과 방향 하나로 편 것
+
+    Attributes:
+        datasets: 대상 목록
+        combos: 조합 목록
+        months: 재는 달 목록
+        bet_down: 아래로 거는지 여부. **칸 전체가 한 방향이어야 한다**
+    """
+
+    datasets: tuple[Dataset, ...]
+    combos: tuple[Combo, ...]
+    months: tuple[int, ...]
+    bet_down: bool
+
+
+def trading_axes(cells: tuple[Cell, ...] = TRADING_CELLS) -> TradingAxes:
+    """칸 목록을 측정·체결이 쓰는 축 셋과 방향 하나로 편다.
+
+    [중요] **칸이 축 셋의 «곱집합»이고 방향이 하나일 때만 성립한다.** 아니면 축으로 펴는
+    순간 **없는 칸이 생기거나 있는 칸이 사라지는데 예외가 나지 않는다** — 성적표의 행 수만
+    조용히 달라진다. 그래서 곱집합인지를 여기서 검사한다.
+
+    Args:
+        cells: 펼 칸 목록
+
+    Returns:
+        축 셋과 방향
+
+    Raises:
+        ValueError: 칸이 하나도 없거나, 모르는 종목·조합을 가리키는 경우
+        RuntimeError: 방향이 둘 이상이거나 칸이 축 셋의 곱집합이 아닌 경우 (내부 불변조건 위반)
+    """
+    if not cells:
+        raise ValueError("확정 칸이 하나도 없습니다")
+
+    known_datasets = {dataset.ticker: dataset for dataset in DATASETS}
+    known_combos = {combo.key: combo for combo in COMBOS}
+
+    if unknown := sorted({cell.ticker for cell in cells} - set(known_datasets)):
+        raise ValueError(f"모르는 종목입니다: {unknown} (가능한 값: {sorted(known_datasets)})")
+    if unknown_combos := sorted({cell.combo_key for cell in cells} - set(known_combos)):
+        raise ValueError(f"모르는 조합입니다: {unknown_combos} (가능한 값: {sorted(known_combos)})")
+
+    # **달도 검사한다.** 여기서 빼면 잘못된 달이 축으로 그대로 나가고, CLI 의 1~12 검사는
+    # 기본 경로에서 불리지 않아 비켜간다 — 실패가 「그 달의 신호가 없다」로 한참 뒤에 뜬다
+    if invalid_months := sorted(cell.month for cell in cells if not 1 <= cell.month <= 12):
+        raise ValueError(f"달은 1~12 이어야 합니다: {invalid_months}")
+
+    directions = {cell.bet_down for cell in cells}
+    if len(directions) != 1:
+        raise RuntimeError(f"내부 불변조건 위반: 확정 칸의 방향이 하나가 아닙니다 ({len(directions)}종)")
+
+    tickers = {cell.ticker for cell in cells}
+    combo_keys = {cell.combo_key for cell in cells}
+    months = {cell.month for cell in cells}
+
+    expected = len(tickers) * len(combo_keys) * len(months)
+    if len(set(cells)) != expected:
+        raise RuntimeError(
+            f"내부 불변조건 위반: 확정 칸이 축 셋의 곱집합이 아닙니다 "
+            f"(칸 {len(set(cells))} · 종목 {len(tickers)} × 조합 {len(combo_keys)} × 달 {len(months)} = {expected})"
+        )
+
+    return TradingAxes(
+        # **선언 순서를 지킨다** — 산출물 diff 가 「숫자가 바뀌었는가」를 말하려면 행 순서가 결정적이어야 한다
+        datasets=tuple(dataset for dataset in DATASETS if dataset.ticker in tickers),
+        combos=tuple(combo for combo in COMBOS if combo.key in combo_keys),
+        months=tuple(sorted(months)),
+        bet_down=directions.pop(),
+    )
+
+
+# 기본 방향. **확정 칸이 SoT 이고 여기서는 그 값을 읽는다** — 리터럴을 박으면 두 벌이 되고
+# 한쪽만 바뀌어도 예외가 나지 않는다.
+#
+# [중요] **여기서 `trading_axes()` 를 부르지 않는다.** 그러면 칸이 잘못됐을 때
+# **import 시점에** 죽어 pytest 수집과 무관한 import 까지 스택 트레이스로 끊긴다 —
+# 검사는 실제로 축을 펼 때 그 자리에서 나야 메시지가 읽힌다. 「칸 전체가 한 방향」은
+# `trading_axes` 와 확정 칸 계약 테스트가 함께 지킨다
+DEFAULT_BET_DOWN: Final = TRADING_CELLS[0].bet_down
+
+
+# ============================================================
 # 손절선
 # ============================================================
 
@@ -352,7 +480,8 @@ DATASETS: Final = (
 STOP_LEVEL: Final = 0.05
 
 # **ETF 는 확정 손절선과 무손절 둘을 낸다.** 무손절은 `.claude/rules/trading.md` 가
-# 「손절이 무엇을 막았는가」로 요구하는 대조축이고, 이 트랙은 `규칙.md` 가 없어 산출로 메운다.
+# 「손절이 무엇을 막았는가」로 요구하는 대조축이며, 산출물이 그것을 직접 낸다
+# (`docs/매매/만기_말일/규칙.md` §2.3 이 같은 값을 문서로도 갖는다).
 # **손절선을 고르는 격자가 아니다** — 값은 하나뿐이고 옆에 대조가 붙을 뿐이다
 STOP_LEVELS_ETF: Final[tuple[float | None, ...]] = (STOP_LEVEL, None)
 
@@ -513,15 +642,16 @@ PROBABILITY_COLUMNS: Final = (
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 #
 # **측정 한 장뿐이다.** 축이 (종목 × 조합 × 달) 하나라 기준선·차이·우연확률·배당락이 전부
-# 같은 48행이고, 나누면 사용자가 조인해야 한다. 이름이 `측정.csv` 가 아니라 `통계.csv` 인 것은
-# **좁히지 않은 격자**이기 때문이다 (`src/verify_lab/CLAUDE.md` 「매매 산출물 계약」).
+# 같은 행에 실리고, 나누면 사용자가 조인해야 한다. 이름이 `측정.csv` 인 것은
+# **확정 칸만 내기** 때문이다 — `통계.csv` 는 축 전체를 내는 표의 이름이라 담는 축이 다르다
+# (`src/verify_lab/CLAUDE.md` 「매매 산출물 계약」).
 #
 # **`signals.csv` 를 내지 않는다** — 신호가 달력으로 정의되고 체결 원자료가 `거래내역.csv` 에
 # 진입가·청산가까지 들어 있어 측정의 원칙 8 을 그쪽이 충족한다.
 # 체결 둘(`성적표.csv`·`거래내역.csv`)은 `execution/constants.py` 가 소유한다
 # **키는 문자열 리터럴이다** — 계약 검사(`tests/test_layer_contracts.py`)가 이 사전을
 # AST 로 읽으므로 상수를 키에 쓰면 선언이 없는 것으로 보인다
-OUTPUT_FILES: Final[dict[str, str]] = {"statistics": STATISTICS_FILENAME}
+OUTPUT_FILES: Final[dict[str, str]] = {"statistics": MEASURE_FILENAME}
 
 # 산출물 필드 이름. **사전에서 꺼낸다** — 같은 리터럴을 두 번 적으면 한쪽만 바뀌었을 때
 # 측정이 다 끝난 «저장 시점»에야 `KeyError` 가 난다

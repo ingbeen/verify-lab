@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 """만기_말일 실행 CLI — 측정과 체결을 한 번에 돈다
 
-진입 2종(셋째 금요일 · 20일) × 청산 2종(다음 주 금요일 · 그 달 마지막 거래일)을 교차해
-**9월·12월**에서 여섯 대상을 잰다. 한 번 돌리면 측정 표와 체결 산출물이 **한 폴더에**
-함께 나오며, 어느 등급 폴더에 쌓일지는 `verify_lab/tracks.py` 의 레지스트리가 정한다.
+**기본 실행은 확정 칸만 낸다** — 9월 · 「셋째 금요일 종가 매수 → 그 달 마지막 거래일 종가
+매도」 · **아래** 방향 · SPY · DIA · KODEX 코스닥150 (+ 코스닥150 지수는 참고). 한 번 돌리면
+측정 표와 체결 산출물이 **한 폴더에** 함께 나오며, 어느 등급 폴더에 쌓일지는
+`verify_lab/tracks.py` 의 레지스트리가 정한다.
 
-[중요] **네 조합이 언제나 네 개의 다른 매매인 것은 아니다.** 해에 따라 진입·청산이 둘 다
-같아져 **절반 가까운 해에서 두 조합이 한 매매**가 된다. 조합 간 성적 차이가 몇 건에서
-나온 것인지는 측정 표의 **「이 조합만 다른 해」**가 말한다 — 그 값은 매 실행 다시 세므로
-여기에 숫자를 적지 않는다.
+[중요] **확정 칸의 근거는 코드가 아니라 `docs/매매/만기_말일/규칙.md` §3 이 갖는다.**
+목록만 보고 근거를 짐작하면 사후 선택과 구별되지 않는다.
 
-[중요] **9월·12월은 사후에 고른 달이다** — 두 매매법이 이미 그 달을 가리킨 뒤에 골랐으므로
-이 성적으로 「우위가 있다」를 새로 주장할 수 없고, 용도는 **조합 간 비교**다.
+[중요] **9월은 사후에 고른 달이다** — 두 매매법이 이미 그 달을 가리킨 뒤에 골랐으므로
+이 성적으로 「우위가 있다」를 새로 주장할 수 없다.
 
-**손절선은 확정 −5% 와 무손절 대조 두 종뿐이다.** 이 검증이 고른 값이 아니라 두 매매법이
+**시세를 재수집하면 칸 목록을 다시 판단한다.** 격자 상수를 지우지 않았으므로
+`--ticker`·`--combo`·`--month` 로 넓혀 돌리면 된다. **방향은 「아래」로 고정**이며 반대 방향은
+측정 표의 오른 비율·내린 비율(1배 롱 기준)로 되짚는다.
+
+**손절선은 확정 −5% 와 무손절 대조 두 종뿐이다.** 이 매매법이 고른 값이 아니라 두 매매법이
 이미 확정한 값이고, 무손절은 `.claude/rules/trading.md` 가 요구하는 대조축이다.
-**격자 스위치를 두지 않는다** — 조합을 비교하는 것이 목적이라 손절선까지 축으로 두면
-무엇이 차이를 만들었는지 갈리지 않는다.
 
 **맨몸 성적이다** — 수수료·슬리피지·세금을 넣지 않는다 (루트 `CLAUDE.md` 2026-09-06 확정).
 
@@ -64,6 +65,7 @@ from verify_lab.studies.expiry_monthend.constants import (
     TRACK_NAME,
     Dataset,
     combos_of,
+    trading_axes,
 )
 from verify_lab.studies.expiry_monthend.runner import StudyOutputs, display_tables, run_study
 from verify_lab.studies.expiry_monthend.trading import TradingOutputs, run_expiry_monthend_trading
@@ -90,23 +92,25 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
-    parser = argparse.ArgumentParser(description="만기_말일 — 진입 2종 × 청산 2종을 교차해 9월·12월을 측정하고 체결 성적을 함께 냅니다.")
+    parser = argparse.ArgumentParser(description="만기_말일 — 9월 만기일에 사서 말일에 파는 확정 칸을 측정하고 체결 성적을 함께 냅니다.")
     parser.add_argument(
         "--ticker",
         action="append",
-        help="대상 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: 여섯 대상 전부). " "지수는 장중 손절을 잴 수 없어 「손절불가」 한 줄로만 나온다",
+        help="대상 종목 또는 지수 코드. 여러 번 줄 수 있다 (기본값: 확정 칸의 넷). "
+        f"넓혀 돌릴 수 있는 전체는 {[dataset.ticker for dataset in DATASETS]} 이다. "
+        "지수는 장중 손절을 잴 수 없어 「손절불가」 한 줄로만 나온다",
     )
     parser.add_argument(
         "--combo",
         action="append",
-        help="돌릴 조합. 여러 번 줄 수 있다 (기본값: 넷 전부). c1=만기→다음주금 · c2=만기→말일 · "
-        "c3=20일→다음주금 · c4=20일→말일. 좁히면 조합 비교가 성립하지 않으므로 대조용이다",
+        help="돌릴 조합. 여러 번 줄 수 있다 (기본값: 확정 조합 c2 하나). c1=만기→다음주금 · "
+        "c2=만기→말일 · c3=20일→다음주금 · c4=20일→말일. **시세를 재수집해 조합을 다시 판단할 때** 쓴다",
     )
     parser.add_argument(
         "--month",
         action="append",
         type=int,
-        help=f"재는 달. 여러 번 줄 수 있다 (기본값: {list(MONTHS)})",
+        help=f"재는 달. 여러 번 줄 수 있다 (기본값: 확정 칸의 9월. 넓히면 {list(MONTHS)})",
     )
     parser.add_argument(
         "--repeats",
@@ -124,11 +128,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _known(tickers: list[str] | None) -> tuple[Dataset, ...]:
+def _known(tickers: list[str] | None, default: tuple[Dataset, ...]) -> tuple[Dataset, ...]:
     """지목한 코드를 대상 정의로 바꾼다.
 
     Args:
-        tickers: 종목 또는 지수 코드 목록. `None` 이면 전부
+        tickers: 종목 또는 지수 코드 목록. `None` 이면 기본값
+        default: 지목하지 않았을 때 쓸 목록. **확정 칸의 대상**이다
 
     Returns:
         고른 대상 목록
@@ -137,7 +142,7 @@ def _known(tickers: list[str] | None) -> tuple[Dataset, ...]:
         ValueError: 알 수 없는 코드를 지목한 경우
     """
     if tickers is None:
-        return DATASETS
+        return default
 
     known = {dataset.ticker: dataset for dataset in DATASETS}
     unknown = sorted(set(tickers) - set(known))
@@ -147,11 +152,12 @@ def _known(tickers: list[str] | None) -> tuple[Dataset, ...]:
     return tuple(dataset for dataset in DATASETS if dataset.ticker in set(tickers))
 
 
-def _months(months: list[int] | None) -> tuple[int, ...]:
+def _months(months: list[int] | None, default: tuple[int, ...]) -> tuple[int, ...]:
     """지목한 달을 정리한다.
 
     Args:
         months: 달 목록. `None` 이면 기본값
+        default: 지목하지 않았을 때 쓸 목록. **확정 칸의 달**이다
 
     Returns:
         오름차순 정렬된 달 목록
@@ -160,7 +166,7 @@ def _months(months: list[int] | None) -> tuple[int, ...]:
         ValueError: 달이 1~12 를 벗어난 경우
     """
     if months is None:
-        return MONTHS
+        return default
 
     invalid = sorted(month for month in months if not 1 <= month <= 12)
     if invalid:
@@ -179,23 +185,25 @@ def _print_statistics(tables: dict[str, pd.DataFrame]) -> None:
         DISPLAY_TICKER,
         DISPLAY_COMBO,
         DISPLAY_MONTH_NUMBER,
+        DISPLAY_DIRECTION,
         DISPLAY_SIGNAL_COUNT,
         DISPLAY_SAMPLE_COUNT,
         DISPLAY_MEAN,
         DISPLAY_MEDIAN,
         DISPLAY_UP_RATE,
-        DISPLAY_SHARED_YEARS,
-        DISPLAY_UNIQUE_YEARS,
     ]
     for table in tables.values():
-        print_dataframe(table[columns], logger, title="측정 — 1배 롱 기준 (아래로 걸면 부호가 뒤집힌다)")
+        # **붕괴 두 컬럼은 «잴 수 있었을 때만» 띄운다.** 네 조합을 다 돌리지 않으면 비어 있어
+        # 언제나 빈 칸 둘이 붙는데, 빈 칸이 늘어난 표는 읽는 사람이 값이 있는 줄 알고 찾는다
+        collapse = [column for column in (DISPLAY_SHARED_YEARS, DISPLAY_UNIQUE_YEARS) if table[column].notna().any()]
+        print_dataframe(table[[*columns, *collapse]], logger, title="측정 — 1배 롱 기준 (아래로 걸면 부호가 뒤집힌다)")
 
 
 def _print_candidates(trading: TradingOutputs) -> None:
     """1차 판정이 「후보」인 칸을 화면에 띄운다.
 
     **후보는 자격이지 발견이 아니다.** 게이트를 넘었다는 뜻일 뿐이며,
-    9월·12월이 사후에 고른 달이라는 사실은 그대로다.
+    **재는 달이 사후에 고른 것이라는 사실은 그대로다.**
 
     Args:
         trading: 체결 산출물
@@ -261,13 +269,19 @@ def main() -> int:
         종료 코드 (성공 0)
     """
     args = parse_args()
-    datasets = _known(args.ticker)
-    combos = combos_of(tuple(args.combo) if args.combo else None)
-    months = _months(args.month)
 
-    study = run_study(datasets, combos=combos, months=months, repeats=args.repeats, seed=args.seed)
+    # **기본값의 SoT 는 확정 칸 하나다** — 인자를 주지 않으면 그 범위만 돌고,
+    # 시세를 재수집해 다시 판단할 때만 세 인자로 넓힌다
+    axes = trading_axes()
+    datasets = _known(args.ticker, axes.datasets)
+    combos = combos_of(tuple(args.combo)) if args.combo else axes.combos
+    months = _months(args.month, axes.months)
+
+    study = run_study(
+        datasets, combos=combos, months=months, bet_down=axes.bet_down, repeats=args.repeats, seed=args.seed
+    )
     tables = display_tables(study)
-    trading = run_expiry_monthend_trading(datasets, combos=combos, months=months)
+    trading = run_expiry_monthend_trading(datasets, combos=combos, months=months, bet_down=axes.bet_down)
 
     directory = create_run_directory(TRACK_NAME)
     counts = _save(study, tables, trading, directory)
@@ -287,6 +301,7 @@ def main() -> int:
             "tickers": [dataset.ticker for dataset in datasets],
             "combos": [combo.label for combo in combos],
             "months": list(months),
+            "bet_down": axes.bet_down,
             "repeats": args.repeats,
             "seed": args.seed,
             KEY_ROW_COUNTS: counts,

@@ -7,14 +7,30 @@
 import pandas as pd
 import pytest
 
-from verify_lab.measure.calendar_entry import monthly_expiry_dates, nth_weekday_of_month
+from verify_lab.measure.calendar_entry import ExpiryRule, monthly_expiry_dates, nth_weekday_of_month
 from verify_lab.measure.constants import (
     COL_ADVANCED_DAYS,
     COL_EXPIRY_DATE,
     COL_EXPIRY_MONTH,
     COL_RULE_DATE,
 )
-from verify_lab.studies.option_expiry.constants import KR_MONTHLY_EXPIRY, US_MONTHLY_EXPIRY
+
+# ============================================================
+# 달력 규칙 픽스처 — **이 테스트가 소유한다**
+# ============================================================
+
+# **공유 계층의 테스트는 자기 픽스처를 갖는다.** 예전에는 매매법 패키지의 상수를 빌려 썼는데,
+# 그러면 그 매매법이 사라질 때 공유 계층의 검사가 함께 무너진다 — 실제로 그렇게 됐다.
+# `measure/calendar_entry.py` 는 규칙의 «값»을 갖지 않으므로(그 docstring), 값은 쓰는 쪽이 정한다.
+#
+# **둘째 목요일을 남기는 이유**: 지금 이 규칙을 쓰는 매매법이 없지만 `ExpiryRule` 은
+# **요일도 순번도 일반화**돼 있다. 셋째 금요일 하나로만 검사하면 「셋째」와 「금요일」이
+# 하드코딩돼 있어도 통과한다 — 다른 요일·다른 순번이 그 구멍을 막는다
+THURSDAY = 3
+FRIDAY = 4
+
+THIRD_FRIDAY = ExpiryRule(label="셋째 금요일", weekday=FRIDAY, ordinal=3)
+SECOND_THURSDAY = ExpiryRule(label="둘째 목요일", weekday=THURSDAY, ordinal=2)
 
 
 def _trading_days(start: str, end: str, holidays: list[str] | None = None) -> pd.DatetimeIndex:
@@ -133,7 +149,7 @@ class TestMonthlyExpiryDates:
         days = _trading_days("2026-07-01", "2026-07-31")
 
         # When
-        result = monthly_expiry_dates(days, US_MONTHLY_EXPIRY)
+        result = monthly_expiry_dates(days, THIRD_FRIDAY)
 
         # Then
         row = _expiry_of(result, "2026-07")
@@ -152,7 +168,7 @@ class TestMonthlyExpiryDates:
         days = _trading_days("2022-04-01", "2022-04-29", holidays=["2022-04-15"])
 
         # When
-        result = monthly_expiry_dates(days, US_MONTHLY_EXPIRY)
+        result = monthly_expiry_dates(days, THIRD_FRIDAY)
 
         # Then
         row = _expiry_of(result, "2022-04")
@@ -176,7 +192,7 @@ class TestMonthlyExpiryDates:
         )
 
         # When
-        result = monthly_expiry_dates(days, KR_MONTHLY_EXPIRY)
+        result = monthly_expiry_dates(days, SECOND_THURSDAY)
 
         # Then
         row = _expiry_of(result, "2025-10")
@@ -196,7 +212,7 @@ class TestMonthlyExpiryDates:
         days = _trading_days("2026-07-01", "2026-07-10")
 
         # When
-        result = monthly_expiry_dates(days, US_MONTHLY_EXPIRY)
+        result = monthly_expiry_dates(days, THIRD_FRIDAY)
 
         # Then
         assert result.empty
@@ -213,7 +229,7 @@ class TestMonthlyExpiryDates:
         days = _trading_days("2026-06-19", "2026-07-31", holidays=["2026-06-19"])
 
         # When
-        result = monthly_expiry_dates(days, US_MONTHLY_EXPIRY)
+        result = monthly_expiry_dates(days, THIRD_FRIDAY)
 
         # Then
         assert (result[COL_EXPIRY_MONTH] == "2026-06").sum() == 0
@@ -230,7 +246,7 @@ class TestMonthlyExpiryDates:
         days = _trading_days("2025-01-01", "2026-12-31", holidays=["2025-04-18", "2026-06-19", "2025-10-09"])
 
         # When
-        result = monthly_expiry_dates(days, US_MONTHLY_EXPIRY)
+        result = monthly_expiry_dates(days, THIRD_FRIDAY)
 
         # Then
         assert result[COL_EXPIRY_DATE].isin(days).all()
@@ -245,7 +261,7 @@ class TestMonthlyExpiryDates:
         """
         # Given / When / Then
         with pytest.raises(ValueError, match="비어 있어"):
-            monthly_expiry_dates(pd.DatetimeIndex([]), US_MONTHLY_EXPIRY)
+            monthly_expiry_dates(pd.DatetimeIndex([]), THIRD_FRIDAY)
 
     def test_정렬되지_않은_거래일_목록은_예외다(self) -> None:
         """
@@ -260,7 +276,7 @@ class TestMonthlyExpiryDates:
 
         # When / Then
         with pytest.raises(ValueError, match="오름차순"):
-            monthly_expiry_dates(days, US_MONTHLY_EXPIRY)
+            monthly_expiry_dates(days, THIRD_FRIDAY)
 
     def test_뒤에_데이터가_붙어도_지난_달의_만기일은_그대로다(self) -> None:
         """
@@ -276,8 +292,8 @@ class TestMonthlyExpiryDates:
         long_days = _trading_days("2025-01-01", "2026-12-31", holidays=holidays)
 
         # When
-        short_result = monthly_expiry_dates(short_days, US_MONTHLY_EXPIRY)
-        long_result = monthly_expiry_dates(long_days, US_MONTHLY_EXPIRY)
+        short_result = monthly_expiry_dates(short_days, THIRD_FRIDAY)
+        long_result = monthly_expiry_dates(long_days, THIRD_FRIDAY)
 
         # Then
         merged = short_result.merge(long_result, on=COL_EXPIRY_MONTH, suffixes=("_short", "_long"))

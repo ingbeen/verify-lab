@@ -1312,7 +1312,7 @@ class TestExecutionLayerComposition:
         slugs = {path.parent.name for path in _trading_modules()}
 
         # Then
-        assert slugs == {"reverse", "option_expiry", "month_end", "expiry_monthend"}
+        assert slugs == {"reverse", "expiry_monthend"}
 
     def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
         """
@@ -1341,25 +1341,23 @@ class TestDatasetRecordKeys:
     옮겨갔으므로 여기서는 그쪽을 본다.
     """
 
-    def test_여섯_산출_지점이_모두_공통_함수를_쓴다(self) -> None:
+    def test_네_산출_지점이_모두_공통_함수를_쓴다(self) -> None:
         """
-        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 여섯 산출 지점이 같은 말로 이행한다.
+        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 네 산출 지점이 같은 말로 이행한다.
 
         **월말만 계약대로였다.** 역방향은 `ticker` 에 «표시 이름»을 담고 `label` 이 아예 없었으며
         기간을 `start_date`+`end_date`, 행 수를 `row_count` 로 불렀다.
 
         Given: `src/verify_lab` 전체
         When: `dataset_record` 를 부르는 파일을 모은다
-        Then: 검증 셋과 매매 셋이 전부 들어 있다
+        Then: 두 매매법의 측정·체결 넷이 전부 들어 있다
         """
         # Given
         expected = {
             "verify_lab/studies/reverse/runner.py",
-            "verify_lab/studies/option_expiry/runner.py",
-            "verify_lab/studies/month_end/runner.py",
+            "verify_lab/studies/expiry_monthend/runner.py",
             "verify_lab/studies/reverse/trading.py",
-            "verify_lab/studies/option_expiry/trading.py",
-            "verify_lab/studies/month_end/trading.py",
+            "verify_lab/studies/expiry_monthend/trading.py",
         }
 
         # When
@@ -1792,8 +1790,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
         {
             "verify_lab/execution/constants.py",
             "verify_lab/studies/futures_leverage/constants.py",
-            "verify_lab/studies/month_end/constants.py",
-            "verify_lab/studies/option_expiry/constants.py",
         }
     ),
     "시작연도": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
@@ -1804,7 +1800,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "실제(%)": frozenset(
         {"verify_lab/studies/leverage_tracking/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}
     ),
-    "종가": frozenset({"verify_lab/studies/option_expiry/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "종료일": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
@@ -1813,8 +1808,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "종목": frozenset(
         {
             "verify_lab/execution/constants.py",
-            "verify_lab/studies/month_end/constants.py",
-            "verify_lab/studies/option_expiry/constants.py",
             "verify_lab/studies/reverse/constants.py",
             "verify_lab/studies/usdkrw_equivalence/constants.py",
         }
@@ -1822,7 +1815,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "지수": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "청산일": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/month_end/constants.py"}),
     "파라미터": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "표본": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
 }
@@ -2007,112 +1999,3 @@ class TestCliHelpRenders:
         # Then
         assert exit_info.value.code == 0
         assert "--help" in rendered.getvalue()
-
-
-class TestStopGridWiring:
-    """`--stop-grid` 가 격자를, 기본이 확정 손절선을 고르는가
-
-    [중요] **이 배선이 뒤집혀도 ruff·pyright·pytest 가 전부 통과한다.** 성적표가 조용히
-    15행에서 300행이 되고, 유일한 신호는 `storage/results/` 의 git diff 다
-    (`scripts/CLAUDE.md` 「동작은 여전히 아무도 보지 않습니다」).
-
-    **동작(플래그 파싱)과 구조(어느 상수를 고르는가)를 함께 본다** — 플래그만 보면
-    삼항이 뒤집힌 것을 못 잡고, 구조만 보면 플래그 이름이 바뀐 것을 못 잡는다.
-    """
-
-    _SCRIPT = BASE_DIR / "scripts" / "run_option_expiry.py"
-
-    def test_stop_grid_는_기본이_꺼짐이다(self) -> None:
-        """
-        목적: 기본 실행이 격자를 내지 않는다는 것을 플래그 층에서 고정한다
-
-        Given: 옵션 만기일 실행 스크립트
-        When: 인자 없이 파싱했을 때와 `--stop-grid` 로 파싱했을 때
-        Then: 각각 거짓과 참이다
-        """
-        # Given
-        module = _load_script(self._SCRIPT)
-
-        # When
-        original = sys.argv
-        try:
-            sys.argv = [self._SCRIPT.name]
-            default = module.parse_args()
-            sys.argv = [self._SCRIPT.name, "--stop-grid"]
-            enabled = module.parse_args()
-        finally:
-            sys.argv = original
-
-        # Then
-        assert default.stop_grid is False
-        assert enabled.stop_grid is True
-
-    def test_플래그가_격자를_기본이_확정_손절선을_고른다(self) -> None:
-        """
-        목적: 삼항이 뒤집히는 것을 막는다
-
-        **CLI 가 목록을 조립하지 않고 이름 둘 중 하나를 고른다**는 계약도 함께 고정한다 —
-        조립하면 `constants.py` 의 소유자와 갈리고 `meta.json` 이 돌지 않은 격자를 적는다.
-
-        **소스 문자열로 보지 않는다** — 같은 문장이 주석에 있어도 통과하고(이 스크립트에는
-        바로 그 내용의 주석 블록이 있다), 이름을 바꾸거나 포매터가 줄을 접으면 실패한다.
-
-        Given: 옵션 만기일 실행 스크립트의 구문 트리
-        When: `stop_levels` 에 대입하는 삼항을 찾았을 때
-        Then: 조건이 `args.stop_grid` 이고 참일 때 격자, 거짓일 때 확정 손절선이다
-        """
-        # Given
-        tree = ast.parse(self._SCRIPT.read_text(encoding="utf-8"))
-
-        # When
-        chosen = [
-            node.value
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Assign)
-            and any(isinstance(target, ast.Name) and target.id == "stop_levels" for target in node.targets)
-        ]
-
-        # Then
-        assert len(chosen) == 1, f"`stop_levels` 에 대입하는 자리가 하나가 아닙니다 ({len(chosen)}곳)"
-        ternary = chosen[0]
-        assert isinstance(ternary, ast.IfExp), "손절선을 삼항으로 고르지 않습니다 — 상수 이름 둘 중 하나여야 합니다"
-        assert isinstance(ternary.test, ast.Attribute) and ternary.test.attr == "stop_grid", "`--stop-grid` 로 가르지 않습니다"
-        assert isinstance(ternary.body, ast.Name) and ternary.body.id == "EXPIRY_STOP_GRID", "플래그가 참일 때 격자가 아닙니다"
-        assert isinstance(ternary.orelse, ast.Name) and ternary.orelse.id == "EXPIRY_STOP_DEFAULT", "기본이 확정 손절선이 아닙니다"
-
-    def test_고른_손절선이_체결과_화면에_실제로_넘어간다(self) -> None:
-        """
-        목적: **고르기만 하고 넘기지 않는** 상태를 막는다
-
-        삼항은 그대로 두고 `run_option_expiry_trading(cells)` 로 되돌리면 `--stop-grid` 가
-        조용히 기본 15행을 내면서 **화면은 「손절선 20종 · 성적표 300행」을 외친다.**
-
-        [중요] **인자의 «값»까지 본다.** 이름만 보면 `stop_levels=EXPIRY_STOP_DEFAULT` 로 박아
-        플래그를 무시하는 것을 못 잡는다 — 그것도 같은 고장이다.
-
-        Given: 옵션 만기일 실행 스크립트의 구문 트리
-        When: 체결 함수와 범위 출력 함수의 호출을 찾았을 때
-        Then: 둘 다 고른 목록(`stop_levels` 변수)을 그대로 받는다
-        """
-        # Given
-        tree = ast.parse(self._SCRIPT.read_text(encoding="utf-8"))
-
-        def _is_chosen(node: ast.expr | None) -> bool:
-            """고른 목록을 담은 변수 그대로인지 본다."""
-            return isinstance(node, ast.Name) and node.id == "stop_levels"
-
-        # When
-        passed: dict[str, bool] = {}
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
-                continue
-            if node.func.id == "run_option_expiry_trading":
-                passed["체결"] = any(
-                    keyword.arg == "stop_levels" and _is_chosen(keyword.value) for keyword in node.keywords
-                )
-            if node.func.id == "_print_scope":
-                passed["화면"] = len(node.args) >= 2 and _is_chosen(node.args[1])
-
-        # Then
-        assert passed.get("체결"), "체결 함수가 고른 손절선 목록을 그대로 받지 않습니다 — 플래그가 무시될 수 있습니다"
-        assert passed.get("화면"), "범위 출력이 고른 손절선 목록을 그대로 받지 않습니다 — 돌지 않은 행 수를 적게 됩니다"

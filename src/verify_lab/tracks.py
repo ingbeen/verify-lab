@@ -78,11 +78,15 @@ class Track:
 # 매번 따옴표를 달아야 하고, VSCode 확장이 공백 든 경로의 링크를 열지 못한다.
 TRACKS: Final = (
     Track("reverse", "역방향", GRADE_TRADING, KIND_METHOD),
-    Track("option_expiry", "옵션_만기일", GRADE_TRADING, KIND_METHOD),
-    Track("month_end", "월말_진입", GRADE_TRADING, KIND_METHOD),
-    # 위 둘을 2×2 로 교차한 검증. **재 보는 중이라 검증 등급**이며, 승격은 결과를 보고
-    # 사용자가 정한다
-    Track("expiry_monthend", "만기_말일", GRADE_STUDY, KIND_METHOD),
+    # 아래 둘은 만기_말일에 흡수됐다 — 각자의 확정 칸이 그 매매법의 C1·C4 에 그대로 들어 있어
+    # 걸지 않기로 했고(2026-09-22), 중복이 된 실행 코드를 지웠다. **성적표를 낼 코드가 없으므로
+    # 종류도 성질 조사다** — 매매법 계약을 요구받으면 안 된다 (`원달러_그리드` 와 같은 자리).
+    # 근거는 각 `docs/조사/<이름>/결과.md` 가 갖고, 되살리는 절차도 그 문서에 있다
+    Track("option_expiry", "옵션_만기일", GRADE_SURVEY, KIND_PROPERTY),
+    Track("month_end", "월말_진입", GRADE_SURVEY, KIND_PROPERTY),
+    # 위 둘을 2×2 로 교차해 나온 매매법. **걸기로 정했으므로 매매 등급**이며 확정 규칙은
+    # 「9월 셋째 금요일 종가 매수 → 그 달 마지막 거래일 종가 매도 · 아래」다
+    Track("expiry_monthend", "만기_말일", GRADE_TRADING, KIND_METHOD),
     Track("usdkrw_equivalence", "원달러_ETF_등가성", GRADE_SURVEY, KIND_PROPERTY),
     Track("leverage_tracking", "레버리지_ETF_괴리", GRADE_SURVEY, KIND_PROPERTY),
     Track("futures_leverage", "선물_대_레버리지_ETF", GRADE_SURVEY, KIND_PROPERTY),

@@ -26,11 +26,14 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
     PRICE_DECIMALS_KRW,
 )
+from verify_lab.report.constants import MEASURE_FILENAME
 from verify_lab.studies.expiry_monthend.constants import (
     COMBOS,
     DATASETS,
     MARKET_KOSDAQ,
     MONTHS,
+    OUTPUT_FILES,
+    TRADING_CELLS,
     Dataset,
 )
 from verify_lab.studies.expiry_monthend.runner import display_tables, run_study
@@ -203,8 +206,101 @@ class TestDatasetInvariants:
             assert dataset.is_judged is not dataset.is_index, f"{dataset.label} 의 판정 여부가 지수 여부와 어긋납니다"
 
 
+class TestTradingCells:
+    """확정 칸 — 기본 실행이 내는 범위를 고정한다
+
+    **근거는 코드가 아니라 `docs/매매/만기_말일/규칙.md` §3 이 갖는다.** 여기서 고정하는 것은
+    「그 결론이 코드에 이렇게 옮겨졌다」이며, 목록만 보고 근거를 짐작하면 사후 선택과
+    구별되지 않는다 (`.claude/rules/trading.md`).
+    """
+
+    def test_확정_칸이_넷이다(self) -> None:
+        """
+        목적: 칸이 늘거나 줄면 산출물의 범위가 조용히 달라진다 —
+            좁혀 돌린 실행이 전체 실행을 덮는데 **예외가 나지 않는다.**
+
+        Given: 확정 칸 목록
+        When: 개수를 본다
+        Then: 넷이다 (SPY · DIA · KODEX 코스닥150 · 코스닥150 지수)
+        """
+        # Given / When / Then
+        assert len(TRADING_CELLS) == 4
+
+    def test_모든_칸이_같은_조합과_달과_방향이다(self) -> None:
+        """
+        목적: 확정 규칙이 **하나**라는 것을 고정한다 — 9월 · C2(만기→말일) · 아래.
+            칸마다 조합이 갈리면 그것은 확정이 아니라 격자다.
+
+        Given: 확정 칸 목록
+        When: 조합·달·방향을 모은다
+        Then: 각각 한 값뿐이다
+        """
+        # Given / When
+        combos = {cell.combo_key for cell in TRADING_CELLS}
+        months = {cell.month for cell in TRADING_CELLS}
+        directions = {cell.bet_down for cell in TRADING_CELLS}
+
+        # Then
+        assert combos == {"c2"}, f"조합이 하나가 아닙니다: {sorted(combos)}"
+        assert months == {9}, f"달이 하나가 아닙니다: {sorted(months)}"
+        assert directions == {True}, "방향이 「아래」 하나가 아닙니다"
+
+    def test_확정_칸의_대상이_선언된_대상_안에_있다(self) -> None:
+        """
+        목적: 칸이 `DATASETS` 밖의 코드를 가리키면 **측정이 다 끝난 뒤에야** 드러난다.
+
+        Given: 확정 칸과 선언된 대상
+        When: 종목코드를 견준다
+        Then: 칸의 코드가 전부 선언돼 있고 순서도 그대로다
+        """
+        # Given
+        known = [dataset.ticker for dataset in DATASETS]
+
+        # When
+        picked = [cell.ticker for cell in TRADING_CELLS]
+
+        # Then
+        assert picked == ["SPY", "DIA", "229200", "2203"]
+        unknown = [ticker for ticker in picked if ticker not in known]
+        assert not unknown, f"선언되지 않은 종목입니다: {unknown}"
+
+    def test_격자_상수를_지우지_않는다(self) -> None:
+        """
+        목적: **재수집하면 칸 목록을 다시 판단해야 한다** (`.claude/rules/trading.md`).
+            격자 상수를 지우면 그 판단의 수단이 사라진다.
+
+        Given: 선언된 축
+        When: 대상·조합·달의 개수를 본다
+        Then: 좁히기 전의 격자가 그대로 남아 있다
+        """
+        # Given / When / Then
+        assert len(DATASETS) == 6, "대상 격자가 줄었습니다 — 재판단 수단이 사라집니다"
+        assert len(COMBOS) == 4, "조합 격자가 줄었습니다"
+        assert MONTHS == (9, 12), "달 격자가 줄었습니다"
+
+
+class TestOutputContract:
+    """산출물 파일 이름 — 좁힌 매매법은 `측정.csv` 다"""
+
+    def test_측정_표의_이름이_측정_csv다(self) -> None:
+        """
+        목적: `src/verify_lab/CLAUDE.md` 「매매 산출물 계약」이 **`통계.csv` 는 축 전체,
+            `측정.csv` 는 확정 칸만**으로 두 이름을 갈랐다. 좁혔는데 옛 이름으로 내면
+            **담는 축이 다른 두 표가 같은 이름으로 불린다.**
+
+        Given: 산출물 사전
+        When: 값을 본다
+        Then: `측정.csv` 하나다
+        """
+        # Given / When
+        names = sorted(OUTPUT_FILES.values())
+
+        # Then
+        assert names == [MEASURE_FILENAME]
+
+
 class TestStudyAxis:
-    """측정 표의 축 — (종목 × 조합 × 달) 셋이고 방향이 없다"""
+    """측정 표의 축 — (종목 × 조합 × 달) 셋이고 방향이 «표시»로 붙는다"""
 
     def test_칸마다_한_행이다(self, tmp_path: Path) -> None:
         """
@@ -227,14 +323,18 @@ class TestStudyAxis:
         # Then
         assert len(outputs.statistics) == len(COMBOS) * len(MONTHS)
 
-    def test_방향_컬럼을_두지_않는다(self, tmp_path: Path) -> None:
+    def test_방향이_식별_컬럼으로_붙는다(self, tmp_path: Path) -> None:
         """
-        목적: 측정 계층이 방향을 모른다는 계약을 고정한다 — 두 비율을 나란히 내는 것이
-            그 자리이고, 방향은 성적표의 축이다.
+        목적: `측정.csv` 계약이 `종목 · <매매법 축> · 방향` 을 앞에 요구한다 —
+            성적표의 `시기 = 전체` 행과 **1:1** 로 읽히게 하기 위해서다.
+            방향이 없으면 평균 −2.96% 가 이 매매에서 **+2.96%** 라는 것이 표에 없다.
+
+        [중요] **값은 1배 롱 기준 그대로이고 방향은 표시일 뿐이다** — 부호를 뒤집으면
+        `기준선 오른 비율` 이 실제로는 내린 비율을 가리켜 이름이 거짓이 된다.
 
         Given: 합성 ETF 하나
         When: 표시용 표의 컬럼을 본다
-        Then: 앞 셋이 종목·조합·월이고 방향이 없다
+        Then: 앞 넷이 종목·조합·월·방향이다
 
         Args:
             tmp_path: 격리된 임시 폴더
@@ -247,8 +347,8 @@ class TestStudyAxis:
         table = display_tables(run_study((dataset,), combos=COMBOS, months=MONTHS, repeats=FAST_REPEATS))["statistics"]
 
         # Then
-        assert list(table.columns[:3]) == ["종목", "조합", "월"]
-        assert "방향" not in table.columns
+        assert list(table.columns[:4]) == ["종목", "조합", "월", "방향"]
+        assert set(table["방향"]) == {"아래"}, "확정 방향이 「아래」 하나가 아닙니다"
 
     def test_조합_붕괴_두_컬럼이_신호_수로_나뉜다(self, tmp_path: Path) -> None:
         """
@@ -272,6 +372,32 @@ class TestStudyAxis:
         # Then
         total = table["shared_years"].astype("int64") + table["unique_years"].astype("int64")
         assert list(total) == list(table["SignalCount"].astype("int64"))
+
+    def test_조합이_하나면_붕괴_두_컬럼을_비운다(self, tmp_path: Path) -> None:
+        """
+        목적: **견줄 다른 조합이 없으면 그 값을 잴 수 없다.** 채우면 「이 조합만 다른 해」가
+            신호 수와 같아지는데, 그것은 독립 관측이 그만큼 있다는 뜻이 아니라
+            **비교 대상이 없다**는 뜻이다 — 실측으로 SPY 9월은 넷을 다 돌리면 15해다.
+
+        이 저장소에서 빈칸은 「잴 수 없었다」이고 0 은 「재서 0」이다.
+
+        Given: 합성 ETF 하나
+        When: 조합 하나만 돌린다
+        Then: 붕괴 두 컬럼이 전부 비어 있다
+
+        Args:
+            tmp_path: 격리된 임시 폴더
+        """
+        # Given
+        days = _days()
+        dataset = _etf(tmp_path, days)
+
+        # When
+        table = run_study((dataset,), combos=COMBOS[:1], months=MONTHS, repeats=FAST_REPEATS).statistics
+
+        # Then
+        assert table["shared_years"].isna().all(), "다른 조합과 같은 해가 비어 있지 않습니다"
+        assert table["unique_years"].isna().all(), "이 조합만 다른 해가 비어 있지 않습니다"
 
 
 class TestMissingCell:

@@ -30,13 +30,28 @@ from verify_lab.measure.constants import (
     REASON_NONE,
     REASON_OUT_OF_RANGE,
 )
-from verify_lab.studies.option_expiry.constants import (
-    FRIDAY,
-    HORIZON_NEXT_WEEK_EXIT,
-    KR_MONTHLY_EXPIRY,
-    THURSDAY,
-    US_MONTHLY_EXPIRY,
-)
+
+# ============================================================
+# 달력 규칙 픽스처 — **이 테스트가 소유한다**
+# ============================================================
+
+# **공유 계층의 테스트는 자기 픽스처를 갖는다.** 예전에는 매매법 패키지의 상수를 빌려 썼는데,
+# 그러면 그 매매법이 사라질 때 공유 계층의 검사가 함께 무너진다 — 실제로 그렇게 됐다.
+# `measure/calendar_entry.py` 는 규칙의 «값»을 갖지 않으므로(그 docstring), 값은 쓰는 쪽이 정한다.
+#
+# **둘째 목요일을 남기는 이유**: 지금 이 규칙을 쓰는 매매법이 없지만 `ExpiryRule` 은
+# **요일도 순번도 일반화**돼 있다. 셋째 금요일 하나로만 검사하면 「셋째」와 「금요일」이
+# 하드코딩돼 있어도 통과한다 — 다른 요일·다른 순번이 그 구멍을 막는다
+THURSDAY = 3
+FRIDAY = 4
+
+THIRD_FRIDAY = ExpiryRule(label="셋째 금요일", weekday=FRIDAY, ordinal=3)
+SECOND_THURSDAY = ExpiryRule(label="둘째 목요일", weekday=THURSDAY, ordinal=2)
+
+# 묶음 집계의 구간 표지. 보유 거래일 수를 구간 축에 넣으면 한 매매가 여러 칸으로 쪼개져
+# 묶음 값이 나오지 않으므로, **실제 보유일수로는 도달할 수 없는 음수**를 쓴다
+HORIZON_NEXT_WEEK_EXIT = -1
+
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12
@@ -89,7 +104,7 @@ def _market(days: pd.DatetimeIndex, closes: Sequence[float] | None = None) -> pd
 def _expiry_schedule(days: pd.DatetimeIndex, rule: ExpiryRule, exit_weekday: int) -> WeeklyExitSchedule:
     """만기일 진입의 청산 일정을 만든다.
 
-    진입일은 만기일이고 주 기준일은 **규칙일**이다 (`docs/매매/옵션_만기일/설계.md` 결정 ⑰).
+    진입일은 만기일이고 주 기준일은 **규칙일**이다 (`docs/조사/옵션_만기일/설계.md` 결정 ⑰).
 
     Args:
         days: 거래일 목록
@@ -132,7 +147,7 @@ class TestTargetDate:
         days = _trading_days("2026-06-01", "2026-08-31")
 
         # When
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # Then
         row = _row_for(schedule.frame, "2026-07-17")
@@ -154,7 +169,7 @@ class TestTargetDate:
         days = _trading_days("2022-03-01", "2022-05-31", holidays=["2022-04-15"])
 
         # When
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # Then
         row = _row_for(schedule.frame, "2022-04-14")
@@ -164,7 +179,7 @@ class TestTargetDate:
 
     def test_한국_추석_앞당김_달도_보유가_유지된다(self) -> None:
         """
-        목적: **탈락안이 왜 탈락인지**를 고정한다 (`docs/매매/옵션_만기일/설계.md` 결정 ⑰)
+        목적: **탈락안이 왜 탈락인지**를 고정한다 (`docs/조사/옵션_만기일/설계.md` 결정 ⑰)
 
         규칙일 2025-10-09 이 추석으로 10-02 까지 7 달력일 앞당겨진 달이다.
         실제 만기일(10-02)이 속한 주로 세면 목표가 10-10 이 되어 연휴에 막혀 **보유 1거래일**이
@@ -182,7 +197,7 @@ class TestTargetDate:
         )
 
         # When
-        schedule = _expiry_schedule(days, KR_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, SECOND_THURSDAY, FRIDAY)
 
         # Then
         row = _row_for(schedule.frame, "2025-10-02")
@@ -204,7 +219,7 @@ class TestTargetDate:
             "2025-11-28",
             holidays=["2025-10-03", "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09"],
         )
-        expiries = monthly_expiry_dates(days, KR_MONTHLY_EXPIRY)
+        expiries = monthly_expiry_dates(days, SECOND_THURSDAY)
         entries = pd.DatetimeIndex(expiries[COL_EXPIRY_DATE])
 
         # When
@@ -227,8 +242,8 @@ class TestTargetDate:
         days = _trading_days("2026-06-01", "2026-08-31")
 
         # When
-        thursday_exit = _expiry_schedule(days, KR_MONTHLY_EXPIRY, THURSDAY)
-        friday_exit = _expiry_schedule(days, KR_MONTHLY_EXPIRY, FRIDAY)
+        thursday_exit = _expiry_schedule(days, SECOND_THURSDAY, THURSDAY)
+        friday_exit = _expiry_schedule(days, SECOND_THURSDAY, FRIDAY)
 
         # Then
         thursday_row = _row_for(thursday_exit.frame, "2026-07-09")
@@ -252,7 +267,7 @@ class TestHolidayAndRange:
         days = _trading_days("2026-06-01", "2026-08-31", holidays=["2026-07-24"])
 
         # When
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # Then
         row = _row_for(schedule.frame, "2026-07-17")
@@ -274,7 +289,7 @@ class TestHolidayAndRange:
         days = _trading_days("2026-06-01", "2026-07-22")
 
         # When
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # Then
         row = _row_for(schedule.frame, "2026-07-17")
@@ -294,7 +309,7 @@ class TestHolidayAndRange:
         days = _trading_days("2026-01-01", "2026-07-22")
 
         # When
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # Then
         valid = int((schedule.frame[COL_EXCLUDED_REASON] == REASON_NONE).sum())
@@ -319,7 +334,7 @@ class TestHolidayAndRange:
         )
 
         # When
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # Then
         valid = schedule.frame[schedule.frame[COL_EXCLUDED_REASON] == REASON_NONE]
@@ -345,8 +360,8 @@ class TestLookAhead:
         long_days = _trading_days("2025-01-01", "2026-12-31", holidays=holidays)
 
         # When
-        short = _expiry_schedule(short_days, US_MONTHLY_EXPIRY, FRIDAY)
-        long = _expiry_schedule(long_days, US_MONTHLY_EXPIRY, FRIDAY)
+        short = _expiry_schedule(short_days, THIRD_FRIDAY, FRIDAY)
+        long = _expiry_schedule(long_days, THIRD_FRIDAY, FRIDAY)
 
         # Then
         short_valid = short.frame[short.frame[COL_EXCLUDED_REASON] == REASON_NONE]
@@ -374,7 +389,7 @@ class TestWeeklyExitReturns:
         closes = [100.0] * len(days)
         closes[int(days.get_loc(pd.Timestamp("2026-07-24")))] = 105.0
         df = _market(days, closes)
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # When
         result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
@@ -396,7 +411,7 @@ class TestWeeklyExitReturns:
         # Given
         days = _trading_days("2026-01-01", "2026-12-31", holidays=["2026-07-24"])
         df = _market(days)
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # When
         result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
@@ -419,7 +434,7 @@ class TestWeeklyExitReturns:
         # Given
         days = _trading_days("2026-01-01", "2026-07-22")
         df = _market(days)
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
 
         # When
         result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
@@ -443,7 +458,7 @@ class TestWeeklyExitReturns:
         df = _market(days)
 
         # When
-        schedule = _expiry_schedule(days, US_MONTHLY_EXPIRY, FRIDAY)
+        schedule = _expiry_schedule(days, THIRD_FRIDAY, FRIDAY)
         result = weekly_exit_returns(df, schedule, horizon=HORIZON_NEXT_WEEK_EXIT)
 
         # Then

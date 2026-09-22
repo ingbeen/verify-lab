@@ -1,9 +1,9 @@
 {
   "track": "expiry_monthend",
   "row_counts": {
-    "통계.csv": 48,
-    "거래내역.csv": 3872,
-    "성적표.csv": 800
+    "측정.csv": 4,
+    "거래내역.csv": 158,
+    "성적표.csv": 35
   },
   "cost": "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)",
   "measure": {
@@ -11,29 +11,13 @@
     "permutation_seed": 0,
     "combos": [
       {
-        "label": "만기→다음주금",
-        "entry": "셋째 금요일",
-        "exit": "다음 주 금요일"
-      },
-      {
         "label": "만기→말일",
         "entry": "셋째 금요일",
-        "exit": "말일"
-      },
-      {
-        "label": "20일→다음주금",
-        "entry": "20일",
-        "exit": "다음 주 금요일"
-      },
-      {
-        "label": "20일→말일",
-        "entry": "20일",
         "exit": "말일"
       }
     ],
     "months": [
-      9,
-      12
+      9
     ],
     "datasets": [
       {
@@ -43,7 +27,7 @@
         "period": "1993-01-29 ~ 2026-08-25",
         "rows": 8450,
         "is_index": false,
-        "entry_count": 264,
+        "entry_count": 33,
         "excluded_count": 0
       },
       {
@@ -53,27 +37,7 @@
         "period": "1998-01-20 ~ 2026-08-26",
         "rows": 7195,
         "is_index": false,
-        "entry_count": 224,
-        "excluded_count": 0
-      },
-      {
-        "ticker": "069500",
-        "label": "KODEX 200",
-        "file": "069500_max.csv",
-        "period": "2002-10-14 ~ 2026-09-04",
-        "rows": 5898,
-        "is_index": false,
-        "entry_count": 188,
-        "excluded_count": 0
-      },
-      {
-        "ticker": "1028",
-        "label": "코스피200 지수",
-        "file": "1028_index.csv",
-        "period": "1990-01-03 ~ 2026-09-08",
-        "rows": 9463,
-        "is_index": true,
-        "entry_count": 288,
+        "entry_count": 28,
         "excluded_count": 0
       },
       {
@@ -83,7 +47,7 @@
         "period": "2015-10-01 ~ 2026-09-02",
         "rows": 2679,
         "is_index": false,
-        "entry_count": 84,
+        "entry_count": 10,
         "excluded_count": 0
       },
       {
@@ -93,7 +57,7 @@
         "period": "2010-01-04 ~ 2026-09-04",
         "rows": 4105,
         "is_index": true,
-        "entry_count": 128,
+        "entry_count": 16,
         "excluded_count": 0
       }
     ]
@@ -115,20 +79,6 @@
         "rows": 7195
       },
       {
-        "ticker": "069500",
-        "label": "KODEX 200",
-        "file": "069500_max.csv",
-        "period": "2002-10-14 ~ 2026-09-04",
-        "rows": 5898
-      },
-      {
-        "ticker": "1028",
-        "label": "코스피200 지수",
-        "file": "1028_index.csv",
-        "period": "1990-01-03 ~ 2026-09-08",
-        "rows": 9463
-      },
-      {
         "ticker": "229200",
         "label": "KODEX 코스닥150",
         "file": "229200_max.csv",
@@ -146,29 +96,13 @@
     "rule": {
       "combos": [
         {
-          "label": "만기→다음주금",
-          "entry": "셋째 금요일",
-          "exit": "다음 주 금요일"
-        },
-        {
           "label": "만기→말일",
           "entry": "셋째 금요일",
-          "exit": "말일"
-        },
-        {
-          "label": "20일→다음주금",
-          "entry": "20일",
-          "exit": "다음 주 금요일"
-        },
-        {
-          "label": "20일→말일",
-          "entry": "20일",
           "exit": "말일"
         }
       ],
       "months": [
-        9,
-        12
+        9
       ],
       "stop_levels": [
         -5.0,
@@ -178,32 +112,22 @@
       "targets": [
         {
           "label": "SPY",
-          "entry_count": 264,
+          "entry_count": 33,
           "excluded_count": 0
         },
         {
           "label": "DIA",
-          "entry_count": 224,
-          "excluded_count": 0
-        },
-        {
-          "label": "KODEX 200",
-          "entry_count": 188,
-          "excluded_count": 0
-        },
-        {
-          "label": "코스피200 지수",
-          "entry_count": 288,
+          "entry_count": 28,
           "excluded_count": 0
         },
         {
           "label": "KODEX 코스닥150",
-          "entry_count": 84,
+          "entry_count": 10,
           "excluded_count": 0
         },
         {
           "label": "코스닥150 지수",
-          "entry_count": 128,
+          "entry_count": 16,
           "excluded_count": 0
         }
       ]
@@ -211,9 +135,9 @@
     "notes": [
       "진입은 셋째 금요일 또는 그 달 20일(둘 다 휴장이면 직전 거래일) 종가이고, 청산은 다음 주 금요일 또는 그 달 마지막 거래일 종가다 — 측정과 같은 날에 들어간다",
       "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다",
-      "네 조합은 해에 따라 같은 날로 붕괴한다 — 진입·청산이 둘 다 같아 두 조합이 한 매매가 되는 해가 절반 가까이 된다. 그 크기는 이 실행의 통계 표가 「이 조합만 다른 해」로 직접 세므로 여기에 숫자를 적지 않는다",
+      "방향은 확정 칸의 한 값으로 고정해 돌았다 — 반대 방향의 성적과 판정은 이 산출물에 없다. 그 방향을 다시 고를 재료는 측정 표의 오른 비율·내린 비율(1배 롱 기준)이다",
       "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다. 같은 이유로 「보유 중 최악(%)」 도 종가로 재므로 ETF 행(장중 고가·저가 기준)보다 얕게 나온다",
-      "9월·12월은 두 매매법이 이미 가리킨 뒤에 고른 달이라 사후 선택이다 — 이 성적으로 「우위가 있다」를 새로 주장할 수 없고, 용도는 조합 간 비교다"
+      "재는 달은 두 매매법이 이미 가리킨 뒤에 고른 것이라 사후 선택이다 — 이 성적으로 「우위가 있다」를 새로 주장할 수 없다"
     ]
   }
 }
