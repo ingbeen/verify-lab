@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_HIGH, COL_LOW, COL_OPEN, COL_VOLUME
-from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, below_moving_average
+from verify_lab.measure.baseline import DEFAULT_MA_WINDOW, below_moving_average, simple_moving_average
 
 
 def _market(closes: Sequence[float]) -> pd.DataFrame:
@@ -71,6 +71,75 @@ class TestMovingAverageJudgement:
         Then: 200 이다
         """
         assert DEFAULT_MA_WINDOW == 200
+
+
+class TestSimpleMovingAverage:
+    """SMA 값 자체를 고정한다 — 측정의 원칙 15 가 모든 매매법에 요구하는 산식이라 한 곳에만 둔다."""
+
+    def test_values_match_hand_calculation(self) -> None:
+        """
+        목적: SMA 는 직전 N일(그날 포함) 종가의 단순평균이다.
+
+        Given: 종가 10 · 20 · 30 · 24 · 40, 창 3일
+        When: SMA 를 낸다
+        Then: 앞 2일은 비고 20 · 24.6667 · 31.3333 이다
+        """
+        # Given
+        close = pd.Series(DIVERGING_CLOSES)
+
+        # When
+        result = simple_moving_average(close, window=3)
+
+        # Then
+        assert result.iloc[:2].isna().all()
+        assert result.iloc[2:].tolist() == pytest.approx([20.0, 24.666666666666668, 31.333333333333332], abs=1e-12)
+
+    def test_below_moving_average_uses_the_same_average(self) -> None:
+        """
+        목적: 판정 마스크가 SMA 값과 어긋나지 않는다 — 산식이 두 벌이 되면 조용히 갈라진다.
+
+        Given: 12거래일 시세, 창 3일
+        When: 판정 마스크와 SMA 를 함께 낸다
+        Then: 마스크 = (종가 < SMA) 이고 SMA 가 빈 날은 거짓이다
+        """
+        # Given
+        df = _market([100.0, 120.0, 90.0, 110.0, 80.0, 130.0, 95.0, 105.0, 85.0, 115.0, 92.0, 108.0])
+
+        # When
+        mask = below_moving_average(df, window=3).mask
+        average = simple_moving_average(df[COL_CLOSE], window=3)
+
+        # Then
+        expected = (df[COL_CLOSE] < average) & average.notna()
+        assert mask.tolist() == expected.tolist()
+
+    def test_rejects_too_small_window(self) -> None:
+        """
+        목적: 창이 2 미만이면 평균이 값 자신이 된다.
+
+        Given: 창 1일
+        When: SMA 를 낸다
+        Then: ValueError
+        """
+        with pytest.raises(ValueError, match="창"):
+            simple_moving_average(pd.Series(DIVERGING_CLOSES), window=1)
+
+    def test_truncated_input_gives_the_same_average(self, assert_stable_under_truncation: Callable[..., None]) -> None:
+        """
+        목적: **look-ahead 감시** — 뒤에 데이터가 붙어도 지난 날의 평균이 달라지지 않는다.
+
+        Given: 12거래일 시세
+        When: 앞 8일만 준 SMA 와 전체를 준 SMA 를 비교한다
+        Then: 겹치는 구간의 값이 같다
+        """
+        # Given
+        df = _market([100.0, 120.0, 90.0, 110.0, 80.0, 130.0, 95.0, 105.0, 85.0, 115.0, 92.0, 108.0])
+
+        def run(frame: pd.DataFrame) -> pd.DataFrame:
+            return pd.DataFrame({COL_DATE: frame[COL_DATE], "Average": simple_moving_average(frame[COL_CLOSE], 3)})
+
+        # When / Then
+        assert_stable_under_truncation(run, df, 8, key_columns=[COL_DATE], value_column="Average")
 
 
 class TestWindowShortage:

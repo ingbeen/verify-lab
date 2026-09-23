@@ -11,6 +11,9 @@
 **보유가 달력 분기에 맞아떨어진다** — 9월 말에 사서 6월 말에 팔므로 4분기·1분기·2분기 셋이다.
 그 분해와 「보통 얼마나 밀리나」를 **분기 표 둘**이 낸다 (이름의 소유자는 그 매매법의 `constants`).
 
+**분할매수 격자와 진입 위치**도 함께 낸다 — 분할매수는 무손절 · 배정액 기준이고, 진입 위치는
+진입일의 지표(52주 최고 대비 · 이격도 · RSI)를 그 해의 결과와 나란히 싣는다.
+
 [중요] **살 수 있는 대상의 중간선거 칸 표본이 6~8건이라 칸당 하한(10)에 못 미친다.**
 「판정가능」이 전 구간에서 「아니오」가 되고 우연확률도 붙지 않는다 — **결론의 일부이지
 버그가 아니다.** 지수 둘은 그 앞을 보여주려고 함께 재지만 살 수 없어 판정하지 않는다.
@@ -27,6 +30,7 @@ import pandas as pd
 
 from verify_lab.execution.constants import (
     DISPLAY_DIRECTION,
+    DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
     DISPLAY_TOTAL,
@@ -54,15 +58,29 @@ from verify_lab.report.writer import create_run_directory, save_run_summary, sav
 from verify_lab.studies.midterm_cycle.constants import (
     DATASETS,
     DISPLAY_CYCLE_POSITION,
+    DISPLAY_CYCLE_YEAR,
+    DISPLAY_DISPARITY_LONG,
+    DISPLAY_FALLBACK,
+    DISPLAY_FIRST_QUARTER_RETURN,
+    DISPLAY_HIGH_DISTANCE,
+    DISPLAY_HOLD_WORST_MEAN,
+    DISPLAY_LUMP_DIFF,
+    DISPLAY_MEAN_INVESTED,
     DISPLAY_QUARTER,
+    DISPLAY_RSI,
+    DISPLAY_RULE_FILLED,
+    DISPLAY_SPLIT_METHOD,
     DISPLAY_WORST_DEEPEST,
     DISPLAY_WORST_MEAN,
     DISPLAY_WORST_MEDIAN,
     DISPLAY_WORST_Q25,
     DISPLAY_WORST_Q75,
+    ENTRY_CONTEXT_FILENAME,
     OUTPUT_FILES,
     QUARTER_SUMMARY_FILENAME,
     QUARTER_TRADES_FILENAME,
+    SPLIT_SUMMARY_FILENAME,
+    SPLIT_TRADES_FILENAME,
     TRACK_NAME,
     datasets_of,
 )
@@ -197,6 +215,58 @@ def _print_quarters(trading: TradingOutputs) -> None:
     )
 
 
+def _print_split(trading: TradingOutputs) -> None:
+    """분할매수 집계를 화면에 띄운다.
+
+    **평균만 보지 않게 보유 중 최악과 투자 비율을 함께 띄운다** — 분할은 평균을 깎고 최악을
+    줄이는 교환이라 한쪽만 보면 판단이 기운다.
+
+    Args:
+        trading: 체결 산출물
+    """
+    columns = [
+        DISPLAY_TICKER,
+        DISPLAY_SPLIT_METHOD,
+        DISPLAY_FALLBACK,
+        DISPLAY_SAMPLE_COUNT,
+        DISPLAY_MEAN,
+        DISPLAY_MEDIAN,
+        DISPLAY_LUMP_DIFF,
+        DISPLAY_HOLD_WORST_MEAN,
+        DISPLAY_WORST_HOLD,
+        DISPLAY_MEAN_INVESTED,
+        DISPLAY_RULE_FILLED,
+    ]
+    print_dataframe(
+        trading.split_summary[columns],
+        logger,
+        title="분할매수 — 무손절 · 배정액 기준 (현금으로 남은 몫은 수익 0)",
+    )
+
+
+def _print_entry_context(trading: TradingOutputs) -> None:
+    """진입 위치 표를 화면에 띄운다.
+
+    Args:
+        trading: 체결 산출물
+    """
+    columns = [
+        DISPLAY_TICKER,
+        DISPLAY_CYCLE_YEAR,
+        DISPLAY_HIGH_DISTANCE,
+        DISPLAY_DISPARITY_LONG,
+        DISPLAY_RSI,
+        DISPLAY_RETURN,
+        DISPLAY_WORST_HOLD,
+        DISPLAY_FIRST_QUARTER_RETURN,
+    ]
+    print_dataframe(
+        trading.entry_context[columns],
+        logger,
+        title="진입 위치 — 진입일 지표와 그 해의 결과 (창이 차기 전은 빈칸)",
+    )
+
+
 def _save(
     study: StudyOutputs,
     tables: dict[str, pd.DataFrame],
@@ -221,6 +291,9 @@ def _save(
     save_table(directory, SUMMARY_FILENAME, trading.performance)
     save_table(directory, QUARTER_TRADES_FILENAME, trading.quarter_trades)
     save_table(directory, QUARTER_SUMMARY_FILENAME, trading.quarter_summary)
+    save_table(directory, SPLIT_TRADES_FILENAME, trading.split_trades)
+    save_table(directory, SPLIT_SUMMARY_FILENAME, trading.split_summary)
+    save_table(directory, ENTRY_CONTEXT_FILENAME, trading.entry_context)
 
     summary = merge_run_summary(study.summary, trading.summary)
     save_run_summary(directory, summary)
@@ -250,6 +323,8 @@ def main() -> int:
 
     _print_statistics(tables)
     _print_quarters(trading)
+    _print_entry_context(trading)
+    _print_split(trading)
     _print_candidates(trading)
     print_dataframe(
         pd.DataFrame([{DISPLAY_FILE: name, DISPLAY_ROW_COUNT: rows} for name, rows in counts.items()]),
