@@ -300,6 +300,20 @@ class TestGradeSemantics:
         # Given / When / Then
         assert track_of("expiry_monthend").grade == GRADE_TRADING
 
+    def test_중간선거_사이클이_매매_등급이다(self) -> None:
+        """
+        목적: 검증 등급이 남긴 미결 넷(대상 · 손절선 · 레버리지 · 투자금)이 2026-09-23 에 정해져
+            `docs/매매/중간선거_사이클/규칙.md` §1 이 확정 규칙이 됐다.
+
+        **승격은 이 한 줄이고 측정은 그대로다** — 산출물 CSV 는 이동 전후로 바이트가 같다.
+
+        Given: 레지스트리
+        When: 중간선거_사이클의 등급을 조회한다
+        Then: 매매다
+        """
+        # Given / When / Then
+        assert track_of("midterm_cycle").grade == GRADE_TRADING
+
     @pytest.mark.parametrize("slug", ["option_expiry", "month_end"])
     def test_걸지_않기로_한_매매법은_조사_등급이다(self, slug: str) -> None:
         """

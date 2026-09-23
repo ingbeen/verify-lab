@@ -12,7 +12,7 @@ Stock Trader's Almanac 이 "Sweet Spot" 이라 부르는 구간이며, 진입·�
 `measure/calendar_*` 의 기존 두 규칙과 방향도 기준점도 다르다. 근거는
 `cycle_calendar.py` 모듈 docstring 에 있다.
 
-확정 설계는 `docs/검증/중간선거_사이클/설계.md` 가 SoT 다.
+확정 설계는 `docs/매매/중간선거_사이클/설계.md` 가 SoT 다.
 """
 
 from .constants import CYCLE_POSITIONS, DATASETS, ENTRY_MONTH, EXIT_MONTH, TRACK_NAME
