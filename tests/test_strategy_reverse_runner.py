@@ -32,6 +32,7 @@ from verify_lab.execution.constants import (
     DISPLAY_MEAN_HOLD,
     DISPLAY_RETURN,
     DISPLAY_START_YEAR,
+    DISPLAY_STOP_LEVEL,
     DISPLAY_TOTAL,
     PERIOD_ALL,
     PERIODS,
@@ -348,27 +349,46 @@ class TestSignalOwnership:
 class TestTargetsInvariant:
     """매매 대상과 규칙 상수의 불변조건"""
 
-    def test_대상은_네_종이다(self) -> None:
+    def test_대상은_두_종이다(self) -> None:
         """
         목적: 대상이 조용히 늘거나 줄지 않는지 값으로 고정한다
 
-        **두 종목 × 두 컷이고 시작연도는 하나로 통일돼 있다.** 종목마다 구간이 갈리면
-        산출물의 시작연도 열을 읽는 사람이 그 차이에 뜻이 있다고 오해한다.
+        **두 종목 모두 K=10 이다** (2026-09-26 사용자 결정 — `docs/매매/역방향/규칙.md` 결정 ②).
+        K=20 은 대조로도 내지 않는다(결정 ⑭). 시작연도는 하나로 통일돼 있다 — 종목마다 구간이
+        갈리면 산출물의 시작연도 열을 읽는 사람이 그 차이에 뜻이 있다고 오해한다.
 
         Given: 매매 대상 목록
         When: 종목·순위 컷·시작연도를 모았을 때
-        Then: 두 종목 × 두 컷 네 종이고 시작연도가 전부 같다
+        Then: 두 종목의 K=10 두 종이고 시작연도가 같다
         """
         # Given / When
-        triples = {(target.dataset.label, target.rank_cut, target.start_year) for target in TARGETS}
+        triples = [(target.dataset.label, target.rank_cut, target.start_year) for target in TARGETS]
 
         # Then
-        assert triples == {
-            ("KODEX 200", 10, START_YEAR),
-            ("KODEX 200", 20, START_YEAR),
-            ("QQQ", 10, START_YEAR),
-            ("QQQ", 20, START_YEAR),
-        }
+        assert sorted(triples) == [("KODEX 200", 10, START_YEAR), ("QQQ", 10, START_YEAR)]
+
+    def test_기본_실행은_확정_손절선_한_종만_낸다(self, tmp_path: Path) -> None:
+        """
+        목적: 손절선을 넘기지 않은 실행이 확정 칸만 낸다는 것을 고정한다
+
+        **손절선 격자와 무손절 대조는 코드에서 지웠다** (2026-09-26 — 규칙 문서 결정 ⑭).
+        그 수치는 규칙 문서 §3.5 가 갖는다. 기본값이 격자로 돌아가면 성적표가 200행으로
+        불어나는데 **예외는 나지 않는다.**
+
+        Given: 합성 대상 하나
+        When: 손절선을 넘기지 않고 돌렸을 때
+        Then: 성적표와 거래내역의 손절선이 확정 −5% 하나뿐이다
+        """
+        # Given
+        target = _target(tmp_path / "default")
+        expected = {stop_level_value(STOP_LOSS_LEVEL, measurable=True)}
+
+        # When
+        result = run_reverse_trading([target])
+
+        # Then
+        assert set(result.performance[DISPLAY_STOP_LEVEL]) == expected
+        assert set(result.trades[DISPLAY_STOP_LEVEL]) == expected
 
     def test_시작연도는_2005다(self) -> None:
         """

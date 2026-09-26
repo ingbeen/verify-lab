@@ -5,8 +5,8 @@
     "통계.csv": 576,
     "excess.csv": 1152,
     "test.csv": 1152,
-    "거래내역.csv": 1600,
-    "성적표.csv": 200
+    "거래내역.csv": 58,
+    "성적표.csv": 10
   },
   "cost": "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)",
   "measure": {
@@ -15,8 +15,8 @@
         "ticker": "QQQ",
         "label": "QQQ",
         "file": "QQQ_max.csv",
-        "period": "1999-03-10 ~ 2026-09-03",
-        "rows": 6915,
+        "period": "1999-03-10 ~ 2026-09-24",
+        "rows": 6929,
         "price_basis": "원본가",
         "sma_undetermined_count": 199
       },
@@ -24,8 +24,8 @@
         "ticker": "069500",
         "label": "KODEX 200",
         "file": "069500_max.csv",
-        "period": "2002-10-14 ~ 2026-09-04",
-        "rows": 5898,
+        "period": "2002-10-14 ~ 2026-09-23",
+        "rows": 5911,
         "price_basis": "원본가",
         "sma_undetermined_count": 199
       }
@@ -71,7 +71,7 @@
         "start_year": 2003,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 5956
+        "day_count": 5970
       },
       {
         "label": "QQQ",
@@ -87,7 +87,7 @@
         "start_year": 2005,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 5452
+        "day_count": 5466
       },
       {
         "label": "QQQ",
@@ -103,7 +103,7 @@
         "start_year": 2008,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 4698
+        "day_count": 4712
       },
       {
         "label": "QQQ",
@@ -119,7 +119,7 @@
         "start_year": 2011,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 3941
+        "day_count": 3955
       },
       {
         "label": "QQQ",
@@ -151,7 +151,7 @@
         "start_year": 2011,
         "period": "2020년대",
         "baseline": "단순 보유",
-        "day_count": 1677
+        "day_count": 1691
       },
       {
         "label": "QQQ",
@@ -167,7 +167,7 @@
         "start_year": 2003,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 5844
+        "day_count": 5857
       },
       {
         "label": "KODEX 200",
@@ -183,7 +183,7 @@
         "start_year": 2005,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 5348
+        "day_count": 5361
       },
       {
         "label": "KODEX 200",
@@ -199,7 +199,7 @@
         "start_year": 2008,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 4606
+        "day_count": 4619
       },
       {
         "label": "KODEX 200",
@@ -215,7 +215,7 @@
         "start_year": 2011,
         "period": "전체",
         "baseline": "단순 보유",
-        "day_count": 3854
+        "day_count": 3867
       },
       {
         "label": "KODEX 200",
@@ -247,7 +247,7 @@
         "start_year": 2011,
         "period": "2020년대",
         "baseline": "단순 보유",
-        "day_count": 1639
+        "day_count": 1652
       },
       {
         "label": "KODEX 200",
@@ -369,29 +369,20 @@
         "ticker": "069500",
         "label": "KODEX 200",
         "file": "069500_max.csv",
-        "period": "2002-10-14 ~ 2026-09-04",
-        "rows": 5898
+        "period": "2002-10-14 ~ 2026-09-23",
+        "rows": 5911
       },
       {
         "ticker": "QQQ",
         "label": "QQQ",
         "file": "QQQ_max.csv",
-        "period": "1999-03-10 ~ 2026-09-03",
-        "rows": 6915
+        "period": "1999-03-10 ~ 2026-09-24",
+        "rows": 6929
       }
     ],
     "rule": {
       "stop_loss_levels": [
-        "무손절",
-        -2.0,
-        -3.0,
-        -4.0,
-        -5.0,
-        -6.0,
-        -7.0,
-        -8.0,
-        -9.0,
-        -10.0
+        -5.0
       ],
       "hold_limit": 2,
       "targets": [
@@ -402,35 +393,7 @@
           "signal_count": 51,
           "event_count": 12,
           "excluded_count": {
-            "무손절": 0,
-            "-2.0": 0,
-            "-3.0": 0,
-            "-4.0": 0,
-            "-5.0": 0,
-            "-6.0": 0,
-            "-7.0": 0,
-            "-8.0": 0,
-            "-9.0": 0,
-            "-10.0": 0
-          }
-        },
-        {
-          "label": "KODEX 200",
-          "rank_cut": 20,
-          "start_year": 2005,
-          "signal_count": 88,
-          "event_count": 20,
-          "excluded_count": {
-            "무손절": 0,
-            "-2.0": 0,
-            "-3.0": 0,
-            "-4.0": 0,
-            "-5.0": 0,
-            "-6.0": 0,
-            "-7.0": 0,
-            "-8.0": 0,
-            "-9.0": 0,
-            "-10.0": 0
+            "-5.0": 0
           }
         },
         {
@@ -440,35 +403,7 @@
           "signal_count": 7,
           "event_count": 3,
           "excluded_count": {
-            "무손절": 0,
-            "-2.0": 0,
-            "-3.0": 0,
-            "-4.0": 0,
-            "-5.0": 0,
-            "-6.0": 0,
-            "-7.0": 0,
-            "-8.0": 0,
-            "-9.0": 0,
-            "-10.0": 0
-          }
-        },
-        {
-          "label": "QQQ",
-          "rank_cut": 20,
-          "start_year": 2005,
-          "signal_count": 14,
-          "event_count": 5,
-          "excluded_count": {
-            "무손절": 0,
-            "-2.0": 0,
-            "-3.0": 0,
-            "-4.0": 0,
-            "-5.0": 0,
-            "-6.0": 0,
-            "-7.0": 0,
-            "-8.0": 0,
-            "-9.0": 0,
-            "-10.0": 0
+            "-5.0": 0
           }
         }
       ]

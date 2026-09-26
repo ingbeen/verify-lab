@@ -46,8 +46,8 @@
         "ticker": "QQQ",
         "label": "QQQ",
         "file": "QQQ_max.csv",
-        "period": "1999-03-10 ~ 2026-09-03",
-        "rows": 6915,
+        "period": "1999-03-10 ~ 2026-09-24",
+        "rows": 6929,
         "symbol": "QQQ",
         "is_index": false,
         "entry_count": 6,
@@ -97,8 +97,8 @@
         "ticker": "QQQ",
         "label": "QQQ",
         "file": "QQQ_max.csv",
-        "period": "1999-03-10 ~ 2026-09-03",
-        "rows": 6915
+        "period": "1999-03-10 ~ 2026-09-24",
+        "rows": 6929
       },
       {
         "ticker": "GSPC",

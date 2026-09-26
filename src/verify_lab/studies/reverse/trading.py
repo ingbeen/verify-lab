@@ -51,7 +51,7 @@ from verify_lab.studies.reverse.constants import (
     EXTREME_DIRECTION_LABELS,
     HOLD_LIMIT,
     KEY_START_YEAR,
-    STOP_LOSS_LEVELS,
+    STOP_LOSS_LEVEL,
     TARGETS,
     TRACK_NAME,
     Direction,
@@ -177,15 +177,14 @@ def run_reverse_trading(
     targets: Sequence[Target] = TARGETS,
     *,
     hold_limit: int = HOLD_LIMIT,
-    stop_levels: Sequence[float | None] = (None, *STOP_LOSS_LEVELS),
+    stop_levels: Sequence[float | None] = (STOP_LOSS_LEVEL,),
 ) -> StrategyOutputs:
-    """대상 × 손절선을 전부 돌고 체결 내역과 집계를 만든다.
+    """대상 × 손절선을 돌고 체결 내역과 집계를 만든다.
 
-    **기본이 격자다** — 무손절과 -2%~-10% 를 전부 낸다. `.claude/rules/trading.md` 가
-    「손절이 무엇을 막았는가」의 대조축으로 무손절 성적을 요구하고, 손절선 후보를 격자로
-    전부 돌려 「평평한 구간」을 찾는 것을 절차로 요구하기 때문이다.
-    **확정 손절선 하나만 보려면 `stop_levels=(STOP_LOSS_LEVEL,)` 를 넘긴다** —
-    무엇을 실제로 거는지는 규칙 문서가 정하고 코드는 볼 목록을 낸다.
+    **기본은 확정 손절선 한 종이다.** 손절선 격자와 무손절 대조는 지웠고
+    (`docs/매매/역방향/규칙.md` 결정 ⑭), `.claude/rules/trading.md` 가 요구하는
+    「손절이 무엇을 막았는가」의 수치는 그 문서 §3.5 가 갖는다.
+    **`stop_levels` 는 체결 경로를 합성 시세로 검사하는 입구다** — 실행 스크립트는 넘기지 않는다.
 
     Args:
         targets: 매매 대상 목록

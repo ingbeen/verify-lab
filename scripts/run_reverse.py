@@ -21,8 +21,6 @@ import pandas as pd
 
 from verify_lab.execution.constants import (
     DISPLAY_START_YEAR,
-    DISPLAY_STOP_LEVEL,
-    NO_STOP_LABEL,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
     stop_level_value,
@@ -62,7 +60,6 @@ from verify_lab.studies.reverse.constants import (
     OUTPUT_FILES,
     PERIOD_ALL,
     STOP_LOSS_LEVEL,
-    STOP_LOSS_LEVELS,
     TARGETS,
     TRACK_NAME,
     Dataset,
@@ -175,14 +172,10 @@ def _selected_targets(keys: list[str]) -> list[Target]:
 def _print_rule() -> None:
     """적용한 체결 규칙을 먼저 보여준다.
 
-    **손절선은 격자가 기본이다** — 무손절과 -2%~-10% 를 전부 낸다. 확정 손절선이 무엇인지는
-    규칙 문서가 정하고 `손절선(%)` 한 컬럼으로 골라낸다.
+    **손절선은 확정값 하나다** — 격자와 무손절 대조는 지웠다(규칙 문서 결정 ⑭).
     """
     logger.debug("진입: 신호일 종가")
-    logger.debug(
-        f"손절: 무손절 + 손절선 {len(STOP_LOSS_LEVELS)}종 격자 — 진입가 기준, 보유 기간 내내 고정 "
-        f"(확정값은 {stop_level_value(STOP_LOSS_LEVEL, measurable=True)})"
-    )
+    logger.debug(f"손절: {stop_level_value(STOP_LOSS_LEVEL, measurable=True)}% — 진입가 기준, 보유 기간 내내 고정")
     logger.debug(f"청산: 종가가 진입가 위면 즉시 청산, 손실이면 D+{HOLD_LIMIT} 까지 보유")
 
 
@@ -235,11 +228,7 @@ def _print_excerpt(outputs: StudyOutputs) -> None:
 
 
 def _print_performance(outputs: StrategyOutputs) -> None:
-    """성적표에서 **무손절 행만** 화면에 보여준다.
-
-    **격자 전체는 CSV 에 있다.** 손절선 10종 × 대상 4 × 구간 5 = 200행을 터미널에 쏟으면
-    읽을 수 없고, 무손절 행이 맨몸 성적이라 측정 표와 대조하는 자리다
-    (옵션 만기일·월말 CLI 와 같은 관용).
+    """성적표를 그대로 화면에 보여준다.
 
     **대상 하나가 구간 다섯 줄이다** — `전체 · 앞 절반 · 뒤 절반 · 최근 10년 · 최근 5년`
     (측정의 원칙 17). 균등 2분할만으로는 신호가 식는 것을 놓친다.
@@ -250,9 +239,8 @@ def _print_performance(outputs: StrategyOutputs) -> None:
     Args:
         outputs: 체결 산출물
     """
-    table = outputs.performance
-    no_stop = table[table[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL].astype({DISPLAY_START_YEAR: str})
-    print_dataframe(no_stop, logger, title=f"대상 × 구간 성적 — {NO_STOP_LABEL} (격자 전체는 CSV 에)")
+    table = outputs.performance.astype({DISPLAY_START_YEAR: str})
+    print_dataframe(table, logger, title="대상 × 구간 성적")
 
 
 def _save(study: StudyOutputs, trading: StrategyOutputs, directory: Path) -> dict[str, int]:
