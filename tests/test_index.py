@@ -9,7 +9,7 @@ AI 모델이 없는 파일을 찾거나 있는 파일을 놓친다. 이 프로�
 1. INDEX에 적힌 경로가 실재하는가 (죽은 링크 차단)
 2. 실재하는 문서가 INDEX에 등록됐는가 (누락 차단)
 3. 세션 시작 규칙이 조건 없이 로드되는가 (진입 경로 보장)
-4. 걷어낸 문서가 되살아나지 않았는가 (「앞으로의 계획」 재유입 차단)
+4. 걷어낸 문서가 되살아나지 않았는가 (「앞으로의 계획」·개인 운용 상태 재유입 차단)
 """
 
 import re
@@ -48,6 +48,7 @@ REMOVED_DOCUMENTS = (
     "docs/HANDS_ON.md",
     "다음세션_프롬프트.md",
     "docs/research/CLAUDE.md",  # 옛 자리. 되살아나면 규칙이 두 벌이 된다
+    "docs/context",  # 개인 운용 상태. 되살아나면 세션이 포트폴리오를 전제로 판단한다
 )
 
 
@@ -146,7 +147,6 @@ def test_all_documents_registered() -> None:
     "required",
     [
         "CLAUDE.md",
-        "docs/context/README.md",
     ],
 )
 def test_core_documents_linked(required: str) -> None:
@@ -212,8 +212,8 @@ def test_removed_documents_stay_removed(removed: str) -> None:
     """
     목적: 걷어낸 문서가 되살아나지 않음을 고정한다.
 
-    이 저장소의 docs 는 「현재 상태와 분석 결과」만 담는다. 진행 일지와 앞으로의 계획은
-    다시 쌓이기 쉬우므로 파일 단위로 막는다.
+    이 저장소의 docs 는 「현재 상태와 분석 결과」만 담는다. 진행 일지와 앞으로의 계획,
+    개인 운용 상태는 다시 쌓이기 쉬우므로 경로 단위로 막는다.
 
     Given: 재편에서 삭제한 문서 경로
     When: 파일 시스템에서 확인한다
@@ -221,5 +221,5 @@ def test_removed_documents_stay_removed(removed: str) -> None:
     """
     target = PROJECT_ROOT / removed
     assert not target.exists(), (
-        f"걷어낸 문서가 되살아났습니다: {removed}\n" "  진행 상태와 계획은 남기지 않습니다. 결과와 설계는 docs/<등급>/<매매법>/ 에, " "규칙은 .claude/rules/ 에 둡니다"
+        f"걷어낸 문서가 되살아났습니다: {removed}\n" "  걷어낸 사유는 tests/test_index.py 의 REMOVED_DOCUMENTS 주석에 있습니다"
     )

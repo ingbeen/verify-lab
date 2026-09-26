@@ -16,27 +16,10 @@
 verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있는지 재는 측정소**입니다.
 백테스트 도구도, 전략 개발 도구도 아닙니다. 이 구분이 모든 판단의 기준입니다.
 
-### 왜 시작됐는가 — [docs/context/](docs/context) 를 먼저 읽으세요
+**과제는 하나입니다 — 이 매매법에 실제로 통계적 우위가 있는가.** 여기서 없으면 거기서 끝입니다.
 
-`docs/context/`의 두 문서는 **사용자의 현재 투자 상태를 나타내는 가장 중요한 문서**이며,
-이 프로젝트의 출발점입니다. 작업 전에 반드시 읽습니다.
-
-- `RESEARCH_q2_2xs_qqq_correlation.md` — 운용 중인 포트폴리오의 낮은 QQQ 상관은 자산 분산이 아니라
-  **하락장에서 주식을 비우는 타이밍 신호**에서 나왔다는 분해 결과. verify-lab은 그 후속으로
-  **"QQQ와 다르게 움직이는 매매법을 찾자"** 에서 출발했습니다
-- `RESEARCH_qqq_late_entry.md` — 현재 보유 판정(이번 사이클 미진입)과 그 근거
-
-#### 이 프로젝트의 과제는 둘이다
-
-| 과제 | 묻는 것 | 판정에서의 위치 |
-| --- | --- | --- |
-| **A. 통계적 우위** | 이 매매법에 실제로 우위가 있는가 | **모든 검증의 1차 질문.** 여기서 없으면 거기서 끝입니다 |
-| **B. QQQ 와의 분리** | 이 신호가 QQQ와 다르게 움직이는가 | **부가 질문.** 위 출발점에서 나왔습니다 |
-
-**B 가 아니라는 이유로 A 를 탈락시키지 않습니다.** QQQ와 같은 방향으로 움직여도 우위가 있으면
-그것은 유효한 발견이며 **부수적 매매법**으로 남깁니다. 다만 **둘 중 어느 쪽인지는 결과 문서에
-반드시 적습니다** — 상관을 낮추려고 채택했다가 같이 흔들리는 것을 뒤늦게 아는 일을 막습니다.
-맥락을 모르면 숫자만 맞고 쓸모없는 보고가 됩니다.
+**개인 포트폴리오·운용 상태를 전제로 판단하지 않습니다** (2026-09-26 사용자 결정).
+이 저장소는 순수 연구·분석용이며, 결과를 「누구의 계좌에 무슨 의미인가」로 해석하지 않습니다.
 
 | 하는 일 | 하지 않는 일 |
 | --- | --- |
@@ -297,7 +280,6 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | `~/.claude/CLAUDE.md` (전역) | 항상 — 사고 절차·수술적 변경·개발 원칙·목표 주도 실행·검증 지침의 SoT | 자동 |
 | `CLAUDE.md` (루트, 이 문서) | 항상 — verify-lab 고유 맥락 | 자동 |
 | [docs/MEMORY.md](docs/MEMORY.md) | 항상 — 알아낸 함정·인계사항·환경 노하우 (아래 `@import`) | 자동 |
-| [docs/context/README.md](docs/context/README.md) | 항상 — 사용자의 현재 운용 상태와 프로젝트 배경 | 직접 |
 | [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) | 패키지 코드 작업 — 계층 분리, 상수 관리, 절대 원칙 | 자동 |
 | [scripts/CLAUDE.md](scripts/CLAUDE.md) | CLI 스크립트 작업 | 자동 |
 | [tests/CLAUDE.md](tests/CLAUDE.md) | 테스트 작성·수정 | 자동 |
@@ -305,7 +287,6 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | [.claude/rules/python.md](.claude/rules/python.md) | 파이썬 파일 작업 — 코딩 표준·반올림·로깅 | 자동 |
 | [.claude/rules/docs.md](.claude/rules/docs.md) | `docs/` 파일 작업 | 자동 |
 | [.claude/rules/reference.md](.claude/rules/reference.md) | `reference/` 파일을 열었을 때 — 읽기 전용 4금지 | 자동 |
-| [.claude/rules/context.md](.claude/rules/context.md) | `docs/context/` 파일을 열었을 때 — 사용자 소유 문서 보호 | 자동 |
 | [.claude/rules/trading.md](.claude/rules/trading.md) | 매매 규칙·체결 코드 작업 — 예외 규정(경계는 폴더가 아니라 행위)과 제약 | 자동 |
 | `/impl-plan` 스킬 (전역) | 계획서 작성·갱신 | 호출 |
 
@@ -330,9 +311,9 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 | --- | --- |
 | 특정 폴더에서 **코드를 어떻게 쓰는가** | 그 폴더의 `CLAUDE.md` (예: `scripts/`, `tests/`) |
 | 파일 타입을 가로지르는 규칙 | `.claude/rules/` + `paths` 글롭 (예: `**/*.py`) |
-| **CLAUDE.md를 두면 오히려 혼란스러운 폴더** — 읽기 전용이거나 사용자 소유인 곳 | `.claude/rules/` (예: `reference/**`, `docs/context/**`) |
+| **CLAUDE.md를 두면 오히려 혼란스러운 폴더** — 읽기 전용이거나 사용자 소유인 곳 | `.claude/rules/` (예: `reference/**`) |
 
-새 규칙 파일을 만들면 [docs/INDEX.md](docs/INDEX.md) §2 표에도 등록합니다.
+새 규칙 파일을 만들면 [docs/INDEX.md](docs/INDEX.md) 「규칙 문서」 표에도 등록합니다.
 
 ---
 
@@ -423,7 +404,6 @@ verify-lab/
 ├── tests/                   # 테스트 코드 (상세: tests/CLAUDE.md)
 ├── docs/
 │   ├── COMMANDS.md          # 실행 명령어 단일 관리
-│   ├── context/             # 사용자의 현재 운용 상태와 프로젝트 배경 (필독)
 │   ├── 검증/<매매법>/         # 재 보는 중 — 설계.md · 결과.md · 규칙.md
 │   ├── 매매/<매매법>/         # 걸기로 정한 것 — 설계.md · 결과.md · 규칙.md
 │   ├── 조사/<이름>/           # 안 걸기로 한 것 · 성질 조사 · 매매법에 안 묶인 공통 규칙
