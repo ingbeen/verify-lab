@@ -120,7 +120,7 @@ def period_rows(
             신호가 곧 사건이라 같은 값이 두 열에 실리고, 빈칸으로 두면 「세지 못했다」로 읽힌다
         worst_hold_rates: 신호별 **보유 중** 최악 수익률 (비율). 없으면 그 컬럼을 비운다.
             **컬럼 자체는 남는다** — `hold_days`·`reasons` 와 같은 관용이며, 세 매매법이
-            이것을 실제로 채우는지는 `tests/test_strategy_output_contract.py` 가 본다.
+            이것을 실제로 채우는지는 `tests/test_output_contract.py` 가 본다.
             그 검사가 없으면 **컬럼은 그대로 있고 내용만 비어 나가는데 컬럼 순서 검사는 통과한다**
 
     Returns:

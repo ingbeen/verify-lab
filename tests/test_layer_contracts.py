@@ -98,7 +98,7 @@ _REPORT_LABEL_COLLISIONS = {
 
 # 매매 계층이 이미 내고 있는 다섯 키. **손으로 박는다** — `run_summary` 의 상수를 가져다
 # 비교하면 그 상수를 고치는 순간 테스트가 함께 따라와 아무것도 고정하지 못한다
-# (`tests/CLAUDE.md`). 매매 쪽의 「정확히 이 다섯」은 `test_strategy_output_contract.py` 가
+# (`tests/CLAUDE.md`). 매매 쪽의 「정확히 이 다섯」은 `test_output_contract.py` 가
 # 런타임으로 보고, 여기서는 **검증 셋이 그 다섯을 빠짐없이 갖는지**를 본다 —
 # 검증은 `expiry_count` 처럼 자기 축을 더 갖는 것이 정상이라 부분집합으로 검사한다
 _DATASET_MINIMUM_KEYS = frozenset({"ticker", "label", "file", "period", "rows"})

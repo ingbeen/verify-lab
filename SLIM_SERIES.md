@@ -40,7 +40,7 @@
 | # | 계획서 | 범위 | 산출물 영향 | 상태 | 커밋 |
 | --- | --- | --- | --- | --- | --- |
 | ① | `docs/plans/PLAN_slim_1_context_index.md` | 끝난 계획서 16개 · `docs/context` · reference 코드 원본 삭제, INDEX 재설계 | 없음 | 완료 | `2c8d93f` |
-| ② | `docs/plans/PLAN_slim_2_test_rename.md` | `test_strategy_*` 5개 개명 — 이름만 | 없음 | 대기 | |
+| ② | `docs/plans/PLAN_slim_2_test_rename.md` | `test_strategy_*` 5개 개명 — 이름만 | 없음 | 커밋 대기 | |
 | ③ | `docs/plans/PLAN_slim_3_dead_code.md` | 데드 코드 · 테스트 결함 · 재수출 · 연결 누락 · 주석 · 메타 키 | **없음 (재실행 바이트 동일이 통과 조건)** | 대기 | |
 | ④ | `docs/plans/PLAN_slim_4_rule_docs.md` | 규칙·하네스 문서 — 중복 → SoT, 이력, 모순, 개인 운용 | 없음 | 대기 | |
 | ⑤ | `docs/plans/PLAN_slim_5_trading_docs.md` | 역방향 · 중간선거 문서 6장, `측정.csv` 어긋남 열 | 중간선거 `측정.csv` | 대기 | |
@@ -98,6 +98,25 @@
   - `reference/README.md` 의 「언제 지우나」가 인용처를 부풀렸다(R7 — `데이터처리_설계원칙.md`·`test_examples/conftest_example.py` 는 인용처가 없다) — ④ 가 사실대로 고친다
   - 리뷰 「그 외」 13건 전체는 보고서 §12.3
   - 계획서 ① 의 진행 로그 시각 일부는 추정값이다(같은 로그의 정정 줄 참고)
+
+### ② PLAN_slim_2_test_rename — 커밋 대기 (2026-09-26 17:49)
+
+- 한 일: `test_strategy_*` 5개를 셸 `mv` 로 개명(내용은 HEAD 와 바이트 동일 — `cmp` 로 확인), 옛 이름을 가리키던 현재 파일 참조 5줄(4개 파일) 갱신. 수집 1,282 → 1,282, 노드 ID 가 경로 치환 뒤 완전히 같다
+- **옛 → 새 이름 대응** — 감사 원문(`AUDIT_slim_*`)과 보고서 §12.1 ~ §12.3 은 옛 이름으로 적혀 있다. 줄 번호는 내용이 같으므로 그대로 맞는다
+
+  | 옛 이름 (감사 원문) | 새 이름 |
+  | --- | --- |
+  | `tests/test_strategy_trade_fill.py` | `tests/test_execution_trade_fill.py` |
+  | `tests/test_strategy_trade_fill_scheduled.py` | `tests/test_execution_trade_fill_scheduled.py` |
+  | `tests/test_strategy_periods.py` | `tests/test_execution_periods.py` |
+  | `tests/test_strategy_reverse_runner.py` | `tests/test_studies_reverse_trading.py` |
+  | `tests/test_strategy_output_contract.py` | `tests/test_output_contract.py` |
+
+- 다음 계획서가 알 것
+  - **③**: 리뷰 「그 외」 13건은 보고서 §12.4 — 그중 **새로 드러난 무력화 테스트 셋**(S1 제외 건수를 키 존재로만 봄 · S2 `",,"` · S12 `.iloc[0]`)과 **개명한 세 파일의 모듈 docstring**(S8 — 첫 줄이 「역방향」·「옵션 만기일과 월말」·「만기 매매」를 말한다), `FIXED_LEVEL` 의 「월말 규칙 문서 §1」 출처(S13)는 ③ 계획서에 아직 항목이 없다. 나머지는 ③ 에 이미 있다. ③ 계획서는 이미 새 이름으로 적혀 있다
+  - **④**: `tests/test_output_contract.py` 는 `src/verify_lab/` 에 짝 모듈이 없다 — 계층을 가로지르는 계약이라 의도한 이름이다(`test_layer_contracts.py`·`test_index.py`·`test_tracks.py` 와 같은 결). `tests/CLAUDE.md` 「`test_*.py` 는 src 와 1:1」을 고칠 때 이 넷을 예외로 적는다
+  - **⑥**: 옛 이름을 **일부러 남긴** 기록이 셋이다 — `docs/조사/만기_말일/결과.md:42` 복원 목록 · `docs/조사/월말_진입/규칙.md:40`(삭제된 `test_strategy_month_end_runner.py` 로 가는 **죽은 마크다운 링크**) · `docs/조사/원달러_조달.md:23`(⑦). 앞의 둘은 ⑥ 이 한 장으로 합칠 때 처리한다. 🔴 **만기_말일 복원 목록의 계약 파일은 지금 트리에서 `tests/test_output_contract.py` 다** — `5022dc9` 의 옛 파일을 통째로 checkout 하면 같은 계약 테스트가 두 벌 돈다. 한 벌로 만드는 복원 절차는 「픽스처만 새 파일로 옮긴다」로 적는다(§12.4 S7)
+  - 밟은 함정 없음. `git status` 에서 옛 파일은 `D`, 새 파일은 `??` 로 보인다 — 사용자가 스테이징하면 내용이 같아 rename 으로 잡힌다
 
 ---
 

@@ -672,3 +672,30 @@ INDEX 를 앞(P3)에 두는 이유: 뒤 페이즈마다 파일을 지우고 옮�
 | R6 | `docs/조사/만기_말일/결과.md:54` · `설계.md:293` | 복원 목록이 `tests/test_studies_expiry_monthend_runner.py` 와 `tests/test_report_writer.py` 를 빠뜨렸다(33행 「전용 테스트 둘」과도 어긋남) | ⑥ |
 | R8 | `tests/test_strategy_output_contract.py:350` 외 | `midterm_cycle_outputs` 픽스처 docstring 이 10월 진입·사이클 네 자리를 말한다(실제 9월 말 · 중간선거해 하나), 「세 번째 매매법」·`test_세_*` | ③ (이름은 ②) |
 | R12 | `src/verify_lab/measure/calendar_entry.py` | 남은 함수가 `validate_trading_days` 하나이고 진입·청산 검사에 함께 쓰여 **모듈 이름이 역할을 잘못 말한다.** 소비자도 중간선거_사이클 하나 — 「정의가 하나뿐인 것은 공유 계층에 두지 않는다」와 어긋남 | ③ (확인 필요) |
+
+### 12.4 계획서 ② 코드 리뷰 1회차 「그 외」 13건 (버그 0 — 고치지 않음, 조치는 사용자가 정한다)
+
+> 계획서 ② 가 만든 결함은 없다 — 13건 모두 **바이트 그대로 옮긴 파일의 내용**이거나 그 계획서가 손대지 않은 문구다. 경로는 **새 이름**이다(옛 → 새 대응은 `SLIM_SERIES.md` ② 인계 메모).
+
+**이미 계획서에 있는 것 — 해당 계획서에서 처리**
+
+| # | 자리 | 무엇 | 계획서 |
+| --- | --- | --- | --- |
+| S3 | `tests/test_execution_trade_fill.py:28`·`:198` | 공유 계층 테스트가 reverse 의 `HOLD_LIMIT`·`STOP_LOSS_LEVEL` 을 import 하고 `assert HOLD_LIMIT == 2` | ③ (그 계획서 Phase 의 자기 픽스처 항목) |
+| S4 | `tests/test_output_contract.py:927` | `test_매매_스크립트에_csv_문자열이_없다` 가 `test_layer_contracts.py` 의 산문 예외를 무력화 | ③ (중복 테스트 ③) |
+| S5 · S6 | `studies/reverse/trading.py:69` · `execution/periods.py:122` | 「세 매매법」 — 매매법은 둘 | ③ (`AUDIT_slim_doc_code_mismatch` §2 「세 매매법」 행) |
+| S9 | `tests/test_output_contract.py` | 대응하는 `src/verify_lab/` 모듈이 없어 `tests/CLAUDE.md` 「`test_*.py` 는 src 와 1:1」과 어긋남 — 계층을 가로지르는 계약이라 의도한 이름이다(`test_layer_contracts.py` 와 같은 결) | ④ (「1:1」 서술을 ② 결과에 맞춰) |
+| S10 | `tests/test_output_contract.py:162`·`:163`·`:177`·`:207`·`:394` | 삭제 매매법 상수 `AXIS_OPTION_EXPIRY`·`AXIS_MONTH_END`·`EXPIRY_TARGET_DATE_COLUMN`·`EXPIRY_MONTH` 와 한 번도 참이 아닌 `_expected_trades(target_date=)` | ③ |
+| S11 | `tests/test_studies_reverse_trading.py:481`·`:183`·`:642` | `HOLD_LIMIT == 2` · 구간 5행 · 제외 컬럼 없음이 `test_execution_trade_fill.py`·`test_output_contract.py` 와 중복 | ③ (중복 테스트 ① ②) |
+| S13 (일부) | `tests/test_output_contract.py:963`·`:1396`·`:1441`·`:1591` | 「세_」로 시작하는 테스트 이름이 매매법 둘을 돈다 | ③ |
+
+**새로 드러난 것 — 백로그에 더한다**
+
+| # | 자리 | 무엇 | 계획서 |
+| --- | --- | --- | --- |
+| S1 | `tests/test_studies_reverse_trading.py:696` | 「모든 신호가 잘린」 테스트가 `KEY_EXCLUDED_COUNT in str(outputs.summary)` — **키가 있는지만** 보고 건수를 보지 않는다. 제외 건수가 0 으로 기록돼도 통과해 docstring 이 막는다는 「신호 + 제외 = 전체」를 고정하지 못한다 | ③ (무력화된 테스트) |
+| S2 | `tests/test_output_contract.py:1263` | `assert ",," in text` — 표본 0건 행은 실수 지표 칸이 원래 줄줄이 비어 있어, 정수 건수 칸(`신호`·`질 때 표본`·`장중손절`)이 `0`·`<NA>` 로 나가도 통과한다. Given 은 `갭손절` 하나만 `isna()` 로 본다 | ③ (무력화된 테스트) |
+| S12 | `tests/test_studies_reverse_trading.py:303`·`:304` | `test_순위_컷을_넓히면_신호가_늘어난다` 가 신호 수를 `.iloc[0]` 으로 집는다 — 같은 파일의 `_overall`(:163) docstring 이 「위치(`iloc[0]`)로 집지 않는다 … 엉뚱한 구간을 조용히 검사한다」고 금지한 모양. 구간 순서가 바뀌면 `>=` 가 자명하게 통과한다 | ③ (무력화된 테스트) |
+| S8 | 개명한 세 파일의 모듈 docstring | `test_execution_trade_fill_scheduled.py:3` 「옵션 만기일과 월말이 함께 쓰는 경로다」(지금 쓰는 곳은 중간선거_사이클) · `test_execution_trade_fill.py:1` 「역방향 매매 규칙의 체결 계약」 · `test_execution_periods.py:1` 「만기 매매 성적표의 구간 축」 — 새 이름(공유 계층)과 첫 줄이 어긋나고, 「핵심 계약은 다섯/일곱」의 개수도 본문 항목 수와 다르다(리뷰 측정 6 · 6 · 8) | ③ (주석·docstring) |
+| S13 (일부) | `tests/test_output_contract.py:797` · `:868` | `FIXED_LEVEL = -5.0` 의 출처를 「월말 규칙 문서 §1 의 권고 손절선(확정 전)」으로 적는다(월말은 조사로 내려가 코드가 없다) · `test_사용자가_보는_세_이름이_상수로_정의돼_있다` 가 넷을 검사한다 | ③ (주석·docstring) |
+| S7 | `docs/조사/만기_말일/결과.md:42` | 복원 목록의 `tests/test_strategy_output_contract.py`(픽스처)는 `5022dc9` 트리의 이름이라 그대로 뒀다(② Non-Goals). 그런데 **지금 트리에서 그 계약 파일은 `tests/test_output_contract.py` 다** — 적힌 대로 옛 파일을 통째로 checkout 하면 같은 계약 테스트가 두 벌 돈다. 복원은 **픽스처만 새 파일로 옮기는 것**이어야 한다 | ⑥ (복원 절차 한 벌 — 판단 4 의 「복원 지점 뒤에도 바뀐 파일」 목록에 더한다) |

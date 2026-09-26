@@ -3,7 +3,7 @@
 > 작성/운영 규칙(SoT): `/impl-plan` 스킬(`~/.claude/skills/impl-plan/SKILL.md`)을 반드시 참고하세요.  
 > (이 템플릿을 수정하거나 새로운 양식의 계획서를 만들 때도 해당 스킬을 포인터로 두고 준수합니다.)
 
-**상태**: 🟡 Draft
+**상태**: ✅ Done
 
 ---
 
@@ -21,7 +21,7 @@
 ---
 
 **작성일**: 2026-09-26 16:55
-**마지막 업데이트**: 2026-09-26 16:55
+**마지막 업데이트**: 2026-09-26 17:51
 **관련 범위**: tests (파일 이름), 그 이름을 가리키는 주석·문서 네 곳
 **관련 문서**: `tests/CLAUDE.md`, 루트 `SLIM_SERIES.md`, `docs/plans/REPORT_lightweight_inventory.md` §2.8
 
@@ -42,8 +42,8 @@
 
 ## 1) 목표(Goal)
 
-- [ ] 목표 1: `test_strategy_*` 5개를 **검사 대상 계층 이름**으로 개명한다 — 내용은 한 바이트도 바꾸지 않는다
-- [ ] 목표 2: 옛 이름을 가리키는 **현재 파일 참조** 네 곳을 새 이름으로 고친다
+- [x] 목표 1: `test_strategy_*` 5개를 **검사 대상 계층 이름**으로 개명한다 — 내용은 한 바이트도 바꾸지 않는다
+- [x] 목표 2: 옛 이름을 가리키는 **현재 파일 참조** 네 곳을 새 이름으로 고친다
 
 ## 2) 비목표(Non-Goals)
 
@@ -91,15 +91,15 @@
 
 > Done은 "서술"이 아니라 "체크리스트 상태"로만 판단합니다. (정의/예외는 `/impl-plan` 스킬)
 
-- [ ] 5개 파일이 새 이름으로 있고 **내용이 HEAD 의 옛 파일과 바이트 동일**하다
-- [ ] 현재 파일을 가리키는 옛 이름 참조 0 (Non-Goals 의 기록은 제외)
-- [ ] 수집되는 테스트 수가 개명 전과 같다
-- [ ] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
-- [ ] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
-- [ ] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
-- [ ] 필요한 문서 업데이트 — `docs/COMMANDS.md` 변경 없음 · `src/verify_lab/CLAUDE.md` 경로 표기만 변경 · `SLIM_SERIES.md` 진행 표·인계 메모 갱신
-- [ ] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다 (개명 규칙은 이웃 관용 그대로라 새 규칙이 없다. 옛 → 새 이름 대응은 `SLIM_SERIES.md` 인계 메모에 남긴다 — 뒤 계획서가 감사 원문의 옛 이름을 읽기 때문)
-- [ ] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
+- [x] 5개 파일이 새 이름으로 있고 **내용이 HEAD 의 옛 파일과 바이트 동일**하다
+- [x] 현재 파일을 가리키는 옛 이름 참조 0 (Non-Goals 의 기록은 제외)
+- [x] 수집되는 테스트 수가 개명 전과 같다
+- [x] 코드 리뷰 실행 및 결과 기록 (마지막 Phase 의 Validation 에 적는다)
+- [x] 품질 검증 통과 (마지막 Phase 의 Validation 에 passed/failed/skipped 수를 적는다)
+- [x] 자동 포맷 적용 완료 (마지막 Phase에서 실행)
+- [x] 필요한 문서 업데이트 — `docs/COMMANDS.md` 변경 없음 · `src/verify_lab/CLAUDE.md` 경로 표기만 변경 · `SLIM_SERIES.md` 진행 표·인계 메모 갱신
+- [x] 근거 승격 완료 — 이 계획서를 지금 삭제해도 잃을 정보가 없다 (개명 규칙은 이웃 관용 그대로라 새 규칙이 없다. 옛 → 새 이름 대응은 `SLIM_SERIES.md` 인계 메모에 남긴다 — 뒤 계획서가 감사 원문의 옛 이름을 읽기 때문)
+- [x] plan 체크박스 최신화(Phase/DoD/Validation 모두 반영)
 
 ## 5) 변경 범위(Scope)
 
@@ -120,15 +120,15 @@
 
 **작업 내용**:
 
-- [ ] 착수 전: `git status` 가 깨끗한지, `poetry run pytest --collect-only -q -p no:cacheprovider | tail -1` 의 수집 수를 진행 로그에 적는다 (작성 시점 1,282)
-- [ ] **`git mv` 를 쓰지 않는다** — git 은 사용자가 한다. 셸 `mv` 로 개명한다 (사용자가 스테이징하면 git 이 내용 동일로 rename 을 잡는다)
-- [ ] 참조 네 곳을 grep(`test_strategy_`)으로 다시 찾아 새 이름으로 고친다. Non-Goals 의 기록은 건드리지 않는다
+- [x] 착수 전: `git status` 가 깨끗한지, `poetry run pytest --collect-only -q -p no:cacheprovider | tail -1` 의 수집 수를 진행 로그에 적는다 (작성 시점 1,282)
+- [x] **`git mv` 를 쓰지 않는다** — git 은 사용자가 한다. 셸 `mv` 로 개명한다 (사용자가 스테이징하면 git 이 내용 동일로 rename 을 잡는다)
+- [x] 참조 네 곳을 grep(`test_strategy_`)으로 다시 찾아 새 이름으로 고친다. Non-Goals 의 기록은 건드리지 않는다
 
 **Validation**:
 
-- [ ] 개명한 5개 각각 `git show HEAD:<옛 경로> | cmp - <새 경로>` 가 차이 없음
-- [ ] `grep -rn 'test_strategy_' --include=*.py --include=*.md --exclude-dir={.git,.venv,plans} .` 의 결과가 Non-Goals 의 옛 기록뿐이다
-- [ ] 수집 수가 착수 전과 같다
+- [x] 개명한 5개 각각 `git show HEAD:<옛 경로> | cmp - <새 경로>` 가 차이 없음
+- [x] `grep -rn 'test_strategy_' --include=*.py --include=*.md --exclude-dir={.git,.venv,plans} .` 의 결과가 Non-Goals 의 옛 기록뿐이다
+- [x] 수집 수가 착수 전과 같다
 
 ---
 
@@ -141,14 +141,14 @@
 > 실제로 두 번 그렇게 샜다(`[실측] 2026-09-14` 후보를 계획서에 안 옮김 · `2026-09-16` 옮기고 체크박스를 안 닫음).
 > **체크박스와 상태를 먼저 확정하고, 커밋 후보를 마지막에 만든다.**
 
-- [ ] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 없음 확인)
-- [ ] `SLIM_SERIES.md` 진행 표(②: 완료 대기 커밋)와 인계 메모(옛 → 새 이름 대응 포함)를 갱신한다
-- [ ] 자동 포맷 적용 (`poetry run black .`)
-- [ ] 변경 기능 및 전체 플로우 최종 검증
-- [ ] Validation 절에 `/code-review` 와 품질 검증 **실행 결과**를 적는다
-- [ ] DoD 체크리스트 최종 업데이트 및 체크 완료
-- [ ] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
-- [ ] 🔴 **마지막에 `/commit` 을 실행하고 그 후보를 «이 계획서» 의 `#### Commit Messages` 절에 옮긴다** —
+- [x] 필요한 문서 업데이트 (`docs/COMMANDS.md` 변경 없음 확인)
+- [x] `SLIM_SERIES.md` 진행 표(②: 완료 대기 커밋)와 인계 메모(옛 → 새 이름 대응 포함)를 갱신한다
+- [x] 자동 포맷 적용 (`poetry run black .`)
+- [x] 변경 기능 및 전체 플로우 최종 검증
+- [x] Validation 절에 `/code-review` 와 품질 검증 **실행 결과**를 적는다
+- [x] DoD 체크리스트 최종 업데이트 및 체크 완료
+- [x] 전체 Phase 체크리스트 최종 업데이트 및 상태 확정
+- [x] 🔴 **마지막에 `/commit` 을 실행하고 그 후보를 «이 계획서» 의 `#### Commit Messages` 절에 옮긴다** —
       `/commit` 은 계획서를 모르고 「후보 뒤에 아무것도 덧붙이지 말 것」으로 끝나므로,
       **대화에만 내면 그 절이 빈 채로 남는다.** 체크박스 갱신이 diff 에 더 들어가지만
       커밋 메시지의 내용을 바꾸지 않는다. **커밋은 사용자가 한다 — 후보만 낸다**
@@ -159,8 +159,8 @@
 > **버그가 0 인 회차에서 끝낸다.** 2회차에도 버그가 나오면 사용자에게 보고하고 3회차 여부를 묻는다 —
 > 「그 외」는 목록만 남기고 고치지 않는다. `/impl-plan` 의 「코드 리뷰」 절이 SoT 다.
 
-- [ ] `/code-review xhigh` **1회차** (발견 \_\_건 — 버그 \_\_ · 그 외 \_\_ · 조치: \_\_)
-- [ ] `poetry run python validate_project.py` (passed=\_\_, failed=\_\_, skipped=\_\_)
+- [x] `/code-review xhigh` **1회차** (발견 13건 — 버그 0 · 그 외 13 · 조치: 없음. 전부 옮긴 파일의 기존 내용이거나 손대지 않은 문구 — 보고서 §12.4 로)
+- [x] `poetry run python validate_project.py` (passed=1282, failed=0, skipped=0)
 
 #### Commit Messages (Final candidates) — 5개 중 1개 선택
 
@@ -168,7 +168,11 @@
 > 계획서를 쓰는 시점에는 diff 가 없어 여기 적는 것은 전부 추측이고,
 > **추측으로 적은 줄은 그대로 나간다.** 형식·문체 규칙은 `/commit` 이 정한다.
 
-- [ ] (미작성 — `/commit` 을 실행하고 후보 5개를 **이 자리에** 번호 붙은 줄로 옮긴 뒤 이 줄을 지운다)
+1. 테스트 / `test_strategy_*` 5개를 검사 대상 계층 이름으로 개명
+2. 테스트 / 사라진 strategy 계층 이름의 테스트 파일을 execution · studies · 산출물 계약 기준 이름으로 정리
+3. 테스트 / `test_strategy_*` 5개 개명(내용 바이트 동일)과 주석 · 계약 문서의 경로 표기 갱신
+4. 테스트 / 파일 이름이 실제 검사 대상을 말하도록 체결 · 구간 · 역방향 체결 · 산출물 계약 테스트 개명
+5. 테스트 / 경량화 ② — 테스트 파일 5개 개명과 코드 리뷰 잔여 13건의 백로그 이관
 
 ## 7) 리스크(Risks)
 
@@ -184,3 +188,14 @@
 ### 진행 로그 (KST)
 
 - 2026-09-26 16:55: 계획서 작성 (Draft). 착수는 `SLIM_SERIES.md` 를 받은 세션이 한다
+- 2026-09-26 17:41: 착수 (In Progress). `git status --short` 비어 있음. HEAD `d4972d5`. 수집 **1,282** (그중 옛 5개 파일 162)
+- 2026-09-26 17:42: Phase 1 완료. 셸 `mv` 로 5개 개명, 참조 5줄(4개 파일 — `src/verify_lab/CLAUDE.md` 가 두 줄) 갱신
+  - `cmp`: 5개 모두 HEAD 의 옛 파일과 바이트 동일
+  - grep(`*.py`·`*.md`·`*.ini`·`*.toml`·`*.cfg`, `plans` 제외): 남은 것은 Non-Goals 의 옛 기록 3줄(`만기_말일/결과.md:42` · `월말_진입/규칙.md:40` · `원달러_조달.md:23`)과 `SLIM_SERIES.md` 진행 표 1줄뿐
+  - 수집 1,282 → 1,282. 노드 ID 목록을 옛 → 새 경로로 치환해 `diff` 하면 **완전히 같다**
+- 2026-09-26 17:51: Phase 2
+  - `poetry run black .` — 146개 파일 변경 없음. `docs/COMMANDS.md` 에 옛 이름 없음(변경 없음)
+  - `/code-review xhigh` 1회차 — 발견 13건, 버그 0. 13건 모두 바이트 그대로 옮긴 파일의 기존 내용이거나 이번 diff 가 손대지 않은 문구(같은 줄의 「세 매매법」 포함)라 **이 계획서가 만든 결함은 없다.** 7건은 ③ · ④ 에 이미 있고 6건(S1 · S2 · S12 무력화 테스트, S8 모듈 docstring, S13 일부, S7 만기_말일 복원 목록)이 새것 — 보고서 §12.4 · `SLIM_SERIES.md` ② 인계 메모. 리뷰가 적은 줄 번호 둘(S4 `:943` → 함수 `:927`, S11 `:184` → `:183`)은 grep 으로 확인해 고쳐 옮겼다
+  - `validate_project.py` — Ruff OK · PyRight OK · Pytest passed=1282 failed=0 skipped=0
+  - src 쪽 diff 는 경로 문자열 5줄뿐(주석 · docstring · 계약 문서) — 산출물을 만드는 코드는 바뀌지 않아 재실행 대조는 하지 않았다
+  - `SLIM_SERIES.md` 진행 표 ② → 「커밋 대기」, 인계 메모 ② 추가
