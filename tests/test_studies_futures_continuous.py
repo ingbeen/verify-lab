@@ -505,7 +505,7 @@ class TestEmptyRollEventSchema:
 
         `pd.DataFrame([])` 는 **컬럼이 하나도 없는 표**라 저장 계층이 「한글 이름이 없는 컬럼」
         검사도 못 하고 그대로 죽는다. 이 저장소의 다른 빈 표는 전부 dtype 을 유지한다
-        (`offsets._empty_frame` · `measure.calendar_exit.empty_weekly_schedule`).
+        (예: 중간선거_사이클의 `cycle_calendar.empty_schedule`).
 
         Given: 롤 이벤트가 하나도 없는 목록
         When: 원자료 표로 바꾼다

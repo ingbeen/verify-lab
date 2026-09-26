@@ -267,7 +267,6 @@ def test_accepts_every_real_track_name() -> None:
     Then: 전부 통과한다
     """
     # Given
-    from verify_lab.studies.expiry_monthend.constants import TRACK_NAME as EXPIRY_MONTHEND
     from verify_lab.studies.futures_leverage.constants import TRACK_NAME as FUTURES
     from verify_lab.studies.leverage_tracking.constants import TRACK_NAME as LEVERAGE
     from verify_lab.studies.reverse.constants import TRACK_NAME as REVERSE
@@ -276,7 +275,7 @@ def test_accepts_every_real_track_name() -> None:
     # 프로브 이름은 `scripts/data/check_*.py` 가 소유한다. 그 스크립트를 import 하면
     # pykrx 가 딸려 와 로그인을 시도하므로(계층 계약의 「지연 import」) 값만 옮겨 적는다
     probe_names = ["ecos_probe", "pykrx_etf_probe", "pykrx_splice_probe"]
-    names = [REVERSE, EXPIRY_MONTHEND, EQUIVALENCE, LEVERAGE, FUTURES, *probe_names]
+    names = [REVERSE, EQUIVALENCE, LEVERAGE, FUTURES, *probe_names]
 
     # When / Then
     unmatched = [name for name in names if not writer.VALID_TRACK_NAME.match(name)]

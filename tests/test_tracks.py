@@ -285,21 +285,6 @@ class TestRegistryMatchesCode:
 class TestGradeSemantics:
     """등급이 뜻하는 것을 고정한다."""
 
-    def test_만기_말일이_매매_등급이다(self) -> None:
-        """
-        목적: **등급은 「상태」다** — 검증은 재 보는 중, 매매는 걸기로 정한 것.
-
-        만기_말일은 2026-09-22 에 **조합(만기→말일)·달(9월)·방향(아래)·대상(SPY·DIA·
-        KODEX 코스닥150)이 확정**돼 `docs/매매/만기_말일/규칙.md` §1 이 확정 규칙이 됐다.
-        **승격은 이 한 줄을 바꾸는 것이고 성적 계산은 그대로다.**
-
-        Given: 레지스트리
-        When: 만기_말일의 등급을 조회한다
-        Then: 매매다
-        """
-        # Given / When / Then
-        assert track_of("expiry_monthend").grade == GRADE_TRADING
-
     def test_중간선거_사이클이_매매_등급이다(self) -> None:
         """
         목적: 검증 등급이 남긴 미결 넷(대상 · 손절선 · 레버리지 · 투자금)이 2026-09-23 에 정해져
@@ -314,11 +299,13 @@ class TestGradeSemantics:
         # Given / When / Then
         assert track_of("midterm_cycle").grade == GRADE_TRADING
 
-    @pytest.mark.parametrize("slug", ["option_expiry", "month_end"])
+    @pytest.mark.parametrize("slug", ["option_expiry", "month_end", "expiry_monthend"])
     def test_걸지_않기로_한_매매법은_조사_등급이다(self, slug: str) -> None:
         """
-        목적: **강등도 이 한 줄이다.** 두 매매법의 확정 칸이 만기_말일의 C1·C4 에 그대로
-            포함돼 걸지 않기로 했고(2026-09-22), 조사 등급의 뜻이 「안 걸기로 한 것」이다.
+        목적: **강등도 이 한 줄이다.** 조사 등급의 뜻이 「안 걸기로 한 것」이다.
+
+        - 옵션_만기일·월말_진입 — 확정 칸이 만기_말일의 C1·C4 에 그대로 포함돼 걸지 않기로 했다(2026-09-22)
+        - 만기_말일 — 확정 칸의 승률이 사용자 기준에 못 미쳐 걸지 않기로 했다(2026-09-26)
 
         `원달러_그리드` 가 같은 자리에 있다 — 매매법으로 설계됐으나 채택되지 않았다.
 

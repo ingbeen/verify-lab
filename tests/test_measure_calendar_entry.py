@@ -1,274 +1,67 @@
-"""달력 진입 — 만기 달력(N번째 지정 요일)
+"""달력형 일정의 거래일 목록 검사(`measure.calendar_entry.validate_trading_days`) 계약
 
-**공유 계층의 테스트다.** 세 매매법이 같은 달력을 쓰므로 어느 한 매매법의 것이 아니다.
-달력일 진입(`month_entry_dates`)과 말일 청산은 `test_measure_calendar_month.py` 가 본다.
+**공유 계층의 검사는 자기 픽스처를 갖는다.** 이 함수를 쓰는 매매법의 테스트를 거쳐서만 검사하면
+그 매매법이 지워지거나 다른 경로를 쓰게 되는 순간 **공유 함수의 검사가 예외 없이 0건이 된다**
+(`docs/MEMORY.md` 「공유 계층의 테스트는 «자기 픽스처»를 갖는다」).
 """
 
 import pandas as pd
 import pytest
 
-from verify_lab.measure.calendar_entry import ExpiryRule, monthly_expiry_dates, nth_weekday_of_month
-from verify_lab.measure.constants import (
-    COL_ADVANCED_DAYS,
-    COL_EXPIRY_DATE,
-    COL_EXPIRY_MONTH,
-    COL_RULE_DATE,
-)
-
-# ============================================================
-# 달력 규칙 픽스처 — **이 테스트가 소유한다**
-# ============================================================
-
-# **공유 계층의 테스트는 자기 픽스처를 갖는다.** 예전에는 매매법 패키지의 상수를 빌려 썼는데,
-# 그러면 그 매매법이 사라질 때 공유 계층의 검사가 함께 무너진다 — 실제로 그렇게 됐다.
-# `measure/calendar_entry.py` 는 규칙의 «값»을 갖지 않으므로(그 docstring), 값은 쓰는 쪽이 정한다.
-#
-# **둘째 목요일을 남기는 이유**: 지금 이 규칙을 쓰는 매매법이 없지만 `ExpiryRule` 은
-# **요일도 순번도 일반화**돼 있다. 셋째 금요일 하나로만 검사하면 「셋째」와 「금요일」이
-# 하드코딩돼 있어도 통과한다 — 다른 요일·다른 순번이 그 구멍을 막는다
-THURSDAY = 3
-FRIDAY = 4
-
-THIRD_FRIDAY = ExpiryRule(label="셋째 금요일", weekday=FRIDAY, ordinal=3)
-SECOND_THURSDAY = ExpiryRule(label="둘째 목요일", weekday=THURSDAY, ordinal=2)
+from verify_lab.measure.calendar_entry import validate_trading_days
 
 
-def _trading_days(start: str, end: str, holidays: list[str] | None = None) -> pd.DatetimeIndex:
-    """주중에서 지정한 휴장일을 뺀 합성 거래일 목록을 만든다.
-
-    실제 시세 파일에 의존하면 데이터를 갱신할 때마다 테스트가 깨진다.
+def _trading_days(start: str, end: str) -> pd.DatetimeIndex:
+    """평일만 담은 합성 거래일 목록을 만든다.
 
     Args:
-        start: 시작일
-        end: 종료일
-        holidays: 제외할 휴장일 목록
+        start: 첫날 (`YYYY-MM-DD`)
+        end: 마지막 날 (`YYYY-MM-DD`)
 
     Returns:
-        거래일 목록
+        오름차순·중복 없는 거래일 목록
     """
-    days = pd.bdate_range(start, end)
-    if holidays:
-        days = days.difference(pd.DatetimeIndex([pd.Timestamp(d) for d in holidays]))
-
-    return pd.DatetimeIndex(days)
+    return pd.bdate_range(start, end)
 
 
-def _expiry_of(frame: pd.DataFrame, month: str) -> pd.Series:
-    """만기일 표에서 지정한 만기월의 행을 꺼낸다."""
-    rows = frame[frame[COL_EXPIRY_MONTH] == month]
-    assert len(rows) == 1, f"{month} 의 만기일 행이 1개가 아닙니다: {len(rows)}개"
+class TestValidateTradingDays:
+    """거래일 목록이 달력 일정 산출의 전제(비지 않음 · 오름차순 · 중복 없음)를 만족하는지"""
 
-    return rows.iloc[0]
-
-
-class TestNthWeekdayOfMonth:
-    """달력 규칙 자체를 고정한다."""
-
-    def test_셋째_금요일을_돌려준다(self) -> None:
+    def test_정상_목록은_통과한다(self) -> None:
         """
-        목적: 미국 월물 만기의 규칙일 계산을 고정한다
+        목적: 전제를 만족하는 목록을 막지 않는다
 
-        Given: 2026년 6월
-        When: 셋째 금요일을 구하면
-        Then: 2026-06-19 이다
-        """
-        # Given / When
-        result = nth_weekday_of_month(2026, 6, weekday=4, ordinal=3)
-
-        # Then
-        assert result == pd.Timestamp("2026-06-19")
-
-    def test_둘째_목요일을_돌려준다(self) -> None:
-        """
-        목적: 한국 월물 만기의 규칙일 계산을 고정한다
-
-        Given: 2025년 10월
-        When: 둘째 목요일을 구하면
-        Then: 2025-10-09 이다
-        """
-        # Given / When
-        result = nth_weekday_of_month(2025, 10, weekday=3, ordinal=2)
-
-        # Then
-        assert result == pd.Timestamp("2025-10-09")
-
-    def test_달_첫날이_해당_요일이면_그날이_첫번째다(self) -> None:
-        """
-        목적: 경계 조건 — 1일이 곧 해당 요일인 달에서 순번이 밀리지 않는지 고정한다
-
-        Given: 2026-05-01 은 금요일이다
-        When: 셋째 금요일을 구하면
-        Then: 2026-05-15 이다 (1일이 첫째 금요일)
-        """
-        # Given
-        assert pd.Timestamp("2026-05-01").dayofweek == 4
-
-        # When
-        result = nth_weekday_of_month(2026, 5, weekday=4, ordinal=3)
-
-        # Then
-        assert result == pd.Timestamp("2026-05-15")
-
-    def test_그_달에_없는_순번은_예외다(self) -> None:
-        """
-        목적: 다음 달로 넘어간 날짜를 조용히 돌려주지 않음을 고정한다
-
-        Given: 2026년 2월
-        When: 다섯째 금요일을 요구하면
-        Then: ValueError 가 난다
-        """
-        # Given / When / Then
-        with pytest.raises(ValueError, match="번째 요일"):
-            nth_weekday_of_month(2026, 2, weekday=4, ordinal=5)
-
-    def test_요일_범위를_벗어나면_예외다(self) -> None:
-        """
-        목적: 입력 검증을 고정한다
-
-        Given: 요일 7
-        When: 규칙일을 구하면
-        Then: ValueError 가 난다
-        """
-        # Given / When / Then
-        with pytest.raises(ValueError, match="요일은"):
-            nth_weekday_of_month(2026, 6, weekday=7, ordinal=3)
-
-
-class TestMonthlyExpiryDates:
-    """만기일 산출과 휴장 앞당김을 고정한다."""
-
-    def test_규칙일이_거래일이면_그날이_만기일이다(self) -> None:
-        """
-        목적: 휴장이 없는 평범한 달의 만기일을 고정한다
-
-        Given: 2026년 7월 전체가 거래일인 합성 달력
-        When: 미국 규칙으로 만기일을 구하면
-        Then: 셋째 금요일 2026-07-17 이고 앞당김은 0 이다
+        Given: 한 달치 평일 거래일 목록
+        When: 검사하면
+        Then: 예외가 나지 않는다
         """
         # Given
         days = _trading_days("2026-07-01", "2026-07-31")
 
-        # When
-        result = monthly_expiry_dates(days, THIRD_FRIDAY)
-
-        # Then
-        row = _expiry_of(result, "2026-07")
-        assert row[COL_EXPIRY_DATE] == pd.Timestamp("2026-07-17")
-        assert row[COL_ADVANCED_DAYS] == 0
-
-    def test_미국_굿프라이데이는_직전_목요일로_앞당겨진다(self) -> None:
-        """
-        목적: 실제로 발생한 휴장 앞당김을 고정한다
-
-        Given: 2022-04-15(셋째 금요일, Good Friday)가 휴장인 달력
-        When: 미국 규칙으로 만기일을 구하면
-        Then: 2022-04-14 이고 앞당김은 1 달력일이다
-        """
-        # Given
-        days = _trading_days("2022-04-01", "2022-04-29", holidays=["2022-04-15"])
-
-        # When
-        result = monthly_expiry_dates(days, THIRD_FRIDAY)
-
-        # Then
-        row = _expiry_of(result, "2022-04")
-        assert row[COL_RULE_DATE] == pd.Timestamp("2022-04-15")
-        assert row[COL_EXPIRY_DATE] == pd.Timestamp("2022-04-14")
-        assert row[COL_ADVANCED_DAYS] == 1
-
-    def test_한국_연휴가_걸리면_일주일_넘게_앞당겨진다(self) -> None:
-        """
-        목적: **"달력상 하루 전"으로 구현하면 틀린다**는 것을 고정한다
-
-        Given: 2025-10-03 ~ 10-09 가 전부 휴장인 달력 (추석 연휴)
-        When: 한국 규칙으로 만기일을 구하면
-        Then: 규칙일 2025-10-09 의 직전 거래일인 2025-10-02 이고 앞당김은 7 달력일이다
-        """
-        # Given
-        days = _trading_days(
-            "2025-10-01",
-            "2025-10-31",
-            holidays=["2025-10-03", "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09"],
-        )
-
-        # When
-        result = monthly_expiry_dates(days, SECOND_THURSDAY)
-
-        # Then
-        row = _expiry_of(result, "2025-10")
-        assert row[COL_RULE_DATE] == pd.Timestamp("2025-10-09")
-        assert row[COL_EXPIRY_DATE] == pd.Timestamp("2025-10-02")
-        assert row[COL_ADVANCED_DAYS] == 7
-
-    def test_규칙일이_데이터_범위_밖이면_그_달은_빠진다(self) -> None:
-        """
-        목적: 경계 조건 — 값을 지어내지 않음을 고정한다
-
-        Given: 셋째 금요일 이전에 끝나는 달력
-        When: 만기일을 구하면
-        Then: 그 달의 행이 없다
-        """
-        # Given
-        days = _trading_days("2026-07-01", "2026-07-10")
-
-        # When
-        result = monthly_expiry_dates(days, THIRD_FRIDAY)
-
-        # Then
-        assert result.empty
-
-    def test_그_달의_앞_구간이_없으면_그_달은_빠진다(self) -> None:
-        """
-        목적: 경계 조건 — 데이터가 달 중간부터 시작하고 규칙일이 휴장인 경우를 고정한다
-
-        Given: 2026-06-19(셋째 금요일)가 휴장이고 데이터가 그날부터 시작하는 달력
-        When: 만기일을 구하면
-        Then: 직전 거래일이 그 달에 없으므로 2026-06 행이 없다
-        """
-        # Given
-        days = _trading_days("2026-06-19", "2026-07-31", holidays=["2026-06-19"])
-
-        # When
-        result = monthly_expiry_dates(days, THIRD_FRIDAY)
-
-        # Then
-        assert (result[COL_EXPIRY_MONTH] == "2026-06").sum() == 0
-
-    def test_만기일은_모두_거래일이다(self) -> None:
-        """
-        목적: 표본 보존 — 산출된 만기일이 전부 실제 거래일임을 고정한다
-
-        Given: 휴장이 여럿 섞인 2년치 달력
-        When: 만기일을 구하면
-        Then: 모든 만기일이 거래일 목록 안에 있다
-        """
-        # Given
-        days = _trading_days("2025-01-01", "2026-12-31", holidays=["2025-04-18", "2026-06-19", "2025-10-09"])
-
-        # When
-        result = monthly_expiry_dates(days, THIRD_FRIDAY)
-
-        # Then
-        assert result[COL_EXPIRY_DATE].isin(days).all()
+        # When / Then
+        validate_trading_days(days, purpose="진입일")
 
     def test_거래일_목록이_비면_예외다(self) -> None:
         """
-        목적: 입력 검증을 고정한다
+        목적: 빈 목록을 조용히 통과시키지 않는다 — 일정이 0건으로 나와도 예외가 나지 않는다
 
         Given: 빈 거래일 목록
-        When: 만기일을 구하면
-        Then: ValueError 가 난다
+        When: 검사하면
+        Then: ValueError 가 나고 무엇을 산출하려던 것인지가 메시지에 실린다
         """
-        # Given / When / Then
-        with pytest.raises(ValueError, match="비어 있어"):
-            monthly_expiry_dates(pd.DatetimeIndex([]), THIRD_FRIDAY)
+        # Given
+        days = pd.DatetimeIndex([])
+
+        # When / Then
+        with pytest.raises(ValueError, match="비어 있어 진입일을"):
+            validate_trading_days(days, purpose="진입일")
 
     def test_정렬되지_않은_거래일_목록은_예외다(self) -> None:
         """
-        목적: 입력 검증을 고정한다
+        목적: 위치 계산이 엉뚱한 날을 고르는 입력을 막는다
 
         Given: 내림차순 거래일 목록
-        When: 만기일을 구하면
+        When: 검사하면
         Then: ValueError 가 난다
         """
         # Given
@@ -276,28 +69,21 @@ class TestMonthlyExpiryDates:
 
         # When / Then
         with pytest.raises(ValueError, match="오름차순"):
-            monthly_expiry_dates(days, THIRD_FRIDAY)
+            validate_trading_days(days, purpose="청산일")
 
-    def test_뒤에_데이터가_붙어도_지난_달의_만기일은_그대로다(self) -> None:
+    def test_중복된_날짜가_있으면_예외다(self) -> None:
         """
-        목적: **look-ahead 감시** — 미래 거래일이 있든 없든 판정이 같음을 고정한다
+        목적: 같은 날이 두 번 있으면 한 매매가 두 위치로 갈라진다 — 그 입력을 막는다 (엣지 케이스)
 
-        Given: 같은 시작일에서 6개월치와 24개월치 달력
-        When: 각각 만기일을 구하면
-        Then: 짧은 쪽에 있는 모든 만기월의 만기일이 긴 쪽과 같다
+        Given: 오름차순이지만 한 날짜가 두 번 들어간 목록 (단조 증가는 깨지지 않는다)
+        When: 검사하면
+        Then: ValueError 가 난다
         """
         # Given
-        holidays = ["2025-04-18", "2025-10-09", "2026-06-19"]
-        short_days = _trading_days("2025-01-01", "2025-06-30", holidays=holidays)
-        long_days = _trading_days("2025-01-01", "2026-12-31", holidays=holidays)
+        base = _trading_days("2026-07-01", "2026-07-31")
+        days = pd.DatetimeIndex([*base[:3], base[2], *base[3:]])
+        assert days.is_monotonic_increasing, "중복 분기를 검사하려면 정렬 검사를 통과하는 입력이어야 합니다"
 
-        # When
-        short_result = monthly_expiry_dates(short_days, THIRD_FRIDAY)
-        long_result = monthly_expiry_dates(long_days, THIRD_FRIDAY)
-
-        # Then
-        merged = short_result.merge(long_result, on=COL_EXPIRY_MONTH, suffixes=("_short", "_long"))
-        assert len(merged) == len(short_result), "짧은 입력의 만기월이 긴 입력에 전부 있어야 합니다"
-        assert (
-            merged[f"{COL_EXPIRY_DATE}_short"] == merged[f"{COL_EXPIRY_DATE}_long"]
-        ).all(), "뒤를 잘라낸 입력과 전체 입력의 만기일이 다릅니다 — 미래 데이터를 참조하고 있습니다"
+        # When / Then
+        with pytest.raises(ValueError, match="중복"):
+            validate_trading_days(days, purpose="진입일")

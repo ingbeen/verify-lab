@@ -1312,7 +1312,7 @@ class TestExecutionLayerComposition:
         slugs = {path.parent.name for path in _trading_modules()}
 
         # Then
-        assert slugs == {"reverse", "expiry_monthend", "midterm_cycle"}
+        assert slugs == {"reverse", "midterm_cycle"}
 
     def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
         """
@@ -1355,9 +1355,9 @@ class TestDatasetRecordKeys:
         # Given
         expected = {
             "verify_lab/studies/reverse/runner.py",
-            "verify_lab/studies/expiry_monthend/runner.py",
+            "verify_lab/studies/midterm_cycle/runner.py",
             "verify_lab/studies/reverse/trading.py",
-            "verify_lab/studies/expiry_monthend/trading.py",
+            "verify_lab/studies/midterm_cycle/trading.py",
         }
 
         # When

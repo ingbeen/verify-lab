@@ -1,4 +1,4 @@
-"""매매 산출물의 «공통 컬럼과 파일 이름» 계약을 세 매매법에서 한꺼번에 고정한다.
+"""매매 산출물의 «공통 컬럼과 파일 이름» 계약을 두 매매법에서 한꺼번에 고정한다.
 
 같은 뜻의 표가 매매법마다 **다른 파일명·다른 컬럼·다른 값 형식**으로 나오고 있었다.
 성적표가 `summary_by_target.csv`(15컬럼) · `summary_by_cell.csv`(21) · `performance.csv`(23)
@@ -8,7 +8,7 @@
 고정하는 계약은 일곱이다.
 
 - 성적표는 `성적표.csv`, 거래내역은 `거래내역.csv` 이고 **이름은 상수 한 곳에서 온다**
-- 세 성적표가 **같은 공통 컬럼을 같은 순서로** 갖는다. 매매법 고유 컬럼만 뒤에 붙는다
+- 두 성적표가 **같은 공통 컬럼을 같은 순서로** 갖는다. 매매법 고유 컬럼만 뒤에 붙는다
 - `손절선(%)` 값은 **음수 실수**이고 문자열은 둘이다 — **`무손절`(걸지 않았다)과 `손절불가`(잴 수 없다)**.
   두 문자열이 갈려 있어야 **한 컬럼만으로** 한 손절선으로 고정한 행을 고를 수 있다
 - 역방향 성적표의 `방향` 은 **`역방향 전체` 한 값**이다 — 그 행이 폭등·폭락을 합친 성적이다
@@ -84,18 +84,11 @@ from verify_lab.report.run_summary import (
     KEY_DATASET_TICKER,
     KEY_TRACK,
 )
-from verify_lab.studies.expiry_monthend.constants import COMBOS as EXPIRY_MONTHEND_COMBOS
-from verify_lab.studies.expiry_monthend.constants import DATASETS as EXPIRY_MONTHEND_DATASETS
-from verify_lab.studies.expiry_monthend.constants import KEY_EXCLUDED_COUNT
-from verify_lab.studies.expiry_monthend.constants import MARKET_KOSDAQ as EXPIRY_MONTHEND_MARKET
-from verify_lab.studies.expiry_monthend.constants import MONTHS as EXPIRY_MONTHEND_MONTHS
-from verify_lab.studies.expiry_monthend.constants import Dataset as ExpiryMonthEndDataset
-from verify_lab.studies.expiry_monthend.trading import KEY_TARGETS as EXPIRY_MONTHEND_KEY_TARGETS
-from verify_lab.studies.expiry_monthend.trading import (
-    TradingOutputs as ExpiryMonthEndOutputs,
-)
-from verify_lab.studies.expiry_monthend.trading import run_expiry_monthend_trading
+from verify_lab.studies.midterm_cycle.constants import DATASETS as MIDTERM_CYCLE_DATASETS
+from verify_lab.studies.midterm_cycle.constants import KEY_EXCLUDED_COUNT
+from verify_lab.studies.midterm_cycle.constants import OUTPUT_FILES as MIDTERM_CYCLE_FILES
 from verify_lab.studies.midterm_cycle.constants import Dataset as MidtermCycleDataset
+from verify_lab.studies.midterm_cycle.trading import KEY_TARGETS as MIDTERM_CYCLE_KEY_TARGETS
 from verify_lab.studies.midterm_cycle.trading import TradingOutputs as MidtermCycleOutputs
 from verify_lab.studies.midterm_cycle.trading import run_midterm_cycle_trading
 from verify_lab.studies.reverse.constants import DATASETS as REVERSE_DATASETS
@@ -168,7 +161,6 @@ TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "보
 AXIS_REVERSE = ("파라미터", "시작연도")
 AXIS_OPTION_EXPIRY = ("만기월",)
 AXIS_MONTH_END = ("월",)
-AXIS_EXPIRY_MONTHEND = ("조합", "월")
 # 중간선거_사이클 — 성적표는 사이클 위치 하나, **거래내역은 진입 연도가 더 붙는다**
 # (신호가 4년에 한 번이라 어느 사이클의 체결인지 날짜만으로는 바로 읽히지 않는다)
 AXIS_MIDTERM_CYCLE = ("사이클 위치",)
@@ -343,55 +335,17 @@ def reverse_outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs
 
 
 @pytest.fixture(scope="module")
-def expiry_monthend_outputs(tmp_path_factory: pytest.TempPathFactory) -> ExpiryMonthEndOutputs:
-    """합성 시세와 합성 지수로 돈 만기_말일 결과.
-
-    **네 번째 체결 모듈이다.** 계약 테스트가 셋만 돌면 새 매매법의 성적표·거래내역이
-    **컬럼이 비어 나가도 통과한다** — 이 파일 자신이 적어 둔 실패 방식이다.
-
-    **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
-    """
-    directory = tmp_path_factory.mktemp("expiry_monthend")
-    _write_market(directory, "SYN")
-    _write_index(directory, "SYNIDX")
-
-    etf = ExpiryMonthEndDataset(
-        ticker="SYN",
-        label="합성 ETF",
-        market=EXPIRY_MONTHEND_MARKET,
-        directory=directory,
-        file_template=MARKET_FILE_TEMPLATE,
-        price_column=COL_CLOSE,
-        price_decimals=PRICE_DECIMALS_KRW,
-        is_index=False,
-    )
-    index = ExpiryMonthEndDataset(
-        ticker="SYNIDX",
-        label=INDEX_LABEL,
-        market=EXPIRY_MONTHEND_MARKET,
-        directory=directory,
-        file_template=INDEX_FILE_TEMPLATE,
-        price_column=COL_VALUE,
-        price_decimals=PRICE_DECIMALS,
-        is_index=True,
-    )
-
-    # **기본값 9·12월을 그대로 쓴다.** 합성 시세가 2016-01 ~ 2025-12 라 두 달 모두 표본이 있고,
-    # 계약 검사는 「실제로 도는 구성」에서 하는 편이 낫다
-    months = EXPIRY_MONTHEND_MONTHS
-
-    return run_expiry_monthend_trading((etf, index), combos=EXPIRY_MONTHEND_COMBOS, months=months)
-
-
-@pytest.fixture(scope="module")
 def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCycleOutputs:
     """합성 시세와 합성 지수로 돈 중간선거_사이클 결과.
 
-    **세 번째 체결 모듈이다.** 이 파일이 셋을 검사한다고 `src/verify_lab/CLAUDE.md` 가
-    적어 두었는데 새 매매법을 넣고 여기 픽스처를 안 만들면 **그 문장이 거짓이 되고,
-    성적표·거래내역의 컬럼이 비어 나가도 통과한다** — 이 파일 자신이 적어 둔 실패 방식이다.
+    **매매법마다 픽스처가 하나씩 있어야 한다.** 이 파일이 매매법 전부를 검사한다고
+    `src/verify_lab/CLAUDE.md` 가 적어 두었는데 새 매매법을 넣고 여기 픽스처를 안 만들면
+    **그 문장이 거짓이 되고, 성적표·거래내역의 컬럼이 비어 나가도 통과한다** — 이 파일 자신이
+    적어 둔 실패 방식이다.
 
     **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
+    **손절선 격자에 무손절과 −5% 가 함께 있어** 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의
+    두 실패 방식이 이 결과 하나로 재현된다.
 
     합성 시세가 2016-01 ~ 2025-12 라 10월 진입이 2016 ~ 2024 로 아홉 번 생기고
     **사이클 네 자리에 모두 표본이 들어간다.**
@@ -467,17 +421,6 @@ class TestSummaryColumns:
         # Given / When / Then
         assert list(reverse_outputs.performance.columns) == _expected_summary(AXIS_REVERSE, TAIL_REVERSE_SUMMARY)
 
-    def test_만기_말일_성적표가_공통_컬럼을_순서대로_쓴다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
-        """
-        목적: **네 번째 체결 모듈**이 같은 계약을 쓰는지 고정한다
-
-        Given: 합성 시세와 지수로 돈 만기_말일 결과
-        When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 조합 · 월 · 공통 24개다. `사건` 은 없다
-        """
-        # Given / When / Then
-        assert list(expiry_monthend_outputs.performance.columns) == _expected_summary(AXIS_EXPIRY_MONTHEND)
-
     def test_중간선거_사이클_성적표가_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 세 번째 매매법도 같은 순서를 쓰는지 고정한다
@@ -489,10 +432,9 @@ class TestSummaryColumns:
         # Given / When / Then
         assert list(midterm_cycle_outputs.performance.columns) == _expected_summary(AXIS_MIDTERM_CYCLE)
 
-    def test_세_성적표의_공통_부분이_완전히_같다(
+    def test_두_성적표의_공통_부분이_완전히_같다(
         self,
         reverse_outputs: StrategyOutputs,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
         midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
@@ -503,25 +445,24 @@ class TestSummaryColumns:
         **같은 표를 두 이름으로 두 번 세지 않는다** — 이름만 늘리면 검사는 그대로인데
         「넷을 봤다」로 읽힌다.
 
-        Given: 세 매매법의 성적표
+        Given: 두 매매법의 성적표
         When: 매매법 축과 고유 컬럼을 뺀 컬럼 목록을 비교했을 때
-        Then: 셋이 같고 공통 컬럼 목록과도 같다
+        Then: 둘이 같고 공통 컬럼 목록과도 같다
         """
         # Given
-        axes = {*AXIS_REVERSE, *AXIS_EXPIRY_MONTHEND, *AXIS_MIDTERM_CYCLE, "종목", *TAIL_REVERSE_SUMMARY}
+        axes = {*AXIS_REVERSE, *AXIS_MIDTERM_CYCLE, "종목", *TAIL_REVERSE_SUMMARY}
 
         # When
         common = [
             [column for column in table.columns if column not in axes]
             for table in (
                 reverse_outputs.performance,
-                expiry_monthend_outputs.performance,
                 midterm_cycle_outputs.performance,
             )
         ]
 
         # Then
-        assert common[0] == common[1] == common[2] == list(SUMMARY_COMMON_COLUMNS)
+        assert common[0] == common[1] == list(SUMMARY_COMMON_COLUMNS)
 
 
 class TestTradeColumns:
@@ -539,17 +480,6 @@ class TestTradeColumns:
         """
         # Given / When / Then
         assert list(reverse_outputs.trades.columns) == _expected_trades(AXIS_REVERSE, tail=TAIL_REVERSE_TRADES)
-
-    def test_만기_말일_거래내역이_공통_컬럼을_순서대로_쓴다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
-        """
-        목적: 네 번째 체결 모듈의 원자료가 같은 계약을 쓰는지 고정한다
-
-        Given: 합성 시세와 지수로 돈 만기_말일 결과
-        When: 거래내역의 컬럼을 봤을 때
-        Then: 종목 · 조합 · 월 · 공통 순이다. 청산 목표일도 등락률도 없다
-        """
-        # Given / When / Then
-        assert list(expiry_monthend_outputs.trades.columns) == _expected_trades(AXIS_EXPIRY_MONTHEND)
 
     def test_중간선거_사이클_거래내역이_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
@@ -584,18 +514,18 @@ class TestStopLevelFormat:
         # Given / When / Then
         assert self._levels(reverse_outputs.performance) == {-5.0}
 
-    def test_잴_수_없는_대상만_손절불가다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_잴_수_없는_대상만_손절불가다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 두 문자열이 대상에 따라 정확히 갈리는지 고정한다
 
         섞이면 필터가 조용히 240행을 잃거나 더한다.
 
-        Given: 합성 시세로 돈 월말 결과
+        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
         When: 손절선이 `손절불가` 인 행의 종목을 봤을 때
         Then: 지수뿐이고, ETF 는 `무손절` 을 갖되 `손절불가` 는 갖지 않는다
         """
         # Given
-        table = expiry_monthend_outputs.performance
+        table = midterm_cycle_outputs.performance
         index_label = INDEX_LABEL
         etf_label = "합성 ETF"
 
@@ -608,16 +538,16 @@ class TestStopLevelFormat:
         assert NO_STOP_LABEL in etf_levels
         assert STOP_NOT_MEASURABLE_LABEL not in etf_levels
 
-    def test_거래내역의_손절선도_같은_형식이다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_거래내역의_손절선도_같은_형식이다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 두 표의 값이 갈리면 조인이 안 된다는 것을 고정한다
 
-        Given: 합성 시세로 돈 월말 결과
+        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
         When: 성적표와 거래내역의 손절선 값 집합을 비교했을 때
         Then: 같다
         """
         # Given / When / Then
-        assert self._levels(expiry_monthend_outputs.trades) == self._levels(expiry_monthend_outputs.performance)
+        assert self._levels(midterm_cycle_outputs.trades) == self._levels(midterm_cycle_outputs.performance)
 
     def test_형식_변환기가_세_값을_낸다(self) -> None:
         """
@@ -724,7 +654,7 @@ class TestReversePeriods:
     def test_성적표에_제외_컬럼을_두지_않는다(
         self,
         reverse_outputs: StrategyOutputs,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
         목적: **제외의 SoT 를 성적표에서 `summary.json` 으로 옮긴 것을 고정한다** (2026-09-12).
@@ -741,14 +671,14 @@ class TestReversePeriods:
         # Given / When / Then
         for name, table in (
             ("역방향", reverse_outputs.performance),
-            ("만기_말일", expiry_monthend_outputs.performance),
+            ("중간선거_사이클", midterm_cycle_outputs.performance),
         ):
             assert DISPLAY_EXCLUDED not in table.columns, f"{name} 성적표에 제외 컬럼이 남아 있습니다"
 
     def test_제외_건수는_요약이_대상마다_담는다(
         self,
         reverse_outputs: StrategyOutputs,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
         목적: **표본 보존은 그대로다** (패키지 절대 원칙). 컬럼을 없앤 대신 요약이 담아야 하며,
@@ -765,7 +695,7 @@ class TestReversePeriods:
         # Given
         records = {
             "역방향": reverse_outputs.summary[KEY_RULE][REVERSE_KEY_TARGETS],
-            "만기_말일": expiry_monthend_outputs.summary[KEY_RULE][EXPIRY_MONTHEND_KEY_TARGETS],
+            "중간선거_사이클": midterm_cycle_outputs.summary[KEY_RULE][MIDTERM_CYCLE_KEY_TARGETS],
         }
 
         # When / Then
@@ -821,19 +751,18 @@ class TestEventCount:
         # Then
         assert first_half < whole
 
-    def test_사건을_주지_않은_매매법에는_그_컬럼이_없다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_사건을_주지_않은_매매법에는_그_컬럼이_없다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 잴 수 없는 것을 빈칸으로 싣지 않고 **컬럼을 내지 않는다**는 정책을 고정한다
 
-        옵션 만기일과 월말은 신호가 연 1회씩이라 신호 = 사건이다.
+        중간선거_사이클은 신호가 4년에 한 번이라 신호 = 사건이다.
 
-        Given: 두 매매법의 성적표
+        Given: 중간선거_사이클의 성적표
         When: 사건 컬럼을 찾았을 때
         Then: 없다
         """
         # Given / When / Then
-        for table in (expiry_monthend_outputs.performance, expiry_monthend_outputs.performance):
-            assert TAIL_REVERSE_SUMMARY[0] not in table.columns
+        assert TAIL_REVERSE_SUMMARY[0] not in midterm_cycle_outputs.performance.columns
 
     def test_구간_분할은_periods_가_소유한다(self) -> None:
         """
@@ -869,19 +798,19 @@ class TestSingleColumnStopFilter:
     # 테스트가 따라와 아무것도 고정하지 못한다 (이 모듈 머리말)
     FIXED_LEVEL = -5.0
 
-    def test_한_컬럼_필터가_모든_칸을_한_번씩_준다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_한_컬럼_필터가_모든_칸을_한_번씩_준다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 지수를 잃지도, ETF 무손절을 더하지도 않는다는 것을 고정한다
 
-        Given: 합성 시세로 돈 만기_말일 결과
+        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
         When: `손절선(%)` 이 그 숫자이거나 `손절불가` 인 행만 걸렀을 때
-        Then: (종목 × 월 × 방향 × 구간) 칸마다 정확히 한 행이고 두 대상이 다 있다
+        Then: (종목 × 사이클 위치 × 방향 × 구간) 칸마다 정확히 한 행이고 두 대상이 다 있다
         """
         # Given
-        table = expiry_monthend_outputs.performance
+        table = midterm_cycle_outputs.performance
         # **축 컬럼을 빠짐없이 넣는다.** 하나라도 빠지면 서로 다른 칸이 같은 키로 묶여
-        # 「한 칸이 두 행」으로 읽힌다 — 이 매매법의 축은 (종목 × 조합 × 달 × 방향) 이다
-        cells = [DISPLAY_TICKER, *AXIS_EXPIRY_MONTHEND, DISPLAY_DIRECTION, DISPLAY_PERIOD]
+        # 「한 칸이 두 행」으로 읽힌다 — 이 매매법의 축은 (종목 × 사이클 위치 × 방향) 이다
+        cells = [DISPLAY_TICKER, *AXIS_MIDTERM_CYCLE, DISPLAY_DIRECTION, DISPLAY_PERIOD]
 
         # When
         picked = table[table[DISPLAY_STOP_LEVEL].isin([self.FIXED_LEVEL, STOP_NOT_MEASURABLE_LABEL])]
@@ -891,22 +820,22 @@ class TestSingleColumnStopFilter:
         assert len(picked) == len(table.drop_duplicates(subset=cells)), "칸 하나가 빠졌습니다"
         assert set(picked[DISPLAY_TICKER]) == set(table[DISPLAY_TICKER]), "대상 하나가 필터에서 사라졌습니다"
 
-    def test_무손절을_같이_걸면_ETF_행이_섞인다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_무손절을_같이_걸면_ETF_행이_섞인다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: **왜 두 문자열을 갈랐는지**를 실패 모드로 고정한다
 
         `무손절` 은 ETF 의 대조축 행이라 그 손절선 행과 함께 걸리면 대상이 두 번 실린다.
         에러가 나지 않으므로 표를 보는 사람은 알아채지 못한다.
 
-        Given: 합성 시세로 돈 월말 결과
+        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
         When: `무손절` 까지 포함해 걸렀을 때
         Then: 칸이 중복돼 위 필터보다 행이 많다
         """
         # Given
-        table = expiry_monthend_outputs.performance
+        table = midterm_cycle_outputs.performance
         # **축 컬럼을 빠짐없이 넣는다.** 하나라도 빠지면 서로 다른 칸이 같은 키로 묶여
-        # 「한 칸이 두 행」으로 읽힌다 — 이 매매법의 축은 (종목 × 조합 × 달 × 방향) 이다
-        cells = [DISPLAY_TICKER, *AXIS_EXPIRY_MONTHEND, DISPLAY_DIRECTION, DISPLAY_PERIOD]
+        # 「한 칸이 두 행」으로 읽힌다 — 이 매매법의 축은 (종목 × 사이클 위치 × 방향) 이다
+        cells = [DISPLAY_TICKER, *AXIS_MIDTERM_CYCLE, DISPLAY_DIRECTION, DISPLAY_PERIOD]
 
         # When
         naive = table[table[DISPLAY_STOP_LEVEL].isin([self.FIXED_LEVEL, STOP_NOT_MEASURABLE_LABEL, NO_STOP_LABEL])]
@@ -915,16 +844,16 @@ class TestSingleColumnStopFilter:
         assert naive.duplicated(subset=cells).any()
         assert len(naive) > len(table.drop_duplicates(subset=cells))
 
-    def test_숫자값만_걸면_지수가_통째로_사라진다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_숫자값만_걸면_지수가_통째로_사라진다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 반대쪽 실패 모드를 고정한다 — 지수를 잃으면 긴 기간 축이 없어진다
 
-        Given: 합성 시세로 돈 월말 결과
+        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
         When: 숫자 손절선 값만으로 걸렀을 때
         Then: 지수 행이 하나도 없다
         """
         # Given
-        table = expiry_monthend_outputs.performance
+        table = midterm_cycle_outputs.performance
 
         # When
         numeric_only = table[table[DISPLAY_STOP_LEVEL] == self.FIXED_LEVEL]
@@ -992,7 +921,7 @@ class TestFilenames:
         # When / Then
         assert STATISTICS_FILENAME in set(REVERSE_FILES.values()), f"역방향의 산출물에 사용자가 보는 이름이 없습니다: {STATISTICS_FILENAME}"
 
-        # 체결 둘은 `execution/constants.py` 가 소유하므로 세 매매법이 자동으로 같다
+        # 체결 둘은 `execution/constants.py` 가 소유하므로 매매법 전부가 자동으로 같다
         assert {SUMMARY_FILENAME, TRADES_FILENAME} == {"성적표.csv", "거래내역.csv"}
 
     def test_매매_스크립트에_csv_문자열이_없다(self) -> None:
@@ -1034,7 +963,7 @@ class TestBreakevenMargin:
     def test_세_매매법_모두_승률에서_손익분기를_뺀_값이다(
         self,
         reverse_outputs: StrategyOutputs,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
         목적: 산식을 계약으로 고정한다 — **표에 실린 값끼리** 뺀 것이어야 한다
@@ -1046,7 +975,7 @@ class TestBreakevenMargin:
         # Given
         for name, table in (
             ("역방향", reverse_outputs.performance),
-            ("만기_말일", expiry_monthend_outputs.performance),
+            ("중간선거_사이클", midterm_cycle_outputs.performance),
         ):
             filled = table[table[self.MARGIN_COLUMN].notna()]
             assert not filled.empty, f"{name} 성적표에 값이 있는 행이 없습니다"
@@ -1059,18 +988,18 @@ class TestBreakevenMargin:
                 expected.tolist(), abs=1e-9
             ), f"{name} 성적표의 손익분기 대비가 두 컬럼의 차이와 다릅니다"
 
-    def test_손익분기_승률_바로_뒤에_온다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_손익분기_승률_바로_뒤에_온다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: **자리**를 계약으로 고정한다
 
         재료 바로 옆에 있어야 사용자가 셋을 한눈에 견준다. 표 끝에 붙이면 스크롤해야 한다.
 
-        Given: 합성 시세로 돈 월말 결과
+        Given: 합성 시세로 돈 중간선거_사이클 결과
         When: 두 컬럼의 위치를 봤을 때
         Then: 손익분기 승률 다음 칸이다
         """
         # Given
-        columns = list(expiry_monthend_outputs.performance.columns)
+        columns = list(midterm_cycle_outputs.performance.columns)
 
         # When
         breakeven = columns.index(self.BREAKEVEN_COLUMN)
@@ -1120,19 +1049,19 @@ class TestBreakevenMargin:
 class TestPayoffAmountColumns:
     """`이길 때(%)` · `질 때(%)` — 부호와 결측"""
 
-    def test_이길_때는_양수이고_질_때는_음수다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_이길_때는_양수이고_질_때는_음수다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 두 열의 부호를 계약으로 고정한다.
 
         **`최악(%)` 이 음수인 것과 같은 관용**이다. 둘 다 절대값으로 내면 표를 읽는 사람이
         어느 쪽이 손실인지 이름으로만 판단해야 한다.
 
-        Given: 합성 시세로 돈 월말 결과
+        Given: 합성 시세로 돈 중간선거_사이클 결과
         When: 값이 있는 행의 두 열을 봤을 때
         Then: 이길 때는 0 초과, 질 때는 0 미만이다
         """
         # Given
-        summary = expiry_monthend_outputs.performance
+        summary = midterm_cycle_outputs.performance
         wins = summary[DISPLAY_WIN_AMOUNT].dropna()
         losses = summary[DISPLAY_LOSS_AMOUNT].dropna()
         assert not wins.empty and not losses.empty, "두 열에 값이 하나도 없습니다"
@@ -1187,7 +1116,7 @@ class TestPayoffAmountColumns:
 
 
 class TestWorstHoldColumn:
-    """세 매매법이 `보유 중 최악(%)` 을 실제로 «채운다»
+    """두 매매법이 `보유 중 최악(%)` 을 실제로 «채운다»
 
     **컬럼 이름만 검사하면 이 계약이 닫히지 않는다.** 값을 넘기는 인자가 선택형이라
     (`hold_days`·`reasons` 와 같은 관용) 매매법이 그것을 빠뜨리면 **컬럼은 그대로 있고
@@ -1208,26 +1137,26 @@ class TestWorstHoldColumn:
         """
         self._assert_filled(reverse_outputs.performance)
 
-    def test_만기_말일_성적표가_값을_채운다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_중간선거_사이클_성적표가_값을_채운다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
-        목적: 네 번째 체결 모듈도 선택 인자를 빠뜨리지 않았는지 고정한다
+        목적: 두 번째 체결 모듈도 선택 인자를 빠뜨리지 않았는지 고정한다
 
-        Given: 합성 시세와 지수로 돈 만기_말일 성적표
+        Given: 합성 시세와 지수로 돈 중간선거_사이클 성적표
         When: 표본이 있는 행을 봤을 때
         Then: 보유 중 최악이 비어 있지 않다
         """
-        self._assert_filled(expiry_monthend_outputs.performance)
+        self._assert_filled(midterm_cycle_outputs.performance)
 
-    def test_지수_행도_값을_갖는다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_지수_행도_값을_갖는다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 「손절불가」 행이 조용히 빠지지 않는지 고정한다 (엣지 케이스)
 
-        Given: 월말 성적표의 지수 행 (`손절선(%)` 이 `손절불가`)
+        Given: 중간선거_사이클 성적표의 지수 행 (`손절선(%)` 이 `손절불가`)
         When: 표본이 있는 행을 봤을 때
         Then: 보유 중 최악이 비어 있지 않다
         """
         # Given
-        table = expiry_monthend_outputs.performance
+        table = midterm_cycle_outputs.performance
         index_rows = table[table["손절선(%)"] == STOP_NOT_MEASURABLE_LABEL]
         assert not index_rows.empty, "지수 행이 없어 계약을 검사하지 못했습니다"
 
@@ -1236,7 +1165,7 @@ class TestWorstHoldColumn:
 
     @pytest.mark.parametrize(
         "fixture_name",
-        ["reverse_outputs", "expiry_monthend_outputs", "midterm_cycle_outputs"],
+        ["reverse_outputs", "midterm_cycle_outputs"],
     )
     def test_보유_중_최악이_결과_최악보다_나쁘거나_같다(self, fixture_name: str, request: pytest.FixtureRequest) -> None:
         """
@@ -1244,7 +1173,7 @@ class TestWorstHoldColumn:
 
         청산가는 보유 중에 실제로 지난 가격이므로 보유 중 최악은 언제나 그보다 나쁘거나 같다.
         이 부등식이 깨지면 구간(진입 다음 날 ~ 청산일)이나 방향 부호가 틀린 것이다.
-        **네 매매법에 한꺼번에 건다** — 한 곳만 틀려도 잡힌다.
+        **매매법 전부에 한꺼번에 건다** — 한 곳만 틀려도 잡힌다.
 
         Given: 합성 시세로 돈 성적표
         When: 표본이 있는 행의 두 컬럼을 견줬을 때
@@ -1335,23 +1264,21 @@ class TestIntegerCounts:
 
 
 class TestRunSummary:
-    """`summary.json` — 세 매매법이 같은 틀을 쓴다"""
+    """`summary.json` — 두 매매법이 같은 틀을 쓴다"""
 
     @pytest.fixture
     def summaries(
         self,
         reverse_outputs: StrategyOutputs,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
         midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> dict[str, dict[str, object]]:
-        """세 매매법의 실행 요약."""
+        """두 매매법의 실행 요약."""
         return {
             "역방향": reverse_outputs.summary,
-            "만기_말일": expiry_monthend_outputs.summary,
             "중간선거_사이클": midterm_cycle_outputs.summary,
         }
 
-    def test_세_요약이_같은_최상위_키를_갖는다(self, summaries: dict[str, dict[str, object]]) -> None:
+    def test_두_요약이_같은_최상위_키를_갖는다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
         목적: 만드는 자리·키가 매매법마다 갈리던 것을 닫는다
 
@@ -1359,7 +1286,7 @@ class TestRunSummary:
         옵션 만기일이 **CLI 에서** `cells`/`stop_levels`/`row_counts`,
         월말이 `stop_levels`/`fixed_stop_level`/`cost`/`datasets`/`row_counts` 였다.
 
-        Given: 세 매매법의 실행 요약
+        Given: 두 매매법의 실행 요약
         When: 최상위 키를 봤을 때
         Then: 여섯 키가 전부 있다
         """
@@ -1372,11 +1299,11 @@ class TestRunSummary:
 
     def test_대상_범위와_기간이_datasets_에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
-        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 세 매매법이 실제로 이행한다
+        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 두 매매법이 실제로 이행한다
 
         전에는 **월말만** 그 키를 가졌고, 옵션 만기일은 종목코드를 어디에도 남기지 않았다.
 
-        Given: 세 매매법의 실행 요약
+        Given: 두 매매법의 실행 요약
         When: `datasets` 의 한 줄을 봤을 때
         Then: 코드·이름·파일·기간·행 수가 전부 있다
         """
@@ -1402,7 +1329,7 @@ class TestRunSummary:
         **`rule` 과 `notes` 는 매매법이 각자 채운다** — 거기로 경로가 들어와도 아무도 안 본다.
         요약 전체를 재귀로 훑어야 그 자리까지 닫힌다.
 
-        Given: 세 매매법의 실행 요약
+        Given: 두 매매법의 실행 요약
         When: 요약 전체를 재귀로 훑었을 때
         Then: 절대경로로 읽히는 문자열이 하나도 없다
         """
@@ -1417,7 +1344,7 @@ class TestRunSummary:
         파일 이름으로 키잉하면 스크립트가 `summary[row_counts][SUMMARY_FILENAME]` 로 읽으므로
         별칭을 따로 관리할 필요가 없어진다.
 
-        Given: 세 매매법의 실행 요약
+        Given: 두 매매법의 실행 요약
         When: `row_counts` 의 키를 봤을 때
         Then: 전부 `.csv` 로 끝나고 성적표·거래내역이 들어 있다
         """
@@ -1428,13 +1355,13 @@ class TestRunSummary:
             assert all(key.endswith(".csv") for key in counts), f"{name} 의 row_counts 키가 파일 이름이 아닙니다: {sorted(counts)}"
             assert TRADES_FILENAME in counts, f"{name} 에 거래내역 행 수가 없습니다"
 
-    def test_비용_표기가_세_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
+    def test_비용_표기가_두_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
         목적: `.claude/rules/trading.md` 의 맨몸 성적 표기를 월말만 갖고 있던 것을 닫는다
 
         빠뜨린 것과 일부러 뺀 것을 구별할 수 없으면 다음 사람이 다시 계산한다.
 
-        Given: 세 매매법의 실행 요약
+        Given: 두 매매법의 실행 요약
         When: `cost` 를 봤을 때
         Then: 셋 다 같은 문장이다
         """
@@ -1449,7 +1376,7 @@ class TestRunSummary:
         요약이 `"strategy": "reverse_trading"` 이라고 적으면 폴더 이름(`reverse`)과 갈린다 —
         slug 의 정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME` 하나다.
 
-        Given: 세 매매법의 실행 요약
+        Given: 두 매매법의 실행 요약
         When: 요약 전체를 문자열로 봤을 때
         Then: 옛 이름이 하나도 없다
         """
@@ -1481,7 +1408,7 @@ class TestDatasetFields:
         # Given
         groups = {
             "역방향": REVERSE_DATASETS,
-            "만기_말일": EXPIRY_MONTHEND_DATASETS,
+            "중간선거_사이클": MIDTERM_CYCLE_DATASETS,
         }
 
         # When / Then
@@ -1514,7 +1441,7 @@ class TestScreenColumn:
     def test_세_성적표가_판정_값_셋만_쓴다(
         self,
         reverse_outputs: StrategyOutputs,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
         목적: 값 집합이 매매법마다 갈리면 세 성적표를 한 필터로 읽을 수 없다.
@@ -1526,7 +1453,7 @@ class TestScreenColumn:
         # Given / When / Then
         for name, table in (
             ("역방향", reverse_outputs.performance),
-            ("만기_말일", expiry_monthend_outputs.performance),
+            ("중간선거_사이클", midterm_cycle_outputs.performance),
         ):
             values = set(table[self.SCREEN_COLUMN])
             assert values <= self.VERDICTS, f"{name} 성적표에 정의되지 않은 판정 값이 있습니다: {values - self.VERDICTS}"
@@ -1534,7 +1461,7 @@ class TestScreenColumn:
     def test_시기가_전체가_아닌_행은_판정하지_않는다(
         self,
         reverse_outputs: StrategyOutputs,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
         목적: **게이트를 시기 행에 걸지 않는다**는 2026-09-12 개정을 고정한다.
@@ -1549,7 +1476,7 @@ class TestScreenColumn:
         # Given / When / Then
         for name, table in (
             ("역방향", reverse_outputs.performance),
-            ("만기_말일", expiry_monthend_outputs.performance),
+            ("중간선거_사이클", midterm_cycle_outputs.performance),
         ):
             split = table[table[DISPLAY_PERIOD] != self.PERIOD_ALL_LABEL]
             assert not split.empty, f"{name} 성적표에 시기 행이 없어 계약을 검사하지 못했습니다"
@@ -1557,13 +1484,13 @@ class TestScreenColumn:
 
     def test_전체_행에서는_실제로_판정한다(
         self,
-        expiry_monthend_outputs: ExpiryMonthEndOutputs,
+        midterm_cycle_outputs: MidtermCycleOutputs,
         reverse_outputs: StrategyOutputs,
     ) -> None:
         """
         목적: 전 행이 「판정 안 함」이 되어 컬럼이 무의미해지는 것을 막는다.
 
-        **살 수 있는 대상의 행만 본다** — 만기_말일은 지수를 함께 재므로 그 행은
+        **살 수 있는 대상의 행만 본다** — 중간선거_사이클은 지수를 함께 재므로 그 행은
         「판정 안 함」이 정상이고(아래 테스트가 그것을 따로 고정한다), 섞어 세면 이 검사가
         **없는 버그를 가리킨다.**
 
@@ -1572,24 +1499,24 @@ class TestScreenColumn:
         Then: 「판정 안 함」이 아니다
         """
         # Given / When / Then
-        tradable = expiry_monthend_outputs.performance
+        tradable = midterm_cycle_outputs.performance
         tradable = tradable[tradable[DISPLAY_TICKER] != INDEX_LABEL]
-        for name, table in (("만기_말일", tradable), ("역방향", reverse_outputs.performance)):
+        for name, table in (("중간선거_사이클", tradable), ("역방향", reverse_outputs.performance)):
             whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
             assert not whole.empty, f"{name} 성적표에 전체 구간 행이 없습니다"
             assert (whole[self.SCREEN_COLUMN] != self.NOT_JUDGED).all(), f"{name} 성적표가 아무것도 판정하지 않았습니다"
 
-    def test_살_수_없는_대상은_전체_행에서도_판정하지_않는다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_살_수_없는_대상은_전체_행에서도_판정하지_않는다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 지수로 「우위가 있다」를 주장하면 **집행할 수 없는 성적이 근거**가 된다
               (측정의 원칙 9).
 
-        Given: 합성 시세와 합성 지수로 돈 만기_말일 결과
+        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
         When: 지수 행의 판정을 봤을 때
         Then: 시기와 무관하게 전부 「판정 안 함」이다
         """
         # Given
-        table = expiry_monthend_outputs.performance
+        table = midterm_cycle_outputs.performance
         index_rows = table[table[DISPLAY_TICKER] == INDEX_LABEL]
         assert not index_rows.empty, "지수 행이 없어 계약을 검사하지 못했습니다"
 
@@ -1617,20 +1544,20 @@ class TestScreenColumn:
         assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다"
         assert (empty[self.SCREEN_COLUMN] == self.NOT_JUDGED).all()
 
-    def test_판정이_승률과_평균에서_그대로_유도된다(self, expiry_monthend_outputs: ExpiryMonthEndOutputs) -> None:
+    def test_판정이_승률과_평균에서_그대로_유도된다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
         목적: **같은 행의 값으로 다시 세지 않는다** (절대 원칙 5 — 판정식 단일화).
 
         성적표가 판정을 따로 계산하면 같은 행 안에서 승률·평균과 판정이 어긋날 수 있다.
 
-        Given: 합성 시세로 돈 만기_말일 성적표의 전체 구간 행
+        Given: 합성 시세로 돈 중간선거_사이클 성적표의 전체 구간 행
         When: 그 행의 승률·평균으로 게이트를 직접 걸었을 때
         Then: 행에 실린 판정과 같다
         """
         # Given
         from verify_lab.measure.screening import SCREEN_CANDIDATE, SCREEN_EXCLUDED
 
-        table = expiry_monthend_outputs.performance
+        table = midterm_cycle_outputs.performance
         whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
         assert not whole.empty, "전체 구간 행이 없습니다"
 
@@ -1670,13 +1597,12 @@ class TestNoCandidatesFile:
         Then: 하나도 없다
         """
         # Given
-        from verify_lab.studies.expiry_monthend.constants import OUTPUT_FILES as EXPIRY_MONTHEND_FILES
         from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
 
         # When / Then
         for name, files in (
             ("역방향", REVERSE_FILES),
-            ("만기_말일", EXPIRY_MONTHEND_FILES),
+            ("중간선거_사이클", MIDTERM_CYCLE_FILES),
         ):
             leftovers = [value for value in files.values() if "판정" in value]
             assert not leftovers, f"{name} 이 아직 판정표를 냅니다: {leftovers}"
