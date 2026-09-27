@@ -140,7 +140,7 @@ INDEX_FILE_TEMPLATE: Final = "{ticker}_index.csv"
 # 소수가 나오는 시장의 가격 자릿수. 원시 시세 저장(`data/`)과 결과 CSV 의 종가 출력(`studies/`)이
 # **반드시 같은 값**을 써야 한다 — 저장이 4자리인데 출력이 더 깊으면 없는 정밀도를 만들어 내고,
 # 반대면 저장해 둔 값을 버린다. 두 계층이 각자 정의하면 한쪽만 바뀌어도 예외가 나지 않는다.
-# 자릿수 규칙표는 `.claude/rules/python.md` 가 SoT다
+# 자릿수 규칙표는 `~/.claude/rules/python.md` 가 SoT다
 PRICE_DECIMALS: Final = 4
 
 # KRX 원화 가격의 자릿수. **실제 호가에 없는 소수 자리를 붙이지 않는다.**
@@ -151,7 +151,7 @@ PRICE_DECIMALS_KRW: Final = 0
 # 단위 계수와 시간대
 # ============================================================
 
-# 비율(0~1)을 백분율로 바꾸는 계수. `measure`·`report`·`studies`·`strategy` 가 모두 쓴다 —
+# 비율(0~1)을 백분율로 바꾸는 계수. `measure`·`report`·`execution`·`studies` 가 모두 쓴다 —
 # 계층마다 따로 정의하면 한쪽만 바뀌어도 예외가 나지 않고 표만 조용히 어긋난다
 RATE_TO_PERCENT: Final = 100
 
@@ -160,6 +160,6 @@ RATE_TO_PERCENT: Final = 100
 # `usdkrw_equivalence` 와 `futures_leverage` 가 함께 쓴다
 CALENDAR_DAYS_PER_YEAR: Final = 365
 
-# 실행 시각과 타임스탬프의 기준 시간대. 결과 폴더 이름(`report/`)과
+# 실행 시각과 타임스탬프의 기준 시간대. 수집기의 「오늘」 판정과
 # 실행 이력(`utils/meta_manager.py`)이 같은 값을 써야 두 기록이 같은 시각을 가리킨다
 KST: Final = ZoneInfo("Asia/Seoul")

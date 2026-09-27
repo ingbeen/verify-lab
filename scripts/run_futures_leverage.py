@@ -35,7 +35,7 @@ from verify_lab.utils.meta_manager import save_metadata
 logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
-KEY_META_FUTURES_LEVERAGE_STUDY = "futures_leverage_study"
+KEY_META_FUTURES_LEVERAGE_STUDY = "futures_leverage"
 
 # ============================================================
 # 산출물 헤더 — 영문 계산 컬럼을 한글 레이블로 바꾼다
@@ -99,8 +99,7 @@ def _save_outputs(outputs: StudyOutputs) -> str:
     directory = create_run_directory(TRACK_NAME)
 
     # **저장할 파일 목록의 SoT 는 `OUTPUT_FILES` 하나다.** 여기 나열하면 요약의 행 수와
-    # 실제 파일이 갈릴 수 있다 — 전에는 `full_period` 처럼 저장은 되는데 요약에 안 세어진
-    # 표가 실제로 있었다 (검증 #8)
+    # 실제 파일이 갈릴 수 있다 — 저장은 되는데 요약에 안 세어진 표가 생겨도 예외가 나지 않는다
     for field, filename in OUTPUT_FILES.items():
         save_table(directory, filename, _display(getattr(outputs, field)))
 

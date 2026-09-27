@@ -1,12 +1,11 @@
-"""역방향 매매 실행 — 대상과 보유 한도를 순회해 산출물을 조립한다
+"""역방향 매매 실행 — 대상과 손절선을 순회해 산출물을 조립한다
 
 이 모듈은 **매매 규칙을 계산하지 않는다.** 신호 판정은 `studies`, 체결은 `execution/trade_fill.py`,
 구간별 성적은 `execution/periods.py` 가 이미 하므로, 하는 일은 그것을 조합해 돌리고
 사람이 읽을 형태로 쌓는 것이다.
 
-**보유 한도는 자금을 나누는 축이 아니라 비교 축이다.** 한 포지션이 두 한도를 동시에 가질 수
-없으므로, 한도별 결과는 "어느 쪽을 택할지"의 비교표다. 하나를 고르면 표본에 맞춘 튜닝이 되므로
-전부 산출해 나란히 낸다 (`docs/매매/역방향/규칙.md` 결정 ⑥).
+**보유 한도는 D+2 하나이고 손절선은 확정 −5% 하나다** (`docs/매매/역방향/규칙.md` 결정 ⑤ · ⑥ · ⑭).
+한도별·손절선별 비교는 그 문서가 수치로 갖는다.
 """
 
 from collections.abc import Sequence
@@ -66,7 +65,7 @@ logger = get_logger(__name__)
 # 산출물의 식별 컬럼. 두 표 모두 이 순서로 앞에 붙는다 —
 # 조합을 한 파일에 쌓으므로 어느 행이 어떤 설정의 결과인지가 행 자체에 있어야 한다.
 #
-# **순서는 세 매매법이 공유하는 계약이다** (`tests/test_output_contract.py`).
+# **순서는 매매법 전부가 공유하는 계약이다** (`tests/test_output_contract.py`).
 # `방향` 은 두 표에서 «다른 것»을 가리킨다 — 성적표는 두 방향을 합친 표본이라 `역방향 전체`,
 # 거래내역은 그 신호가 폭등이었나 폭락이었나다. 거는 쪽은 언제나 그 반대다
 IDENTITY_COLUMNS = (
@@ -95,7 +94,7 @@ KEY_STOP_LEVELS = "stop_loss_levels"
 KEY_HOLD_LIMIT = "hold_limit"
 
 # 산출물만 보고는 알 수 없는 실행 조건.
-# **`rule` 에는 기계값만 담고 산문은 전부 여기 담는다** — 나머지 두 매매법과 같은 관용이다.
+# **`rule` 에는 기계값만 담고 산문은 전부 여기 담는다** — 매매법 전부가 같은 관용이다.
 # **`rule` 에 같은 문장을 다시 넣지 않는다.** 한 파일에 두 번 있으면 한쪽만 고쳐질 때
 # 어느 쪽이 맞는지 판별할 방법이 없고, 키 이름(`exit`)과 담긴 내용(손절 기준)이 어긋나도
 # 예외가 나지 않는다. 청산 규칙은 아래 `NOTE_HOLD_LIMIT` 과 `rule` 의 `hold_limit` 숫자가 함께 담는다
@@ -109,7 +108,7 @@ NOTE_INVERSE = "상승 방향 신호는 원지수 수익률에 -1 을 곱한 값
 class StrategyOutputs:
     """실행 산출물
 
-    **세 매매법이 같은 이름을 쓴다** — 성적표는 `performance`, 실행 요약은 `meta` 처럼
+    **매매법 전부가 같은 이름을 쓴다** — 성적표는 `performance`, 실행 요약은 `meta` 처럼
     매매법마다 다른 이름을 쓰면 스크립트가 매번 다른 속성을 찾아야 한다.
 
     Attributes:
@@ -176,19 +175,17 @@ class _Signals:
 def run_reverse_trading(
     targets: Sequence[Target] = TARGETS,
     *,
-    hold_limit: int = HOLD_LIMIT,
     stop_levels: Sequence[float | None] = (STOP_LOSS_LEVEL,),
 ) -> StrategyOutputs:
     """대상 × 손절선을 돌고 체결 내역과 집계를 만든다.
 
-    **기본은 확정 손절선 한 종이다.** 손절선 격자와 무손절 대조는 지웠고
+    **기본은 확정 손절선 한 종이다.** 손절선 격자와 무손절 대조는 내지 않으며
     (`docs/매매/역방향/규칙.md` 결정 ⑭), `.claude/rules/trading.md` 가 요구하는
     「손절이 무엇을 막았는가」의 수치는 그 문서 §3.5 가 갖는다.
     **`stop_levels` 는 체결 경로를 합성 시세로 검사하는 입구다** — 실행 스크립트는 넘기지 않는다.
 
     Args:
         targets: 매매 대상 목록
-        hold_limit: 보유 한도 (거래일)
         stop_levels: 적용할 손절선 목록 (비율). **`None` 이 들어 있으면 무손절 행**이다
 
     Returns:
@@ -207,11 +204,11 @@ def run_reverse_trading(
     target_records: list[dict[str, Any]] = []
 
     # **데이터셋 단위로 모은다.** 대상은 종목 × 순위 컷이라 같은 시세를 여러 대상이 쓴다 —
-    # 대상마다 한 줄씩 내면 같은 파일의 기간이 네 번 반복된다
+    # 대상마다 한 줄씩 내면 같은 파일의 기간이 대상 수만큼 반복된다
     dataset_records: dict[str, dict[str, Any]] = {}
 
     for target in targets:
-        # **신호는 손절선과 무관하다.** 격자 안에서 다시 찾으면 같은 계산을 손절선 수만큼 돈다
+        # **신호는 손절선과 무관하다.** 손절선 루프 안에서 다시 찾으면 같은 계산을 손절선 수만큼 돈다
         signals = _find_signals(target)
 
         # **`setdefault` 를 쓰지 않는다.** 기본값을 «먼저» 계산하므로 이미 있는 키에도
@@ -232,7 +229,7 @@ def run_reverse_trading(
         excluded_by_stop: dict[str, int] = {}
 
         for stop_level in stop_levels:
-            block = _measure(target, signals, hold_limit=hold_limit, stop_level=stop_level)
+            block = _measure(target, signals, hold_limit=HOLD_LIMIT, stop_level=stop_level)
             excluded_by_stop[str(stop_level_value(stop_level, measurable=True))] = block.excluded_count
 
             if block.trades.empty:
@@ -254,14 +251,14 @@ def run_reverse_trading(
         datasets=list(dataset_records.values()),
         rule={
             KEY_STOP_LEVELS: [stop_level_value(level, measurable=True) for level in stop_levels],
-            KEY_HOLD_LIMIT: hold_limit,
+            KEY_HOLD_LIMIT: HOLD_LIMIT,
             KEY_TARGETS: target_records,
         },
         row_counts={TRADES_FILENAME: len(trades), SUMMARY_FILENAME: len(performance)},
         notes=[NOTE_ENTRY, NOTE_STOP_BASE, NOTE_HOLD_LIMIT, NOTE_INVERSE],
     )
 
-    logger.debug(f"매매 실행 완료: 대상 {len(targets)}종 × 손절선 {len(stop_levels)}종, " f"한도 D+{hold_limit}, 체결 {len(trades):,}건")
+    logger.debug(f"매매 실행 완료: 대상 {len(targets)}종 × 손절선 {len(stop_levels)}종, " f"한도 D+{HOLD_LIMIT}, 체결 {len(trades):,}건")
 
     return StrategyOutputs(trades=trades, performance=performance, summary=summary)
 
@@ -388,18 +385,28 @@ def _identity(target: Target, *, direction: str, stop_level: float | None) -> di
         stop_level: 손절선 (비율)
 
     Returns:
-        식별 컬럼 dict
+        식별 컬럼 dict (`IDENTITY_COLUMNS` 순서)
     """
-    return {
+    values = {
         DISPLAY_TICKER: target.dataset.label,
         DISPLAY_PARAMETER: f"{PARAMETER_PREFIX_RANK_CUT}={target.rank_cut}",
         DISPLAY_START_YEAR: target.start_year,
         DISPLAY_DIRECTION: direction,
         # **언제나 잴 수 있는 것이 로더로 보장된다.** 이 매매법은 `load_market_csv` 만 쓰고
         # 그 로더가 시가·고가·저가를 요구하므로 종가 계열(지수)은 읽는 단계에서 거부된다 —
-        # 그래서 `measurable` 을 시세에서 유도하지 않는다. 지수를 받는 매매법(월말)은 `is_index` 로 가른다
+        # 그래서 `measurable` 을 시세에서 유도하지 않는다. 지수를 받는 매매법(중간선거_사이클)은 `is_index` 로 가른다
         DISPLAY_STOP_LEVEL: stop_level_value(stop_level, measurable=True),
     }
+
+    # **순서는 `IDENTITY_COLUMNS` 가 정한다** — 값은 키로 짝지어 두어, 상수의 순서를 바꿔도
+    # 값이 다른 컬럼으로 밀리지 않는다. **두 목록이 어긋나면 멈춘다** — 여기에만 있는 컬럼은
+    # 투영에서 조용히 빠져 산출물에서 사라진다
+    if set(values) != set(IDENTITY_COLUMNS):
+        raise RuntimeError(
+            f"내부 불변조건 위반: 식별 컬럼 값과 IDENTITY_COLUMNS 가 다릅니다 " f"(값 {sorted(values)} · 상수 {sorted(IDENTITY_COLUMNS)})"
+        )
+
+    return {column: values[column] for column in IDENTITY_COLUMNS}
 
 
 def _trade_row(

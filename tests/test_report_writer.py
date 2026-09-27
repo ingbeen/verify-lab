@@ -26,7 +26,7 @@ TRACK_NAME = "reverse"
 
 # **같은 등급의 다른 매매법**이어야 「비우기가 그 폴더 안에만 미친다」를 잴 수 있다.
 # 등급이 다르면 부모가 달라 애초에 서로 닿지 않으므로 규칙이 깨져도 통과한다
-OTHER_TRACK_NAME = "option_expiry"
+OTHER_TRACK_NAME = "midterm_cycle"
 
 # 등급이 다른 매매법. **같은 등급 둘만으로는 「등급이 상위 폴더가 된다」를 고정할 수 없다** —
 # 부모가 늘 같아 규칙이 깨져도 통과한다
@@ -139,14 +139,22 @@ def test_clearing_keeps_other_tracks_in_the_layer(mock_results_dir: Path) -> Non
     목적: 비우기가 **그 매매법 폴더 안에만** 미친다를 고정한다 (경계 조건).
 
     계층 폴더까지 비우면 한 매매법을 돌릴 때마다 같은 계층의 다른 매매법 산출물이
-    통째로 사라진다. 검증 여섯을 잇달아 돌리는 것이 이 저장소의 관용이라 **마지막 하나만
+    통째로 사라진다. 여러 매매법을 잇달아 돌리는 것이 이 저장소의 관용이라 **마지막 하나만
     남는다** — 그리고 예외는 나지 않는다.
 
     Given: 같은 계층에 다른 매매법의 산출물이 있다
     When: 한 매매법의 결과 폴더를 다시 만든다
     Then: 다른 매매법의 파일이 그대로 있다
     """
-    # Given
+    # Given — 두 매매법의 등급이 갈리면 이 테스트는 규칙이 깨져도 통과한다
+    other_grade, own_grade = track_of(OTHER_TRACK_NAME).grade, track_of(TRACK_NAME).grade
+    assert other_grade == own_grade, (
+        f"같은 등급의 다른 매매법이 필요합니다 (지금 {OTHER_TRACK_NAME}={other_grade}, {TRACK_NAME}={own_grade}) "
+        f"— OTHER_TRACK_NAME 을 TRACK_NAME 과 같은 등급의 매매법으로 바꾸세요"
+    )
+    # 비우기는 **이미 있는 폴더**에만 일어나므로 먼저 한 번 만들어 둔다 — 처음 만드는 호출만 재면
+    # 비우는 경로를 한 번도 지나지 않아 범위가 넓어져도 통과한다
+    writer.create_run_directory(TRACK_NAME)
     other = writer.create_run_directory(OTHER_TRACK_NAME)
     kept = other / SIGNALS_FILENAME
     kept.write_text("다른 매매법의 산출물", encoding="utf-8")
@@ -269,13 +277,14 @@ def test_accepts_every_real_track_name() -> None:
     # Given
     from verify_lab.studies.futures_leverage.constants import TRACK_NAME as FUTURES
     from verify_lab.studies.leverage_tracking.constants import TRACK_NAME as LEVERAGE
+    from verify_lab.studies.midterm_cycle.constants import TRACK_NAME as MIDTERM_CYCLE
     from verify_lab.studies.reverse.constants import TRACK_NAME as REVERSE
     from verify_lab.studies.usdkrw_equivalence.constants import TRACK_NAME as EQUIVALENCE
 
     # 프로브 이름은 `scripts/data/check_*.py` 가 소유한다. 그 스크립트를 import 하면
     # pykrx 가 딸려 와 로그인을 시도하므로(계층 계약의 「지연 import」) 값만 옮겨 적는다
     probe_names = ["ecos_probe", "pykrx_etf_probe", "pykrx_splice_probe"]
-    names = [REVERSE, EQUIVALENCE, LEVERAGE, FUTURES, *probe_names]
+    names = [REVERSE, MIDTERM_CYCLE, EQUIVALENCE, LEVERAGE, FUTURES, *probe_names]
 
     # When / Then
     unmatched = [name for name in names if not writer.VALID_TRACK_NAME.match(name)]
@@ -504,8 +513,8 @@ class TestRunSummaryRejectsAbsolutePaths:
     경로가 섞여 있었다.
 
     **판정이 테스트에만 있으면 production 은 여전히 그 값을 쓴다.** `save_run_summary` 는
-    `summary.json` 을 쓰는 유일한 함수이므로(검증 여섯 · 매매 셋이 모두 여기를 지난다) 여기서
-    막으면 아홉 개가 한 번에 덮이고, **앞으로 만들 검증도 자동으로 덮인다.**
+    `summary.json` 을 쓰는 유일한 함수이므로(검증과 매매가 모두 여기를 지난다) 여기서
+    막으면 전부가 한 번에 덮이고, **앞으로 만들 검증도 자동으로 덮인다.**
     """
 
     def test_정상_요약은_그대로_저장된다(self, tmp_path: Path) -> None:

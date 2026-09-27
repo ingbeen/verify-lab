@@ -699,3 +699,32 @@ INDEX 를 앞(P3)에 두는 이유: 뒤 페이즈마다 파일을 지우고 옮�
 | S8 | 개명한 세 파일의 모듈 docstring | `test_execution_trade_fill_scheduled.py:3` 「옵션 만기일과 월말이 함께 쓰는 경로다」(지금 쓰는 곳은 중간선거_사이클) · `test_execution_trade_fill.py:1` 「역방향 매매 규칙의 체결 계약」 · `test_execution_periods.py:1` 「만기 매매 성적표의 구간 축」 — 새 이름(공유 계층)과 첫 줄이 어긋나고, 「핵심 계약은 다섯/일곱」의 개수도 본문 항목 수와 다르다(리뷰 측정 6 · 6 · 8) | ③ (주석·docstring) |
 | S13 (일부) | `tests/test_output_contract.py:797` · `:868` | `FIXED_LEVEL = -5.0` 의 출처를 「월말 규칙 문서 §1 의 권고 손절선(확정 전)」으로 적는다(월말은 조사로 내려가 코드가 없다) · `test_사용자가_보는_세_이름이_상수로_정의돼_있다` 가 넷을 검사한다 | ③ (주석·docstring) |
 | S7 | `docs/조사/만기_말일/결과.md:42` | 복원 목록의 `tests/test_strategy_output_contract.py`(픽스처)는 `5022dc9` 트리의 이름이라 그대로 뒀다(② Non-Goals). 그런데 **지금 트리에서 그 계약 파일은 `tests/test_output_contract.py` 다** — 적힌 대로 옛 파일을 통째로 checkout 하면 같은 계약 테스트가 두 벌 돈다. 복원은 **픽스처만 새 파일로 옮기는 것**이어야 한다 | ⑥ (복원 절차 한 벌 — 판단 4 의 「복원 지점 뒤에도 바뀐 파일」 목록에 더한다) |
+
+### 12.5 계획서 ③ — 코드 리뷰 1회차 「그 외」 15건과 넘긴 항목
+
+> 버그 0. 이 계획서가 만든 결함 A · B · C 는 **사용자 결정(2026-09-28)으로 커밋 전에 고쳤다** — 나머지는 고치지 않았다.
+> S1 · S2 · S12 · S8 · S13 · S7(§12.4)의 처리는 ③ 계획서 진행 로그에 있다. S12 는 이름만 고쳤고 픽스처 결함은 아래 T4 로 남는다.
+
+**고친 것 — 이 계획서가 만든 결함**
+
+| # | 자리 | 무엇 | 조치 |
+| --- | --- | --- | --- |
+| A | `tests/test_layer_contracts.py` `_FILENAME_SHAPE` | `.csv` 부분 문자열 검사를 지우자 `f"{name}.csv"`·`name + ".csv"` 조립이 어느 검사에도 안 걸렸다 — 남은 검사의 정규식이 `.csv` 앞에 한 글자를 요구해 AST 상수 `".csv"` 를 놓쳤다 | `+` → `*`. 변형 셋(f-string · 덧셈 → 실패, 산문 → 통과) |
+| B | `studies/reverse/runner.py` · `trading.py` 의 `_identity` | `values` 에만 있는 식별 키가 투영에서 조용히 빠졌다 | 키 집합이 `IDENTITY_COLUMNS` 와 다르면 내부 불변조건 `RuntimeError`. 변형 둘 모두 실패 |
+| C | `report/writer.py` docstring · `execution/constants.py`(`NOTE_STOP_BASE` 주석 · 모듈 docstring) · `tests/test_report_tables.py` 주석 | 새로 쓴 문구가 틀리거나(「측정·체결 칸 아래」) 과장하거나(「매매법 전부」) 과거형이었다 | 사실대로 · 현재형으로 |
+
+**고치지 않은 것 — 백로그**
+
+| # | 자리 | 무엇 | 대상 |
+| --- | --- | --- | --- |
+| T1 | `tests/CLAUDE.md:222` | 「보합 20% 재현 테스트가 `test_measure_screening.py` 에」 — 그 파일에 없다(원래 없었고 가장 가까운 것도 방향 표와 함께 사라졌다). 같은 계약은 `test_measure_statistics.py` 의 여집합 테스트가 갖는다 | ④ |
+| T2 | `tests/test_measure_screening.py` `TestSingleOwner` | `"MIN_HIT_RATE" not in source` 는 그 상수가 저장소에 없어 늘 참 — `periods.py` 가 `MIN_EXPECTED_VALUE` 나 `>= 0.01` 로 게이트를 다시 써도 통과한다 | 결정 필요 |
+| T3 | `tests/test_output_contract.py` | `TestCoverage` 는 `OUTPUT_FIXTURES` 만 레지스트리와 대조한다 — 다른 테스트 약 8곳의 `(이름, 표)` 목록은 여전히 손으로 적어, 새 매매법이 그 검사들을 조용히 건너뛸 수 있다 | 결정 필요 |
+| T4 | `tests/test_studies_reverse_trading.py` 순위 컷 테스트 | 합성 시세에서 컷 5·10·20 이 모두 신호 3건이라 `wide >= narrow` 가 등호로만 통과한다 — 매매 계층이 컷을 무시해도 못 잡는다. `_market` 픽스처를 바꿔야 한다 | 결정 필요 |
+| T5 | `tests/` · `src/verify_lab/*/__init__.py` | 「재수출하지 않는다」를 강제하는 장치가 없다 — `TestCommonLayerReexport` 는 `studies`·`execution` 이 공통 계층에서 빌린 이름만 본다 | 결정 필요 |
+| T6 | `data/pykrx_collector.collect_pykrx_nav` · `studies/futures_leverage/runner.run_study` | 리뷰는 주입 인자를 걷은 것이 형제 함수(`output_dir`·`market_dir` 를 받는다)와 갈리고 테스트 입구를 없앴다고 본다. **Q8 ④ 로 사용자가 정한 제거**라 재론이 아니라 기록이다. `horizons_or_default(None)` 이 운영 호출의 유일한 모양이 된 것도 같은 자리다 | 기록 |
+| T7 | `report/constants.py` `DISPLAY_HOLD_DAYS_EXACT` · `execution/constants.py` `DISPLAY_HOLD_DAYS` | 둘 다 체결 하나의 보유 거래일 수인데 헤더가 「보유 거래일」·「보유일」로 갈린다 — 합치면 중간선거 `측정.csv` 헤더가 바뀐다(값 변경 커밋) | 결정 필요 |
+| T8 | `tests/test_measure_screening.py:13` | 「기대값 하나»만«」 — 겹화살괄호 방향(옛 파일에서 옮긴 그대로) | 사소 |
+| T9 | 작업 트리 | `full_period.csv`(값 변경) · `docs/INDEX.md`(머지 문서 등록)가 ③ 과 한 작업 트리에 있다 — **사용자가 따로 커밋** | 운영 |
+
+**Non-Goals 로 넘긴 것** — 목록은 `SLIM_SERIES.md` ③ 인계 메모에 있다(⑥ 달력 문서 포인터 · ⑦ 원달러 그리드 포인터 · ④ 계약 문서와 `tracks.py` 주석). 그 밖에 `NOTE_STOP_BASE` 두 벌(합치면 역방향 `summary.json` 이 바뀐다)과 §12.1 의 `_print_rule` 출처 이중화는 그대로다.

@@ -43,6 +43,7 @@ PLANS_KEEPER_PATH = PROJECT_ROOT / "docs" / "plans" / ".gitkeep"
 
 # 저장소에서 걷어낸 문서.
 # 되살아나면 「앞으로의 계획」과 작업 일지가 다시 쌓이고, 근거가 두 벌이 된다.
+# 줄 끝 주석이 없는 항목은 이 두 줄이 사유다.
 REMOVED_DOCUMENTS = (
     "docs/ROADMAP.md",
     "docs/HANDS_ON.md",
@@ -221,5 +222,7 @@ def test_removed_documents_stay_removed(removed: str) -> None:
     """
     target = PROJECT_ROOT / removed
     assert not target.exists(), (
-        f"걷어낸 문서가 되살아났습니다: {removed}\n" "  걷어낸 사유는 tests/test_index.py 의 REMOVED_DOCUMENTS 주석에 있습니다"
+        f"걷어낸 문서가 되살아났습니다: {removed}\n"
+        "  그 경로를 지우세요. 되살려야 한다면 tests/test_index.py 의 REMOVED_DOCUMENTS 에서\n"
+        "  그 줄과 사유를 먼저 고치세요 (사유는 그 줄 끝 주석, 없으면 목록 위 주석에 있습니다)"
     )

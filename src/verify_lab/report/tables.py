@@ -27,12 +27,6 @@ from verify_lab.measure.constants import (
     COL_HORIZON,
     COL_SIGNAL_COUNT,
 )
-from verify_lab.measure.screening import (
-    COL_DIRECTION,
-    COL_EXPECTED_VALUE,
-    COL_HIT_RATE,
-    COL_TOTAL_RETURN,
-)
 from verify_lab.measure.statistics import (
     COL_BASELINE_SAMPLE_COUNT,
     COL_DOWN_RATE_P_VALUE,
@@ -72,14 +66,11 @@ from verify_lab.report.constants import (
     DISPLAY_BASELINE,
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
-    DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
     DISPLAY_DOWN_RATE_PERCENTILE,
     DISPLAY_EXCLUDED,
-    DISPLAY_EXPECTED_VALUE,
-    DISPLAY_HIT_RATE,
     DISPLAY_HORIZON,
     DISPLAY_MAX,
     DISPLAY_MEAN,
@@ -103,7 +94,6 @@ from verify_lab.report.constants import (
     DISPLAY_SIGNAL_SAMPLE,
     DISPLAY_STD,
     DISPLAY_TEST_NOTE,
-    DISPLAY_TOTAL_RETURN,
     DISPLAY_UP_RATE,
     DISPLAY_UP_RATE_DIFF,
     DISPLAY_UP_RATE_P_VALUE,
@@ -549,51 +539,3 @@ def to_display_columns(
         converted[column] = converted[column].round(PROBABILITY_DECIMALS)
 
     return converted.rename(columns=dict(labels))
-
-
-def build_direction_table(directions: pd.DataFrame, *, axis_column: str, axis_label: str) -> pd.DataFrame:
-    """축별 **거는 방향과 그 크기**를 표시용으로 바꾼다.
-
-    **1차 판정을 싣지 않는다** (2026-09-16 통합). 판정의 자리는 `성적표.csv` 하나이며,
-    맨몸 성적으로 게이트를 넘은 칸이 확정 손절선을 걸면 떨어지는 일이 실재하기 때문에
-    **판정과 체결 성적이 같은 표에 있어야 한다.** 이 표는 그 판정을 읽을 재료를 낸다.
-
-    **판정에 쓰이는 값과 그 값을 읽는 데 필요한 값만 낸다.** 등급 넷(기준선 대비
-    차이·우연확률·시기·손익비)의 재료를 함께 실으면 판정과 무관한 열이 표를 채운다.
-
-    **회당 기대값과 합산 수익률을 표본 수와 함께 나란히 낸다** (측정의 원칙 16).
-    셋 중 하나라도 빠지면 그 칸의 크기를 판단할 수 없다 — 회당만 있으면 작아 보이고,
-    합산만 있으면 기간이 긴 칸이 자동으로 이긴다.
-
-    **기준선을 내지 않는다.** 기준선은 「이 신호가 시장 전체와 다른가」를 묻고 판정은
-    「걸 만한가」를 묻는 **다른 질문**이라, 함께 실으면 읽는 사람이 판정에 안 쓰는 축으로
-    거른다. 값은 같은 폴더의 `통계.csv` 계열이 담는다
-    (루트 `CLAUDE.md` 「기준선은 탈락 사유가 아니다」).
-
-    Args:
-        directions: `screening.direction_profile` 의 결과
-        axis_column: 축 컬럼 이름
-        axis_label: 축의 표시 이름
-
-    Returns:
-        한글 레이블과 백분율로 바뀐 방향 표
-
-    Raises:
-        ValueError: 축 컬럼이 없는 경우
-    """
-    if axis_column not in directions.columns:
-        raise ValueError(f"방향 표에 축 컬럼이 없습니다: {axis_column}")
-
-    return pd.DataFrame(
-        {
-            axis_label: directions[axis_column].to_numpy(),
-            DISPLAY_SAMPLE_COUNT: directions[COL_SAMPLE_COUNT].to_numpy(),
-            DISPLAY_DIRECTION: directions[COL_DIRECTION].to_numpy(),
-            DISPLAY_HIT_RATE: _to_percent(directions[COL_HIT_RATE]).to_numpy(),
-            DISPLAY_EXPECTED_VALUE: _to_percent(directions[COL_EXPECTED_VALUE]).to_numpy(),
-            # **회당 기대값 바로 뒤에 둔다** (측정의 원칙 16). 신호가 드물거나 보유가 며칠짜리인
-            # 매매법은 회당 평균이 구조적으로 작게 나와 크기 감각을 주지 못하고, 왕복 수수료와
-            # 견줄 값인지도 그 자리에서 보이지 않는다. 떨어뜨려 두면 둘이 같이 읽히지 않는다
-            DISPLAY_TOTAL_RETURN: _to_percent(directions[COL_TOTAL_RETURN]).to_numpy(),
-        }
-    )

@@ -609,19 +609,11 @@ def _label_horizons(table: pd.DataFrame) -> pd.DataFrame:
     return labelled
 
 
-def run_study(
-    index_filter: str | None = None,
-    horizons: list[int] | None = None,
-    market_dir: Path = MARKET_DIR,
-    series_dir: Path = SERIES_DIR,
-) -> StudyOutputs:
+def run_study(index_filter: str | None = None) -> StudyOutputs:
     """검증 #9 를 실행한다.
 
     Args:
         index_filter: 지수 이름으로 좁힌다 (예: `KOSPI200`). None 이면 전부
-        horizons: 보유 기간 목록. None 이면 이 검증의 격자
-        market_dir: 원시 시세 폴더
-        series_dir: 단일 값 시계열 폴더
 
     Returns:
         검증 산출물
@@ -629,8 +621,8 @@ def run_study(
     Raises:
         ValueError: 잰 짝이 하나도 없는 경우
     """
-    grid = horizons_or_default(horizons)
-    interest = _load_interest(series_dir)
+    grid = horizons_or_default(None)
+    interest = _load_interest(SERIES_DIR)
 
     futures_cache: dict[str, pd.DataFrame] = {}
     contract_parts: list[pd.DataFrame] = []
@@ -646,7 +638,7 @@ def run_study(
         if index_filter is not None and pair.index_name != index_filter:
             continue
 
-        futures_path = market_dir / FUTURES_FILE_TEMPLATE.format(product_id=pair.product_id)
+        futures_path = MARKET_DIR / FUTURES_FILE_TEMPLATE.format(product_id=pair.product_id)
         if not futures_path.is_file():
             skipped.append((pair.target_ticker, f"선물 시세 파일이 없습니다: {futures_path.name}"))
             logger.warning(f"선물 시세가 없어 짝을 건너뜁니다 - {pair.target_ticker}: {futures_path.name}")
@@ -663,7 +655,7 @@ def run_study(
         series, _ = build_continuous_series(futures_cache[pair.product_id], ROLL_RULES[0])
         contract_parts.append(_integer_contract_table(pair, series))
 
-        outputs = _run_pair(pair, futures_cache[pair.product_id], interest, grid, market_dir)
+        outputs = _run_pair(pair, futures_cache[pair.product_id], interest, grid, MARKET_DIR)
         comparison_parts.append(outputs.comparison)
         decomposition_parts.append(outputs.decomposition)
         drift_parts.append(outputs.leverage_drift)

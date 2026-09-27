@@ -124,7 +124,7 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         choices=[dataset.key for dataset in DATASETS],
         default=[dataset.key for dataset in DATASETS],
-        help="대상 시세 (기본값: 전부). 국내 두 기준의 대조는 함께 돌려야 성립합니다",
+        help="대상 시세 (기본값: 전부). 고르면 측정과 체결을 그 대상으로만 좁히고, 전체 실행의 산출물 폴더를 덮어씁니다",
     )
     parser.add_argument(
         "--repeats",
@@ -172,7 +172,7 @@ def _selected_targets(keys: list[str]) -> list[Target]:
 def _print_rule() -> None:
     """적용한 체결 규칙을 먼저 보여준다.
 
-    **손절선은 확정값 하나다** — 격자와 무손절 대조는 지웠다(규칙 문서 결정 ⑭).
+    **손절선은 확정값 하나다** — 격자와 무손절 대조는 내지 않는다(규칙 문서 결정 ⑭).
     """
     logger.debug("진입: 신호일 종가")
     logger.debug(f"손절: {stop_level_value(STOP_LOSS_LEVEL, measurable=True)}% — 진입가 기준, 보유 기간 내내 고정")

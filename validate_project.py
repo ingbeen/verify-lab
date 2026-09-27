@@ -20,10 +20,10 @@ import sys
 
 # 개수를 파싱하지 못했을 때의 표기.
 #
-# **「몇 개인지 모른다」와 「1개다」는 다른 사실이다.** 전에는 파싱에 실패하면 1 로 채웠고,
-# 그러면 도구 출력 형식이 바뀌어 파싱이 통째로 깨져도 「오류 1개」라는 그럴듯한 숫자가 나왔다.
+# **「몇 개인지 모른다」와 「1개다」는 다른 사실이다.** 파싱에 실패했을 때 1 로 채우면
+# 도구 출력 형식이 바뀌어 파싱이 통째로 깨져도 「오류 1개」라는 그럴듯한 숫자가 나온다.
 # 이 저장소가 다른 곳에서 일관되게 금지하는 패턴이다 — `measure/screening.py` 가
-# 「판정 안 함」과 「제외」를 가르고 `strategy/constants.py` 가 `무손절`·`손절불가` 를 가른 것과 같다.
+# 「판정 안 함」과 「제외」를 가르고 `execution/constants.py` 가 `무손절`·`손절불가` 를 가르는 것과 같다.
 #
 # **성패 판정은 계속 종료코드로 한다.** 이 값은 표시용이며 합계에는 0 으로 들어간다
 UNKNOWN_COUNT_DISPLAY = "개수 미상"
@@ -39,8 +39,8 @@ RUFF_SUMMARY_PATTERN = re.compile(r"\bFound (\d+) errors?\b")
 PYRIGHT_SUMMARY_PATTERN = re.compile(r"\b(\d+) errors?, \d+ warnings?, \d+ informations?\b")
 
 # Pytest 요약 줄 — `======= 3 failed, 1126 passed, 2 skipped in 12.34s =======`.
-# **요약 줄로 한정한다** — 전에는 `passed` 가 든 줄이면 무엇이든 봤고,
-# `-v` 출력의 테스트 «이름»에 그 단어가 들어가면 엉뚱한 수를 집는다.
+# **요약 줄로 한정한다** — `passed` 가 든 줄이면 무엇이든 보면,
+# `-v` 출력의 테스트 «이름»에 그 단어가 들어갈 때 엉뚱한 수를 집는다.
 #
 # **`error` 도 함께 센다** — 수집·픽스처 실패는 `failed` 가 아니라 `errors` 로 나오는데,
 # 빼면 「1 failed, 3 errors」에서 합계가 1 이 되어 **그럴듯한 숫자가 실제 손상을 덮는다**
@@ -86,7 +86,6 @@ def run_ruff() -> tuple[bool, int | None]:
         text=True,
     )
 
-    # Ruff 출력 표시
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -120,7 +119,6 @@ def run_pyright() -> tuple[bool, int | None]:
         text=True,
     )
 
-    # PyRight 출력 표시
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -180,7 +178,6 @@ def run_pytest(with_coverage: bool = False) -> tuple[bool, int | None, int | Non
         text=True,
     )
 
-    # Pytest 출력 표시
     if result.stdout:
         print(result.stdout)
     if result.stderr:
@@ -267,26 +264,21 @@ def main() -> int:
     """
     args = parse_args()
 
-    # --cov 옵션 검증
     if args.cov and (args.only_lint or args.only_pyright):
         print("오류: --cov 옵션은 --only-lint, --only-pyright와 함께 사용할 수 없습니다.")
         return 1
 
-    # 실행할 도구 결정
     if args.cov:
-        # --cov 옵션: 테스트 + 커버리지만 실행
         should_run_lint = False
         should_run_pyright = False
         should_run_tests = True
     else:
-        # 전체 실행인지 개별 도구 실행인지 판단
         is_only_mode = args.only_lint or args.only_pyright or args.only_tests
 
         should_run_lint = args.only_lint or not is_only_mode
         should_run_pyright = args.only_pyright or not is_only_mode
         should_run_tests = args.only_tests or not is_only_mode
 
-    # 타이틀 생성
     tools = []
     if should_run_lint:
         tools.append("Ruff")
@@ -300,32 +292,27 @@ def main() -> int:
     print(f"  {title}")
     print("=" * 80)
 
-    # 결과 수집
     results = {}
     section_num = 1
 
-    # 1. Ruff 실행
     if should_run_lint:
         print_section(f"{section_num}. Ruff 린트 체크")
         section_num += 1
         ruff_success, ruff_errors = run_ruff()
         results["ruff"] = (ruff_success, ruff_errors)
 
-    # 2. PyRight 실행
     if should_run_pyright:
         print_section(f"{section_num}. PyRight 타입 체크")
         section_num += 1
         pyright_success, pyright_errors = run_pyright()
         results["pyright"] = (pyright_success, pyright_errors)
 
-    # 3. Pytest 실행
     if should_run_tests:
         print_section(f"{section_num}. Pytest 테스트")
         section_num += 1
         pytest_success, passed, failed, skipped, errors = run_pytest(with_coverage=args.cov)
         results["pytest"] = (pytest_success, passed, failed, skipped, errors)
 
-    # 최종 결과 요약
     print_section("최종 결과")
 
     total_errors = 0

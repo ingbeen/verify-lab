@@ -26,8 +26,6 @@ logger = get_logger(__name__)
 COL_SURGE_RANK = "SurgeRank"
 COL_PLUNGE_RANK = "PlungeRank"
 
-RANK_COLUMNS = [COL_DATE, COL_SURGE_RANK, COL_PLUNGE_RANK]
-
 
 def expanding_rank(df: pd.DataFrame) -> pd.DataFrame:
     """판정일까지의 등락률만으로 폭등·폭락 순위를 매긴다.
@@ -41,7 +39,7 @@ def expanding_rank(df: pd.DataFrame) -> pd.DataFrame:
         df: 날짜 오름차순 시세 (`data/loader.py` 가 검증해 돌려준 형태)
 
     Returns:
-        `RANK_COLUMNS` 순서의 순위표. 행 수와 순서는 입력과 같다.
+        `COL_DATE` · `COL_SURGE_RANK` · `COL_PLUNGE_RANK` 순서의 순위표. 행 수와 순서는 입력과 같다.
         입력은 변경하지 않는다
 
     Raises:

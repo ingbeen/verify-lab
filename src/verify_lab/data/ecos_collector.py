@@ -88,7 +88,8 @@ class EcosSeries:
 
 
 # 수집 대상. **값은 실측으로 확정했다** — 근거는 `docs/조사/원달러_그리드/설계.md` 참고.
-# 자릿수는 `.claude/rules/python.md` 반올림 규칙표를 따른다 (환율은 가격, CD91 은 백분율이라 둘 다 2자리)
+# 자릿수는 둘 다 2자리다 — 반올림 규칙표(`~/.claude/rules/python.md`)의 「소수 가격 4자리」와
+# 다르지만, 그 표는 이미 저장된 수집물의 자릿수를 소급해 바꾸지 않는다
 ECOS_SERIES: Final = (
     EcosSeries(
         key="usdkrw",

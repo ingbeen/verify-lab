@@ -832,7 +832,7 @@ class TestPercentileUnitContract:
         목적: `measure` 가 백분율로 내던 것을 막는다.
 
         계층 간 계약이 "`measure` 는 비율(0~1) 그대로, 저장 직전 백분율 2자리"로 정했고
-        `.claude/rules/python.md` 도 "모든 비율 값은 0~1 사이 소수"를 요구한다.
+        `~/.claude/rules/python.md` 도 "모든 비율 값은 0~1 사이 소수"를 요구한다.
         **이 값만 계약 밖으로 나가 있어서** 두 출력 경로가 서로 다르게 취급했다 —
         한쪽은 백분율(2자리), 다른 쪽은 확률(4자리)로 읽었다.
 

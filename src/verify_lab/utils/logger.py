@@ -5,7 +5,7 @@
 **파일 경로를 저장소 루트 기준 상대 경로로 찍는다.** VSCode 터미널에서 `경로:줄번호` 가
 클릭 가능한 형태라, 로그를 읽다가 그 자리로 바로 갈 수 있다.
 
-레벨 정책은 `.claude/rules/python.md` 를 따른다 — 비즈니스 로직은 DEBUG·WARNING 만 쓰고
+레벨 정책은 `~/.claude/rules/python.md` 를 따른다 — 비즈니스 로직은 DEBUG·WARNING 만 쓰고
 ERROR 는 CLI 계층이 예외를 받을 때만 쓴다.
 """
 

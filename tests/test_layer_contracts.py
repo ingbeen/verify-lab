@@ -13,7 +13,7 @@
 | `판정가능` 과 그 값 | `measure/constants.py` | 측정의 원칙 17이 모든 검증에 요구한다 |
 | 칸당 표본 하한 | `measure/constants.py` | 원칙 12·17이 같은 하한을 쓰므로 소유자가 하나다. 값은 `MIN_SAMPLE_PER_CELL` 이 갖는다 |
 | 체결 판정식 | `execution/trade_fill.py` | 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오고, 두 곳에 두면 그 함정을 두 번 관리한다 |
-| 구간별 성적 산식 | `execution/periods.py` | 구간 5행은 세 매매법에 공통이다 (측정의 원칙 17) |
+| 구간별 성적 산식 | `execution/periods.py` | 구간 5행은 매매법 전부에 공통이다 (측정의 원칙 17) |
 | 평균-비율 어긋남 판정과 그 임계값 | `measure/statistics.py` · `measure/constants.py` | 원칙 13이 모든 검증에 요구한다. **실제로 두 검증에 docstring까지 같은 함수가 두 벌 있었다** |
 | 판정가능 «식» | `measure/statistics.py` | 값(하한)만 공통이고 식은 다섯 곳에 있었다 — 하한을 바꿔도 한 곳이 안 따라오면 드러나지 않는다 |
 
@@ -118,8 +118,10 @@ _PERIOD_SEPARATOR = " ~ "
 
 # 「파일 이름 하나로만 이루어진 문자열」. 짝마다 이름이 갈리는 틀(`windows_{pair}.csv`)과
 # **한글 이름**(`성적표.csv`)도 포함한다 — 매매 산출물이 한글이라 라틴 문자만 보면 통째로 샌다.
+# **확장자 조각(`.csv`) 하나만 든 문자열도 잡는다** — `f"{name}.csv"`·`name + ".csv"` 로 이름을
+# 조립하면 AST 에 남는 상수가 그 조각뿐이라, 앞에 한 글자를 요구하면 조립이 통째로 빠진다.
 # **산문은 공백이 있어 걸리지 않는다** — 도움말이 산출물을 언급하는 것은 정의가 아니다
-_FILENAME_SHAPE = re.compile(r"[^\s/\\]+\.csv")
+_FILENAME_SHAPE = re.compile(r"[^\s/\\]*\.csv")
 
 
 def _study_packages() -> list[Path]:
@@ -1246,8 +1248,8 @@ class TestExecutionLayerComposition:
         공유 `constants.py` 가 `studies.reverse.constants` 를 가져오던 시절에는
         **월말 매매를 돌려도 역방향의 `DATASETS` 정의가 딸려 왔다.**
 
-        **매매 파라미터가 검증 패키지 안으로 들어가면서 두 금지가 하나가 됐다** — 전에는
-        「매매법별 상수 모듈」과 「검증 패키지」를 따로 막아야 했는데, 이제 후자 하나로 닫힌다.
+        **매매 파라미터가 검증 패키지 안에 있으므로 금지는 하나다** — 「검증 패키지를 가져오지
+        않는다」 하나가 「매매법별 상수 모듈」까지 닫는다.
 
         Given: 매매법 이름이 없는 공유 실행 모듈
         When: 각 파일이 가져오는 검증 패키지를 본다
@@ -1266,7 +1268,7 @@ class TestExecutionLayerComposition:
         """
         목적: 「기본값을 두지 않는다」를 `trade_fill` 에도 건다.
 
-        `measure.screening.screen_candidates` 의 `tradable` 과
+        `measure.screening.screen_verdict` 의 `tradable` 과
         `execution.constants.stop_level_value` 의 `measurable` 이 **같은 이유로 이미 기본값을 두지 않는다** —
         기본이 있으면 인자를 빠뜨린 호출이 조용히 틀린 성적을 낸다. 그 관용을 따른다.
 
@@ -1335,10 +1337,9 @@ class TestExecutionLayerComposition:
 class TestDatasetRecordKeys:
     """`summary.json` 의 `datasets` 한 줄은 계층을 가리지 않고 같은 키를 쓴다
 
-    **소유자를 옮기면서 검사할 자리가 바뀌었다.** 전에는 검증마다 사전을 손으로 조립해서
-    「그 사전의 키」를 봤는데, 이제 리터럴은 `report/run_summary.py` 한 곳뿐이다
-    (`TestDatasetRecordOwnership` 가 그것을 고정한다). 되살아날 수 있는 실수는 **호출부**로
-    옮겨갔으므로 여기서는 그쪽을 본다.
+    **검사할 자리는 호출부다.** 사전 리터럴은 `report/run_summary.py` 한 곳뿐이고
+    (`TestDatasetRecordOwnership` 가 그것을 고정한다), 되살아날 수 있는 실수는 **호출부**에
+    있으므로 여기서는 그쪽을 본다.
     """
 
     def test_네_산출_지점이_모두_공통_함수를_쓴다(self) -> None:
@@ -1436,7 +1437,7 @@ class TestRunSummaryOwnership:
         **문자열이 아니라 AST 로 본다.** 소스 문자열 검사는 앞줄에 한 칸을 끼워 넣는 것으로
         우회되는데(`summary["output_dir"] = ...`), 넘기는 «값의 모양»을 보면 그 우회가 막힌다.
 
-        **매매법 셋은 한 실행이 측정과 체결을 함께 내므로 요약도 합쳐 넘긴다.** 합치는 것은
+        **매매법은 한 실행이 측정과 체결을 함께 내므로 요약도 합쳐 넘긴다.** 합치는 것은
         CLI 가 아니라 공유 모듈(`execution/run_summary.merge_run_summary`)이 하며, 그 이름을
         거친 지역변수만 허용한다 — 사전 리터럴을 조립하면 이름이 달라 걸린다.
 
@@ -1462,9 +1463,9 @@ class TestRunSummaryOwnership:
 class TestStudyOutputFiles:
     """산출물 파일 이름의 소유자는 그 검증의 `constants.py` 이고, 요약은 그 이름으로 키잉한다
 
-    **전에는 CLI 가 파일 이름을 들고 요약의 별칭 키와 손으로 짝지었다.**
-    `run_usdkrw_equivalence_study.py` 가 `[EQUIVALENCE_FILENAME, counts['equivalence']]` 로
-    둘을 잇고 있었다 — 한쪽만 고치면 표가 엉뚱한 숫자를 보여주는데 예외는 나지 않는다.
+    **CLI 가 파일 이름을 들고 요약의 별칭 키와 손으로 짝지으면**
+    (`[EQUIVALENCE_FILENAME, counts['equivalence']]` 처럼) 한쪽만 고쳤을 때 표가 엉뚱한 숫자를
+    보여주는데 예외는 나지 않는다.
 
     매매 계층은 `build_run_summary` 가 이미 런타임으로 이것을 거부한다
     (`row_counts` 의 키가 `.csv` 로 끝나지 않으면 `ValueError`). 여기서는 **검증 계층**을 본다.
@@ -1500,8 +1501,8 @@ class TestStudyOutputFiles:
         """
         목적: 파일 이름이 CLI 로 흩어지는 것을 막는다 (`scripts/CLAUDE.md`).
 
-        매매 계층은 이미 `execution/constants.py` 가 네 이름을 소유한다. 전에는 **매매
-        스크립트 세 곳에 흩어진 문자열**이었고 그래서 같은 뜻의 표가 세 이름으로 갈렸다.
+        매매 계층은 이미 `execution/constants.py` 가 체결 두 이름을 소유한다. 이름이 **매매
+        스크립트마다 흩어진 문자열**이 되면 같은 뜻의 표가 매매법마다 다른 이름으로 갈린다.
 
         Given: 검증 실행 스크립트 전부
         When: `*_FILENAME` 상수를 찾는다
@@ -1529,6 +1530,9 @@ class TestStudyOutputFiles:
         **산문은 뺀다.** 도움말 문구가 산출물을 가리키며 파일 이름을 언급하는 것은 설명이지
         정의가 아니다(`execution.csv 가 「아래」를 인버스 실물로 재기 때문이다`).
         **「파일 이름 «하나»로만 이루어진 문자열」**만 정의로 본다 — 산문은 공백이 있어 갈린다.
+        **확장자 조각(`.csv`) 하나만 든 문자열도 거기 든다** — 위 `f"{name}.csv"` 처럼 이름을 조립하면
+        AST 에 남는 상수가 그 조각뿐이기 때문이다.
+        **`.csv` 부분 문자열을 통째로 막는 검사를 따로 두지 않는다** — 산문까지 걸려 이 예외를 무력화한다.
 
         Given: 검증 실행 스크립트 전부
         When: 파일 이름 모양의 문자열 리터럴을 찾는다 (docstring 제외)
@@ -1747,20 +1751,15 @@ class TestKrxCommonOwnership:
 
 # **이미 있는 겹침만 허용목록으로 고정하고 그 밖의 새 겹침을 막는다.** 전면 금지로 두면
 # 정당한 겹침까지 막힌다 — 아래 대부분은 `src/verify_lab/CLAUDE.md` 「어디까지가 공통이고
-# 어디부터 그 검증의 것인가」가 **일부러 뽑지 않기로 한** 달력형·배수형 어휘다(2026-09-14 결정).
+# 어디부터 그 검증의 것인가」가 **일부러 뽑지 않기로 한** 배수형 어휘다(2026-09-14 결정).
 #
-# 성격은 셋이다.
-#   ㉮ 달력형 두 검증이 공유하는 어휘 — `진입 종가` · `청산 종가` · `보유 거래일` · `제외 사유`
-#   ㉯ 배수형 두 검증이 공유하는 어휘 — `배수` · `지수` · `1배 종목` · `시작일` · `종료일`
-#     (`비중첩 표본` 은 2026-09-22 에 세 번째 검증이 오면서 `report/constants.py` 로 올라가 빠졌다)
-#   ㉰ 같은 매매법의 «검증과 매매»가 같은 말을 쓰는 것 — `사건` · `파라미터` · `만기월` · `청산일`
+# 대표적인 성격은 둘이다.
+#   ㉮ 배수형 두 검증이 공유하는 어휘 — `배수` · `지수` · `시작일` · `종료일`
+#   ㉯ 같은 매매법의 «검증과 매매»가 같은 말을 쓰는 것 — `사건` · `파라미터` · `시작연도`
 #
 # **여기 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다**(부분집합 검사) —
 # 막으면 중복을 줄이는 계획서마다 이 테스트가 실패한다.
 _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
-    "1배 종목": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
     "날짜": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
     "등락률(%)": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     # 배수형 두 검증이 **같은 금리 경계**로 가른 같은 축이다(검증 #9 가 #8 의 경계를 따른다).
@@ -1784,12 +1783,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     ),
     "사건": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "사건 번호": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
-    "수익률(%)": frozenset(
-        {
-            "verify_lab/execution/constants.py",
-            "verify_lab/studies/futures_leverage/constants.py",
-        }
-    ),
     "시작연도": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "시작일": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
@@ -1852,7 +1845,7 @@ class TestOutputLabelUniqueness:
         """
         목적: 「같은 이름이 다른 것을 가리키는」 상태가 **새로 생기는 것**을 막는다.
 
-        허용목록은 **이미 있는 겹침**을 고정한다. 대부분은 달력형·배수형 어휘를 일부러 뽑지
+        허용목록은 **이미 있는 겹침**을 고정한다. 대부분은 배수형 어휘를 일부러 뽑지
         않기로 한 결정의 결과이고, 그 판단의 SoT 는 `src/verify_lab/CLAUDE.md` 다.
 
         Given: `src` 안의 모든 `DISPLAY_*` 상수

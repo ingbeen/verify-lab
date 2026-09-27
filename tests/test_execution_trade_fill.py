@@ -1,10 +1,10 @@
-"""역방향 매매 규칙의 체결 계약을 고정한다.
+"""익절형 체결(`simulate_signal`)의 계약을 고정한다.
 
 이 계층이 틀리는 방식은 **판정 순서가 뒤바뀌는 것**이다. 시가·장중·종가를 이 순서로 보지 않으면
 갭 하락한 날이 장중 손절가로 체결된 것처럼 계산되어 **손실이 실제보다 작게 나온다.**
 예외는 나지 않고 표도 정상으로 보이므로 손계산으로 박는다.
 
-핵심 계약은 다섯 가지다.
+핵심 계약:
 - 갭 청산은 **손절선보다 더 잃는다**. 시가가 이미 아래면 그 시가가 체결가다
 - 장중 손절은 **손절선 가격**에 체결된다
 - 손절선은 **진입가 기준**이며 보유 기간 내내 갱신하지 않는다
@@ -25,10 +25,14 @@ from verify_lab.execution.constants import (
     EXIT_PROFIT,
 )
 from verify_lab.execution.trade_fill import simulate_signal
-from verify_lab.studies.reverse.constants import HOLD_LIMIT, STOP_LOSS_LEVEL
 
 # 손계산을 쉽게 하려고 진입가를 100 으로 둔다
 ENTRY_PRICE = 100.0
+
+# 이 파일에서 쓰는 손절선. 매매법의 상수를 빌리지 않고 손계산에 맞춰 테스트가 값을 명시한다 —
+# 빌리면 그 매매법이 값을 바꿀 때 공유 계층의 검사가 함께 무너진다
+# (`docs/MEMORY.md` 「공유 계층의 테스트는 «자기 픽스처»를 갖는다」)
+STOP_LEVEL = 0.05
 
 # 수익률 비교 허용오차 (tests/CLAUDE.md — 수학적 정확 계산)
 RATE_TOLERANCE = 1e-12
@@ -73,12 +77,12 @@ class TestStopLoss:
         frame = _frame([_signal_day(), (99.5, 100.0, 93.0, 94.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_INTRADAY_STOP
-        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert result.return_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
 
     def test_손절선에_정확히_닿으면_손절된다(self) -> None:
         """
@@ -89,11 +93,11 @@ class TestStopLoss:
         Then: 손절된다 (경계값을 포함한다)
         """
         # Given
-        stop_price = ENTRY_PRICE * (1.0 - STOP_LOSS_LEVEL)
+        stop_price = ENTRY_PRICE * (1.0 - STOP_LEVEL)
         frame = _frame([_signal_day(), (99.5, 100.0, stop_price, 99.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -133,13 +137,13 @@ class TestGapExit:
         frame = _frame([_signal_day(), (92.0, 95.0, 90.0, 94.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_GAP_STOP
         assert result.return_rate == pytest.approx(-0.08, abs=RATE_TOLERANCE)
-        assert result.return_rate < -STOP_LOSS_LEVEL
+        assert result.return_rate < -STOP_LEVEL
 
 
 class TestHoldLimit:
@@ -157,7 +161,7 @@ class TestHoldLimit:
         frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -177,25 +181,13 @@ class TestHoldLimit:
         frame = _frame([_signal_day(), (99.5, 100.0, 98.0, 99.0), (99.0, 99.5, 97.5, 98.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_LIMIT
         assert result.hold_days == 2
         assert result.return_rate == pytest.approx(-0.02, abs=RATE_TOLERANCE)
-
-    def test_확정된_한도는_D_플러스_2다(self) -> None:
-        """
-        목적: 규칙이 정한 기본 한도를 고정한다
-
-        3일 구간은 평균 우연확률이 0.2917 로 근거가 없고, D+3 에서만 갭손절이 새로 생긴다.
-
-        Given: 확정 상수
-        When: 값을 봤을 때
-        Then: D+2 다
-        """
-        assert HOLD_LIMIT == 2
 
     def test_한도가_1_미만이면_거부한다(self) -> None:
         """
@@ -210,7 +202,7 @@ class TestHoldLimit:
 
         # When / Then
         with pytest.raises(ValueError, match="보유 한도"):
-            simulate_signal(frame, 0, upward=False, hold_limit=0, stop_level=STOP_LOSS_LEVEL)
+            simulate_signal(frame, 0, upward=False, hold_limit=0, stop_level=STOP_LEVEL)
 
 
 class TestStopBase:
@@ -231,13 +223,13 @@ class TestStopBase:
         frame = _frame([_signal_day(), (99.5, 100.0, 96.5, 97.0), (97.0, 97.5, 94.0, 94.5)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_INTRADAY_STOP
         assert result.hold_days == 2
-        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert result.return_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
 
 
 class TestDirection:
@@ -257,12 +249,12 @@ class TestDirection:
         frame = _frame([_signal_day(), (100.5, 107.0, 100.0, 101.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=True, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=True, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_INTRADAY_STOP
-        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert result.return_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
 
     def test_상승_방향_신호는_원지수_하락이_이익이다(self) -> None:
         """
@@ -276,7 +268,7 @@ class TestDirection:
         frame = _frame([_signal_day(), (99.0, 99.5, 96.5, 97.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=True, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=True, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -301,7 +293,7 @@ class TestBoundary:
         frame = _frame([_signal_day(), (99.5, 100.0, 98.0, 99.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LEVEL)
 
         # Then
         assert result is None
@@ -318,7 +310,7 @@ class TestBoundary:
         frame = _frame([_signal_day(), (99.5, 100.5, 98.0, ENTRY_PRICE)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -338,7 +330,7 @@ class TestBoundary:
 
         # When / Then
         with pytest.raises(ValueError, match="진입 위치"):
-            simulate_signal(frame, 5, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+            simulate_signal(frame, 5, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
     def test_시세에_필수_컬럼이_없으면_거부한다(self) -> None:
         """
@@ -353,7 +345,7 @@ class TestBoundary:
 
         # When / Then
         with pytest.raises(ValueError, match="필수 컬럼"):
-            simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+            simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
 
 class TestJudgementOrder:
@@ -374,7 +366,7 @@ class TestJudgementOrder:
         frame = _frame([_signal_day(), (92.0, 93.0, 88.0, 90.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -396,16 +388,16 @@ class TestJudgementOrder:
         frame = _frame([_signal_day(), (99.5, 101.5, 93.0, 101.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_INTRADAY_STOP
-        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert result.return_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
 
 
 class TestTakeProfitSwitch:
-    """익절 스위치 계약 — 옵션 만기일 매매가 이 함수를 함께 쓰기 위한 축
+    """익절 스위치 계약 — 달력형 진입점(`simulate_scheduled_trade`)이 이 함수를 함께 쓰기 위한 축
 
     두 매매의 차이는 **종가 익절 단계 하나뿐**이라 판정식을 두 벌 만들지 않고 스위치로 가른다.
     **기본값은 켜짐이며, 역방향 매매의 동작은 한 자리도 바뀌지 않아야 한다.**
@@ -425,7 +417,7 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -444,7 +436,7 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (99.0, 103.0, 98.0, 102.0), (102.0, 105.0, 101.0, 104.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -464,12 +456,12 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (99.5, 100.0, 93.0, 94.0), (94.0, 96.0, 93.5, 95.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_INTRADAY_STOP
-        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert result.return_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
 
     def test_익절을_꺼도_갭_판정이_먼저다(self) -> None:
         """
@@ -483,7 +475,7 @@ class TestTakeProfitSwitch:
         frame = _frame([_signal_day(), (92.0, 95.0, 90.0, 94.0), (94.0, 96.0, 93.0, 95.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, take_profit=False, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -514,7 +506,7 @@ class TestNoStop:
         frame = _frame([_signal_day(), (92.0, 102.0, 90.0, 101.0), (101.0, 103.0, 100.0, 102.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=HOLD_LIMIT, stop_level=None)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=None)
 
         # Then
         assert result is not None
@@ -559,7 +551,7 @@ class TestNoStop:
 
         # When / Then
         with pytest.raises(ValueError, match="양수"):
-            simulate_signal(frame, 0, upward=False, hold_limit=HOLD_LIMIT, stop_level=0.0)
+            simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=0.0)
 
 
 class TestWorstHoldRate:
@@ -678,13 +670,13 @@ class TestWorstHoldRate:
         frame = _frame([_signal_day(), (99.5, 100.0, 93.0, 94.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
         assert result.reason == EXIT_INTRADAY_STOP
-        assert result.return_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
-        assert result.worst_hold_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert result.return_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
+        assert result.worst_hold_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
 
     def test_갭_청산은_시가에서_끊긴다(self) -> None:
         """
@@ -701,7 +693,7 @@ class TestWorstHoldRate:
         frame = _frame([_signal_day(), (91.0, 92.0, 85.0, 90.0)])
 
         # When
-        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LOSS_LEVEL)
+        result = simulate_signal(frame, 0, upward=False, hold_limit=1, stop_level=STOP_LEVEL)
 
         # Then
         assert result is not None
@@ -725,13 +717,13 @@ class TestWorstHoldRate:
         frame = _frame([_signal_day(), (100.0, 100.0, 96.0, 99.0), (99.0, 99.0, 94.5, 95.0)])
 
         # When
-        tight = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LOSS_LEVEL)
+        tight = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=STOP_LEVEL)
         wide = simulate_signal(frame, 0, upward=False, hold_limit=2, stop_level=0.07)
 
         # Then
         assert tight is not None and wide is not None
         assert tight.reason == EXIT_INTRADAY_STOP
-        assert tight.worst_hold_rate == pytest.approx(-STOP_LOSS_LEVEL, abs=RATE_TOLERANCE)
+        assert tight.worst_hold_rate == pytest.approx(-STOP_LEVEL, abs=RATE_TOLERANCE)
         assert wide.reason == EXIT_LIMIT
         assert wide.worst_hold_rate == pytest.approx(-0.055, abs=RATE_TOLERANCE)
 

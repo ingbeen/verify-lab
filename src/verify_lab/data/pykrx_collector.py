@@ -79,7 +79,7 @@ KRX_NAV_COLUMN = "NAV"
 
 # NAV 저장 자릿수. **호가가 아니라 계산된 값**이라 소스가 소수 둘째 자리까지 준다.
 # 정수로 반올림하면 상대오차가 1e-4 수준이 되는데, 재려는 프리미엄이 0.1% 대라
-# 측정치가 반올림 오차에 묻힌다. `.claude/rules/python.md` 의 "KRX 원화 가격 → 정수" 는
+# 측정치가 반올림 오차에 묻힌다. `~/.claude/rules/python.md` 의 "KRX 원화 가격 → 정수" 는
 # 호가 기준 가격을 가리키며 NAV 는 그 대상이 아니다
 NAV_DECIMALS = 2
 
@@ -283,11 +283,7 @@ class PykrxNavResult:
     excluded_recent_count: int
 
 
-def collect_pykrx_nav(
-    ticker: str,
-    start_date: str,
-    output_dir: Path = SERIES_DIR,
-) -> PykrxNavResult:
+def collect_pykrx_nav(ticker: str, start_date: str) -> PykrxNavResult:
     """ETF 의 NAV 를 받아 **일별 단일 값 시계열**로 저장한다.
 
     NAV 는 시세가 아니라 하루에 값 하나짜리 계열이므로 `storage/series/` 에 저장한다.
@@ -298,7 +294,6 @@ def collect_pykrx_nav(
     Args:
         ticker: 종목 티커 (앞뒤 공백 무관)
         start_date: 조회 시작일 (YYYYMMDD). 보통 종목의 상장일을 넣는다
-        output_dir: 저장 디렉터리. 기본값은 단일 값 시계열 폴더
 
     Returns:
         저장 결과 요약
@@ -340,8 +335,8 @@ def collect_pykrx_nav(
     # 단일 값 시계열의 판정을 그대로 쓴다. 로더와 갈라지면 "받아는 놨는데 읽을 수 없는" 파일이 생긴다
     validate_series_data(df)
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / NAV_FILE_TEMPLATE.format(ticker=symbol)
+    SERIES_DIR.mkdir(parents=True, exist_ok=True)
+    path = SERIES_DIR / NAV_FILE_TEMPLATE.format(ticker=symbol)
     df.to_csv(path, index=False)
 
     first_date = df[COL_DATE].iloc[0]

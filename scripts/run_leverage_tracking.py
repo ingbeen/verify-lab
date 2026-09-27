@@ -28,7 +28,7 @@ from verify_lab.utils.meta_manager import save_metadata
 logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
-KEY_META_LEVERAGE_TRACKING = "leverage_tracking_study"
+KEY_META_LEVERAGE_TRACKING = "leverage_tracking"
 
 # `--index` 로 고를 수 있는 값. 목록의 SoT 는 `studies/leverage_tracking/constants.py` 의 PAIRS 다
 INDEX_CHOICES = sorted({pair.index_name for pair in PAIRS})

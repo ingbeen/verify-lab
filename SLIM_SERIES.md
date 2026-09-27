@@ -40,8 +40,8 @@
 | # | 계획서 | 범위 | 산출물 영향 | 상태 | 커밋 |
 | --- | --- | --- | --- | --- | --- |
 | ① | `docs/plans/PLAN_slim_1_context_index.md` | 끝난 계획서 16개 · `docs/context` · reference 코드 원본 삭제, INDEX 재설계 | 없음 | 완료 | `2c8d93f` |
-| ② | `docs/plans/PLAN_slim_2_test_rename.md` | `test_strategy_*` 5개 개명 — 이름만 | 없음 | 커밋 대기 | |
-| ③ | `docs/plans/PLAN_slim_3_dead_code.md` | 데드 코드 · 테스트 결함 · 재수출 · 연결 누락 · 주석 · 메타 키 | **없음 (재실행 바이트 동일이 통과 조건)** | 대기 | |
+| ② | `docs/plans/PLAN_slim_2_test_rename.md` | `test_strategy_*` 5개 개명 — 이름만 | 없음 | 완료 | `c5f6979` |
+| ③ | `docs/plans/PLAN_slim_3_dead_code.md` | 데드 코드 · 테스트 결함 · 재수출 · 연결 누락 · 주석 · 메타 키 | **없음 (재실행 바이트 동일이 통과 조건)** | 커밋 대기 | |
 | ④ | `docs/plans/PLAN_slim_4_rule_docs.md` | 규칙·하네스 문서 — 중복 → SoT, 이력, 모순, 개인 운용 | 없음 | 대기 | |
 | ⑤ | `docs/plans/PLAN_slim_5_trading_docs.md` | 역방향 · 중간선거 문서 6장, `측정.csv` 어긋남 열 | 중간선거 `측정.csv` | 대기 | |
 | ⑥ | `docs/plans/PLAN_slim_6_calendar_docs.md` | 달력 조사 9장 → 한 장 3개, 복원 절차, 산출물 폴더 3개 삭제 | 폴더 삭제 | 대기 | |
@@ -99,7 +99,7 @@
   - 리뷰 「그 외」 13건 전체는 보고서 §12.3
   - 계획서 ① 의 진행 로그 시각 일부는 추정값이다(같은 로그의 정정 줄 참고)
 
-### ② PLAN_slim_2_test_rename — 커밋 대기 (2026-09-26 17:49)
+### ② PLAN_slim_2_test_rename — 완료 (`c5f6979`)
 
 - 한 일: `test_strategy_*` 5개를 셸 `mv` 로 개명(내용은 HEAD 와 바이트 동일 — `cmp` 로 확인), 옛 이름을 가리키던 현재 파일 참조 5줄(4개 파일) 갱신. 수집 1,282 → 1,282, 노드 ID 가 경로 치환 뒤 완전히 같다
 - **옛 → 새 이름 대응** — 감사 원문(`AUDIT_slim_*`)과 보고서 §12.1 ~ §12.3 은 옛 이름으로 적혀 있다. 줄 번호는 내용이 같으므로 그대로 맞는다
@@ -117,6 +117,18 @@
   - **④**: `tests/test_output_contract.py` 는 `src/verify_lab/` 에 짝 모듈이 없다 — 계층을 가로지르는 계약이라 의도한 이름이다(`test_layer_contracts.py`·`test_index.py`·`test_tracks.py` 와 같은 결). `tests/CLAUDE.md` 「`test_*.py` 는 src 와 1:1」을 고칠 때 이 넷을 예외로 적는다
   - **⑥**: 옛 이름을 **일부러 남긴** 기록이 셋이다 — `docs/조사/만기_말일/결과.md:42` 복원 목록 · `docs/조사/월말_진입/규칙.md:40`(삭제된 `test_strategy_month_end_runner.py` 로 가는 **죽은 마크다운 링크**) · `docs/조사/원달러_조달.md:23`(⑦). 앞의 둘은 ⑥ 이 한 장으로 합칠 때 처리한다. 🔴 **만기_말일 복원 목록의 계약 파일은 지금 트리에서 `tests/test_output_contract.py` 다** — `5022dc9` 의 옛 파일을 통째로 checkout 하면 같은 계약 테스트가 두 벌 돈다. 한 벌로 만드는 복원 절차는 「픽스처만 새 파일로 옮긴다」로 적는다(§12.4 S7)
   - 밟은 함정 없음. `git status` 에서 옛 파일은 `D`, 새 파일은 `??` 로 보인다 — 사용자가 스테이징하면 내용이 같아 rename 으로 잡힌다
+
+### ③ PLAN_slim_3_dead_code — 커밋 대기 (2026-09-28 07:35)
+
+- 한 일: 방향 표 계열(`direction_profile` 외 10) · §2.1 넷 · 미사용 인자 셋 · `__init__` 재수출 여섯을 지우고, 게이트 테스트를 `screen_verdict` 직접 호출로(47 → 14), 무력화 테스트 넷(`test_report_writer` · S1 · S2 · S12)과 중복 셋을 고쳤다. `IDENTITY_COLUMNS` 둘 · `tracks_of_kind` 를 연결하고 메타 키를 slug 로, 주석·docstring 을 현재형 사실로. **5개 스크립트 재실행이 ③ 착수 전과 바이트 동일**(`meta.json` 제외)
+- **③ 이전에 커밋해야 하는 것 둘**(사용자 결정 — ③ 커밋에 넣지 않는다): `storage/results/조사/레버리지_ETF_괴리/full_period.csv`(`f55617a` 의 QQQ·069500 재수집 반영 — 「1배에만 있는 날」 8행) · `docs/INDEX.md`(머지 `f93995a` 로 들어온 `docs/검증/반감기_사이클/` 두 장 등록)
+- 다음 계획서가 알 것
+  - **바뀐 이름**: `tests/test_measure_screening.py` 는 게이트(`screen_verdict`)만 검사한다 · `run_reverse_trading` 에 `hold_limit` 인자 없음 · futures `run_study(index_filter)` 하나 · `collect_pykrx_nav(ticker, start_date)` · 메타 키 `futures_leverage`·`leverage_tracking`·`usdkrw_equivalence`(이제 `scripts/CLAUDE.md` 메타 표와 맞는다) · `report/constants.py` 에 `DISPLAY_BASIS`·`DISPLAY_HIT_RATE`·`DISPLAY_EXPECTED_VALUE`·`DISPLAY_TOTAL_RETURN` 없음 · `measure/screening.py` 에 `COL_HIT_RATE`·`COL_EXPECTED_VALUE`·`COL_TOTAL_RETURN`·`COL_SCREEN` 없음(`COL_DIRECTION`·`DIRECTION_UP/DOWN` 은 중간선거가 써서 남음) · `test_output_contract.py` 에 `OUTPUT_FIXTURES`·`TestCoverage`
+  - **④**: `src/verify_lab/CLAUDE.md` 는 `screen_candidates` 행 하나만 고쳤다(「진입점 하나」) — 삭제 매매법·「세 매매법」 서술 35줄은 그대로다(grep `strategy/|세 매매법|option_expiry|month_end|옵션 만기일|월말`). `scripts/CLAUDE.md` 3줄 같음. `tests/CLAUDE.md:222` 「보합 20% 재현 테스트」(없음 — 보고서 §12.5 T1) · 「`test_*.py` 는 src 와 1:1」(② 메모). `tracks.py` 주석 전부(§12.1 의 `:91-93` 포함). `src/verify_lab/CLAUDE.md` 의 `DISPLAY_BASIS`·방향 표 언급이 있으면 이름이 없어졌다
+  - **⑥ 에 넘긴 코드 포인터**(달력 조사 문서): `common_constants.py:133` · `data/pykrx_collector.py:388` · `tests/test_pykrx_collector.py:677·688`(모두 `docs/조사/월말_진입/설계.md` §7.4 — 감사는 §7.6 이 맞다고 봤다) · `execution/constants.py:231`(§7.6) · `execution/constants.py` 구간 축 절의 「(결정 ㊵)·(결정 ㊷)·(결정 ㊶)」(출처가 `docs/조사/옵션_만기일/설계.md` 인 번호). 한 장으로 합친 뒤 새 자리(절 제목)로 고친다
+  - **⑦ 에 넘긴 코드 포인터**(원달러 그리드): `studies/usdkrw_equivalence/__init__.py:4-5`(「그리드 백테스트의 ETF 경로」) · `scripts/run_usdkrw_equivalence.py:5` · `scripts/data/collect_pykrx.py:8-9`(「원달러 그리드처럼 `--adjusted`」 — 지금 소비자는 등가성) · `data/ecos_collector.py:89` 의 `docs/조사/원달러_그리드/설계.md` · 등가성 코드의 그리드 설계·사양서 포인터 전부(2026-09-28 셈: `grep -rn '원달러_그리드' src scripts --include=*.py` 13줄 · `그리드\|사양서` 는 `tracks.py` 빼고 47줄)
+  - 리뷰 「그 외」 백로그 T1 ~ T9 는 보고서 §12.5 — **결정 필요**가 다섯(T2 · T3 · T4 · T5 · T7)
+  - 함정: ① 작업 중 사용자가 원격 브랜치를 머지해 HEAD 가 움직였고 INDEX 미등록 문서가 들어와 `test_index` 가 깨졌다 — 세션 사이 `git log` 를 다시 볼 것 ② 스크래치패드의 재실행 스냅숏이 세션 공백(이틀) 뒤 사라졌다 — 바이트 대조는 HEAD 대비 `git diff --stat storage/results/` 로 했다 ③ `/code-review` 가 주간 한도에 걸려 한 번 멈췄다
 
 ---
 

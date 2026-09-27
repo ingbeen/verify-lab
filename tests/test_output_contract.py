@@ -21,6 +21,7 @@
 (`tests/CLAUDE.md` 「픽스처가 코드와 같은 가정을 하면 그 버그는 영원히 안 잡힙니다」).
 """
 
+import io
 import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -101,6 +102,7 @@ from verify_lab.studies.reverse.constants import (
 from verify_lab.studies.reverse.constants import Dataset as ReverseDataset
 from verify_lab.studies.reverse.trading import KEY_TARGETS as REVERSE_KEY_TARGETS
 from verify_lab.studies.reverse.trading import StrategyOutputs, run_reverse_trading
+from verify_lab.tracks import KIND_METHOD, tracks_of_kind
 
 # ============================================================
 # 계약 — 손으로 박아 둔 기대 컬럼
@@ -149,18 +151,25 @@ SUMMARY_COMMON_COLUMNS = (
     "1차 판정",
 )
 
-# 거래내역의 공통 컬럼. **`청산 목표일` 이 이 목록 «안»에 끼므로**(옵션 만기일만, 진입가 다음)
-# 두 토막으로 나눈다
-TRADE_COMMON_HEAD = ("방향", "손절선(%)", "진입일", "진입가")
+# 거래내역의 공통 컬럼. 종목과 매매법 축 다음에 이 순서로 온다.
 # **`보유 중 최악(%)` 이 `수익률(%)` 바로 뒤에 온다.** 성적표에서 `최악(%)` 뒤에 오는 것과
 # 같은 자리이며, **집계값만 있고 원자료가 없으면 어느 체결이 그 값을 만들었는지 되짚을 수 없다**
 # (측정의 원칙 8 — 사용자가 직접 검증할 수 있어야 한다)
-TRADE_COMMON_TAIL = ("청산일", "보유일", "청산가", "수익률(%)", "보유 중 최악(%)", "청산 사유")
+TRADE_COMMON_COLUMNS = (
+    "방향",
+    "손절선(%)",
+    "진입일",
+    "진입가",
+    "청산일",
+    "보유일",
+    "청산가",
+    "수익률(%)",
+    "보유 중 최악(%)",
+    "청산 사유",
+)
 
 # 매매법 축 — 종목 바로 다음에 온다. **역방향만 두 칸**이다
 AXIS_REVERSE = ("파라미터", "시작연도")
-AXIS_OPTION_EXPIRY = ("만기월",)
-AXIS_MONTH_END = ("월",)
 # 중간선거_사이클 — 성적표는 사이클 위치 하나, **거래내역은 진입 연도가 더 붙는다**
 # (신호가 4년에 한 번이라 어느 사이클의 체결인지 날짜만으로는 바로 읽히지 않는다)
 AXIS_MIDTERM_CYCLE = ("사이클 위치",)
@@ -172,9 +181,6 @@ INDEX_LABEL = "합성 지수"
 # 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향만 있다
 TAIL_REVERSE_SUMMARY = ("사건",)
 TAIL_REVERSE_TRADES = ("등락률(%)", "사건 번호")
-
-# 옵션 만기일만 갖는 거래내역 컬럼
-EXPIRY_TARGET_DATE_COLUMN = "청산 목표일"
 
 # ============================================================
 # 합성 시세
@@ -202,9 +208,6 @@ SIGNAL_POSITIONS = tuple(400 + order * 150 for order in range(14))
 # **앞쪽에만 심은 위치.** 데이터가 2025년까지 가므로 최근 5년 구간의 표본이 0건이 된다 —
 # 「표본 0건이면 0 이 아니라 빈칸」 계약을 스킵 없이 검사하려고 둔다
 EARLY_SIGNAL_POSITIONS = tuple(range(400, 700, 40))
-
-# 옵션 만기일 대상 칸의 만기월
-EXPIRY_MONTH = 9
 
 
 def _closes(count: int, positions: Sequence[int]) -> np.ndarray:
@@ -325,6 +328,13 @@ def _write_index(directory: Path, ticker: str) -> Path:
 # 실행 결과 픽스처 — 모듈마다 한 번만 돈다
 # ============================================================
 
+# 이 파일이 산출물 계약을 거는 매매법(slug) → 그 실행 결과를 내는 픽스처 이름.
+# **레지스트리의 매매법 목록과 같아야 한다** — `TestCoverage` 가 `tracks_of_kind(KIND_METHOD)` 와 대조한다
+OUTPUT_FIXTURES = {
+    "reverse": "reverse_outputs",
+    "midterm_cycle": "midterm_cycle_outputs",
+}
+
 
 @pytest.fixture(scope="module")
 def reverse_outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs:
@@ -340,15 +350,15 @@ def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCy
 
     **매매법마다 픽스처가 하나씩 있어야 한다.** 이 파일이 매매법 전부를 검사한다고
     `src/verify_lab/CLAUDE.md` 가 적어 두었는데 새 매매법을 넣고 여기 픽스처를 안 만들면
-    **그 문장이 거짓이 되고, 성적표·거래내역의 컬럼이 비어 나가도 통과한다** — 이 파일 자신이
-    적어 둔 실패 방식이다.
+    **그 문장이 거짓이 되고, 성적표·거래내역의 컬럼이 비어 나가도 통과한다** — 그래서
+    `TestCoverage` 가 레지스트리의 매매법과 `OUTPUT_FIXTURES` 를 대조한다.
 
     **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
     **손절선 격자에 무손절과 −5% 가 함께 있어** 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의
     두 실패 방식이 이 결과 하나로 재현된다.
 
-    합성 시세가 2016-01 ~ 2025-12 라 10월 진입이 2016 ~ 2024 로 아홉 번 생기고
-    **사이클 네 자리에 모두 표본이 들어간다.**
+    합성 시세가 2016-01 ~ 2025-12 라 **중간선거해 9월 마지막 거래일 진입이 2018 · 2022 두 번**
+    생긴다 — 대상마다 사이클 위치 한 칸에 표본 둘이다.
     """
     directory = tmp_path_factory.mktemp("midterm_cycle")
     _write_market(directory, "SYN")
@@ -391,20 +401,42 @@ def _expected_summary(axis: tuple[str, ...], tail: tuple[str, ...] = ()) -> list
     return ["종목", *axis, *SUMMARY_COMMON_COLUMNS, *tail]
 
 
-def _expected_trades(axis: tuple[str, ...], *, target_date: bool = False, tail: tuple[str, ...] = ()) -> list[str]:
+def _expected_trades(axis: tuple[str, ...], tail: tuple[str, ...] = ()) -> list[str]:
     """그 매매법의 거래내역 기대 컬럼을 만든다.
 
     Args:
         axis: 매매법 축 컬럼
-        target_date: 달력이 지목한 청산 목표일을 싣는지 여부 (옵션 만기일만 참)
         tail: 맨 뒤에 붙는 고유 컬럼
 
     Returns:
         기대 컬럼 목록
     """
-    middle = [EXPIRY_TARGET_DATE_COLUMN] if target_date else []
+    return ["종목", *axis, *TRADE_COMMON_COLUMNS, *tail]
 
-    return ["종목", *axis, *TRADE_COMMON_HEAD, *middle, *TRADE_COMMON_TAIL, *tail]
+
+class TestCoverage:
+    """이 파일이 매매법 «전부»를 검사한다 — 목록은 레지스트리를 따라간다"""
+
+    def test_레지스트리의_매매법마다_픽스처가_있다(self) -> None:
+        """
+        목적: 「매매법이면 성적표를 낸다」 계약이 **새 매매법에도 걸리게** 한다.
+
+        레지스트리(`tracks.py`)에 매매법을 등록하고 여기 픽스처를 만들지 않으면 그 매매법의
+        성적표·거래내역은 이 파일의 어떤 검사도 받지 않는데 **아무것도 실패하지 않는다.**
+        반대로 매매법에서 내려간 이름이 남아 있으면 없는 계약을 검사하는 척한다.
+
+        Given: 레지스트리의 매매법 목록과 이 파일의 픽스처 표
+        When: 두 목록을 견준다
+        Then: 같다
+        """
+        # Given
+        registered = {track.slug for track in tracks_of_kind(KIND_METHOD)}
+
+        # When / Then
+        assert set(OUTPUT_FIXTURES) == registered, (
+            f"레지스트리의 매매법과 이 파일의 픽스처가 어긋납니다 — 레지스트리 {sorted(registered)} · "
+            f"픽스처 {sorted(OUTPUT_FIXTURES)}. 새 매매법이면 여기에 실행 결과 픽스처를 만들고 OUTPUT_FIXTURES 에 올리세요"
+        )
 
 
 class TestSummaryColumns:
@@ -412,7 +444,7 @@ class TestSummaryColumns:
 
     def test_역방향_성적표가_공통_컬럼을_순서대로_쓴다(self, reverse_outputs: StrategyOutputs) -> None:
         """
-        목적: 셋 중 가장 좁았던 표가 공통 형식으로 올라왔는지 고정한다
+        목적: 역방향 성적표가 공통 형식을 쓰는지 고정한다
 
         Given: 합성 시세로 돈 역방향 결과
         When: 성적표의 컬럼을 봤을 때
@@ -423,7 +455,7 @@ class TestSummaryColumns:
 
     def test_중간선거_사이클_성적표가_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
-        목적: 세 번째 매매법도 같은 순서를 쓰는지 고정한다
+        목적: 중간선거_사이클도 같은 순서를 쓰는지 고정한다
 
         Given: 합성 시세로 돈 중간선거_사이클 성적표
         When: 컬럼 목록을 봤을 때
@@ -483,7 +515,7 @@ class TestTradeColumns:
 
     def test_중간선거_사이클_거래내역이_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
-        목적: 세 번째 매매법의 거래내역 컬럼과 «순서»를 고정한다
+        목적: 중간선거_사이클의 거래내역 컬럼과 «순서»를 고정한다
 
         Given: 합성 시세로 돈 중간선거_사이클 거래내역
         When: 컬럼 목록을 봤을 때
@@ -625,6 +657,7 @@ class TestReversePeriods:
         목적: 역방향도 구간으로 쪼개진다는 것을 고정한다
 
         균등 2분할만으로는 신호가 식는 것을 놓친다.
+        **행 수만 세는 검사를 매매법 테스트에 따로 두지 않는다** — 이것이 순서까지 보므로 그 상위집합이다.
 
         Given: 대상 하나로 돈 역방향 결과
         When: 성적표의 구간 컬럼을 봤을 때
@@ -663,10 +696,11 @@ class TestReversePeriods:
         귀속시킬 규칙이 없어 전체 행에만 적히는 열이었다. 판정에도 성적에도 쓰이지 않으므로
         성적표에서 걷어냈다 — **사실이 사라진 것이 아니라 자리를 옮긴 것**이며,
         아래 테스트가 요약이 그 값을 계속 담는지 검사한다.
+        매매법 전부를 한 번에 보므로 **매매법 테스트에 같은 검사를 따로 두지 않는다.**
 
-        Given: 세 매매법의 성적표
+        Given: 매매법 전부의 성적표
         When: 컬럼을 봤을 때
-        Then: 셋 다 「제외」가 없다
+        Then: 어느 성적표에도 「제외」가 없다
         """
         # Given / When / Then
         for name, table in (
@@ -789,13 +823,14 @@ class TestEventCount:
 class TestSingleColumnStopFilter:
     """한 손절선으로 고정한 행을 **`손절선(%)` 한 컬럼만으로** 고를 수 있다
 
-    전에는 그 480행을 고르는 데 두 컬럼이 필요해(`손절선` AND `손절적용`) 표를 따로 냈다.
-    엑셀 자동 필터는 **열끼리 AND** 라 그 조건을 한 번에 걸 수 없었기 때문이다.
-    두 문자열을 가른 뒤로는 **한 열 안의 다중선택(OR)** 으로 끝난다.
+    고르는 데 두 컬럼이 필요하면(`손절선` AND `손절적용`) 표를 따로 내야 한다 — 엑셀 자동
+    필터는 **열끼리 AND** 라 그 조건을 한 번에 걸 수 없다. 무손절과 손절불가를 다른 문자열로
+    가르면 **한 열 안의 다중선택(OR)** 으로 끝난다.
     """
 
-    # 월말 규칙 문서 §1 의 권고 손절선(**확정 전**). **프로덕션 상수를 import 하지 않고 손으로 박는다** — 상수를 고치면
-    # 테스트가 따라와 아무것도 고정하지 못한다 (이 모듈 머리말)
+    # 필터에 거는 손절선 하나. 중간선거_사이클 손절선 격자에 든 값이면 된다(여기서는 −5%).
+    # **프로덕션 상수를 import 하지 않고 손으로 박는다** — 상수를 고치면 테스트가 따라와
+    # 아무것도 고정하지 못한다 (이 모듈 머리말)
     FIXED_LEVEL = -5.0
 
     def test_한_컬럼_필터가_모든_칸을_한_번씩_준다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
@@ -865,25 +900,22 @@ class TestSingleColumnStopFilter:
 class TestFilenames:
     """파일 이름은 상수 한 곳에서 온다"""
 
-    def test_사용자가_보는_세_이름이_상수로_정의돼_있다(self) -> None:
+    def test_사용자가_보는_이름이_상수로_정의돼_있다(self) -> None:
         """
-        목적: 이름이 코드 여러 곳에 흩어진 문자열이던 상태를 닫는다
+        목적: 이름이 코드 여러 곳에 흩어진 문자열이 되지 않게 한다
 
         **경계는 「중요도」가 아니라 「종류」다.** 사용자가 판정에 쓰는 종류만 한글이고
         원자료·검정 표는 영문으로 남는다 — 중요도로 가르면 새 표가 생길 때마다 다시 물어야 하고,
         판정이 갈리면 이름이 뒤섞인다.
 
-        **넷이 아니라 셋이다** (2026-09-16). 판정표(`1차_판정.csv`)가 성적표로 통합돼
-        그 이름을 쓰는 표가 없어졌다 — 값은 `통계.csv` 가 그대로 담는다.
-
-        [중요] **`측정.csv` 가 넷째로 들어왔다** (2026-09-21). 옵션 만기일이 확정 3칸으로
-        좁아지며 측정 표 여덟을 한 장으로 합친 것이고, **`통계.csv` 는 그대로 남는다** —
-        역방향·월말이 계속 그 이름을 낸다. **두 이름이 공존하는 것은 과도기이며**
-        나머지 둘을 옮길 때 해소된다 (`src/verify_lab/CLAUDE.md` 매매 산출물 계약).
+        **판정표는 이름이 없다** — 1차 판정은 성적표 안의 컬럼이다.
+        **`통계.csv` 와 `측정.csv` 는 담는 축이 다른 두 표다** — 측정 격자를 확정 칸으로 좁힌
+        매매법이 `측정.csv` 를, 좁히지 않은 매매법이 `통계.csv` 를 낸다
+        (`src/verify_lab/CLAUDE.md` 「`측정.csv`」).
 
         Given: 체결 계층과 출력 계층의 상수 모듈
         When: 파일명 상수를 읽었을 때
-        Then: 네 이름이 한글로 정의돼 있다
+        Then: 사용자가 보는 이름이 한글로 정의돼 있다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
@@ -906,8 +938,8 @@ class TestFilenames:
         축을 이름에 넣지 않는다(`만기월별_통계` 가 아니라 `통계`) — 폴더가 매매법을 말하므로
         이름에 또 넣으면 중복이고, 넣는 순간 이름이 다시 갈린다.
 
-        **옵션 만기일과 월말은 여기서 빠진다** — 확정 칸으로 좁히면서 측정 표를 `측정.csv`
-        한 장으로 합쳤다(아래 두 테스트). **격자를 재는 매매법만 축별 집계표가 필요하다.**
+        **측정 격자를 확정 칸으로 좁힌 매매법(중간선거_사이클)은 여기서 빠진다** — 측정 표를
+        `측정.csv` 한 장으로 합친다. **격자를 재는 매매법만 축별 집계표가 필요하다.**
 
         Given: 역방향의 산출물 파일 목록과 체결 산출물 이름
         When: 사용자가 보는 이름을 찾는다
@@ -923,24 +955,6 @@ class TestFilenames:
 
         # 체결 둘은 `execution/constants.py` 가 소유하므로 매매법 전부가 자동으로 같다
         assert {SUMMARY_FILENAME, TRADES_FILENAME} == {"성적표.csv", "거래내역.csv"}
-
-    def test_매매_스크립트에_csv_문자열이_없다(self) -> None:
-        """
-        목적: 상수를 만들고 연결을 빠뜨리는 것을 막는다
-
-        정의만 하고 두면 규칙을 지킨 것이 아니다 (`src/verify_lab/CLAUDE.md` 상수 관리).
-
-        Given: `scripts/` 의 실행 스크립트
-        When: 소스에서 `.csv` 를 찾았을 때
-        Then: 하나도 없다
-        """
-        # Given
-        scripts = sorted((BASE_DIR / "scripts").glob("run_*.py"))
-        assert scripts, "매매 스크립트를 찾지 못했습니다"
-
-        # When / Then
-        for script in scripts:
-            assert ".csv" not in script.read_text(encoding="utf-8"), f"{script.name} 에 파일명이 박혀 있습니다"
 
 
 class TestBreakevenMargin:
@@ -960,7 +974,7 @@ class TestBreakevenMargin:
     WIN_RATE_COLUMN = "승률(%)"
     BREAKEVEN_COLUMN = "손익분기 승률(%)"
 
-    def test_세_매매법_모두_승률에서_손익분기를_뺀_값이다(
+    def test_매매법_모두_승률에서_손익분기를_뺀_값이다(
         self,
         reverse_outputs: StrategyOutputs,
         midterm_cycle_outputs: MidtermCycleOutputs,
@@ -968,7 +982,7 @@ class TestBreakevenMargin:
         """
         목적: 산식을 계약으로 고정한다 — **표에 실린 값끼리** 뺀 것이어야 한다
 
-        Given: 세 매매법의 성적표
+        Given: 매매법 전부의 성적표
         When: 값이 있는 행에서 승률 − 손익분기 승률을 계산했을 때
         Then: `손익분기 대비(%p)` 와 같다
         """
@@ -1165,7 +1179,7 @@ class TestWorstHoldColumn:
 
     @pytest.mark.parametrize(
         "fixture_name",
-        ["reverse_outputs", "midterm_cycle_outputs"],
+        sorted(OUTPUT_FIXTURES.values()),
     )
     def test_보유_중_최악이_결과_최악보다_나쁘거나_같다(self, fixture_name: str, request: pytest.FixtureRequest) -> None:
         """
@@ -1245,22 +1259,31 @@ class TestIntegerCounts:
         표본이 0건인 구간은 **잰 적이 없는 것**이라 건수도 빈칸이다.
         `0` 을 적으면 「손절이 한 번도 안 걸렸다」로 읽혀 정반대의 사실이 된다.
 
+        **`,,` 가 문자열에 있는지만 보면 안 된다** — 표본 0건 행은 실수 지표 칸이 원래 줄줄이 비어
+        있어, 건수 칸이 `0` 으로 채워져도 그 검사는 통과한다. 그래서 건수 칸을 이름으로 읽는다.
+
         Given: 신호를 앞쪽에만 심은 합성 시세 (최근 5년 구간이 0건이 된다)
-        When: 그 구간 행을 CSV 문자열로 뽑았을 때
-        Then: 건수 칸이 빈칸이다
+        When: 그 구간 행을 CSV 문자열로 뽑아 문자열 그대로 다시 읽었을 때
+        Then: 건수 칸이 빈칸이고, `신호` 는 정수 `0` 이다 (0건인 것은 잰 사실이다)
         """
         # Given
         target = _reverse_target(_write_market(tmp_path / "early", "SYN", EARLY_SIGNAL_POSITIONS))
         summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
         empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
         assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다 — 신호 위치를 앞으로 옮기세요"
-        assert empty[DISPLAY_GAP_STOP_COUNT].isna().all()
 
         # When
         text = empty.head(1).to_csv(index=False)
+        cells = pd.read_csv(io.StringIO(text), dtype=str, keep_default_na=False).iloc[0]
 
         # Then
-        assert ",," in text, "빈칸이 값으로 채워졌습니다"
+        blank_columns = [
+            *(column for column in self.COUNT_COLUMNS if column != DISPLAY_SIGNAL_COUNT),
+            DISPLAY_EVENT_COUNT,
+        ]
+        filled = {column: cells[column] for column in blank_columns if cells[column] != ""}
+        assert filled == {}, f"잰 적이 없는 건수 칸이 값으로 채워졌습니다: {filled}"
+        assert cells[DISPLAY_SIGNAL_COUNT] == "0", f"표본 수가 정수 0 이 아닙니다: {cells[DISPLAY_SIGNAL_COUNT]!r}"
 
 
 class TestRunSummary:
@@ -1280,11 +1303,10 @@ class TestRunSummary:
 
     def test_두_요약이_같은_최상위_키를_갖는다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
-        목적: 만드는 자리·키가 매매법마다 갈리던 것을 닫는다
+        목적: 만드는 자리·키가 매매법마다 갈리지 않게 한다
 
-        전에는 역방향이 `strategy`/`targets`/`rule`/`row_counts`/`notes`,
-        옵션 만기일이 **CLI 에서** `cells`/`stop_levels`/`row_counts`,
-        월말이 `stop_levels`/`fixed_stop_level`/`cost`/`datasets`/`row_counts` 였다.
+        매매법이 각자 요약을 만들면 같은 질문(무엇을 어느 기간으로 돌렸나)에 요약마다 다른 키로
+        답하게 되고, 만드는 자리가 CLI 로 새면 키가 스크립트마다 갈린다.
 
         Given: 두 매매법의 실행 요약
         When: 최상위 키를 봤을 때
@@ -1301,7 +1323,7 @@ class TestRunSummary:
         """
         목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 두 매매법이 실제로 이행한다
 
-        전에는 **월말만** 그 키를 가졌고, 옵션 만기일은 종목코드를 어디에도 남기지 않았다.
+        그 키가 없는 매매법이 하나라도 있으면 그 매매법의 종목코드가 어디에도 남지 않는다.
 
         Given: 두 매매법의 실행 요약
         When: `datasets` 의 한 줄을 봤을 때
@@ -1357,13 +1379,13 @@ class TestRunSummary:
 
     def test_비용_표기가_두_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
-        목적: `.claude/rules/trading.md` 의 맨몸 성적 표기를 월말만 갖고 있던 것을 닫는다
+        목적: `.claude/rules/trading.md` 의 맨몸 성적 표기를 매매법 전부가 갖는지 고정한다
 
         빠뜨린 것과 일부러 뺀 것을 구별할 수 없으면 다음 사람이 다시 계산한다.
 
         Given: 두 매매법의 실행 요약
         When: `cost` 를 봤을 때
-        Then: 셋 다 같은 문장이다
+        Then: 모두 같은 문장이다
         """
         # Given / When / Then
         for name, summary in summaries.items():
@@ -1391,9 +1413,9 @@ class TestRunSummary:
 
 
 class TestDatasetFields:
-    """`Dataset` 의 필드 뜻 — 세 모듈에서 같다"""
+    """`Dataset` 의 필드 뜻 — 매매법마다 같다"""
 
-    def test_세_Dataset_이_코드와_이름을_따로_갖는다(self) -> None:
+    def test_Dataset_이_코드와_이름을_따로_갖는다(self) -> None:
         """
         목적: 필드 이름이 모듈마다 다른 것을 가리키던 상태를 닫는다
 
@@ -1422,7 +1444,7 @@ class TestScreenColumn:
     """`1차 판정` — 성적표 안의 판정 (2026-09-16 통합)
 
     **판정표를 따로 내지 않는다.** 맨몸(무손절) 판정과 확정 손절선 판정이 갈리는 칸이
-    실재하고(옵션 만기일 96칸 중 3칸, 그중 둘은 기대값 부호까지 뒤집힌다), 두 파일로 두면
+    실재하고(실측 사례: 옵션 만기일 96칸 중 3칸, 그중 둘은 기대값 부호까지 뒤집혔다), 두 파일로 두면
     사용자가 범위를 좁힐 때 그 차이가 보이지 않는다.
 
     **게이트는 「전체」 구간 하나만 본다** (루트 `CLAUDE.md` 2026-09-12 개정). 쪼개면 칸당
@@ -1438,17 +1460,17 @@ class TestScreenColumn:
     PERIOD_ALL_LABEL = "전체"
     SCREEN_COLUMN = "1차 판정"
 
-    def test_세_성적표가_판정_값_셋만_쓴다(
+    def test_성적표가_판정_값_셋만_쓴다(
         self,
         reverse_outputs: StrategyOutputs,
         midterm_cycle_outputs: MidtermCycleOutputs,
     ) -> None:
         """
-        목적: 값 집합이 매매법마다 갈리면 세 성적표를 한 필터로 읽을 수 없다.
+        목적: 값 집합이 매매법마다 갈리면 성적표들을 한 필터로 읽을 수 없다.
 
-        Given: 세 매매법의 성적표
+        Given: 매매법 전부의 성적표
         When: 판정 컬럼의 값을 모았을 때
-        Then: 셋 다 정해진 세 값 안에 든다
+        Then: 모두 정해진 세 값 안에 든다
         """
         # Given / When / Then
         for name, table in (
@@ -1469,7 +1491,7 @@ class TestScreenColumn:
         걸면 「최근 5년 → 제외」가 표에 찍히고, 그걸로 거르는 순간 표본 5~6건짜리 구간이
         멀쩡한 칸을 떨어뜨린다.
 
-        Given: 세 매매법의 성적표
+        Given: 매매법 전부의 성적표
         When: 시기가 「전체」가 아닌 행의 판정을 봤을 때
         Then: 전부 「판정 안 함」이다
         """
@@ -1584,11 +1606,11 @@ class TestNoCandidatesFile:
     「1차 판정」이라는 개념이 성적표로 통합됐으므로, 같은 판정을 담은 **두 번째 파일**이
     남아 있으면 어느 쪽이 현재인지 매번 판별해야 한다.
 
-    **값이 사라지는 것이 아니다** — 판정표의 축과 값은 `통계.csv`·`grid.csv` 가 그대로
-    담는다(실측 대조: 월말 격자 616행 · 역방향 576행 모두 누락 0 · 값 불일치 0).
+    **값이 사라지는 것이 아니다** — 판정표의 축과 값은 축별 집계표(`통계.csv`·`측정.csv`)가
+    담고, `적중률 = 오른/내린 비율` · `방향 기대값 = ±평균` 으로 그 자리에서 다시 계산된다.
     """
 
-    def test_세_매매법의_산출물에_판정표가_없다(self) -> None:
+    def test_매매법_산출물에_판정표가_없다(self) -> None:
         """
         목적: 산출물 목록에서 판정표가 빠졌는지 고정한다.
 

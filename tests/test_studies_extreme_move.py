@@ -25,9 +25,6 @@ from verify_lab.studies.reverse.extreme_move import (
     find_extreme_move_events,
 )
 
-# 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
-EXACT_TOLERANCE = 1e-12
-
 
 def _market(closes: Sequence[float]) -> pd.DataFrame:
     """합성 시세를 만든다. 순위 판정은 종가만 보므로 나머지 가격 컬럼은 종가와 같게 둔다."""

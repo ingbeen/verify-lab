@@ -218,9 +218,9 @@ def max_non_overlapping(start_positions: Sequence[int], horizon: int) -> int:
 def judgeable(sample_count: int) -> str:
     """그 칸을 판정에 써도 되는지의 표기를 낸다.
 
-    **식이 저장소에 한 벌만 있어야 한다.** 값(`MIN_SAMPLE_PER_CELL`)은 공통 계층이 소유했는데
-    **식은 다섯 곳에 있었다** — 검증 셋과 매매 계층이 각자 삼항식을 썼다. 하한을 바꿔도
-    한 곳이 안 따라오면 **예외 없이** 두 산출물의 `판정가능` 이 다른 기준으로 찍힌다.
+    **식이 저장소에 한 벌만 있어야 한다.** 값(`MIN_SAMPLE_PER_CELL`)만 공통 계층이 갖고
+    식을 검증과 매매 계층이 각자 쓰면, 하한을 바꿔도 한 곳이 안 따라올 때 **예외 없이**
+    두 산출물의 `판정가능` 이 다른 기준으로 찍힌다.
 
     **미달이어도 행은 남긴다** (측정의 원칙 17). 이 값이 「판정에 쓰지 말라」를 표에 남기는 자리다.
 
@@ -396,7 +396,7 @@ def payoff_profile(
 def payoff_from_returns(returns: npt.ArrayLike) -> PayoffProfile:
     """수익률 목록에서 바로 손익비를 낸다.
 
-    **매매 계층을 위한 진입점이다.** `strategy` 는 `summarize` 를 쓰지 않고 체결 수익률을
+    **매매 계층을 위한 진입점이다.** 매매 계층은 `summarize` 를 쓰지 않고 체결 수익률을
     직접 들고 있는데, 거기서 손익비를 따로 계산하면 **산식이 두 벌**이 되어 조용히 갈라진다.
     이 함수는 양수·음수를 갈라 `payoff_profile` 에 넘길 뿐 판정을 더하지 않는다.
 

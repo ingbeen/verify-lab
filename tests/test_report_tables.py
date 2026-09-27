@@ -27,44 +27,26 @@ from verify_lab.measure.constants import (
     REASON_OUT_OF_RANGE,
 )
 from verify_lab.measure.forward_return import DEFAULT_HORIZONS, ReturnBasis
-from verify_lab.measure.screening import (
-    COL_DIRECTION,
-    COL_EXPECTED_VALUE,
-    COL_HIT_RATE,
-    COL_SCREEN,
-    COL_TOTAL_RETURN,
-    DIRECTION_DOWN,
-    SCREEN_CANDIDATE,
-    SCREEN_NOT_JUDGED,
-)
 from verify_lab.measure.statistics import (
     COL_MEAN_PERCENTILE,
-    COL_SAMPLE_COUNT,
     excess,
     permutation_test,
     summarize,
 )
 from verify_lab.report.constants import (
-    DISPLAY_BASIS,
-    DISPLAY_DIRECTION,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_EXCLUDED,
-    DISPLAY_EXPECTED_VALUE,
-    DISPLAY_HIT_RATE,
     DISPLAY_HORIZON,
     DISPLAY_MEAN,
     DISPLAY_MEAN_PERCENTILE,
     DISPLAY_SAMPLE_COUNT,
-    DISPLAY_SCREEN,
     DISPLAY_TEST_NOTE,
-    DISPLAY_TOTAL_RETURN,
     DISPLAY_UP_RATE,
     EMPTY_MARK,
     HORIZON_LABELS,
 )
 from verify_lab.report.tables import (
-    build_direction_table,
     build_excess_table,
     build_signal_table,
     build_statistics_table,
@@ -76,6 +58,10 @@ from verify_lab.utils.formatting import get_display_width
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
 EXACT_TOLERANCE = 1e-12
+
+# 집계 표에 **없어야 하는** 기준 컬럼의 헤더. 값을 손으로 박는다 — 그 헤더를 내는 상수가
+# 없으므로 가드가 기댈 상수도 없다
+BASIS_HEADER = "기준"
 
 BASELINE_NAME = "단순 보유"
 
@@ -183,7 +169,7 @@ class TestSignalTable:
 
     def test_values_are_percent_with_two_decimals(self) -> None:
         """
-        목적: 저장 값은 **백분율 2자리**다 (`.claude/rules/python.md` 반올림 규칙).
+        목적: 저장 값은 **백분율 2자리**다 (`~/.claude/rules/python.md` 반올림 규칙).
 
         Given: 비율 0.062512
         When: 신호일 목록을 만든다
@@ -304,7 +290,7 @@ class TestStatisticsTable:
         table = build_statistics_table(summary)
 
         # Then
-        assert DISPLAY_BASIS not in table.columns
+        assert BASIS_HEADER not in table.columns
 
     def test_rejects_more_than_one_basis(self) -> None:
         """
@@ -520,8 +506,8 @@ class TestExcessAndTestTables:
         test_table = build_test_table({"무작위 진입": permutation_test(_cell([0.09] * 12), population, repeats=50, seed=0)})
 
         # Then
-        assert DISPLAY_BASIS not in excess_table.columns
-        assert DISPLAY_BASIS not in test_table.columns
+        assert BASIS_HEADER not in excess_table.columns
+        assert BASIS_HEADER not in test_table.columns
 
     def test_p_value_keeps_four_decimals(self) -> None:
         """
@@ -618,133 +604,6 @@ class TestTerminalOutput:
         """
         with pytest.raises(ValueError, match="비어"):
             print_dataframe(pd.DataFrame({"구간": []}), logging.getLogger("test_report_tables"))
-
-
-class TestDirectionTable:
-    """축별 방향 표의 표시 계약을 고정한다.
-
-    **1차 판정 컬럼이 없다** (2026-09-16 통합). 판정의 자리는 `성적표.csv` 하나이며,
-    이 표는 그 판정을 읽을 재료(거는 방향과 그 크기)를 낸다.
-    """
-
-    # 축 컬럼 이름. 이 계층은 축을 모르므로 검증 쪽 상수를 끌어오지 않는다
-    AXIS_COLUMN = "expiry_month_number"
-
-    @staticmethod
-    def _candidates(*, screen: str = SCREEN_CANDIDATE) -> pd.DataFrame:
-        """판정표 한 줄을 만든다. 값은 QQQ 9월 실측이다."""
-        return pd.DataFrame(
-            {
-                TestDirectionTable.AXIS_COLUMN: [9],
-                COL_SAMPLE_COUNT: [27],
-                COL_DIRECTION: [DIRECTION_DOWN],
-                COL_HIT_RATE: [0.6667],
-                COL_EXPECTED_VALUE: [0.010578],
-                COL_TOTAL_RETURN: [0.010578 * 27],
-                COL_SCREEN: [screen],
-            }
-        )
-
-    def test_판정에_쓰이지_않는_열을_두지_않는다(self) -> None:
-        """
-        목적: **등급이 사라진 뒤 남은 열은 전부 판정에 쓰이거나 판정을 읽는 데 필요한 것이다.**
-              쓰이지 않는 열을 두면 다음 사람이 그것으로 칸을 고르게 된다.
-
-        Given: 후보 한 칸
-        When: 표시용으로 바꾸면
-        Then: 컬럼이 계약대로 여섯 개다 — **1차 판정은 성적표가 담으므로 여기 없다**
-        """
-        # Given
-        candidates = self._candidates()
-
-        # When
-        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
-
-        # Then
-        assert list(table.columns) == [
-            "만기월",
-            DISPLAY_SAMPLE_COUNT,
-            DISPLAY_DIRECTION,
-            DISPLAY_HIT_RATE,
-            DISPLAY_EXPECTED_VALUE,
-            DISPLAY_TOTAL_RETURN,
-        ]
-
-    def test_기준선을_싣지_않는다(self) -> None:
-        """
-        목적: **판정표는 판정이 묻는 축만 담는다.**
-
-              기준선은 「이 신호가 시장 전체와 다른가」를 묻고 판정은 「걸 만한가」를 묻는
-              다른 질문이다. 함께 실으면 읽는 사람이 판정에 안 쓰는 축으로 거른다 —
-              실제로 「기준선과 같으니 그냥 들고 있는 것과 다를 바 없다」로 읽혔다.
-              값은 같은 폴더의 `통계.csv` 계열이 담는다.
-
-        Given: 후보 한 칸
-        When: 표시용으로 바꾸면
-        Then: 적중률은 백분율로 실리고 기준선이 들어간 열은 하나도 없다
-        """
-        # Given
-        candidates = self._candidates()
-
-        # When
-        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
-
-        # Then
-        assert float(table[DISPLAY_HIT_RATE].iloc[0]) == pytest.approx(66.67, abs=0.005)
-        assert [column for column in table.columns if "기준선" in column] == []
-
-    def test_1차_판정을_싣지_않는다(self) -> None:
-        """
-        목적: **판정의 자리는 성적표 하나다** (2026-09-16 통합).
-
-              맨몸 성적으로 게이트를 넘은 칸이 확정 손절선을 걸면 떨어지는 일이 실재하므로
-              (옵션 만기일 96칸 중 3칸), 판정과 체결 성적이 같은 표에 있어야 한다.
-              여기 판정을 실으면 같은 판정이 두 파일에 놓이고 한쪽이 낡는다.
-
-        Given: 1차 판정 컬럼이 들어 있는 입력
-        When: 표시용으로 바꾸면
-        Then: 그 컬럼이 표에 없다
-        """
-        # Given
-        candidates = self._candidates(screen=SCREEN_NOT_JUDGED)
-
-        # When
-        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
-
-        # Then
-        assert DISPLAY_SCREEN not in table.columns
-
-    def test_방향_기대값이_백분율로_실린다(self) -> None:
-        """
-        목적: 기대값은 비율로 들어와 **백분율로 표시**된다. 단위가 섞이면 0.01% 와 1% 를 혼동한다.
-
-        Given: 기대값 0.010578 (비율)
-        When: 표시용으로 바꾸면
-        Then: 1.06 (%) 이다
-        """
-        # Given
-        candidates = self._candidates()
-
-        # When
-        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
-
-        # Then
-        assert float(table[DISPLAY_EXPECTED_VALUE].iloc[0]) == pytest.approx(1.06, abs=0.005)
-
-    def test_축_컬럼이_없으면_예외다(self) -> None:
-        """
-        목적: 축을 잘못 지정하면 조용히 빈 표를 내지 않는다.
-
-        Given: 축 이름이 다른 판정표
-        When: 표시용으로 바꾸면
-        Then: ValueError
-        """
-        # Given
-        candidates = self._candidates()
-
-        # When / Then
-        with pytest.raises(ValueError, match="축 컬럼"):
-            build_direction_table(candidates, axis_column="요일", axis_label="요일")
 
 
 class TestDisplayColumns:
@@ -864,53 +723,6 @@ class TestDisplayColumns:
         """
         with pytest.raises(ValueError, match="Missing"):
             to_display_columns(pd.DataFrame({"Mean": [0.01]}), {"Mean": "평균(%)"}, percent_columns=["Missing"])
-
-
-class TestDirectionTotalReturn:
-    """**회당 기대값 옆에는 합산 수익률과 표본 수가 함께 있어야 한다** (측정의 원칙 16).
-
-    신호가 드물거나 보유가 며칠짜리인 매매법은 회당 평균이 구조적으로 작게 나온다.
-    「+1.06%」만 적으면 크기 감각이 없고, 왕복 수수료와 견줄 값인지도 그 자리에서 보이지 않는다.
-    산출물 CSV 에는 이미 실리고 있으므로 **화면 표에서만 빠지는 상태**를 막는다.
-    """
-
-    AXIS_COLUMN = TestDirectionTable.AXIS_COLUMN
-
-    def test_합산_수익률이_표본_수와_함께_실린다(self) -> None:
-        """
-        목적: 화면 표가 회당·합산·표본 셋을 한 줄에 담는지 고정한다
-
-        Given: 표본 27건 · 회당 기대값 1.0578% 인 칸
-        When: 표시용으로 바꾸면
-        Then: 합산 수익률이 회당 × 표본 값으로 실리고 표본 수도 함께 있다
-        """
-        # Given
-        candidates = TestDirectionTable._candidates()
-
-        # When
-        table = build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월")
-
-        # Then
-        assert DISPLAY_TOTAL_RETURN in table.columns, "합산 수익률이 화면 표에서 빠졌습니다 (측정의 원칙 16)"
-        assert float(table[DISPLAY_TOTAL_RETURN].iloc[0]) == pytest.approx(28.56, abs=0.005)
-        assert int(table[DISPLAY_SAMPLE_COUNT].iloc[0]) == 27
-
-    def test_합산은_회당_기대값_바로_뒤에_온다(self) -> None:
-        """
-        목적: 두 값을 **나란히** 두는 것이 원칙의 요구다 — 떨어져 있으면 같이 읽히지 않는다
-
-        Given: 후보 한 칸
-        When: 표시용으로 바꾸면
-        Then: 「방향 기대값(%)」 바로 다음 컬럼이 「합산 수익률(%)」이다
-        """
-        # Given
-        candidates = TestDirectionTable._candidates()
-
-        # When
-        columns = list(build_direction_table(candidates, axis_column=self.AXIS_COLUMN, axis_label="만기월").columns)
-
-        # Then
-        assert columns[columns.index(DISPLAY_EXPECTED_VALUE) + 1] == DISPLAY_TOTAL_RETURN
 
 
 class TestPercentileDisplayConsistency:

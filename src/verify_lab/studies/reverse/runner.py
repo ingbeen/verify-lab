@@ -208,13 +208,13 @@ class _Population:
 
 @dataclass(frozen=True)
 class _SpecBlocks:
-    """한 이벤트 정의가 낸 다섯 표의 조각
+    """한 이벤트 정의가 낸 네 표의 조각
 
     **필드 이름을 `StudyOutputs` 와 맞춘다.** 조각을 쌓아 만드는 것이 그 표들이므로
     이름이 갈리면 어느 조각이 어느 표로 가는지 호출부에서 다시 대조해야 한다.
 
-    **튜플로 두지 않는다.** 호출부가 `blocks[0]`~`blocks[4]` 로 받게 되는데,
-    다섯이 전부 `list[pd.DataFrame]` 이라 **순서가 어긋나도 타입 검사가 잡지 못하고**
+    **튜플로 두지 않는다.** 호출부가 `blocks[0]`~`blocks[3]` 으로 받게 되는데,
+    넷이 전부 `list[pd.DataFrame]` 이라 **순서가 어긋나도 타입 검사가 잡지 못하고**
     `signals.csv` 에 집계표가 실린 채로 실행이 성공한다.
 
     Attributes:
@@ -232,7 +232,7 @@ class _SpecBlocks:
 
 @dataclass(frozen=True)
 class _ReverseAllBlocks:
-    """`역방향 전체` 신호군이 낸 네 표의 조각
+    """`역방향 전체` 신호군이 낸 세 표의 조각
 
     **`signals` 가 없다.** 이 방향은 집계 단계의 합성이라 신호일 목록을 내지 않는다
     (`_measure_reverse_all` 참고) — 같은 날이 두 줄로 실리면 차트 대조를 방해한다.
@@ -286,7 +286,7 @@ def run_study(
     생존편향을 만들고, 빈 표는 아래 계층이 예외로 거부한다.
 
     Args:
-        datasets: 검증 대상 시세 목록. 국내 두 가격 기준을 함께 넘겨야 대조가 성립한다
+        datasets: 검증 대상 시세 목록
         rank_cuts: 순위 컷 목록
         start_years: 신호 집계 시작 연도 목록
         repeats: 순열 검정의 반복 수
@@ -652,14 +652,9 @@ def _window_group_records(
     """
     return [
         _empty_group_record(
-            {
-                DISPLAY_TICKER: context.dataset.label,
-                DISPLAY_TEST: spec.test_label,
-                DISPLAY_PARAMETER: spec.parameter_label,
-                DISPLAY_START_YEAR: start_year,
-                DISPLAY_DIRECTION: spec.direction_labels[direction],
-                DISPLAY_ERA: period.label,
-            }
+            _identity(
+                context, spec, start_year=start_year, direction_label=spec.direction_labels[direction], period=period
+            )
         )
         for spec in specs
         for direction in Direction
@@ -680,7 +675,7 @@ def _measure_spec(
     seed: int,
     empty_groups: list[dict[str, Any]],
 ) -> _SpecBlocks:
-    """한 이벤트 정의를 방향별로 재고 다섯 표의 조각을 만든다.
+    """한 이벤트 정의를 방향별로 재고 네 표의 조각을 만든다.
 
     방향은 이벤트 정의가 내는 둘에 더해 **두 방향을 합친 `역방향 전체`** 가 하나 더 있다
     (`_measure_reverse_all` 참고). 사건 번호를 어느 목록에 매기는지는 이벤트 정의가 정한다
@@ -700,7 +695,7 @@ def _measure_spec(
         empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
 
     Returns:
-        신호일·집계·초과분·검정·판정 표의 조각
+        신호일·집계·초과분·검정 표의 조각
     """
     selected = {direction: spec.find(context.frame, context.ranks, direction, start) for direction in Direction}
     if end is not None:
@@ -716,14 +711,9 @@ def _measure_spec(
     normalized_returns: list[pd.DataFrame] = []
 
     for direction, signals in selected.items():
-        identity = {
-            DISPLAY_TICKER: context.dataset.label,
-            DISPLAY_TEST: spec.test_label,
-            DISPLAY_PARAMETER: spec.parameter_label,
-            DISPLAY_START_YEAR: start_year,
-            DISPLAY_DIRECTION: spec.direction_labels[direction],
-            DISPLAY_ERA: period.label,
-        }
+        identity = _identity(
+            context, spec, start_year=start_year, direction_label=spec.direction_labels[direction], period=period
+        )
 
         signal_count = int(signals.sum())
         if signal_count == 0:
@@ -828,16 +818,11 @@ def _measure_reverse_all(
         empty_groups: 신호 0건이라 빠진 신호군을 담을 목록 (제자리에서 채운다)
 
     Returns:
-        집계·초과분·검정·판정 표의 조각
+        집계·초과분·검정 표의 조각
     """
-    identity = {
-        DISPLAY_TICKER: context.dataset.label,
-        DISPLAY_TEST: spec.test_label,
-        DISPLAY_PARAMETER: spec.parameter_label,
-        DISPLAY_START_YEAR: start_year,
-        DISPLAY_DIRECTION: DISPLAY_DIRECTION_REVERSE_ALL,
-        DISPLAY_ERA: period.label,
-    }
+    identity = _identity(
+        context, spec, start_year=start_year, direction_label=DISPLAY_DIRECTION_REVERSE_ALL, period=period
+    )
 
     # 두 방향이 **모두** 0건일 때만 이 신호군도 0건이다. 한쪽만 비면 남은 쪽으로 성립한다
     if not normalized_returns:
@@ -1041,6 +1026,49 @@ def _empty_group_record(identity: Mapping[str, Any]) -> dict[str, Any]:
         KEY_DIRECTION: identity[DISPLAY_DIRECTION],
         KEY_PERIOD: identity[DISPLAY_ERA],
     }
+
+
+def _identity(
+    context: _Context,
+    spec: _TestSpec,
+    *,
+    start_year: int,
+    direction_label: str,
+    period: Period,
+) -> dict[str, Any]:
+    """신호군을 식별하는 앞 컬럼들을 만든다.
+
+    **순서는 `IDENTITY_COLUMNS` 가 정한다.** 조립하는 자리가 셋(방향별 · `역방향 전체` · 신호가 없는
+    창)이라 각자 순서를 적으면 한 곳만 바뀌어도 그 표의 컬럼 순서가 조용히 갈린다. 값은 키로
+    짝지어 두어, 상수의 순서를 바꿔도 값이 다른 컬럼으로 밀리지 않는다.
+
+    Args:
+        context: 데이터셋 공통 값
+        spec: 이벤트 정의와 파라미터
+        start_year: 집계 시작 연도
+        direction_label: 방향 표시 (`폭등`·`폭락`·`역방향 전체`)
+        period: 시대 구간
+
+    Returns:
+        식별 컬럼 dict (`IDENTITY_COLUMNS` 순서)
+    """
+    values = {
+        DISPLAY_TICKER: context.dataset.label,
+        DISPLAY_TEST: spec.test_label,
+        DISPLAY_PARAMETER: spec.parameter_label,
+        DISPLAY_START_YEAR: start_year,
+        DISPLAY_DIRECTION: direction_label,
+        DISPLAY_ERA: period.label,
+    }
+
+    # **두 목록이 어긋나면 멈춘다.** 상수에만 있는 컬럼은 `KeyError` 로 드러나지만,
+    # 여기에만 있는 컬럼은 투영에서 **조용히 빠져** 산출물에서 사라진다
+    if set(values) != set(IDENTITY_COLUMNS):
+        raise RuntimeError(
+            f"내부 불변조건 위반: 식별 컬럼 값과 IDENTITY_COLUMNS 가 다릅니다 " f"(값 {sorted(values)} · 상수 {sorted(IDENTITY_COLUMNS)})"
+        )
+
+    return {column: values[column] for column in IDENTITY_COLUMNS}
 
 
 def _with_identity(

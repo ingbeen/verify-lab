@@ -74,7 +74,7 @@ class TestFormatCount:
 
     def test_세지_못하면_숫자를_만들지_않는다(self) -> None:
         """
-        목적: 전에 「파싱 실패 시 1」이던 자리를 고정한다.
+        목적: 파싱에 실패했을 때 1 같은 숫자로 채우지 않는다.
         「몇 개인지 모른다」와 「1개다」는 다른 사실이다.
 
         Given: 파싱하지 못한 개수
@@ -141,7 +141,7 @@ class TestPyrightParsing:
 
     def test_오류가_0_이어도_읽는다(self) -> None:
         """
-        목적: 전에 「첫 정수가 0 이면 fallback 이 1 로 덮던」 경로를 고정한다.
+        목적: 오류 0 을 「못 읽음」으로 보고 다른 값으로 덮지 않는다.
 
         Given: 오류가 0인 요약 줄
         When: 패턴으로 찾는다
@@ -226,7 +226,7 @@ class TestPytestParsing:
 
     def test_테스트_이름에_든_단어를_세지_않는다(self) -> None:
         """
-        목적: 전에 「`passed` 가 든 줄이면 무엇이든 보던」 경로를 고정한다.
+        목적: `passed` 가 든 줄이면 무엇이든 보는 경로를 막는다.
 
         Given: 이름에 `passed` 가 든 `-v` 줄이 앞에 오는 출력
         When: 요약을 읽는다

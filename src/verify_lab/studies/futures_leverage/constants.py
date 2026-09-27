@@ -224,7 +224,6 @@ DISPLAY_PERIOD_HIGH_RATE: Final = "고금리(2022~)"
 # ============================================================
 
 DISPLAY_INDEX_NAME: Final = "지수"
-DISPLAY_BASE_TICKER: Final = "1배 종목"
 DISPLAY_TARGET_TICKER: Final = "짝 종목"
 DISPLAY_MULTIPLE: Final = "배수"
 DISPLAY_METHOD: Final = "방식"
@@ -239,10 +238,9 @@ DISPLAY_ADJUSTMENT_FACTOR: Final = "조정계수"
 DISPLAY_NEAR_OPEN_INTEREST: Final = "근월물 미결제약정"
 DISPLAY_NEXT_OPEN_INTEREST: Final = "차월물 미결제약정"
 
-DISPLAY_RETURN: Final = "수익률(%)"
 # **「비용」이라고 쓰지 않는다.** 이 값은 백워데이션에서 양수(롤 수익)가 되고 콘탱고에서
 # 음수(롤 비용)가 된다 — 이름이 부호를 정해 버리면 양수일 때 「비용이 양수」라는 말이 된다.
-# `docs/.claude/rules/docs.md` 가 「초과분」을 「차이」로 바꾼 것과 같은 이유다
+# `.claude/rules/docs.md` 가 「초과분」을 「차이」로 바꾼 것과 같은 이유다
 DISPLAY_ROLL_COST: Final = "롤·베이시스 몫(%p)"
 DISPLAY_REBALANCE_ERROR: Final = "리밸런싱 오차(%p)"
 DISPLAY_INTEREST_GAIN: Final = "여유현금 이자(%p)"
@@ -251,7 +249,6 @@ DISPLAY_RESIDUAL: Final = "잔여(%p)"
 DISPLAY_HOLD_ERROR: Final = "그대로 두기 오차(%p)"
 DISPLAY_DIVIDEND_ADJUSTMENT: Final = "배당 보정분(%p)"
 
-DISPLAY_EXPOSURE: Final = "노출(원)"
 DISPLAY_WIPEOUT_DATE: Final = "자기자본 소진일"
 
 DISPLAY_BREAKEVEN_HORIZON: Final = "선물이 앞서는 최소 보유 기간"

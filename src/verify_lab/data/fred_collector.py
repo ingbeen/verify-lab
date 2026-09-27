@@ -61,7 +61,7 @@ class FredSeries:
     unit: str
 
 
-# 수집 대상. 자릿수는 `.claude/rules/python.md` 반올림 규칙표를 따른다 (백분율이라 2자리)
+# 수집 대상. 자릿수는 `~/.claude/rules/python.md` 반올림 규칙표를 따른다 (백분율이라 2자리)
 FRED_SERIES: Final = (
     FredSeries(
         key="dtb3",

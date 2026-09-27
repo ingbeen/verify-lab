@@ -43,7 +43,7 @@ from verify_lab.utils.meta_manager import save_metadata
 logger = get_logger(__name__)
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키
-KEY_META_EQUIVALENCE = "usdkrw_equivalence_study"
+KEY_META_EQUIVALENCE = "usdkrw_equivalence"
 
 # 회귀 표의 컬럼 정의 (컬럼명, 폭, 정렬)
 EQUIVALENCE_COLUMNS = [
@@ -193,9 +193,9 @@ def main() -> int:
         save_table(directory, filename, getattr(outputs, field))
     save_run_summary(directory, outputs.summary)
 
-    # **행 수의 키가 곧 파일 이름이라 그대로 찍는다.** 전에는 파일명 상수와 별칭 키를
-    # `[EQUIVALENCE_FILENAME, counts['equivalence']]` 처럼 손으로 짝지어, 한쪽만 고치면
-    # 표가 엉뚱한 숫자를 보여주는데 예외는 나지 않았다
+    # **행 수의 키가 곧 파일 이름이라 그대로 찍는다.** 파일명 상수와 별칭 키를
+    # `[EQUIVALENCE_FILENAME, counts['equivalence']]` 처럼 손으로 짝지으면, 한쪽만 고쳤을 때
+    # 표가 엉뚱한 숫자를 보여주는데 예외는 나지 않는다
     counts = outputs.summary["row_counts"]
     TableLogger(OUTPUT_COLUMNS, logger).print_table(
         [[filename, f"{rows:,}"] for filename, rows in counts.items()],

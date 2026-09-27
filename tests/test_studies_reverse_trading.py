@@ -5,7 +5,8 @@
 
 핵심 계약은 넷이다.
 - 산출물 축은 **대상 × 구간**이다. 손절 분할과 보유 한도 축은 없다 —
-  구간 축은 측정의 원칙 17 이 모든 매매법에 요구하는 것이라 남는다
+  구간 축은 측정의 원칙 17 이 모든 매매법에 요구하는 것이라 남고, 그 다섯 행은
+  `tests/test_output_contract.py` 가 매매법 전부에 함께 건다
 - 집계는 **신호 단위**다. 신호 하나가 체결 내역 한 행이다
 - 집계는 **원값으로** 한다. 반올림된 표에서 다시 평균을 내면 합계가 어긋난다
 - 신호 판정은 `studies` 가 소유한다. 이 계층은 **어느 날이 신호인가를 다시 정하지 않는다**
@@ -35,11 +36,10 @@ from verify_lab.execution.constants import (
     DISPLAY_STOP_LEVEL,
     DISPLAY_TOTAL,
     PERIOD_ALL,
-    PERIODS,
     stop_level_value,
 )
 from verify_lab.execution.run_summary import KEY_NOTES, KEY_RULE
-from verify_lab.report.constants import DISPLAY_EXCLUDED, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
+from verify_lab.report.constants import DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
 from verify_lab.studies.reverse.constants import HOLD_LIMIT, START_YEAR, STOP_LOSS_LEVEL, TARGETS, Dataset, Target
 from verify_lab.studies.reverse.trading import (
     IDENTITY_COLUMNS,
@@ -181,20 +181,6 @@ def _overall(summary: pd.DataFrame) -> pd.Series:
 class TestAxes:
     """산출물 축 계약"""
 
-    def test_집계는_대상마다_구간_다섯_줄이다(self, outputs: StrategyOutputs) -> None:
-        """
-        목적: 산출물 축이 대상 × 구간인지 고정한다
-
-        손절 분할과 보유 한도 축은 걷어냈고, 구간 축은 측정의 원칙 17 이 **모든** 매매법에
-        요구하는 것이라 남는다 — 균등 2분할만으로는 신호가 식는 것을 놓친다.
-
-        Given: 대상 하나로 돈 실행 결과
-        When: 집계 행 수를 봤을 때
-        Then: 구간 수만큼이다
-        """
-        # Given / When / Then
-        assert len(outputs.performance) == len(PERIODS)
-
     def test_식별_컬럼이_두_표에_모두_앞에_붙는다(self, outputs: StrategyOutputs) -> None:
         """
         목적: 조합을 한 파일에 쌓아도 어느 행이 어떤 설정인지 행 자체로 알 수 있게 한다
@@ -300,8 +286,8 @@ class TestSignalOwnership:
         )
 
         # When
-        narrow_count = int(narrow.performance[DISPLAY_SIGNAL_COUNT].iloc[0])
-        wide_count = int(wide.performance[DISPLAY_SIGNAL_COUNT].iloc[0])
+        narrow_count = int(_overall(narrow.performance)[DISPLAY_SIGNAL_COUNT])
+        wide_count = int(_overall(wide.performance)[DISPLAY_SIGNAL_COUNT])
 
         # Then
         assert wide_count >= narrow_count
@@ -457,8 +443,8 @@ class TestTargetsInvariant:
         """
         목적: 확정된 손절선을 값으로 고정한다
 
-        **-5% 는 성적이 가장 좋아서가 아니라 갭손절이 0건이 되는 첫 지점이라 고른 값**이다.
-        -4%~-10% 는 회당 평균이 +1.27~+1.46% 로 평평해 값 선택이 결과를 만들지 않는다.
+        **-5% 는 성적이 가장 좋아서 고른 값이 아니다** — 평평한 구간 안에서 최악 상한이 좁은 쪽이다.
+        근거와 탈락안은 `docs/매매/역방향/규칙.md` 결정 ⑤ 가 수치로 갖는다.
 
         Given: 손절선 상수
         When: 값을 봤을 때
@@ -471,7 +457,7 @@ class TestTargetsInvariant:
         """
         목적: 확정된 보유 한도를 값으로 고정한다
 
-        3일 구간은 평균 우연확률이 0.2917 로 근거가 없다.
+        근거와 탈락안(D+1 · D+3)은 `docs/매매/역방향/규칙.md` 결정 ⑥ 이 수치로 갖는다.
 
         Given: 보유 한도 상수
         When: 값을 봤을 때
@@ -521,8 +507,7 @@ class TestTargetsInvariant:
         같은 문장이 두 자리에 있으면 한쪽만 고쳐질 때 어느 쪽이 맞는지 판별할 방법이 없다.
         게다가 `exit` 에 들어 있던 문장은 청산 규칙이 아니라 **손절 기준 설명**이었다.
 
-        나머지 두 매매법은 `rule` 에 기계값만 두고 산문은 전부 `notes` 에 둔다 —
-        옵션 만기일 `{stop_levels, cells}` · 월말 `{stop_levels, from_year, targets}`.
+        다른 매매법도 `rule` 에 기계값만 두고 산문은 전부 `notes` 에 둔다.
         **청산 규칙은 `notes` 의 문장과 `rule.hold_limit` 숫자가 담으므로 잃는 정보가 없다.**
 
         Given: 실행 결과의 요약
@@ -639,18 +624,6 @@ class TestSamplePreservation:
         # Given / When / Then
         assert _excluded(outputs.summary[KEY_RULE][KEY_TARGETS][0]) == 0
 
-    def test_성적표에는_제외_컬럼이_없다(self, outputs: StrategyOutputs) -> None:
-        """
-        목적: 컬럼을 걷어낸 것을 고정한다. 판정에도 성적에도 쓰이지 않는 열이었고,
-              전체 행에만 값이 있어 구간 행은 늘 빈칸이었다.
-
-        Given: 실행 결과의 성적표
-        When: 컬럼을 봤을 때
-        Then: 「제외」가 없다
-        """
-        # Given / When / Then
-        assert DISPLAY_EXCLUDED not in outputs.performance.columns
-
 
 class TestInputValidation:
     """입력 검증"""
@@ -679,9 +652,11 @@ class TestAllSignalsExcluded:
         만들어지지 않아** 「몇 건이 왜 빠졌는지」가 어디에도 남지 않는다.
         `_summarize` 는 「신호 + 제외 = 전체 신호 수」가 성립한다고 적었는데 이 경로에서만 깨진다.
 
+        **키가 있는지만 보면 건수가 0 으로 적혀도 통과한다** — 그래서 건수를 전체 신호 수와 맞춘다.
+
         Given: 첫 신호일에서 끝나 **모든 신호의 보유 구간이 잘린** 시세
         When: 실행하면
-        Then: 체결은 없지만 제외 건수가 실행 정보에 남는다
+        Then: 체결은 없고 요약의 제외 건수가 전체 신호 수와 같다
         """
         # Given
         first_offset = SIGNAL_PLACEMENTS[0][0]
@@ -692,5 +667,6 @@ class TestAllSignalsExcluded:
 
         # Then
         assert outputs.trades.empty, "이 시세에서는 체결이 만들어지지 않아야 검사가 성립합니다"
-        recorded = str(outputs.summary)
-        assert KEY_EXCLUDED_COUNT in recorded, f"제외 건수가 실행 정보에 없습니다: {outputs.summary}"
+        record = outputs.summary[KEY_RULE][KEY_TARGETS][0]
+        assert int(record["signal_count"]) >= 1, "신호가 없어 검사가 성립하지 않습니다 — 시세 길이를 확인하세요"
+        assert _excluded(record) == int(record["signal_count"]), f"제외 건수가 전체 신호 수와 다릅니다: {record}"

@@ -33,7 +33,6 @@ from verify_lab.measure.forward_return import DEFAULT_HORIZONS
 from verify_lab.report.constants import (
     DISPLAY_BASELINE,
     DISPLAY_BASELINE_SAMPLE,
-    DISPLAY_BASIS,
     DISPLAY_DATE,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
@@ -367,9 +366,11 @@ class TestSignalGroupAxes:
         """
         # Given / When
         tables = (wide_outputs.statistics, wide_outputs.excess, wide_outputs.test)
+        # 헤더를 손으로 박는다 — 그 헤더를 내는 상수가 없으므로 가드가 기댈 상수도 없다
+        basis_header = "기준"
 
         # Then
-        assert all(DISPLAY_BASIS not in table.columns for table in tables)
+        assert all(basis_header not in table.columns for table in tables)
 
     def test_신호일_목록에는_익일시가_1일이_남는다(self, wide_outputs: StudyOutputs) -> None:
         """

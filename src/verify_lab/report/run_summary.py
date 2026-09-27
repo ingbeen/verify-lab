@@ -3,10 +3,10 @@
 `summary.json` 의 `datasets` 는 「무엇을 어느 기간으로 쟀는가」를 담는 자리이며
 **범위의 SoT** 다(`src/verify_lab/CLAUDE.md` 출력 계약). 검증도 매매도 같은 줄을 낸다.
 
-**소유자가 `report` 인 이유는 계층 방향이다.** 이 줄을 매매 계층이 가지면 `studies` 가
-가져올 수 없어(`studies → strategy` 가 방향을 뒤집는다) 검증 셋이 각자 만들게 되고,
+**소유자가 `report` 인 이유는 계층 방향이다.** 이 줄을 매매 계층(`execution`)이 가지면 검증
+runner 가 `execution` 에 기대야 해 검증마다 각자 만들게 되고,
 **키를 맞춰 놓고도 구현이 갈라진 채**로 남아 한 벌만 고쳐도 예외가 나지 않는다.
-`studies` 도 `strategy` 도 이미 `report` 에 의존하므로 여기서는 방향이 뒤집히지 않는다.
+`studies` 도 `execution` 도 이미 `report` 에 의존하므로 여기서는 새 의존이 생기지 않는다.
 저장은 같은 계층의 `writer.save_run_summary` 가 한다.
 
 **이 모듈은 「한 줄」만 소유한다.** 요약 전체의 틀(`track`·`rule`·`cost` …)은 매매 계층의
@@ -36,8 +36,8 @@ KEY_TRACK: Final = "track"
 # 데이터셋 한 줄의 키
 # ============================================================
 
-# **`ticker` 는 종목코드이고 `label` 은 표시 이름이다.** 여섯 산출 지점(검증 셋·매매 셋)이
-# 같은 뜻을 쓴다 — `ticker` 에 **표시 이름**을 넣으면 요약이 `"ticker": "KODEX 200"` 처럼
+# **`ticker` 는 종목코드이고 `label` 은 표시 이름이다.** 산출 지점(검증 runner · 매매 trading)이
+# 모두 같은 뜻을 쓴다 — `ticker` 에 **표시 이름**을 넣으면 요약이 `"ticker": "KODEX 200"` 처럼
 # 적히고, **미국 ETF 는 둘이 같아(`QQQ`) 그 충돌이 국내에서만 드러난다.**
 # 둘 다 `str` 이라 타입 검사가 잡지 못한다
 KEY_DATASET_TICKER: Final = "ticker"
@@ -62,7 +62,7 @@ def dataset_record(*, ticker: str, label: str, file: str, frame: pd.DataFrame) -
     실측으로 `docs/매매/역방향/규칙.md` 의 기간이 낡은 채 남은 적이 있다.
 
     **자기 축을 더 붙이는 것은 호출 측의 몫이다.** 검증마다 더 담을 것이 다르므로
-    (`price_basis`·`expiry_count`·`is_index`) 이 함수에 검증별 인자를 두지 않는다 —
+    (`price_basis`·`is_index` 처럼) 이 함수에 검증별 인자를 두지 않는다 —
     두면 공통 함수가 어느 검증이 자기를 쓰는지 알게 된다.
 
     Args:
