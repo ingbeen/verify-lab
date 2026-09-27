@@ -26,7 +26,7 @@ poetry run black .
 
 > 검증이 **세 항목 모두 실패**하면서 `Command not found` 가 보이면 코드 문제가 아니라 실행 환경 문제입니다.
 > `poetry env info --path` 가 프로젝트의 `.venv` 를 가리키는지 먼저 확인하세요.
-> 원인과 대처는 [.claude/rules/session-bootstrap.md](../.claude/rules/session-bootstrap.md) 5절에 있습니다.
+> 원인은 셸에 남은 `VIRTUAL_ENV` 를 Poetry 가 프로젝트 `.venv` 보다 우선하는 것이고(그 환경에는 개발 의존성이 없다), `env -u VIRTUAL_ENV` 를 붙여 다시 돌면 됩니다.
 
 > **`failed=0 skipped=0` 이 통과 기준입니다.** 이 둘만 보면 됩니다.
 >

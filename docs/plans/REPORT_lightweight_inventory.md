@@ -728,3 +728,36 @@ INDEX 를 앞(P3)에 두는 이유: 뒤 페이즈마다 파일을 지우고 옮�
 | T9 | 작업 트리 | `full_period.csv`(값 변경) · `docs/INDEX.md`(머지 문서 등록)가 ③ 과 한 작업 트리에 있다 — **사용자가 따로 커밋** | 운영 |
 
 **Non-Goals 로 넘긴 것** — 목록은 `SLIM_SERIES.md` ③ 인계 메모에 있다(⑥ 달력 문서 포인터 · ⑦ 원달러 그리드 포인터 · ④ 계약 문서와 `tracks.py` 주석). 그 밖에 `NOTE_STOP_BASE` 두 벌(합치면 역방향 `summary.json` 이 바뀐다)과 §12.1 의 `_print_rule` 출처 이중화는 그대로다.
+
+### 12.6 계획서 ④ — 처리한 백로그 · 코드 리뷰 1회차 「그 외」 15건 · 넘긴 항목
+
+> 버그 0. **리뷰 범위에 아직 push 되지 않은 ③ 커밋(`9c224e3`)이 함께 들어왔다** — 기본 범위가 원격보다 앞선 커밋을 포함했다. 그래서 15건 중 ④ 의 변경에서 나온 것은 R4-1 ~ R4-3 셋뿐이다. 고치지 않았다(조치는 사용자가 정한다).
+
+**④ 가 처리한 백로그**: §12.1 의 ④ 두 행(계약 문서 「지웠다」 과거형 · scripts 가 대상 수를 적음 — COMMANDS 쪽은 ⑧ / `trading.md` 「그 뒤 매매로 승격」 시제와 129.46 → 50.18% 수치) · §12.3 R2 · R3 · R5 · R7 · R13 · §12.4 S9(`tests/CLAUDE.md` 「1:1」) · §12.5 T1(보합 20% → `test_measure_statistics.py` 여집합 테스트)
+
+**④ 가 만든 것 — 커밋 전에 고칠지 사용자 결정**
+
+| # | 자리 | 무엇 |
+| --- | --- | --- |
+| R4-1 | 루트 `CLAUDE.md` 「reference 폴더」 | 「이 프로젝트는 저장소 밖의 경로를 참조하지 않습니다」가 남아 있는데 ④ 가 G1 · G2 · G7 · 반올림 표를 전역 `~/.claude/` 포인터로 바꿔 그 문장과 더 어긋나 보인다(원래 뜻은 참고 원본이 `reference/` 안에 있다는 것 — 전역 포인터는 ④ 전에도 있었다). 여러 PC 에서 전역 설정이 다르면 포인터가 가리키는 절이 없을 수 있다는 지적이 붙었다 |
+| R4-2 | 루트 `CLAUDE.md` 원칙 17 | 「위 DIA 6월처럼 뒤 절반과 최근 5년이 음수여도」 — ④ 가 뒤 절반 회당 −0.167% 를 지워 위에는 「뒤 60.0%」(적중률)만 남았다. 전제를 위에서 확인할 수 없다 |
+| R4-3 | `src/verify_lab/CLAUDE.md` 「판정표를 내지 않아도 그 값은 남습니다」 | ④ 가 가리킨 `docs/매매/역방향/설계.md` 「없앤 판정표를 되살리려면」의 자동 절차가 없는 `screen_candidates` 를 부른다 — 대상 문서의 문제라 ⑤ 가 고친다 |
+
+**③ 의 코드·기존 문서에서 나온 것 — 백로그에 더한다**
+
+| # | 자리 | 무엇 | 비고 |
+| --- | --- | --- | --- |
+| R4-4 | `tests/test_layer_contracts.py` `_FILENAME_SHAPE` | `fullmatch` 가 경로 구분자를 뺀 `[^\s/\\]*\.csv` 라 `"/성적표.csv"`·`str(d) + "/거래내역.csv"` 같은 경로 포함 리터럴이 검사를 빠져나간다 | ③ 의 A 와 같은 정규식의 다른 구멍 |
+| R4-5 | `tests/test_output_contract.py` `TestCoverage` | `OUTPUT_FIXTURES` 만 레지스트리와 대조 — 약 20 개 계약 테스트가 픽스처 이름을 손으로 적어 새 매매법을 건너뛸 수 있다 | §12.5 T3 와 같음 |
+| R4-6 | `data/pykrx_collector.collect_pykrx_nav` · futures `run_study` | 주입 인자를 걷어 테스트 입구가 사라지고 형제 함수와 API 가 갈린다 | §12.5 T6 와 같음 |
+| R4-7 | `tests/test_measure_screening.py` `TestSingleOwner` | 없는 `MIN_HIT_RATE` 의 부재만 본다 — 무력 | §12.5 T2 와 같음 |
+| R4-8 | `data/ecos_collector.py:91` | 환율 2자리 예외가 코드 주석에만 있다 — 전역 python.md 는 「저장소별 예외는 그 저장소 CLAUDE.md 가 밝힌다」 | 새 지적 |
+| R4-9 | `execution/trade_fill.py:8·80·130·452` · `periods.py:22` · `distribution.py:7` · `calendar_entry.py:8` · `execution/constants.py:52` | 공유 계층 주석이 지금 소비자(중간선거_사이클)를 이름으로 적는다 — 소비자가 바뀌면 다시 낡는다 | 새 지적 |
+| R4-10 | `execution/constants.py:56` · `studies/reverse/trading.py:102` | `NOTE_STOP_BASE` 두 벌 | §12.5 끝 문단과 같음 |
+| R4-11 | `studies/midterm_cycle/runner.py:18` · `cycle_calendar.py:21` | 루트 「기준선은 탈락 사유가 아니다」(옛 제목 — 지금 「기준선을 넘지 못하는 것은 탈락 사유가 아닙니다」) · 「이것이 첫 번째」 옛 근거 | 새 지적 (⑤ 가 중간선거 문서를 볼 때 함께) |
+| R4-12 | `tests/test_measure_screening.py:118` | SPY 3월 회당 −0.315%(합계 −10.70%) — 결과 문서·루트는 ±0.312% | 새 지적 (⑥ 가 옵션 만기일 원자료를 합칠 때 대조) |
+| R4-13 | `studies/futures_leverage/runner.py:624` · `reverse/trading.py:312` | `horizons_or_default(None)`·`_measure(hold_limit=HOLD_LIMIT)` 처럼 운영 경로가 바꾸지 않는 인자 | §12.5 T6 와 같은 자리 |
+| R4-14 | `studies/reverse/trading.py:404` · `runner.py:1066` | 식별 키 투영 가드(③ 의 B)가 같은 패키지에 두 벌 | 새 지적 |
+| R4-15 | 커밋 `9c224e3` | ③ 커밋에 `full_period.csv` 값 변경과 INDEX 등록이 함께 들어갔다 — 「이름·값 분리 커밋」 규율과 어긋난다 | 사용자 선택으로 한 커밋이 됐다(③ 인계 메모는 따로 커밋하라고 적었다). 되돌릴 일은 아니고 기록만 |
+
+**⑤ ⑥ ⑦ ⑧ 로 넘긴 것** — 목록은 `SLIM_SERIES.md` ④ 인계 메모에 있다.
