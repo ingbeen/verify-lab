@@ -202,7 +202,8 @@ DISPLAY_RANK: Final = "당시 순위"
 DISPLAY_EVENT_ID: Final = "사건 번호"
 DISPLAY_ZSCORE: Final = "z-score"
 
-# z-score 는 비율도 백분율도 아닌 배수다. 스펙 §8 의 표기와 같은 자릿수를 쓴다
+# z-score 는 비율도 백분율도 아닌 배수라 반올림 규칙표(백분율 2자리 · 비율 4자리)의 어느 칸에도
+# 들지 않는다. 그래서 자릿수를 여기서 정한다
 ZSCORE_DECIMALS: Final = 2
 
 

@@ -115,15 +115,15 @@ class TestGateBoundary:
         목적: **비율만으로는 못 거르는 칸이 실재한다** — 기대값이 거른다.
 
               실물 사례: SPY 3월 만기 34회. 내린 비율 64.71% 라 「아래」로 걸면 자주 맞지만,
-              맞을 때 +1.27% · 틀릴 때 −3.22% 라 회당 −0.315% 였다. 손익분기 승률이 71.7% 인데
+              맞을 때 +1.272% · 틀릴 때 −3.218% 라 회당 −0.312% 였다. 손익분기 승률이 71.7% 인데
               64.7% 만 맞았다 — 적중률로 거르는 게이트였다면 통과했을 칸이다.
 
-        Given: 방향 기대값이 −0.315% 인 칸
+        Given: 방향 기대값이 −0.312% 인 칸
         When: 판정하면
         Then: 제외다
         """
         # Given / When
-        verdict = screen_verdict(expected_value=-0.00315, sample_count=34, tradable=True)
+        verdict = screen_verdict(expected_value=-0.00312, sample_count=34, tradable=True)
 
         # Then
         assert verdict == SCREEN_EXCLUDED
