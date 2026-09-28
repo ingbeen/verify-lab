@@ -8,7 +8,12 @@
 `--adjusted` 를 붙이면 분배금이 반영된 수정주가를 **다른 파일명으로** 받는다. 원달러 ETF 등가성처럼
 설계가 수정 종가를 요구하는 검증이 이 인자를 쓴다 (`docs/조사/원달러_ETF_등가성/설계.md`).
 
+`--index` 는 지수의 종가를 받는다 — 왜 종가 하나만 남기는지는 `collect_pykrx_index` docstring 이 SoT 다.
+**지수마다 받을 수 있는 첫날이 달라 `--start` 로 준다**: 코스피 종합 `1001` 19800104 · 코스피200 `1028`
+19900103 · 코스닥150 `2203` 20100104 · 코스닥 종합 `2001` 19960701(기본값).
+
 외부 서버(KRX)에 실제 요청을 보내므로 **같은 데이터를 이유 없이 다시 받지 않는다.**
+**같은 이름의 기존 파일을 덮어쓴다** — 재수집은 이미 나온 결과를 바꾼다(루트 `CLAUDE.md`).
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
 
 > **로그 주의**: pykrx 는 로그인 시 **로그인 ID 를 표준 출력에 찍는다**(비밀번호는 찍지 않는다).
@@ -36,7 +41,7 @@ logger = get_logger(__name__)
 DEFAULT_TICKER = "069500"
 DEFAULT_START_DATE = "20021014"
 
-# `--index` 로 실행했을 때 받는 지수와 그 산출 시작일. 검증 #10 의 최장 기간 축이다
+# `--index` 로 실행했을 때 받는 지수(코스닥 종합)와 그 산출 시작일
 DEFAULT_INDEX_TICKER = "2001"
 DEFAULT_INDEX_START_DATE = "19960701"
 
@@ -77,7 +82,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start",
         default=None,
-        help=f"조회 시작일 YYYYMMDD, 보통 상장일 (기본값: ETF {DEFAULT_START_DATE} · 지수 {DEFAULT_INDEX_START_DATE})",
+        help=f"조회 시작일 YYYYMMDD, 보통 상장일 (기본값: ETF {DEFAULT_START_DATE} · 지수 {DEFAULT_INDEX_START_DATE}). "
+        "지수의 기본값은 코스닥 종합의 첫날이라 더 일찍 시작하는 지수(코스피 종합·코스피200)에 그대로 쓰면 "
+        "앞 구간을 잃는다 — 지수별 첫날은 모듈 docstring 에 있다",
     )
     parser.add_argument(
         "--adjusted",

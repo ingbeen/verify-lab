@@ -8,10 +8,10 @@
 | 파일 | 내용 |
 | --- | --- |
 | `divergence.csv` | 쌍 × 구간 집계. 가장 먼저 볼 표다 |
-| `breakdown.csv` | 쌍 × 구간 × 축(변동성·방향·시기) |
+| `breakdown.csv` | 쌍 × 구간 × 축(변동성·방향·1배 수익률 분위·금리 환경) |
 | `distribution.csv` | 분배금 몫과 배당 보정분 — 원본가로 재서 생긴 왜곡의 크기 |
 | `full_period.csv` | 상장 후 전체 구간 1건. 표본 1건이라 통계가 아니라 사례다 |
-| `windows_<티커>.csv` | 시작일 전체 목록 원자료. 사용자가 차트와 대조하는 자리다 |
+| `windows_<티커>.csv` | 시작일 전체 목록 원자료. 사용자가 차트와 대조하는 자리다. 쌍마다 하나라 합계가 수십 MB 다 |
 """
 
 from dataclasses import dataclass

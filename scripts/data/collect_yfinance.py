@@ -6,6 +6,7 @@
 수집기의 `collect_yfinance_index` docstring 이 SoT다.
 
 외부 서버(Yahoo Finance)에 실제 요청을 보내므로 **같은 데이터를 이유 없이 다시 받지 않는다.**
+**같은 이름의 기존 파일을 덮어쓴다** — 재수집은 이미 나온 결과를 바꾼다(루트 `CLAUDE.md`).
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
 """
 
@@ -56,7 +57,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--adjusted",
         action="store_true",
-        help="수정주가로 받는다 (기본값: 원본가). 원본가가 기본인 이유는 수집기 모듈 docstring 참고. " "**지수에는 해당하지 않는다** — 분배금이 없다",
+        help="수정주가로 받는다 (기본값: 원본가). 저장 파일명이 달라 원본가를 덮어쓰지 않는다. "
+        "원본가가 기본인 이유는 수집기 모듈 docstring 참고. **지수에는 해당하지 않는다** — 분배금이 없다",
     )
     return parser.parse_args()
 

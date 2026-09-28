@@ -6,6 +6,7 @@
 
 **보유 기간과 임계값은 인자가 아니다.** 확정된 격자를 전부 산출해 나란히 보고하는 것이
 이 검증의 설계이며, 값을 골라 넣는 노브로 쓰면 과최적화가 된다.
+산출물 파일과 각 내용은 `studies/leverage_tracking/runner.py` 모듈 docstring 에 있다.
 
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
 """

@@ -60,7 +60,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--start",
         default=DEFAULT_START_DATE,
-        help=f"조회 시작일 YYYYMMDD, 보통 상장일 (기본값: {DEFAULT_START_DATE})",
+        help=f"조회 시작일 YYYYMMDD, 보통 상장일 (기본값: {DEFAULT_START_DATE}). "
+        "상장일은 기억이 아니라 KRX 기본종목의 LIST_DD 로 확인한다 — 늦게 주면 앞 구간이 예외 없이 빠진다",
     )
     parser.add_argument(
         "--indicative-value",

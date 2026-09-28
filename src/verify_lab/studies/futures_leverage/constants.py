@@ -157,7 +157,7 @@ REBALANCE_RULES: Final = (REBALANCE_DAILY, REBALANCE_MONTHLY, REBALANCE_NONE)
 # 달력 축을 두지 않는다. 결과 문서에 이 사실을 적는다
 REBALANCE_INTERVAL_DAYS: Final = 21
 
-# 비교 방식 셋. 이 이름이 산출물의 「방식」 컬럼 값이 된다
+# 비교 방식. 이 이름이 산출물의 「방식」 컬럼 값이 된다
 METHOD_ETF: Final = "레버리지 ETF"
 METHOD_FUTURES_DAILY: Final = "선물 매일"
 METHOD_FUTURES_MONTHLY: Final = "선물 월 1회"

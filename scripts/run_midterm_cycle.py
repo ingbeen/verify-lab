@@ -110,7 +110,8 @@ def parse_args() -> argparse.Namespace:
         파싱된 인자
     """
     parser = argparse.ArgumentParser(
-        description="중간선거_사이클 — 9월 마지막 거래일에 사서 다음해 6월 마지막 거래일에 파는 매매법을 " "중간선거해에서 측정하고, 체결 성적과 분기 분해를 함께 냅니다."
+        description="중간선거_사이클 — 9월 마지막 거래일에 사서 다음해 6월 마지막 거래일에 파는 매매법을 "
+        "중간선거해에서 측정하고, 체결 성적 · 분기 분해 · 분할매수 격자 · 진입 위치 표를 함께 냅니다."
     )
     parser.add_argument(
         "--ticker",
