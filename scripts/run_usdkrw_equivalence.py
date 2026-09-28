@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """검증 #5 — 원달러 ETF 등가성 실행 CLI
 
-**261240 이 「환전 + 달러 예치」의 대체재인가**를 잰다. 매매 로직이 없는 순수 측정이며,
-사양서 §16 이 그리드 백테스트보다 먼저 실행하라고 규정한 게이트다.
+**261240 이 「환전 + 달러 예치」의 대체재인가**를 잰다. 매매 로직이 없는 순수 측정이다.
+설계와 합격선의 원문은 `docs/조사/원달러_ETF_등가성/설계.md` 에 있다.
 
-**이론값을 하나로 고르지 않는다.** 사양서 §16.1 과 §2.1 이 서로 다른 식을 가리키므로 둘 다 낸다.
+**이론값을 하나로 고르지 않는다.** 원문 §16.1 과 §2.1 이 서로 다른 식을 가리키므로 둘 다 낸다.
 **이상치도 포함·제외를 모두 낸다.** 2019-03-14 의 종가 이상치 이틀이 회귀를 뒤집는다.
 
 실행 명령어는 `docs/COMMANDS.md` 를 참고한다.
@@ -125,7 +125,7 @@ def _print_equivalence(outputs: EquivalenceOutputs) -> None:
         ]
         for _, row in outputs.equivalence.iterrows()
     ]
-    TableLogger(EQUIVALENCE_COLUMNS, logger).print_table(rows, title="261240 대 이론값 (사양서 §16.2)")
+    TableLogger(EQUIVALENCE_COLUMNS, logger).print_table(rows, title="261240 대 이론값 (원문 §16.2)")
 
 
 def _print_leverage(outputs: EquivalenceOutputs) -> None:
@@ -145,7 +145,7 @@ def _print_leverage(outputs: EquivalenceOutputs) -> None:
         ]
         for _, row in outputs.leverage.iterrows()
     ]
-    TableLogger(LEVERAGE_COLUMNS, logger).print_table(rows, title="261250 대 261240 (사양서 §16.3)")
+    TableLogger(LEVERAGE_COLUMNS, logger).print_table(rows, title="261250 대 261240 (원문 §16.3)")
 
 
 def _print_effective_cost(outputs: EquivalenceOutputs) -> None:

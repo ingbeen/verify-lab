@@ -1,6 +1,6 @@
 """회귀 통계와 연도별 괴리 산식을 고정한다.
 
-사양서 §16.2·§16.3 의 판정이 전부 이 값들에 걸려 있다. 산식이 조용히 달라지면
+원문 §16.2·§16.3 의 판정이 전부 이 값들에 걸려 있다. 산식이 조용히 달라지면
 합격선 판정이 뒤집히므로, 손으로 검산 가능한 입력으로 값을 못 박는다.
 """
 
@@ -41,7 +41,7 @@ def test_perfect_line_recovers_slope_and_intercept() -> None:
 
 def test_alpha_is_annualized_by_trading_days() -> None:
     """
-    목적: 알파 연환산이 **거래일 250 배**임을 고정한다 (사양서 §16.3).
+    목적: 알파 연환산이 **거래일 250 배**임을 고정한다 (원문 §16.3).
 
     Given: 일간 알파가 0.001 인 표본
     When: 회귀한다
@@ -57,7 +57,7 @@ def test_alpha_is_annualized_by_trading_days() -> None:
 
 def test_tracking_error_is_residual_std_times_sqrt_250() -> None:
     """
-    목적: 추적오차 산식을 고정한다 (사양서 §16.2).
+    목적: 추적오차 산식을 고정한다 (원문 §16.2).
 
     Given: 잔차가 있는 표본
     When: 회귀한다
@@ -193,7 +193,7 @@ def test_annual_drift_reports_day_count_per_year() -> None:
 
 def test_annual_drift_spread_is_max_minus_min() -> None:
     """
-    목적: 괴리 폭이 최대−최소임을 고정한다 (사양서 §16.2 의 "편차 0.3%p 이내").
+    목적: 괴리 폭이 최대−최소임을 고정한다 (원문 §16.2 의 "편차 0.3%p 이내").
 
     Given: 연도별 괴리가 서로 다른 표본
     When: 연도별 괴리를 낸다

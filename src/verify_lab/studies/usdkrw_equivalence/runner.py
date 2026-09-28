@@ -7,7 +7,7 @@
 
 | 축 | 값 | 이유 |
 | --- | --- | --- |
-| 이론값 | 현물+금리차 / 현물+달러금리 | 사양서 §16.1 과 §2.1 이 서로 다른 식을 가리킨다 |
+| 이론값 | 현물+금리차 / 현물+달러금리 | 원문 §16.1 과 §2.1 이 서로 다른 식을 가리킨다 |
 | 이상치 | 포함 / 제외 | 2019-03-14 의 종가 이상치 이틀이 회귀를 뒤집는다 |
 
 **하나를 고르지 않는다.** 어느 쪽이 맞는지는 결과가 답한다.
@@ -118,13 +118,13 @@ KEY_THRESHOLDS = "thresholds"
 KEY_NOTES = "notes"
 
 # 산출물만 보고는 알 수 없는 실행 조건
-NOTE_MODELS = "이론값을 하나로 고르지 않았다. 사양서 §16.1 의 H₀(현물+금리차)와 §2.1 의 커버드 금리평형(현물+달러금리)이 서로 다른 식이라 둘 다 산출한다"
+NOTE_MODELS = "이론값을 하나로 고르지 않았다. 원문 §16.1 의 H₀(현물+금리차)와 §2.1 의 커버드 금리평형(현물+달러금리)이 서로 다른 식이라 둘 다 산출한다"
 NOTE_OUTLIER = "2019-03-14·15 는 261240 의 종가가 NAV 대비 +21.85% 튄 날과 되돌아온 날이다. NAV 는 정상이었다. 포함·제외 두 벌을 모두 산출한다"
-NOTE_ALPHA = "알파의 합격 판정을 붙이지 않았다. 사양서 §16.2 가 기준을 '총보수 근방'으로 적었는데 두 ETF 의 총보수가 아직 확인되지 않았다"
+NOTE_ALPHA = "알파의 합격 판정을 붙이지 않았다. 원문 §16.2 가 기준을 '총보수 근방(−0.25% 내외)'으로만 적어 허용 폭이 숫자로 정해져 있지 않다"
 NOTE_RATE = "이자는 직전 거래일의 금리를 달력일 ÷ 365 로 일할한 값이다. 구간이 끝난 뒤 고시된 금리를 쓰면 미래를 참조한다"
-NOTE_LP = "사양서 §16.4 의 LP 호가 스프레드는 일별 데이터로 측정할 수 없어 산출하지 않았다"
+NOTE_LP = "원문 §16.4 의 LP 호가 스프레드는 일별 데이터로 측정할 수 없어 산출하지 않았다"
 NOTE_COST = "실효 총비용은 분배금을 조정한 NAV 를 노출 배수 기준선에 회귀한 절편이다. 두 보정 중 하나라도 빠지면 값이 크게 틀린다"
-NOTE_TER = "공시 총보수는 판정 기준이 아니라 측정값의 교차확인용이다. 출처와 조회 시점은 docs/조사/원달러_그리드/설계.md 에 있다"
+NOTE_TER = "공시 총보수는 판정 기준이 아니라 측정값의 교차확인용이다. 출처와 조회 시점은 docs/조사/원달러_ETF_등가성/설계.md 에 있다"
 
 
 @dataclass(frozen=True)
@@ -132,10 +132,10 @@ class EquivalenceOutputs:
     """실행 산출물
 
     Attributes:
-        equivalence: 261240 대 이론값의 회귀 지표 (사양서 §16.2)
+        equivalence: 261240 대 이론값의 회귀 지표 (원문 §16.2)
         annual_drift: 연도별 실제·이론 누적수익률과 괴리
-        leverage: 261250 대 261240 의 회귀 지표 (사양서 §16.3)
-        premium: 종목별·연도별 NAV 프리미엄 (사양서 §16.4)
+        leverage: 261250 대 261240 의 회귀 지표 (원문 §16.3)
+        premium: 종목별·연도별 NAV 프리미엄 (원문 §16.4)
         effective_cost: 종목별 실효 총비용과 공시 총보수 대조
         daily: 날짜별 원자료. 사용자가 손으로 검산하는 대상이다
         summary: 실행 파라미터와 핵심 수치
@@ -221,7 +221,7 @@ def run_equivalence(
     premium_rows = [_premium_frame(target) for target in ETF_TARGETS]
 
     # 실효 총비용은 **NAV 기준**이라 시장가의 프리미엄 잡음이 섞이지 않는다.
-    # 환율 계열은 확정된 종가를 쓴다 (`docs/조사/원달러_그리드/설계.md` 결정 C15)
+    # 환율 계열은 확정된 종가를 쓴다 (`docs/조사/원달러_ETF_등가성/설계.md` 결정 C15)
     cost_spot = _load_spot(_close_source(sources))
     cost_rows = [_effective_cost_row(target, cost_spot, krw_rate, usd_rate) for target in ETF_TARGETS]
 
@@ -336,7 +336,7 @@ def _variants(returns: pd.DataFrame) -> list[_Series]:
 def _equivalence_row(source: SpotSource, model: TheoreticalModel, variant: _Series) -> dict[str, Any]:
     """261240 대 이론값의 회귀 한 줄을 만든다.
 
-    회귀는 **이론값을 설명변수, 실제를 종속변수**로 둔다. 사양서 §16.2 의 베타가
+    회귀는 **이론값을 설명변수, 실제를 종속변수**로 둔다. 원문 §16.2 의 베타가
     "이론값 대비 실제가 얼마나 움직이는가"이기 때문이다.
 
     Args:
@@ -436,7 +436,7 @@ def _leverage_returns(base: pd.DataFrame, leverage: pd.DataFrame) -> pd.DataFram
 
 
 def _leverage_row(variant: _Series) -> dict[str, Any]:
-    """261250 대 261240 의 회귀 한 줄을 만든다 (사양서 §16.3).
+    """261250 대 261240 의 회귀 한 줄을 만든다 (원문 §16.3).
 
     Args:
         variant: 이상치 축의 한 벌

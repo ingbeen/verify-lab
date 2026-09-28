@@ -235,7 +235,7 @@ def test_known_fee_is_recovered_for_leveraged_fund() -> None:
 
     # Then
     # 정확히 일치하지는 않는다. **일할은 365 달력일, 연환산은 250 거래일**이라
-    # 표본의 실제 거래일 밀도(약 261일/년)와 어긋나기 때문이다. 250 은 사양서 §16.3 이 정한 값이므로
+    # 표본의 실제 거래일 밀도(약 261일/년)와 어긋나기 때문이다. 250 은 원문 §16.3 이 정한 값이므로
     # 코드가 아니라 이 오차가 사실이며, 그 크기가 몇 % 수준임을 함께 고정한다
     assert -fit.alpha_annual == pytest.approx(fee, rel=0.06)
     assert fit.beta == pytest.approx(1.0, abs=1e-3)

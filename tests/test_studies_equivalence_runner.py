@@ -212,7 +212,7 @@ def test_publication_lag_is_corrected(synthetic_inputs: tuple[SpotSource, ...]) 
 
 def test_leverage_beta_is_recovered(synthetic_inputs: tuple[SpotSource, ...]) -> None:
     """
-    목적: 2배 ETF 의 베타가 복원됨을 고정한다 (사양서 §16.3).
+    목적: 2배 ETF 의 베타가 복원됨을 고정한다 (원문 §16.3).
 
     Given: 정확히 2배로 움직이는 합성 ETF
     When: 검증을 실행한다
@@ -270,7 +270,7 @@ def test_inputs_hold_file_names_not_absolute_paths(
 
 def test_premium_covers_both_targets(synthetic_inputs: tuple[SpotSource, ...]) -> None:
     """
-    목적: 프리미엄 표가 두 종목을 모두 담음을 고정한다 (사양서 §16.4).
+    목적: 프리미엄 표가 두 종목을 모두 담음을 고정한다 (원문 §16.4).
 
     Given: 합성 입력
     When: 검증을 실행한다
