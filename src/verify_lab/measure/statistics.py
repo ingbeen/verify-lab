@@ -269,6 +269,29 @@ def mean_rate_conflict(frame: pd.DataFrame) -> pd.Series:
     return mean_up_but_fell | mean_down_but_rose
 
 
+def yes_no(flags: pd.Series) -> pd.Series:
+    """불린 판정을 산출물 값 `예`·`아니오` 로 적는다.
+
+    **`판정가능` 과 같은 두 값을 쓴다.** 한 표에 예/아니오 열이 둘인데 한쪽만 불린이면 CSV 에
+    영문 `True`/`False` 가 그대로 나가고 두 열을 같은 말로 읽을 수 없다. 판정 함수
+    (`mean_rate_conflict`)는 불린을 돌려주고, 저장할 열에 담을 때 이것을 거친다 — 매매법이
+    각자 사전을 두면 값이 갈라져도 예외가 나지 않는다.
+
+    Args:
+        flags: 불린 Series
+
+    Returns:
+        같은 인덱스의 `예`/`아니오` Series
+
+    Raises:
+        ValueError: 불린 Series 가 아닌 경우 — 결측이 섞인 판정을 한쪽 값으로 적지 않는다
+    """
+    if not pd.api.types.is_bool_dtype(flags):
+        raise ValueError(f"불린 Series 여야 합니다: dtype={flags.dtype}")
+
+    return flags.map({True: JUDGEABLE_YES, False: JUDGEABLE_NO})
+
+
 class PayoffProfile(NamedTuple):
     """손익비와 그 값을 읽는 데 필요한 것.
 

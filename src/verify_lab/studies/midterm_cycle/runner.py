@@ -15,7 +15,7 @@
 (진입 달 + 9개월의 마지막 거래일). 그래서 이 대조가 답하는 것은
 **「그 해가 원래 그런가, 아니면 9월 말 진입이 특별한가」**다 — 12달을 모두 계산한다.
 
-**판정에 쓰지 않는다** (루트 `CLAUDE.md` 「기준선은 탈락 사유가 아니다」).
+**판정에 쓰지 않는다** (루트 `CLAUDE.md` 「기준선을 넘지 못하는 것은 탈락 사유가 아닙니다」).
 게이트는 회당 기대값 하나뿐이고, 이 값들은 사용자가 읽는 해석 재료다.
 """
 
@@ -63,6 +63,7 @@ from verify_lab.measure.statistics import (
     mean_rate_conflict,
     permutation_test,
     summarize,
+    yes_no,
 )
 from verify_lab.report.run_summary import KEY_TRACK, dataset_record
 from verify_lab.report.tables import to_display_columns
@@ -316,7 +317,7 @@ def _aggregate_by_position(
             on=[COL_BASIS, COL_HORIZON],
         )
     )
-    merged[COL_MEAN_RATE_CONFLICT] = mean_rate_conflict(merged)
+    merged[COL_MEAN_RATE_CONFLICT] = yes_no(mean_rate_conflict(merged))
     merged[COL_JUDGEABLE] = merged[COL_SAMPLE_COUNT].map(lambda count: judgeable(int(count)))
 
     result = merged.rename(columns={COL_HORIZON: COL_CYCLE_POSITION}).drop(columns=[COL_BASIS])

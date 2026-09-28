@@ -25,6 +25,8 @@ from verify_lab.measure.constants import (
     COL_FORWARD_RETURN,
     COL_HORIZON,
     COL_SIGNAL_COUNT,
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
     MIN_SAMPLE_PER_CELL,
     REASON_NONE,
     REASON_OUT_OF_RANGE,
@@ -73,6 +75,7 @@ from verify_lab.measure.statistics import (
     payoff_profile,
     permutation_test,
     summarize,
+    yes_no,
 )
 
 # 수학적으로 정확해야 하는 값의 허용오차 (tests/CLAUDE.md 허용오차 기준)
@@ -1327,3 +1330,39 @@ class TestBreakevenDenominator:
                 sample_count=8,
                 downward=False,
             )
+
+
+class TestYesNo:
+    """불린 판정을 산출물 값으로 적는 표기 — `판정가능` 과 같은 두 값"""
+
+    def test_참과_거짓을_판정가능의_두_값으로_적는다(self) -> None:
+        """
+        목적: 어긋남 같은 불린 판정이 CSV 에 영문 `True`/`False` 로 나가지 않게 한다
+
+        Given: 참·거짓이 섞인 불린 Series
+        When: 표기로 바꾸면
+        Then: 같은 인덱스에서 참은 `예`, 거짓은 `아니오` 다
+        """
+        # Given
+        flags = pd.Series([True, False, True], index=[3, 1, 2])
+
+        # When
+        result = yes_no(flags)
+
+        # Then
+        assert result.to_dict() == {3: JUDGEABLE_YES, 1: JUDGEABLE_NO, 2: JUDGEABLE_YES}
+
+    def test_불린이_아니면_거부한다(self) -> None:
+        """
+        목적: 결측이 섞인 판정을 한쪽 값으로 조용히 적지 않는다
+
+        Given: 결측이 섞여 불린이 아닌 Series
+        When: 표기로 바꾸면
+        Then: ValueError 다
+        """
+        # Given
+        flags = pd.Series([True, None, False], dtype=object)
+
+        # When / Then
+        with pytest.raises(ValueError, match="불린"):
+            yes_no(flags)

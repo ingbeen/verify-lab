@@ -31,7 +31,14 @@ from verify_lab.common_constants import (
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
 )
-from verify_lab.measure.constants import COL_DIVIDEND_HIT_COUNT, COL_DIVIDEND_MEASURED, COL_JUDGEABLE
+from verify_lab.measure.constants import (
+    COL_DIVIDEND_HIT_COUNT,
+    COL_DIVIDEND_MEASURED,
+    COL_JUDGEABLE,
+    COL_MEAN_RATE_CONFLICT,
+    JUDGEABLE_NO,
+    JUDGEABLE_YES,
+)
 from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_UP
 from verify_lab.measure.statistics import COL_SAMPLE_COUNT
 from verify_lab.studies.midterm_cycle.constants import (
@@ -237,6 +244,19 @@ class TestStatisticsAssembly:
         """
         # Given / When / Then
         assert set(outputs[COL_JUDGEABLE]) <= {"예", "아니오"}
+
+    def test_평균_비율_어긋남도_판정가능과_같은_값을_쓴다(self, outputs: pd.DataFrame) -> None:
+        """
+        목적: 어긋남 열이 CSV 에 영문 `True`/`False` 로 나가지 않게 한다 (측정의 원칙 13)
+
+        `판정가능` 과 같은 두 값을 써야 한 표의 두 「예/아니오」 열을 같은 말로 읽는다.
+
+        Given: 측정 표
+        When: 평균-비율 어긋남 값을 봤을 때
+        Then: `판정가능` 의 두 값 중 하나다
+        """
+        # Given / When / Then
+        assert set(outputs[COL_MEAN_RATE_CONFLICT]) <= {JUDGEABLE_YES, JUDGEABLE_NO}
 
 
 class TestNonOverlapping:
