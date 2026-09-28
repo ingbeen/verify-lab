@@ -1,4 +1,4 @@
-"""매매 산출물의 «공통 컬럼과 파일 이름» 계약을 두 매매법에서 한꺼번에 고정한다.
+"""매매 산출물의 «공통 컬럼과 파일 이름» 계약을 매매법 전부에서 한꺼번에 고정한다.
 
 같은 뜻의 표가 매매법마다 **다른 파일명·다른 컬럼·다른 값 형식**으로 나오고 있었다.
 성적표가 `summary_by_target.csv`(15컬럼) · `summary_by_cell.csv`(21) · `performance.csv`(23)
@@ -8,7 +8,7 @@
 고정하는 계약은 일곱이다.
 
 - 성적표는 `성적표.csv`, 거래내역은 `거래내역.csv` 이고 **이름은 상수 한 곳에서 온다**
-- 두 성적표가 **같은 공통 컬럼을 같은 순서로** 갖는다. 매매법 고유 컬럼만 뒤에 붙는다
+- 매매법마다 성적표가 **같은 공통 컬럼을 같은 순서로** 갖는다. 매매법 고유 컬럼만 뒤에 붙는다
 - `손절선(%)` 값은 **음수 실수**이고 문자열은 둘이다 — **`무손절`(걸지 않았다)과 `손절불가`(잴 수 없다)**.
   두 문자열이 갈려 있어야 **한 컬럼만으로** 한 손절선으로 고정한 행을 고를 수 있다
 - 역방향 성적표의 `방향` 은 **`역방향 전체` 한 값**이다 — 그 행이 폭등·폭락을 합친 성적이다
@@ -21,10 +21,13 @@
 (`tests/CLAUDE.md` 「픽스처가 코드와 같은 가정을 하면 그 버그는 영원히 안 잡힙니다」).
 """
 
+import importlib
 import io
 import json
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 import numpy as np
 import pandas as pd
@@ -85,14 +88,11 @@ from verify_lab.report.run_summary import (
     KEY_DATASET_TICKER,
     KEY_TRACK,
 )
-from verify_lab.studies.midterm_cycle.constants import DATASETS as MIDTERM_CYCLE_DATASETS
 from verify_lab.studies.midterm_cycle.constants import KEY_EXCLUDED_COUNT
-from verify_lab.studies.midterm_cycle.constants import OUTPUT_FILES as MIDTERM_CYCLE_FILES
 from verify_lab.studies.midterm_cycle.constants import Dataset as MidtermCycleDataset
 from verify_lab.studies.midterm_cycle.trading import KEY_TARGETS as MIDTERM_CYCLE_KEY_TARGETS
 from verify_lab.studies.midterm_cycle.trading import TradingOutputs as MidtermCycleOutputs
 from verify_lab.studies.midterm_cycle.trading import run_midterm_cycle_trading
-from verify_lab.studies.reverse.constants import DATASETS as REVERSE_DATASETS
 from verify_lab.studies.reverse.constants import (
     DISPLAY_DIRECTION_REVERSE_ALL,
     EXTREME_DIRECTION_LABELS,
@@ -328,12 +328,85 @@ def _write_index(directory: Path, ticker: str) -> Path:
 # 실행 결과 픽스처 — 모듈마다 한 번만 돈다
 # ============================================================
 
-# 이 파일이 산출물 계약을 거는 매매법(slug) → 그 실행 결과를 내는 픽스처 이름.
-# **레지스트리의 매매법 목록과 같아야 한다** — `TestCoverage` 가 `tracks_of_kind(KIND_METHOD)` 와 대조한다
-OUTPUT_FIXTURES = {
-    "reverse": "reverse_outputs",
-    "midterm_cycle": "midterm_cycle_outputs",
+
+@dataclass(frozen=True)
+class MethodSpec:
+    """이 파일이 매매법 하나에 거는 계약의 재료.
+
+    Attributes:
+        fixture: 그 매매법의 실행 결과를 내는 픽스처 이름
+        summary_axis: 성적표에서 종목 다음에 오는 매매법 축
+        summary_tail: 성적표 맨 뒤의 매매법 고유 컬럼
+        trade_axis: 거래내역에서 종목 다음에 오는 매매법 축
+        trade_tail: 거래내역 맨 뒤의 매매법 고유 컬럼
+        targets_key: 실행 요약 `rule` 안에서 대상별 기록을 담는 키
+    """
+
+    fixture: str
+    summary_axis: tuple[str, ...]
+    summary_tail: tuple[str, ...]
+    trade_axis: tuple[str, ...]
+    trade_tail: tuple[str, ...]
+    targets_key: str
+
+
+# 이 파일이 산출물 계약을 거는 매매법(slug) → 그 계약의 재료.
+# **레지스트리의 매매법 목록과 같아야 한다** — `TestCoverage` 가 `tracks_of_kind(KIND_METHOD)` 와 대조한다.
+# 「매매법 전부」를 보는 검사는 전부 이 표를 돈다(`_BY_METHOD`) — 매매법을 손으로 적으면 새 매매법을
+# 등록해도 그 검사가 **조용히 건너뛴다.** 표가 둘이면 한쪽만 늘어도 새므로 픽스처 이름까지 한 표에 둔다
+METHOD_SPECS = {
+    "reverse": MethodSpec(
+        fixture="reverse_outputs",
+        summary_axis=AXIS_REVERSE,
+        summary_tail=TAIL_REVERSE_SUMMARY,
+        trade_axis=AXIS_REVERSE,
+        trade_tail=TAIL_REVERSE_TRADES,
+        targets_key=REVERSE_KEY_TARGETS,
+    ),
+    "midterm_cycle": MethodSpec(
+        fixture="midterm_cycle_outputs",
+        summary_axis=AXIS_MIDTERM_CYCLE,
+        summary_tail=(),
+        trade_axis=AXIS_MIDTERM_CYCLE_TRADES,
+        trade_tail=(),
+        targets_key=MIDTERM_CYCLE_KEY_TARGETS,
+    ),
 }
+
+# 「매매법 전부」 검사에 붙이는 매개변수화. 값은 slug 이고 결과는 `_outputs` 로 꺼낸다
+_BY_METHOD = pytest.mark.parametrize("slug", sorted(METHOD_SPECS))
+
+
+def _outputs(request: pytest.FixtureRequest, slug: str) -> StrategyOutputs | MidtermCycleOutputs:
+    """그 매매법의 실행 결과를 픽스처에서 꺼낸다.
+
+    Args:
+        request: pytest 요청 객체
+        slug: 매매법 이름
+
+    Returns:
+        실행 결과 — 매매법이 무엇이든 `performance` · `trades` · `summary` 를 갖는다
+    """
+    return request.getfixturevalue(METHOD_SPECS[slug].fixture)
+
+
+def _method_constants(slug: str) -> ModuleType:
+    """그 매매법 패키지의 `constants` 모듈을 slug 로 찾는다.
+
+    **대상 목록·산출물 목록을 사양 표에 손으로 짝짓지 않는다** — 새 매매법의 사양을 옆 줄에서 복사하고
+    안 고치면 남의 목록을 검사하고도 초록이다. 패키지 이름이 곧 slug 이고(`tracks.py`),
+    찾은 모듈의 `TRACK_NAME` 으로 한 번 더 확인한다.
+
+    Args:
+        slug: 매매법 이름
+
+    Returns:
+        `studies/<slug>/constants.py` 모듈
+    """
+    module = importlib.import_module(f"verify_lab.studies.{slug}.constants")
+    assert module.TRACK_NAME == slug, f"{slug} 패키지의 TRACK_NAME 이 다릅니다: {module.TRACK_NAME}"
+
+    return module
 
 
 @pytest.fixture(scope="module")
@@ -351,7 +424,7 @@ def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCy
     **매매법마다 픽스처가 하나씩 있어야 한다.** 이 파일이 매매법 전부를 검사한다고
     `src/verify_lab/CLAUDE.md` 가 적어 두었는데 새 매매법을 넣고 여기 픽스처를 안 만들면
     **그 문장이 거짓이 되고, 성적표·거래내역의 컬럼이 비어 나가도 통과한다** — 그래서
-    `TestCoverage` 가 레지스트리의 매매법과 `OUTPUT_FIXTURES` 를 대조한다.
+    `TestCoverage` 가 레지스트리의 매매법과 `METHOD_SPECS` 를 대조한다.
 
     **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
     **손절선 격자에 무손절과 −5% 가 함께 있어** 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의
@@ -421,11 +494,13 @@ class TestCoverage:
         """
         목적: 「매매법이면 성적표를 낸다」 계약이 **새 매매법에도 걸리게** 한다.
 
-        레지스트리(`tracks.py`)에 매매법을 등록하고 여기 픽스처를 만들지 않으면 그 매매법의
+        레지스트리(`tracks.py`)에 매매법을 등록하고 여기 사양을 올리지 않으면 그 매매법의
         성적표·거래내역은 이 파일의 어떤 검사도 받지 않는데 **아무것도 실패하지 않는다.**
         반대로 매매법에서 내려간 이름이 남아 있으면 없는 계약을 검사하는 척한다.
+        「매매법 전부」 검사는 전부 이 표를 돌므로(`_BY_METHOD`) **이 대조와 아래 연결 검사가 함께
+        그 검사들의 범위를 닫는다.**
 
-        Given: 레지스트리의 매매법 목록과 이 파일의 픽스처 표
+        Given: 레지스트리의 매매법 목록과 이 파일의 사양 표
         When: 두 목록을 견준다
         Then: 같다
         """
@@ -433,96 +508,102 @@ class TestCoverage:
         registered = {track.slug for track in tracks_of_kind(KIND_METHOD)}
 
         # When / Then
-        assert set(OUTPUT_FIXTURES) == registered, (
-            f"레지스트리의 매매법과 이 파일의 픽스처가 어긋납니다 — 레지스트리 {sorted(registered)} · "
-            f"픽스처 {sorted(OUTPUT_FIXTURES)}. 새 매매법이면 여기에 실행 결과 픽스처를 만들고 OUTPUT_FIXTURES 에 올리세요"
+        assert set(METHOD_SPECS) == registered, (
+            f"레지스트리의 매매법과 이 파일의 사양 표가 어긋납니다 — 레지스트리 {sorted(registered)} · "
+            f"사양 {sorted(METHOD_SPECS)}. 새 매매법이면 실행 결과 픽스처를 만들고 METHOD_SPECS 에 올리세요"
         )
+
+    @_BY_METHOD
+    def test_사양의_픽스처가_그_매매법을_돈다(self, slug: str, request: pytest.FixtureRequest) -> None:
+        """
+        목적: 사양 표의 픽스처 이름이 **그 매매법**의 실행 결과를 가리키는지 고정한다
+
+        위 대조는 slug 집합만 본다. 새 매매법의 사양을 옆 줄에서 복사하고 픽스처 이름을 안 고치면
+        그 slug 의 검사가 전부 **다른 매매법의 산출물**을 보고 통과한다 — 새 매매법은 한 번도 검사받지
+        않는데 초록이다. 실행 요약의 `track` 이 그 매매법의 `TRACK_NAME` 이라 slug 와 견주면 연결이 닫힌다.
+
+        Given: 사양 표가 그 slug 에 붙인 픽스처의 실행 결과
+        When: 실행 요약의 매매법 이름을 봤을 때
+        Then: slug 와 같다
+        """
+        # Given / When
+        track = _outputs(request, slug).summary[KEY_TRACK]
+
+        # Then
+        assert track == slug, f"사양 표의 {slug} 픽스처가 다른 매매법({track})을 돌립니다 — METHOD_SPECS 의 fixture 를 고치세요"
 
 
 class TestSummaryColumns:
     """성적표의 공통 컬럼 — 이름과 «순서»"""
 
-    def test_역방향_성적표가_공통_컬럼을_순서대로_쓴다(self, reverse_outputs: StrategyOutputs) -> None:
+    @_BY_METHOD
+    def test_성적표가_공통_컬럼을_순서대로_쓴다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
-        목적: 역방향 성적표가 공통 형식을 쓰는지 고정한다
+        목적: 매매법마다 성적표가 공통 형식을 쓰는지 고정한다
 
-        Given: 합성 시세로 돈 역방향 결과
+        Given: 합성 시세로 돈 그 매매법의 결과
         When: 성적표의 컬럼을 봤을 때
-        Then: 종목 · 파라미터 · 시작연도 · 공통 24개 · 사건 순이다
+        Then: 종목 · 매매법 축 · 공통 컬럼 · 매매법 고유 컬럼 순이다
+              (역방향은 파라미터 · 시작연도 축에 사건 꼬리, 중간선거_사이클은 사이클 위치 축뿐)
         """
-        # Given / When / Then
-        assert list(reverse_outputs.performance.columns) == _expected_summary(AXIS_REVERSE, TAIL_REVERSE_SUMMARY)
+        # Given
+        spec = METHOD_SPECS[slug]
 
-    def test_중간선거_사이클_성적표가_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
-        """
-        목적: 중간선거_사이클도 같은 순서를 쓰는지 고정한다
+        # When / Then
+        assert list(_outputs(request, slug).performance.columns) == _expected_summary(
+            spec.summary_axis, spec.summary_tail
+        )
 
-        Given: 합성 시세로 돈 중간선거_사이클 성적표
-        When: 컬럼 목록을 봤을 때
-        Then: 종목 · 사이클 위치 다음에 공통 컬럼이 그 순서로 온다
-        """
-        # Given / When / Then
-        assert list(midterm_cycle_outputs.performance.columns) == _expected_summary(AXIS_MIDTERM_CYCLE)
-
-    def test_두_성적표의_공통_부분이_완전히_같다(
-        self,
-        reverse_outputs: StrategyOutputs,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-    ) -> None:
+    def test_매매법_성적표의_공통_부분이_완전히_같다(self, request: pytest.FixtureRequest) -> None:
         """
         목적: 매매법 축과 고유 컬럼을 뺀 나머지가 한 벌임을 고정한다
 
-        이 계약이 깨지면 두 산출물을 나란히 놓고 읽을 수 없다.
+        이 계약이 깨지면 매매법들의 산출물을 나란히 놓고 읽을 수 없다.
 
         **같은 표를 두 이름으로 두 번 세지 않는다** — 이름만 늘리면 검사는 그대로인데
         「넷을 봤다」로 읽힌다.
 
-        Given: 두 매매법의 성적표
+        Given: 매매법 전부의 성적표
         When: 매매법 축과 고유 컬럼을 뺀 컬럼 목록을 비교했을 때
-        Then: 둘이 같고 공통 컬럼 목록과도 같다
+        Then: 전부 같고 공통 컬럼 목록과도 같다
         """
         # Given
-        axes = {*AXIS_REVERSE, *AXIS_MIDTERM_CYCLE, "종목", *TAIL_REVERSE_SUMMARY}
+        axes = {
+            "종목",
+            *(column for spec in METHOD_SPECS.values() for column in (*spec.summary_axis, *spec.summary_tail)),
+        }
 
         # When
-        common = [
-            [column for column in table.columns if column not in axes]
-            for table in (
-                reverse_outputs.performance,
-                midterm_cycle_outputs.performance,
-            )
-        ]
+        common = {
+            slug: [column for column in _outputs(request, slug).performance.columns if column not in axes]
+            for slug in sorted(METHOD_SPECS)
+        }
 
         # Then
-        assert common[0] == common[1] == list(SUMMARY_COMMON_COLUMNS)
+        mismatched = sorted(slug for slug, columns in common.items() if columns != list(SUMMARY_COMMON_COLUMNS))
+        assert mismatched == [], f"공통 부분이 공통 컬럼 목록과 다른 매매법이 있습니다: {mismatched}"
 
 
 class TestTradeColumns:
     """거래내역의 공통 컬럼"""
 
-    def test_역방향_거래내역이_공통_컬럼을_순서대로_쓴다(self, reverse_outputs: StrategyOutputs) -> None:
+    @_BY_METHOD
+    def test_거래내역이_공통_컬럼을_순서대로_쓴다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
-        목적: 청산일·청산가가 생겼고 `날짜` 가 `진입일` 로 바뀌었는지 고정한다
+        목적: 매매법마다 거래내역 컬럼과 «순서»를 고정한다 — 청산일·청산가가 있고 `날짜` 가 `진입일` 이다
 
         청산 지점이 없으면 사용자가 차트로 대조할 수 없다 (측정의 원칙 8).
 
-        Given: 합성 시세로 돈 역방향 결과
+        Given: 합성 시세로 돈 그 매매법의 결과
         When: 거래내역의 컬럼을 봤을 때
-        Then: 공통 컬럼 뒤에 등락률·사건 번호가 붙는다
+        Then: 종목 · 매매법 축 · 공통 컬럼 · 매매법 고유 컬럼 순이다
+              (역방향은 등락률·사건 번호 꼬리, 중간선거_사이클은 사이클 위치 · 진입 연도 축뿐)
         """
-        # Given / When / Then
-        assert list(reverse_outputs.trades.columns) == _expected_trades(AXIS_REVERSE, tail=TAIL_REVERSE_TRADES)
+        # Given
+        spec = METHOD_SPECS[slug]
 
-    def test_중간선거_사이클_거래내역이_공통_컬럼을_순서대로_쓴다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
-        """
-        목적: 중간선거_사이클의 거래내역 컬럼과 «순서»를 고정한다
-
-        Given: 합성 시세로 돈 중간선거_사이클 거래내역
-        When: 컬럼 목록을 봤을 때
-        Then: 종목 · 사이클 위치 · 진입 연도 다음에 공통 컬럼이 그 순서로 온다
-        """
-        # Given / When / Then
-        assert list(midterm_cycle_outputs.trades.columns) == _expected_trades(AXIS_MIDTERM_CYCLE_TRADES)
+        # When / Then
+        assert list(_outputs(request, slug).trades.columns) == _expected_trades(spec.trade_axis, spec.trade_tail)
 
 
 class TestStopLevelFormat:
@@ -684,11 +765,8 @@ class TestReversePeriods:
         assert summary[DISPLAY_PERIOD].tolist() == list(PERIODS)
         assert (summary.loc[summary[DISPLAY_SIGNAL_COUNT] < 10, DISPLAY_JUDGEABLE] == JUDGEABLE_NO).all()
 
-    def test_성적표에_제외_컬럼을_두지_않는다(
-        self,
-        reverse_outputs: StrategyOutputs,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-    ) -> None:
+    @_BY_METHOD
+    def test_성적표에_제외_컬럼을_두지_않는다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: **제외의 SoT 를 성적표에서 `summary.json` 으로 옮긴 것을 고정한다** (2026-09-12).
 
@@ -698,22 +776,15 @@ class TestReversePeriods:
         아래 테스트가 요약이 그 값을 계속 담는지 검사한다.
         매매법 전부를 한 번에 보므로 **매매법 테스트에 같은 검사를 따로 두지 않는다.**
 
-        Given: 매매법 전부의 성적표
+        Given: 그 매매법의 성적표
         When: 컬럼을 봤을 때
-        Then: 어느 성적표에도 「제외」가 없다
+        Then: 「제외」가 없다
         """
         # Given / When / Then
-        for name, table in (
-            ("역방향", reverse_outputs.performance),
-            ("중간선거_사이클", midterm_cycle_outputs.performance),
-        ):
-            assert DISPLAY_EXCLUDED not in table.columns, f"{name} 성적표에 제외 컬럼이 남아 있습니다"
+        assert DISPLAY_EXCLUDED not in _outputs(request, slug).performance.columns, f"{slug} 성적표에 제외 컬럼이 남아 있습니다"
 
-    def test_제외_건수는_요약이_대상마다_담는다(
-        self,
-        reverse_outputs: StrategyOutputs,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-    ) -> None:
+    @_BY_METHOD
+    def test_제외_건수는_요약이_대상마다_담는다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: **표본 보존은 그대로다** (패키지 절대 원칙). 컬럼을 없앤 대신 요약이 담아야 하며,
               둘 다 없으면 몇 건이 왜 빠졌는지가 **어디에도 남지 않는다.**
@@ -722,21 +793,17 @@ class TestReversePeriods:
         계약이므로(`src/verify_lab/CLAUDE.md`), 「사전이 든 목록」을 훑으면 나중에 다른
         목록이 하나 생기는 것만으로 이 테스트가 엉뚱하게 깨진다.
 
-        Given: 두 매매법의 실행 요약
+        Given: 그 매매법의 실행 요약
         When: 대상별 기록을 봤을 때
-        Then: 둘 다 모든 항목에 `excluded_count` 가 있다
+        Then: 모든 항목에 `excluded_count` 가 있다
         """
         # Given
-        records = {
-            "역방향": reverse_outputs.summary[KEY_RULE][REVERSE_KEY_TARGETS],
-            "중간선거_사이클": midterm_cycle_outputs.summary[KEY_RULE][MIDTERM_CYCLE_KEY_TARGETS],
-        }
+        group = _outputs(request, slug).summary[KEY_RULE][METHOD_SPECS[slug].targets_key]
 
         # When / Then
-        for name, group in records.items():
-            assert group, f"{name} 요약의 대상별 목록이 비어 있습니다"
-            for record in group:
-                assert KEY_EXCLUDED_COUNT in record, f"{name} 요약에 제외 건수가 없습니다: {record}"
+        assert group, f"{slug} 요약의 대상별 목록이 비어 있습니다"
+        for record in group:
+            assert KEY_EXCLUDED_COUNT in record, f"{slug} 요약에 제외 건수가 없습니다: {record}"
 
     def test_표본이_0건인_구간은_지표를_비운다(self, tmp_path: Path) -> None:
         """
@@ -974,33 +1041,27 @@ class TestBreakevenMargin:
     WIN_RATE_COLUMN = "승률(%)"
     BREAKEVEN_COLUMN = "손익분기 승률(%)"
 
-    def test_매매법_모두_승률에서_손익분기를_뺀_값이다(
-        self,
-        reverse_outputs: StrategyOutputs,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-    ) -> None:
+    @_BY_METHOD
+    def test_매매법_모두_승률에서_손익분기를_뺀_값이다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: 산식을 계약으로 고정한다 — **표에 실린 값끼리** 뺀 것이어야 한다
 
-        Given: 매매법 전부의 성적표
+        Given: 그 매매법의 성적표
         When: 값이 있는 행에서 승률 − 손익분기 승률을 계산했을 때
         Then: `손익분기 대비(%p)` 와 같다
         """
         # Given
-        for name, table in (
-            ("역방향", reverse_outputs.performance),
-            ("중간선거_사이클", midterm_cycle_outputs.performance),
-        ):
-            filled = table[table[self.MARGIN_COLUMN].notna()]
-            assert not filled.empty, f"{name} 성적표에 값이 있는 행이 없습니다"
+        table = _outputs(request, slug).performance
+        filled = table[table[self.MARGIN_COLUMN].notna()]
+        assert not filled.empty, f"{slug} 성적표에 값이 있는 행이 없습니다"
 
-            # When
-            expected = (filled[self.WIN_RATE_COLUMN] - filled[self.BREAKEVEN_COLUMN]).round(2)
+        # When
+        expected = (filled[self.WIN_RATE_COLUMN] - filled[self.BREAKEVEN_COLUMN]).round(2)
 
-            # Then
-            assert filled[self.MARGIN_COLUMN].tolist() == pytest.approx(
-                expected.tolist(), abs=1e-9
-            ), f"{name} 성적표의 손익분기 대비가 두 컬럼의 차이와 다릅니다"
+        # Then
+        assert filled[self.MARGIN_COLUMN].tolist() == pytest.approx(
+            expected.tolist(), abs=1e-9
+        ), f"{slug} 성적표의 손익분기 대비가 두 컬럼의 차이와 다릅니다"
 
     def test_손익분기_승률_바로_뒤에_온다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
@@ -1130,7 +1191,7 @@ class TestPayoffAmountColumns:
 
 
 class TestWorstHoldColumn:
-    """두 매매법이 `보유 중 최악(%)` 을 실제로 «채운다»
+    """매매법 전부가 `보유 중 최악(%)` 을 실제로 «채운다»
 
     **컬럼 이름만 검사하면 이 계약이 닫히지 않는다.** 값을 넘기는 인자가 선택형이라
     (`hold_days`·`reasons` 와 같은 관용) 매매법이 그것을 빠뜨리면 **컬럼은 그대로 있고
@@ -1141,25 +1202,16 @@ class TestWorstHoldColumn:
     COLUMN = "보유 중 최악(%)"
     RESULT_COLUMN = "최악(%)"
 
-    def test_역방향_성적표가_값을_채운다(self, reverse_outputs: StrategyOutputs) -> None:
+    @_BY_METHOD
+    def test_성적표가_값을_채운다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
-        목적: 매매법이 값 넘기기를 빠뜨린 것을 잡는다
+        목적: 매매법마다 체결 모듈이 값 넘기기(선택 인자)를 빠뜨리지 않았는지 고정한다
 
-        Given: 합성 시세로 돈 역방향 성적표
+        Given: 합성 시세로 돈 그 매매법의 성적표
         When: 표본이 있는 행을 봤을 때
         Then: 보유 중 최악이 비어 있지 않다
         """
-        self._assert_filled(reverse_outputs.performance)
-
-    def test_중간선거_사이클_성적표가_값을_채운다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
-        """
-        목적: 두 번째 체결 모듈도 선택 인자를 빠뜨리지 않았는지 고정한다
-
-        Given: 합성 시세와 지수로 돈 중간선거_사이클 성적표
-        When: 표본이 있는 행을 봤을 때
-        Then: 보유 중 최악이 비어 있지 않다
-        """
-        self._assert_filled(midterm_cycle_outputs.performance)
+        self._assert_filled(_outputs(request, slug).performance)
 
     def test_지수_행도_값을_갖는다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
@@ -1177,11 +1229,8 @@ class TestWorstHoldColumn:
         # When / Then
         self._assert_filled(index_rows)
 
-    @pytest.mark.parametrize(
-        "fixture_name",
-        sorted(OUTPUT_FIXTURES.values()),
-    )
-    def test_보유_중_최악이_결과_최악보다_나쁘거나_같다(self, fixture_name: str, request: pytest.FixtureRequest) -> None:
+    @_BY_METHOD
+    def test_보유_중_최악이_결과_최악보다_나쁘거나_같다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: 두 컬럼이 **같은 체결 목록**을 보고 있음을 고정한다
 
@@ -1194,7 +1243,7 @@ class TestWorstHoldColumn:
         Then: 보유 중 최악 <= 최악 이다
         """
         # Given
-        table = request.getfixturevalue(fixture_name).performance
+        table = _outputs(request, slug).performance
         measured = table[table["신호"] > 0]
         assert not measured.empty, "표본이 있는 행이 없어 계약을 검사하지 못했습니다"
 
@@ -1287,28 +1336,21 @@ class TestIntegerCounts:
 
 
 class TestRunSummary:
-    """`summary.json` — 두 매매법이 같은 틀을 쓴다"""
+    """`summary.json` — 매매법 전부가 같은 틀을 쓴다"""
 
     @pytest.fixture
-    def summaries(
-        self,
-        reverse_outputs: StrategyOutputs,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-    ) -> dict[str, dict[str, object]]:
-        """두 매매법의 실행 요약."""
-        return {
-            "역방향": reverse_outputs.summary,
-            "중간선거_사이클": midterm_cycle_outputs.summary,
-        }
+    def summaries(self, request: pytest.FixtureRequest) -> dict[str, dict[str, object]]:
+        """매매법 전부의 실행 요약 (slug → 요약). 목록은 `METHOD_SPECS` 를 따른다."""
+        return {slug: _outputs(request, slug).summary for slug in sorted(METHOD_SPECS)}
 
-    def test_두_요약이_같은_최상위_키를_갖는다(self, summaries: dict[str, dict[str, object]]) -> None:
+    def test_요약이_같은_최상위_키를_갖는다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
         목적: 만드는 자리·키가 매매법마다 갈리지 않게 한다
 
         매매법이 각자 요약을 만들면 같은 질문(무엇을 어느 기간으로 돌렸나)에 요약마다 다른 키로
         답하게 되고, 만드는 자리가 CLI 로 새면 키가 스크립트마다 갈린다.
 
-        Given: 두 매매법의 실행 요약
+        Given: 매매법 전부의 실행 요약
         When: 최상위 키를 봤을 때
         Then: 여섯 키가 전부 있다
         """
@@ -1321,11 +1363,11 @@ class TestRunSummary:
 
     def test_대상_범위와_기간이_datasets_에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
-        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 두 매매법이 실제로 이행한다
+        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 매매법 전부가 실제로 이행한다
 
         그 키가 없는 매매법이 하나라도 있으면 그 매매법의 종목코드가 어디에도 남지 않는다.
 
-        Given: 두 매매법의 실행 요약
+        Given: 매매법 전부의 실행 요약
         When: `datasets` 의 한 줄을 봤을 때
         Then: 코드·이름·파일·기간·행 수가 전부 있다
         """
@@ -1351,7 +1393,7 @@ class TestRunSummary:
         **`rule` 과 `notes` 는 매매법이 각자 채운다** — 거기로 경로가 들어와도 아무도 안 본다.
         요약 전체를 재귀로 훑어야 그 자리까지 닫힌다.
 
-        Given: 두 매매법의 실행 요약
+        Given: 매매법 전부의 실행 요약
         When: 요약 전체를 재귀로 훑었을 때
         Then: 절대경로로 읽히는 문자열이 하나도 없다
         """
@@ -1366,7 +1408,7 @@ class TestRunSummary:
         파일 이름으로 키잉하면 스크립트가 `summary[row_counts][SUMMARY_FILENAME]` 로 읽으므로
         별칭을 따로 관리할 필요가 없어진다.
 
-        Given: 두 매매법의 실행 요약
+        Given: 매매법 전부의 실행 요약
         When: `row_counts` 의 키를 봤을 때
         Then: 전부 `.csv` 로 끝나고 성적표·거래내역이 들어 있다
         """
@@ -1377,13 +1419,13 @@ class TestRunSummary:
             assert all(key.endswith(".csv") for key in counts), f"{name} 의 row_counts 키가 파일 이름이 아닙니다: {sorted(counts)}"
             assert TRADES_FILENAME in counts, f"{name} 에 거래내역 행 수가 없습니다"
 
-    def test_비용_표기가_두_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
+    def test_비용_표기가_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
         """
         목적: `.claude/rules/trading.md` 의 맨몸 성적 표기를 매매법 전부가 갖는지 고정한다
 
         빠뜨린 것과 일부러 뺀 것을 구별할 수 없으면 다음 사람이 다시 계산한다.
 
-        Given: 두 매매법의 실행 요약
+        Given: 매매법 전부의 실행 요약
         When: `cost` 를 봤을 때
         Then: 모두 같은 문장이다
         """
@@ -1398,7 +1440,7 @@ class TestRunSummary:
         요약이 `"strategy": "reverse_trading"` 이라고 적으면 폴더 이름(`reverse`)과 갈린다 —
         slug 의 정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME` 하나다.
 
-        Given: 두 매매법의 실행 요약
+        Given: 매매법 전부의 실행 요약
         When: 요약 전체를 문자열로 봤을 때
         Then: 옛 이름이 하나도 없다
         """
@@ -1415,7 +1457,8 @@ class TestRunSummary:
 class TestDatasetFields:
     """`Dataset` 의 필드 뜻 — 매매법마다 같다"""
 
-    def test_Dataset_이_코드와_이름을_따로_갖는다(self) -> None:
+    @_BY_METHOD
+    def test_Dataset_이_코드와_이름을_따로_갖는다(self, slug: str) -> None:
         """
         목적: 필드 이름이 모듈마다 다른 것을 가리키던 상태를 닫는다
 
@@ -1423,21 +1466,18 @@ class TestDatasetFields:
         미국 ETF 는 둘이 같아(`QQQ`) 드러나지 않았고, 국내에서만 `"ticker": "KODEX 200"` 으로
         새어 나왔다 — **둘 다 `str` 이라 타입 검사가 못 잡는다.**
 
-        Given: 두 매매법의 데이터셋 목록
+        Given: 그 매매법의 데이터셋 목록
         When: 각 데이터셋의 필드를 봤을 때
         Then: `ticker` 와 `label` 이 둘 다 있고 서로 다른 것을 담는다
         """
         # Given
-        groups = {
-            "역방향": REVERSE_DATASETS,
-            "중간선거_사이클": MIDTERM_CYCLE_DATASETS,
-        }
+        datasets = _method_constants(slug).DATASETS
+        assert datasets, f"{slug} 의 데이터셋 목록이 비어 있습니다"
 
         # When / Then
-        for name, datasets in groups.items():
-            for dataset in datasets:
-                assert dataset.ticker, f"{name} 의 데이터셋에 종목코드가 없습니다"
-                assert dataset.label, f"{name} 의 데이터셋에 표시 이름이 없습니다"
+        for dataset in datasets:
+            assert dataset.ticker, f"{slug} 의 데이터셋에 종목코드가 없습니다"
+            assert dataset.label, f"{slug} 의 데이터셋에 표시 이름이 없습니다"
 
 
 class TestScreenColumn:
@@ -1460,73 +1500,58 @@ class TestScreenColumn:
     PERIOD_ALL_LABEL = "전체"
     SCREEN_COLUMN = "1차 판정"
 
-    def test_성적표가_판정_값_셋만_쓴다(
-        self,
-        reverse_outputs: StrategyOutputs,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-    ) -> None:
+    @_BY_METHOD
+    def test_성적표가_판정_값_셋만_쓴다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: 값 집합이 매매법마다 갈리면 성적표들을 한 필터로 읽을 수 없다.
 
-        Given: 매매법 전부의 성적표
+        Given: 그 매매법의 성적표
         When: 판정 컬럼의 값을 모았을 때
         Then: 모두 정해진 세 값 안에 든다
         """
         # Given / When / Then
-        for name, table in (
-            ("역방향", reverse_outputs.performance),
-            ("중간선거_사이클", midterm_cycle_outputs.performance),
-        ):
-            values = set(table[self.SCREEN_COLUMN])
-            assert values <= self.VERDICTS, f"{name} 성적표에 정의되지 않은 판정 값이 있습니다: {values - self.VERDICTS}"
+        values = set(_outputs(request, slug).performance[self.SCREEN_COLUMN])
+        assert values <= self.VERDICTS, f"{slug} 성적표에 정의되지 않은 판정 값이 있습니다: {values - self.VERDICTS}"
 
-    def test_시기가_전체가_아닌_행은_판정하지_않는다(
-        self,
-        reverse_outputs: StrategyOutputs,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-    ) -> None:
+    @_BY_METHOD
+    def test_시기가_전체가_아닌_행은_판정하지_않는다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: **게이트를 시기 행에 걸지 않는다**는 2026-09-12 개정을 고정한다.
 
         걸면 「최근 5년 → 제외」가 표에 찍히고, 그걸로 거르는 순간 표본 5~6건짜리 구간이
         멀쩡한 칸을 떨어뜨린다.
 
-        Given: 매매법 전부의 성적표
+        Given: 그 매매법의 성적표
         When: 시기가 「전체」가 아닌 행의 판정을 봤을 때
         Then: 전부 「판정 안 함」이다
         """
         # Given / When / Then
-        for name, table in (
-            ("역방향", reverse_outputs.performance),
-            ("중간선거_사이클", midterm_cycle_outputs.performance),
-        ):
-            split = table[table[DISPLAY_PERIOD] != self.PERIOD_ALL_LABEL]
-            assert not split.empty, f"{name} 성적표에 시기 행이 없어 계약을 검사하지 못했습니다"
-            assert (split[self.SCREEN_COLUMN] == self.NOT_JUDGED).all(), f"{name} 성적표의 시기 행에 게이트가 걸렸습니다"
+        table = _outputs(request, slug).performance
+        split = table[table[DISPLAY_PERIOD] != self.PERIOD_ALL_LABEL]
+        assert not split.empty, f"{slug} 성적표에 시기 행이 없어 계약을 검사하지 못했습니다"
+        assert (split[self.SCREEN_COLUMN] == self.NOT_JUDGED).all(), f"{slug} 성적표의 시기 행에 게이트가 걸렸습니다"
 
-    def test_전체_행에서는_실제로_판정한다(
-        self,
-        midterm_cycle_outputs: MidtermCycleOutputs,
-        reverse_outputs: StrategyOutputs,
-    ) -> None:
+    @_BY_METHOD
+    def test_전체_행에서는_실제로_판정한다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: 전 행이 「판정 안 함」이 되어 컬럼이 무의미해지는 것을 막는다.
 
-        **살 수 있는 대상의 행만 본다** — 중간선거_사이클은 지수를 함께 재므로 그 행은
+        **살 수 있는 대상의 행만 본다** — 지수를 함께 재는 매매법(중간선거_사이클)은 그 행이
         「판정 안 함」이 정상이고(아래 테스트가 그것을 따로 고정한다), 섞어 세면 이 검사가
-        **없는 버그를 가리킨다.**
+        **없는 버그를 가리킨다.** 합성 지수 행이 없는 매매법에서는 거를 것이 없다.
 
-        Given: 합성 시세로 돈 두 매매법의 결과
+        Given: 합성 시세로 돈 그 매매법의 결과
         When: 시기가 「전체」이고 살 수 있는 대상인 행의 판정을 봤을 때
         Then: 「판정 안 함」이 아니다
         """
-        # Given / When / Then
-        tradable = midterm_cycle_outputs.performance
-        tradable = tradable[tradable[DISPLAY_TICKER] != INDEX_LABEL]
-        for name, table in (("중간선거_사이클", tradable), ("역방향", reverse_outputs.performance)):
-            whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
-            assert not whole.empty, f"{name} 성적표에 전체 구간 행이 없습니다"
-            assert (whole[self.SCREEN_COLUMN] != self.NOT_JUDGED).all(), f"{name} 성적표가 아무것도 판정하지 않았습니다"
+        # Given
+        table = _outputs(request, slug).performance
+        tradable = table[table[DISPLAY_TICKER] != INDEX_LABEL]
+
+        # When / Then
+        whole = tradable[tradable[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
+        assert not whole.empty, f"{slug} 성적표에 전체 구간 행이 없습니다"
+        assert (whole[self.SCREEN_COLUMN] != self.NOT_JUDGED).all(), f"{slug} 성적표가 아무것도 판정하지 않았습니다"
 
     def test_살_수_없는_대상은_전체_행에서도_판정하지_않는다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
@@ -1610,24 +1635,22 @@ class TestNoCandidatesFile:
     담고, `적중률 = 오른/내린 비율` · `방향 기대값 = ±평균` 으로 그 자리에서 다시 계산된다.
     """
 
-    def test_매매법_산출물에_판정표가_없다(self) -> None:
+    @_BY_METHOD
+    def test_매매법_산출물에_판정표가_없다(self, slug: str) -> None:
         """
         목적: 산출물 목록에서 판정표가 빠졌는지 고정한다.
 
-        Given: 두 매매법의 산출물 파일 목록
+        Given: 그 매매법의 산출물 파일 목록
         When: 판정표 이름을 찾았을 때
         Then: 하나도 없다
         """
         # Given
-        from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
+        files = _method_constants(slug).OUTPUT_FILES
+        assert files, f"{slug} 의 산출물 파일 목록이 비어 있습니다"
 
         # When / Then
-        for name, files in (
-            ("역방향", REVERSE_FILES),
-            ("중간선거_사이클", MIDTERM_CYCLE_FILES),
-        ):
-            leftovers = [value for value in files.values() if "판정" in value]
-            assert not leftovers, f"{name} 이 아직 판정표를 냅니다: {leftovers}"
+        leftovers = [value for value in files.values() if "판정" in value]
+        assert not leftovers, f"{slug} 이 아직 판정표를 냅니다: {leftovers}"
 
     def test_판정표_이름과_표_생성기가_저장소에서_사라졌다(self) -> None:
         """

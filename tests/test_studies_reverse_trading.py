@@ -12,6 +12,7 @@
 - 신호 판정은 `studies` 가 소유한다. 이 계층은 **어느 날이 신호인가를 다시 정하지 않는다**
 """
 
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
 
@@ -72,6 +73,13 @@ SYNTHETIC_START_YEAR = 2008
 # **뒤를 잘라 「데이터 끝을 넘어가는 신호」를 만들 때 마지막 값을 쓴다**
 SIGNAL_PLACEMENTS = ((60, -1), (140, 1), (260, -1))
 
+# 순위 컷 5 와 20 사이에 걸리는 폭등(집계 시작일 기준 오프셋, 등락률). **기본 시세에는 심지 않는다.**
+# 축적 구간 등락(5%)보다 크고 집계 신호(9%)보다 작게, 앞의 것보다 조금씩 작게 둔다 — 그러면 앞선 날 중
+# 더 극단인 날이 9% 하나에 앞서 심은 것만큼 늘어 순위가 2 · 3 · 4 … 로 하나씩 밀린다
+# (`extreme_move.expanding_rank` 의 「더 극단인 날 수 + 1」). 컷 5 는 앞 넷만, 컷 20 은 여덟 전부를 잡는다.
+# `SIGNAL_PLACEMENTS` 의 마지막 오프셋보다 뒤에 두어 서로 겹치지 않는다
+MID_RANK_SURGES = tuple((300 + 20 * order, 0.060 - 0.001 * order) for order in range(8))
+
 # 백분율 지표의 허용오차 (tests/CLAUDE.md)
 RATE_TOLERANCE = 0.1
 
@@ -83,11 +91,16 @@ def _accumulation_index(rows: int) -> int:
     return int(np.flatnonzero(dates >= pd.Timestamp(f"{SYNTHETIC_START_YEAR}-01-01"))[0])
 
 
-def _market(rows: int = 1_400) -> pd.DataFrame:
+def _market(rows: int = 1_400, extra_surges: Sequence[tuple[int, float]] = ()) -> pd.DataFrame:
     """신호가 손으로 셀 수 있게 심긴 합성 시세를 만든다.
 
     집계 시작 전에 순위를 채워 두고, 집계 구간에는 그보다 큰 등락만 심는다.
     집계 시작연도 이전 구간이 순위 축적에 쓰이므로 그만큼 길이가 필요하다.
+
+    Args:
+        rows: 시세 행 수
+        extra_surges: 집계 구간에 더 심을 (오프셋, 등락률). **비우면 기본 시세와 같다** — 난수를
+            먼저 뽑은 뒤 덮어쓰므로 나머지 날의 값은 바뀌지 않는다
     """
     rng = np.random.default_rng(SYNTHETIC_SEED)
     dates = pd.DatetimeIndex(pd.bdate_range(MARKET_START, periods=rows))
@@ -104,6 +117,10 @@ def _market(rows: int = 1_400) -> pd.DataFrame:
         if accumulation + offset >= len(changes):
             continue
         changes[accumulation + offset] = 0.09 * sign
+
+    # 3. 부르는 쪽이 준 등락을 더 심는다
+    for offset, rate in extra_surges:
+        changes[accumulation + offset] = rate
 
     closes = 100.0 * np.cumprod(np.concatenate([[1.0], 1.0 + changes]))
     opens = np.concatenate([[closes[0]], closes[:-1] * 1.001])
@@ -127,6 +144,7 @@ def _target(
     ticker: str = "합성",
     rows: int = 1_400,
     start_year: int = SYNTHETIC_START_YEAR,
+    extra_surges: Sequence[tuple[int, float]] = (),
 ) -> Target:
     """합성 시세를 저장하고 그 파일을 가리키는 대상을 만든다.
 
@@ -138,10 +156,11 @@ def _target(
         ticker: 종목 표시 이름 (파일명에도 쓰인다)
         rows: 시세 행 수. **줄이면 뒤쪽 신호의 보유 구간이 데이터 끝을 넘어간다**
         start_year: 이 해부터 신호로 센다. 앞 구간은 순위 축적에만 쓰인다
+        extra_surges: 집계 구간에 더 심을 (오프셋, 등락률). `_market` 과 같다
     """
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{ticker}.csv"
-    saved = _market(rows)
+    saved = _market(rows, extra_surges)
     saved[COL_DATE] = saved[COL_DATE].dt.strftime("%Y-%m-%d")
     saved.to_csv(path, index=False)
 
@@ -273,16 +292,21 @@ class TestSignalOwnership:
 
         이 계층이 판정을 다시 하면 컷을 바꿔도 결과가 안 변하거나 다르게 변한다.
 
-        Given: 같은 시세에 순위 컷만 다른 두 대상
+        **등호를 허용하지 않는다.** 기본 시세는 두 컷의 신호 수가 같아(3건 · 3건) `>=` 로는
+        컷을 무시하고 판정해도 통과한다. 그래서 두 컷 사이의 순위에 걸리는 폭등을 더 심는다.
+
+        Given: 순위 컷 사이에 걸리는 폭등을 더 심은 같은 시세에 순위 컷만 다른 두 대상
         When: 각각 실행했을 때
-        Then: 넓은 컷의 신호 수가 좁은 컷보다 많거나 같다
+        Then: 넓은 컷의 신호 수가 좁은 컷보다 많다
         """
         # Given
         narrow = run_reverse_trading(
-            [_target(tmp_path / "narrow", rank_cut=5, ticker="좁은컷")], stop_levels=(STOP_LOSS_LEVEL,)
+            [_target(tmp_path / "narrow", rank_cut=5, ticker="좁은컷", extra_surges=MID_RANK_SURGES)],
+            stop_levels=(STOP_LOSS_LEVEL,),
         )
         wide = run_reverse_trading(
-            [_target(tmp_path / "wide", rank_cut=20, ticker="넓은컷")], stop_levels=(STOP_LOSS_LEVEL,)
+            [_target(tmp_path / "wide", rank_cut=20, ticker="넓은컷", extra_surges=MID_RANK_SURGES)],
+            stop_levels=(STOP_LOSS_LEVEL,),
         )
 
         # When
@@ -290,7 +314,7 @@ class TestSignalOwnership:
         wide_count = int(_overall(wide.performance)[DISPLAY_SIGNAL_COUNT])
 
         # Then
-        assert wide_count >= narrow_count
+        assert wide_count > narrow_count, f"순위 컷을 넓혀도 신호가 늘지 않습니다: 컷 5 = {narrow_count}건 · 컷 20 = {wide_count}건"
 
     def test_뒤를_잘라내도_겹치는_신호의_체결이_같다(self, tmp_path: Path) -> None:
         """

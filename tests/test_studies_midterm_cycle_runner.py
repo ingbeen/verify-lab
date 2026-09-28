@@ -41,6 +41,7 @@ from verify_lab.measure.constants import (
 )
 from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_UP
 from verify_lab.measure.statistics import COL_SAMPLE_COUNT
+from verify_lab.studies.midterm_cycle import runner as midterm_runner
 from verify_lab.studies.midterm_cycle.constants import (
     COL_BASELINE_NON_OVERLAPPING,
     COL_CYCLE_POSITION,
@@ -93,7 +94,18 @@ def outputs(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
     **지수를 함께 넣는다** — 판정하지 않는 대상과 배당락을 비우는 대상이 있어야
     두 계약이 검사된다.
     """
-    directory = tmp_path_factory.mktemp("midterm_cycle_runner")
+    return run_study(_write_inputs(tmp_path_factory.mktemp("midterm_cycle_runner")), repeats=TEST_REPEATS).statistics
+
+
+def _write_inputs(directory: Path) -> tuple[Dataset, Dataset]:
+    """합성 ETF(원본가·수정주가)와 합성 지수를 써 두고 그 둘을 가리키는 대상을 만든다.
+
+    Args:
+        directory: 저장할 임시 디렉터리
+
+    Returns:
+        합성 ETF 와 합성 지수 대상
+    """
     frame = _frame()
     frame.to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="SYN"), index=False)
     # **수정주가는 원본가와 조금 다르게 둔다** — 같으면 배당락 왜곡이 0 이라 「쟀다」가 안 보인다
@@ -125,7 +137,7 @@ def outputs(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
         is_index=True,
     )
 
-    return run_study((etf, index), repeats=TEST_REPEATS).statistics
+    return etf, index
 
 
 class TestDatasetsInvariant:
@@ -250,13 +262,39 @@ class TestStatisticsAssembly:
         목적: 어긋남 열이 CSV 에 영문 `True`/`False` 로 나가지 않게 한다 (측정의 원칙 13)
 
         `판정가능` 과 같은 두 값을 써야 한 표의 두 「예/아니오」 열을 같은 말로 읽는다.
+        **「아니오」로 고정한다** — 이 픽스처의 칸은 전부 어긋나지 않으므로, 두 값 «안»에 드는지만 보면
+        runner 가 판정을 무시하고 늘 「예」를 적어도 통과한다. 「예」 쪽은 아래 테스트가 밟는다.
 
-        Given: 측정 표
+        Given: 측정 표 (어긋나는 칸이 없는 합성 시세)
         When: 평균-비율 어긋남 값을 봤을 때
-        Then: `판정가능` 의 두 값 중 하나다
+        Then: 전부 `판정가능` 의 「아니오」다
         """
         # Given / When / Then
-        assert set(outputs[COL_MEAN_RATE_CONFLICT]) <= {JUDGEABLE_YES, JUDGEABLE_NO}
+        assert set(outputs[COL_MEAN_RATE_CONFLICT]) == {JUDGEABLE_NO}
+
+    def test_어긋나는_칸은_예로_적는다(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: runner 가 어긋남 판정을 「예」로 옮기는 경로를 **실제로 밟는다**
+
+        위 테스트는 거짓 → 「아니오」 쪽만 밟는다 — 그 픽스처의 칸은 전부 어긋나지 않는다.
+        그래서 runner 가 참을 엉뚱한 값으로 옮겨도 그 테스트는 통과하고, 참 → 「예」 쪽은 여기서 밟는다.
+
+        **판정식을 바꿔 끼운다** — 보려는 것은 runner 의 배선(판정 → `yes_no` → 열)이지 판정식이 아니다.
+        판정식은 `tests/test_measure_statistics.py` 가 본다. 어긋나는 칸이 나오게 합성 시세를 짜면
+        9개월 보유 수익률을 날짜에 맞춰 설계해야 해서 픽스처가 판정식의 세부에 묶인다.
+
+        Given: 모든 칸을 어긋난다고 판정하도록 바꿔 끼운 runner
+        When: 측정을 돌렸을 때
+        Then: 어긋남 열이 전부 「예」다
+        """
+        # Given
+        monkeypatch.setattr(midterm_runner, "mean_rate_conflict", lambda frame: pd.Series(True, index=frame.index))
+
+        # When
+        table = run_study(_write_inputs(tmp_path), repeats=TEST_REPEATS).statistics
+
+        # Then
+        assert set(table[COL_MEAN_RATE_CONFLICT]) == {JUDGEABLE_YES}
 
 
 class TestNonOverlapping:

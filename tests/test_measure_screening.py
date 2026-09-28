@@ -24,6 +24,7 @@
 **연 며칠의 노출로** 얻는다.
 """
 
+import ast
 import inspect
 
 import pytest
@@ -246,6 +247,20 @@ class TestNotJudged:
 class TestSingleOwner:
     """판정식은 한 벌이다 (패키지 절대 원칙 5)"""
 
+    # 게이트를 정의하는 파일(`src` 기준 경로). 아래 네 가지가 **전부** 여기 있어야 한다
+    GATE_DEFINER = "verify_lab/measure/screening.py"
+
+    # 게이트의 기준값과 판정 값을 써도 되는 파일. 정의 파일 말고는 그중 일부만 써도 된다.
+    # **정당한 새 사용처가 생기면 이유를 주석으로 달아 여기 더한다** — 검사가 막는 것은 테스트 실패뿐이다
+    GATE_OWNERS = frozenset({GATE_DEFINER})
+
+    # 게이트만 쓰는 이름. 다른 파일이 이것을 가져다 비교하면 그것이 곧 두 번째 게이트다
+    GATE_NAMES = frozenset({"MIN_EXPECTED_VALUE", "SCREEN_CANDIDATE", "SCREEN_EXCLUDED"})
+
+    # 「후보」 판정 값. **손으로 박는다** — 상수를 import 하면 그 값을 고치는 순간 검사가 따라온다.
+    # 「제외」는 동음이의어라 보지 않는다 (`test_게이트의_기준값과_판정_값을_소유자_밖에서_쓰지_않는다`)
+    CANDIDATE_VALUE = "후보"
+
     def test_성적_산식_계층이_이_게이트를_쓴다(self) -> None:
         """
         목적: 게이트가 두 벌이 되지 않았음을 **소스로** 고정한다.
@@ -254,9 +269,13 @@ class TestSingleOwner:
         성적표에 판정을 붙이는 것은 `execution/periods.py` 이고, 거기서 비교식을 다시 쓰면
         같은 칸이 표마다 다르게 판정된다.
 
+        **`MIN_HIT_RATE` 부재는 회귀 가드다** — 걷어낸 적중률 하한이 옛 이름 그대로 성적 산식에
+        되살아나는 것을 막는다(`screening` 쪽은 `test_게이트_조건이_하나다` 가 같은 것을 본다).
+        기준값을 따로 쓰지 않는지는 아래 테스트가 `src` 전체에서 본다.
+
         Given: 구간별 성적 산식 모듈의 소스
         When: 판정을 내는 자리를 봤을 때
-        Then: 이 모듈의 게이트를 부르고, 기준값을 직접 적지 않는다
+        Then: 이 모듈의 게이트를 부르고, 걷어낸 적중률 하한을 들고 있지 않다
         """
         # Given
         from pathlib import Path
@@ -267,7 +286,74 @@ class TestSingleOwner:
 
         # Then
         assert "screen_verdict(" in source, "성적 산식이 게이트를 부르지 않습니다 — 판정식이 두 벌입니다"
-        assert "MIN_HIT_RATE" not in source, "성적 산식이 게이트 기준값을 따로 들고 있습니다"
+        assert "MIN_HIT_RATE" not in source, "성적 산식이 적중률 하한을 되살렸습니다 — 게이트 조건은 하나입니다"
+
+    def test_게이트의_기준값과_판정_값을_소유자_밖에서_쓰지_않는다(self) -> None:
+        """
+        목적: 게이트가 두 벌이 되는 가장 흔한 모양 — **기준값을 가져다 직접 비교하는 것** — 을 막는다.
+
+        위 테스트의 `MIN_HIT_RATE` 부재 검사는 걷어낸 이름 하나만 막으므로 그것만으로는 **늘 참**이다 —
+        `periods.py` 가 `expected >= MIN_EXPECTED_VALUE` 를 다시 써도 통과한다.
+
+        **소스 문자열이 아니라 AST 의 이름·상수 노드를 본다.** 문서 규칙이 「게이트 값은 적지 않고
+        상수 이름을 가리킨다」(`.claude/rules/docs.md`)라 주석이 그 이름을 적는 것은 정당한데,
+        주석은 AST 에 없다. **`src` 전체를 본다** — 매매법 `trading.py` 가 직접 비교해도 같은 사고다.
+
+        **값 「제외」는 보지 않는다.** 같은 문자열이 제외 건수 컬럼(`report/constants.py`)과 이상치
+        라벨(`studies/usdkrw_equivalence/constants.py`)에 **동음이의어**로 있다
+        (`tests/test_layer_contracts.py` 의 `_REPORT_LABEL_COLLISIONS`).
+
+        **정의 파일(`screening.py`)에 네 가지가 실제로 있는지도 본다** — 이름이나 값이 바뀌면 이 검사가
+        옛 이름을 찾으며 헛돌아 아무것도 막지 못한 채 통과한다. 허용 경로에 더한 다른 파일에는
+        이 요구를 걸지 않는다 — 걸면 정당한 사용처를 더하는 순간 이 테스트가 반드시 실패한다.
+
+        Given: `src/verify_lab` 의 파이썬 파일 전부
+        When: 게이트 이름과 값 「후보」를 쓰는 파일을 모은다
+        Then: 허용 경로 밖에는 하나도 없고, 정의 파일은 네 가지를 전부 쓴다
+        """
+        # Given
+        from verify_lab.common_constants import BASE_DIR
+
+        source_root = BASE_DIR / "src"
+        watched = self.GATE_NAMES | {self.CANDIDATE_VALUE}
+
+        # When
+        usage = {
+            path.relative_to(source_root).as_posix(): self._gate_usage(path.read_text(encoding="utf-8"))
+            for path in sorted((source_root / "verify_lab").rglob("*.py"))
+        }
+        offenders = {path: sorted(used) for path, used in usage.items() if used and path not in self.GATE_OWNERS}
+
+        # Then
+        assert offenders == {}, f"게이트의 기준값·판정 값을 소유자 밖에서 씁니다 — 판정식이 두 벌이 됩니다: {offenders}"
+        assert (
+            usage.get(self.GATE_DEFINER) == watched
+        ), f"{self.GATE_DEFINER} 에 게이트 이름·값이 전부 있지 않습니다 — 이 검사가 헛돕니다: {usage.get(self.GATE_DEFINER)}"
+
+    def _gate_usage(self, source: str) -> set[str]:
+        """소스가 쓰는 게이트 이름과 값 「후보」를 모은다.
+
+        **docstring 은 따로 빼지 않는다** — 문장 전체가 한 상수라 값이 통째로 「후보」일 수 없다.
+
+        Args:
+            source: 파이썬 소스
+
+        Returns:
+            쓰인 게이트 이름과 값의 집합
+        """
+        found: set[str] = set()
+
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Name) and node.id in self.GATE_NAMES:
+                found.add(node.id)
+            elif isinstance(node, ast.Attribute) and node.attr in self.GATE_NAMES:
+                found.add(node.attr)
+            elif isinstance(node, ast.alias) and node.name in self.GATE_NAMES:
+                found.add(node.name)
+            elif isinstance(node, ast.Constant) and node.value == self.CANDIDATE_VALUE:
+                found.add(self.CANDIDATE_VALUE)
+
+        return found
 
 
 class TestGateValues:
