@@ -33,7 +33,7 @@ from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 인자 없이 실행했을 때 받는 상품. 검증 #9 가 재는 두 지수다
+# 인자 없이 실행했을 때 받는 상품. 선물_대_레버리지_ETF 가 재는 두 지수다
 DEFAULT_PRODUCTS = [PRODUCT_KOSPI200, PRODUCT_KOSDAQ150]
 
 # 상품 코드를 사람이 읽는 이름으로 바꾼다. 코드만으로는 어느 지수인지 알 수 없다

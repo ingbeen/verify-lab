@@ -127,7 +127,7 @@ class TestWindowReturns:
 
     def test_plain_window_return_is_the_simple_ratio(self) -> None:
         """
-        목적: 단순 구간 수익률이 검증 #8 과 같은 산식임을 고정한다.
+        목적: 단순 구간 수익률이 레버리지_ETF_괴리와 같은 산식임을 고정한다.
 
         같은 원본가 파일을 읽으므로 같은 (종목, 시작일, 구간) 에서 값이 같아야 한다.
 
@@ -523,7 +523,7 @@ class TestHorizons:
 
     def test_default_is_the_study_grid(self) -> None:
         """
-        목적: 기본 격자가 검증 #8 과 같은 값임을 고정한다.
+        목적: 기본 격자가 레버리지_ETF_괴리와 같은 값임을 고정한다.
 
         두 검증을 나란히 읽으려면 격자가 같아야 한다.
 

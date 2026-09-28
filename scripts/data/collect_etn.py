@@ -25,7 +25,7 @@ from verify_lab.utils.meta_manager import save_metadata
 logger = get_logger(__name__)
 
 # 인자 없이 실행했을 때 받는 종목과 그 상장일.
-# 검증 #8 의 코스닥150 -2배 본선 종목이다 (삼성 인버스 2X 코스닥150 선물 ETN)
+# 레버리지_ETF_괴리의 코스닥150 -2배 본선 종목이다 (삼성 인버스 2X 코스닥150 선물 ETN)
 DEFAULT_TICKER = "530107"
 DEFAULT_START_DATE = "20221017"
 

@@ -1762,7 +1762,7 @@ class TestKrxCommonOwnership:
 _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "날짜": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
     "등락률(%)": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
-    # 배수형 두 검증이 **같은 금리 경계**로 가른 같은 축이다(검증 #9 가 #8 의 경계를 따른다).
+    # 배수형 두 검증이 **같은 금리 경계**로 가른 같은 축이다(선물_대_레버리지_ETF 가 레버리지_ETF_괴리의 경계를 따른다).
     # `배수`·`지수` 와 같은 성격이라 여기 둔다 — 값까지 같지만 공통으로 뽑지 않는 것이 결정이다
     "금리 환경": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}

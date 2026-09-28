@@ -3,7 +3,7 @@
 같은 자기자본·같은 목표 배수·같은 구간에서 **① 레버리지 ETF ② 선물 매일 리밸런싱
 ③ 선물 월 1회 리밸런싱 ④ 선물 그대로 두기** 를 나란히 낸다.
 
-**④ 가 사용자가 실제로 하는 것이다** — 1억을 넣고 계약 수를 그대로 두는 것. ①~③ 은
+**④ 는 리밸런싱 없이 계약 수를 그대로 두는 보유다.** ①~③ 은
 「선물로 ETF 를 복제할 수 있는가」에 답하고, ④ 는 「그냥 사서 들고 있으면 같은가」에 답한다.
 
 ## 구간 수익률을 엔진으로 하나씩 돌리지 않는다
@@ -216,7 +216,7 @@ def leveraged_window_returns(
 def plain_window_returns(prices: np.ndarray, horizon: int) -> np.ndarray:
     """시작일마다 보유 구간의 단순 수익률을 낸다.
 
-    ETF 보유와 1배 기준선이 여기 해당한다. **검증 #8 의 `divergence` 와 같은 산식이라**
+    ETF 보유와 1배 기준선이 여기 해당한다. **레버리지_ETF_괴리의 `divergence` 와 같은 산식이라**
     같은 (종목, 시작일, 구간) 에서 같은 값이 나와야 한다.
 
     Args:
@@ -347,7 +347,7 @@ def decompose(
             COL_INTEREST_GAIN: interest_gain,
             COL_RESIDUAL: residual,
             COL_FUTURES_MINUS_ETF: futures_minus_etf,
-            # **사용자 질문에 직접 답하는 열이다** — 「1억을 넣고 그대로 두면 ETF 와 같은가」
+            # **④ 의 질문에 직접 답하는 열이다** — 「계약 수를 그대로 두면 ETF 와 같은가」
             COL_HOLD_MINUS_ETF: futures_hold - etf_return,
         }
     )

@@ -33,7 +33,7 @@ from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 검증 #1 의 국내 대상. 상장일은 스펙 §2 가 지정한 값이다
+# 역방향의 국내 대상. 상장일은 스펙 §2 가 지정한 값이다
 DEFAULT_TICKER = "069500"
 DEFAULT_START_DATE = "20021014"
 

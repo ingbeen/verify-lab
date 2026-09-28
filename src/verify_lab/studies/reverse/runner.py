@@ -1,4 +1,4 @@
-"""검증 #1 실행 — 강건성 조합을 한 번에 돌고 산출물을 조립한다
+"""역방향 실행 — 강건성 조합을 한 번에 돌고 산출물을 조립한다
 
 이 모듈은 **계산하지 않는다.** 이벤트 정의(`studies`)·수익률과 통계(`measure`)·표 렌더링(`report`)이
 이미 전부 있으므로, 하는 일은 그것을 조합해 돌리고 사람이 읽을 형태로 쌓는 것이다.
@@ -378,7 +378,7 @@ def run_study(
         KEY_SIGNAL_GROUP_COUNT: len(statistics_blocks),
         KEY_EMPTY_SIGNAL_GROUPS: empty_groups,
         # **행 수의 키는 파일 이름이고, 목록은 `OUTPUT_FILES` 를 돈다.** 손으로 나열하면
-        # 표가 늘 때 조용히 빠진다 — 실제로 검증 #8 의 `full_period` 가 저장은 되면서
+        # 표가 늘 때 조용히 빠진다 — 실제로 레버리지_ETF_괴리의 `full_period` 가 저장은 되면서
         # 요약에서 통째로 빠져 있었다
         KEY_ROW_COUNTS: {OUTPUT_FILES[name]: len(table) for name, table in tables.items()},
         KEY_NOTES: [NOTE_SAME_PARAMETERS, NOTE_BASELINE_WINDOW, NOTE_REVERSE_ALL],

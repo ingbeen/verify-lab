@@ -263,7 +263,7 @@ def run_equivalence(
             "leverage_r_squared_min": LEVERAGE_R_SQUARED_MIN,
         },
         # **행 수의 키는 파일 이름이고, 목록은 `OUTPUT_FILES` 를 돈다.** 손으로 나열하면
-        # 표가 늘 때 조용히 빠진다 — 실제로 검증 #8 의 `full_period` 가 저장은 되면서
+        # 표가 늘 때 조용히 빠진다 — 실제로 레버리지_ETF_괴리의 `full_period` 가 저장은 되면서
         # 요약에서 통째로 빠져 있었다
         KEY_TRACK: TRACK_NAME,
         KEY_ROW_COUNTS: {OUTPUT_FILES[name]: len(table) for name, table in tables.items()},

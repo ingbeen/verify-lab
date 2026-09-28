@@ -37,7 +37,7 @@ from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 인자 없이 실행했을 때 받는 종목과 그 상장일. 검증 #1 의 국내 대상이다
+# 인자 없이 실행했을 때 받는 종목과 그 상장일. 역방향의 국내 대상이다
 DEFAULT_TICKER = "069500"
 DEFAULT_START_DATE = "20021014"
 

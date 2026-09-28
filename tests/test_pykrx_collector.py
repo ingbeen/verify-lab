@@ -38,7 +38,7 @@ from verify_lab.data.pykrx_collector import collect_pykrx_history, collect_pykrx
 # 테스트에서 오늘로 고정하는 날짜. 최근 제외 기준일은 이 날짜에서 계산된다
 FROZEN_TODAY = "2026-08-12"
 
-# 검증 #1 의 국내 대상과 그 상장일
+# 역방향의 국내 대상과 그 상장일
 TICKER = "069500"
 LISTING_DATE = "20021014"
 
@@ -671,7 +671,7 @@ class TestReferenceTimezone:
 
 
 # ============================================================
-# 지수 수집 — 검증 #10 의 기간 확장 축
+# 지수 수집 — 월말_진입의 기간 확장 축
 # ============================================================
 
 # 실측한 코스닥 지수 코드 (`collect_pykrx_index` docstring 의 표)

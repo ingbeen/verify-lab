@@ -1,4 +1,4 @@
-"""검증 #9 실행 — 방식별 성적을 나란히 재고 차이를 분해한다
+"""선물_대_레버리지_ETF 실행 — 방식별 성적을 나란히 재고 차이를 분해한다
 
 한 실행에서 **2지수 × 짝 6개 × 배수 × 4방식 × 7격자 × 2롤규칙 × 2이자가정** 을 전부 낸다.
 방식 넷은 레버리지 ETF · 선물 매일 · 선물 월 1회 · **선물 그대로 두기**다.
@@ -196,7 +196,7 @@ class StudyOutputs:
 def _non_overlapping_count(usable: np.ndarray, horizon: int) -> int:
     """겹치지 않게 고를 수 있는 최대 구간 수를 센다.
 
-    **정의는 `measure.statistics.max_non_overlapping` 하나이며 검증 #8 도 같은 함수를 쓴다.**
+    **정의는 `measure.statistics.max_non_overlapping` 하나이며 레버리지_ETF_괴리도 같은 함수를 쓴다.**
     여기서는 「시작일마다 쓸 수 있는지」라는 이 검증의 표현을 위치 목록으로 바꿔 넘기기만 한다.
 
     Args:
@@ -210,7 +210,7 @@ def _non_overlapping_count(usable: np.ndarray, horizon: int) -> int:
 
 
 def _period_labels(dates: pd.Series) -> pd.Series:
-    """시작일을 저금리·고금리로 가른다. 검증 #8 과 같은 경계다."""
+    """시작일을 저금리·고금리로 가른다. 레버리지_ETF_괴리와 같은 경계다."""
     return pd.Series(
         np.where(dates.dt.year >= HIGH_RATE_START_YEAR, DISPLAY_PERIOD_HIGH_RATE, DISPLAY_PERIOD_LOW_RATE),
         index=dates.index,
@@ -610,7 +610,7 @@ def _label_horizons(table: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_study(index_filter: str | None = None) -> StudyOutputs:
-    """검증 #9 를 실행한다.
+    """선물_대_레버리지_ETF 를 실행한다.
 
     Args:
         index_filter: 지수 이름으로 좁힌다 (예: `KOSPI200`). None 이면 전부
