@@ -24,6 +24,7 @@
 import importlib
 import io
 import json
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,6 +63,7 @@ from verify_lab.execution.constants import (
     PERIOD_RECENT_5Y,
     PERIODS,
     STOP_NOT_MEASURABLE_LABEL,
+    SUMMARY_FILENAME,
     TRADES_FILENAME,
 )
 from verify_lab.execution.periods import period_rows
@@ -88,7 +90,6 @@ from verify_lab.report.run_summary import (
     KEY_DATASET_TICKER,
     KEY_TRACK,
 )
-from verify_lab.studies.midterm_cycle.constants import KEY_EXCLUDED_COUNT
 from verify_lab.studies.midterm_cycle.constants import Dataset as MidtermCycleDataset
 from verify_lab.studies.midterm_cycle.trading import KEY_TARGETS as MIDTERM_CYCLE_KEY_TARGETS
 from verify_lab.studies.midterm_cycle.trading import TradingOutputs as MidtermCycleOutputs
@@ -181,6 +182,16 @@ INDEX_LABEL = "합성 지수"
 # 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향만 있다
 TAIL_REVERSE_SUMMARY = ("사건",)
 TAIL_REVERSE_TRADES = ("등락률(%)", "사건 번호")
+
+# 실행 요약의 대상별 기록에 제외 건수를 담는 키. **계약이 키 이름 자체를 정한다**(`src/verify_lab/CLAUDE.md`
+# 「매매 산출물 계약」). 한 매매법의 상수를 빌리면 그 매매법이 이름을 바꾸는 순간 검사가 따라가, 틀린 쪽은
+# 통과하고 맞는 쪽이 실패한다
+EXCLUDED_COUNT_KEY = "excluded_count"
+
+# 종목코드의 모양 — 숫자와 영문 대문자뿐이다(국내 `069500` · 미국 `QQQ` · 지수 `GSPC`).
+# 표시 이름(`KODEX 200`)이 `ticker` 에 들어가면 공백·한글·소문자 때문에 여기서 걸린다.
+# **새 종목코드가 이 모양을 벗어나면 그 종목과 이유를 적고 넓힌다**
+TICKER_SHAPE = re.compile(r"[0-9A-Z]+")
 
 # ============================================================
 # 합성 시세
@@ -567,10 +578,13 @@ class TestSummaryColumns:
         """
         목적: 매매법마다 성적표가 공통 형식을 쓰는지 고정한다
 
+        **매매법끼리 공통 부분이 한 벌인 것도 여기서 함께 고정된다** — 모든 매매법이 같은
+        `SUMMARY_COMMON_COLUMNS` 와 견주므로, 공통 부분만 떼어 다시 비교하는 검사는 두지 않는다.
+
         Given: 합성 시세로 돈 그 매매법의 결과
         When: 성적표의 컬럼을 봤을 때
         Then: 종목 · 매매법 축 · 공통 컬럼 · 매매법 고유 컬럼 순이다
-              (역방향은 파라미터 · 시작연도 축에 사건 꼬리, 중간선거_사이클은 사이클 위치 축뿐)
+              (매매법 축과 고유 컬럼은 `METHOD_SPECS` 의 그 매매법 사양이 정한다)
         """
         # Given
         spec = METHOD_SPECS[slug]
@@ -579,35 +593,6 @@ class TestSummaryColumns:
         assert list(_outputs(request, slug).performance.columns) == _expected_summary(
             spec.summary_axis, spec.summary_tail
         )
-
-    def test_매매법_성적표의_공통_부분이_완전히_같다(self, request: pytest.FixtureRequest) -> None:
-        """
-        목적: 매매법 축과 고유 컬럼을 뺀 나머지가 한 벌임을 고정한다
-
-        이 계약이 깨지면 매매법들의 산출물을 나란히 놓고 읽을 수 없다.
-
-        **같은 표를 두 이름으로 두 번 세지 않는다** — 이름만 늘리면 검사는 그대로인데
-        「넷을 봤다」로 읽힌다.
-
-        Given: 매매법 전부의 성적표
-        When: 매매법 축과 고유 컬럼을 뺀 컬럼 목록을 비교했을 때
-        Then: 전부 같고 공통 컬럼 목록과도 같다
-        """
-        # Given
-        axes = {
-            "종목",
-            *(column for spec in METHOD_SPECS.values() for column in (*spec.summary_axis, *spec.summary_tail)),
-        }
-
-        # When
-        common = {
-            slug: [column for column in _outputs(request, slug).performance.columns if column not in axes]
-            for slug in sorted(METHOD_SPECS)
-        }
-
-        # Then
-        mismatched = sorted(slug for slug, columns in common.items() if columns != list(SUMMARY_COMMON_COLUMNS))
-        assert mismatched == [], f"공통 부분이 공통 컬럼 목록과 다른 매매법이 있습니다: {mismatched}"
 
 
 class TestTradeColumns:
@@ -623,7 +608,7 @@ class TestTradeColumns:
         Given: 합성 시세로 돈 그 매매법의 결과
         When: 거래내역의 컬럼을 봤을 때
         Then: 종목 · 매매법 축 · 공통 컬럼 · 매매법 고유 컬럼 순이다
-              (역방향은 등락률·사건 번호 꼬리, 중간선거_사이클은 사이클 위치 · 진입 연도 축뿐)
+              (매매법 축과 고유 컬럼은 `METHOD_SPECS` 의 그 매매법 사양이 정한다)
         """
         # Given
         spec = METHOD_SPECS[slug]
@@ -657,7 +642,8 @@ class TestStopLevelFormat:
         """
         목적: 인자 없이 돌린 산출물이 **확정 규칙의 칸만** 담는지 고정한다
 
-        확정 규칙이 기간 손절(가격 손절 없음)이라 ETF 는 `무손절` 행이 그 규칙의 1배 측정 기준이다.
+        확정 규칙이 기간 손절(가격 손절 없음)이라 ETF 는 `무손절` 행을 내고, 그중 대상 QQQ 의 행이
+        그 규칙의 1배 측정 기준이다.
         격자 값이 섞이면 확정 칸을 고르려고 매번 필터를 걸어야 하고, 격자는 스위치로만 켠다.
 
         Given: 합성 시세와 합성 지수로 인자 없이 돈 중간선거_사이클 결과
@@ -843,7 +829,7 @@ class TestReversePeriods:
         # When / Then
         assert group, f"{slug} 요약의 대상별 목록이 비어 있습니다"
         for record in group:
-            assert KEY_EXCLUDED_COUNT in record, f"{slug} 요약에 제외 건수가 없습니다: {record}"
+            assert EXCLUDED_COUNT_KEY in record, f"{slug} 요약에 제외 건수가 없습니다: {record}"
 
     def test_표본이_0건인_구간은_지표를_비운다(self, tmp_path: Path) -> None:
         """
@@ -1457,6 +1443,7 @@ class TestRunSummary:
             counts = summary[KEY_ROW_COUNTS]
             assert isinstance(counts, dict)
             assert all(key.endswith(".csv") for key in counts), f"{name} 의 row_counts 키가 파일 이름이 아닙니다: {sorted(counts)}"
+            assert SUMMARY_FILENAME in counts, f"{name} 에 성적표 행 수가 없습니다"
             assert TRADES_FILENAME in counts, f"{name} 에 거래내역 행 수가 없습니다"
 
     def test_비용_표기가_매매법_모두에_있다(self, summaries: dict[str, dict[str, object]]) -> None:
@@ -1506,9 +1493,12 @@ class TestDatasetFields:
         미국 ETF 는 둘이 같아(`QQQ`) 드러나지 않았고, 국내에서만 `"ticker": "KODEX 200"` 으로
         새어 나왔다 — **둘 다 `str` 이라 타입 검사가 못 잡는다.**
 
+        **「둘이 다르다」가 아니라 `ticker` 의 모양으로 잰다** — 미국 ETF 는 코드와 이름이 같아(`QQQ`)
+        다름을 단언할 수 없다. 표시 이름이 `ticker` 에 들어가면 공백·한글·소문자 때문에 모양에서 걸린다.
+
         Given: 그 매매법의 데이터셋 목록
         When: 각 데이터셋의 필드를 봤을 때
-        Then: `ticker` 와 `label` 이 둘 다 있고 서로 다른 것을 담는다
+        Then: `label` 이 있고, `ticker` 가 종목코드 모양(`TICKER_SHAPE`)이다
         """
         # Given
         datasets = _method_constants(slug).DATASETS
@@ -1516,7 +1506,9 @@ class TestDatasetFields:
 
         # When / Then
         for dataset in datasets:
-            assert dataset.ticker, f"{slug} 의 데이터셋에 종목코드가 없습니다"
+            assert TICKER_SHAPE.fullmatch(
+                dataset.ticker
+            ), f"{slug} 의 데이터셋 ticker {dataset.ticker!r} 가 종목코드 모양이 아닙니다 — 표시 이름이 들어갔는지 보세요"
             assert dataset.label, f"{slug} 의 데이터셋에 표시 이름이 없습니다"
 
 

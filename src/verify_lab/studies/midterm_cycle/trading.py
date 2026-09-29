@@ -23,8 +23,8 @@
 중간에 끊겨 남은 분기의 표본이 사라진다. 그래서 그 두 표에 `손절선(%)` 축이 없다.
 
 **손절선은 기본이 확정 규칙의 무손절 한 종이고, 격자는 `stop_grid` 로 «전부» 켠다.**
-확정 규칙이 기간 손절(가격 손절 없음)이라 무손절 행이 그 규칙의 1배 측정 기준이다 — 규칙이 사는
-2배 상품(QLD)의 성적은 산출물에 없다(`규칙.md` §2.5).
+확정 규칙이 기간 손절(가격 손절 없음)이라 대상 QQQ 의 무손절 행이 그 규칙의 1배 측정 기준이다 —
+규칙이 사는 2배 상품(QLD)의 성적은 산출물에 없다(`규칙.md` §2.5).
 격자는 무손절 대조와 −5 ~ −30% 여덟 종이며 그 규칙을 고른 근거다 — **며칠짜리 매매법에 쓰는
 −2 ~ −10% 폭은 9개월 보유에 너무 좁다**(2018년 4분기 하나만 S&P 500 −14% 라 그 폭으로는
 전 구간이 손절로 끊겨 「평평한 구간」을 찾을 수 없다). 스위치가 값을 고르지 않고 격자 전부를
@@ -218,7 +218,9 @@ NOTE_ENTRY_CONTEXT = (
     "`진입위치.csv` 의 지표는 진입일 종가까지로만 계산한다. 창(52주 = 252거래일 · 200일)이 차기 전인 " "진입은 그 칸을 비운다 — 0 으로 채우면 「그때 고점이었다」 같은 없는 사실이 된다"
 )
 NOTE_STOP_CONFIRMED = (
-    "ETF 손절선은 확정 규칙의 무손절 한 종만 냈다 — 규칙이 기간 손절(가격 손절 없음)이라서다. "
+    "ETF 손절선은 확정 규칙의 무손절 한 종만 낸다 — 규칙이 기간 손절(가격 손절 없음)이라서다. "
+    "확정 규칙의 1배 측정 기준은 대상 QQQ 의 무손절 행이고, 규칙이 사는 2배 상품(QLD)의 성적은 "
+    "이 산출물에 없다(`docs/매매/중간선거_사이클/규칙.md` §2.5). "
     "가격 손절선 격자(`constants.STOP_LEVELS_ETF`)는 스위치(CLI `--stop-grid`)를 켜야 나온다"
 )
 NOTE_DIVIDEND = "보유가 9개월이라 분기 배당 3회가 «매번» 구조적으로 들어온다. 원본가로 재므로 " "「위」 칸의 성적은 그만큼 과소평가돼 있으며, 그 크기는 측정 표의 배당락 세 컬럼이 낸다"
@@ -998,9 +1000,10 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS, *, stop_
     stop_levels_run = list(dict.fromkeys(performance[DISPLAY_STOP_LEVEL]))
 
     notes = [NOTE_ENTRY, NOTE_AXIS, NOTE_QUARTER, NOTE_SPLIT, NOTE_ENTRY_CONTEXT]
-    # **손절선의 기준 설명은 가격 손절선을 돈 실행에만 싣는다** — 확정 칸만 낸 실행에는 가격 손절이
-    # 없어 「갭 청산은 손절선보다 더 잃는다」가 없는 조건을 말하게 된다
-    if stop_grid:
+    # **손절선의 기준 설명은 가격 손절선을 돈 실행에만 싣는다** — 확정 칸만 낸 실행과 지수만 돈 실행에는
+    # 가격 손절이 없어 「갭 청산은 손절선보다 더 잃는다」가 없는 조건을 말하게 된다.
+    # 자리를 옮기지 않는다 — 격자 실행이 좁히기 전 산출물과 `summary.json` 까지 바이트 동일한 것이 이 순서에 달려 있다
+    if stop_grid and any(not dataset.is_index for dataset in datasets):
         notes.append(NOTE_STOP_BASE)
     notes.append(NOTE_SAMPLE)
     if any(not dataset.is_index for dataset in datasets):

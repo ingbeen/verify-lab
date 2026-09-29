@@ -9,6 +9,7 @@
 | 분할매수 집계의 **일시매수 행 = 성적표의 무손절 전체 행** | 두 표가 같은 체결을 다른 값으로 적으면 어느 쪽이 맞는지 판별할 수 없다 |
 | 진입 위치 표는 진입마다 한 행 | 사용자가 해마다 차트와 대조하는 원자료다 (측정의 원칙 8) |
 | **스위치를 켜면 손절선 격자 아홉 종이 전부 나온다** | 격자는 확정 규칙을 고른 근거이고, 시세를 다시 받으면 이 스위치로 다시 판단한다 — 값이 빠지거나 바뀌면 그 근거를 재현하지 못한다 |
+| **손절선 설명 문구는 실제로 돈 손절선을 따르고, 스위치는 그 문구 하나만 바꾼다** | 돌지 않은 조건을 말하면 요약이 거짓이 되고, 격자 실행이 좁히기 전 산출물과 바이트 동일하다는 결과 문서의 기록이 문구의 자리에 달려 있다 |
 """
 
 import numpy as np
@@ -32,10 +33,11 @@ from verify_lab.execution.constants import (
     DISPLAY_TICKER,
     DISPLAY_TOTAL,
     DISPLAY_WORST_HOLD,
+    NOTE_STOP_BASE,
     PERIOD_ALL,
     stop_level_value,
 )
-from verify_lab.execution.run_summary import KEY_ROW_COUNTS
+from verify_lab.execution.run_summary import KEY_NOTES, KEY_ROW_COUNTS
 from verify_lab.report.constants import DISPLAY_MEAN, DISPLAY_MIN, DISPLAY_PERIOD, DISPLAY_SAMPLE_COUNT
 from verify_lab.studies.midterm_cycle.constants import (
     DISPLAY_FALLBACK,
@@ -46,7 +48,12 @@ from verify_lab.studies.midterm_cycle.constants import (
     SPLIT_TRADES_FILENAME,
     Dataset,
 )
-from verify_lab.studies.midterm_cycle.trading import TradingOutputs, run_midterm_cycle_trading
+from verify_lab.studies.midterm_cycle.trading import (
+    NOTE_SAMPLE,
+    NOTE_STOP_CONFIRMED,
+    TradingOutputs,
+    run_midterm_cycle_trading,
+)
 
 # 합성 시세 구간 — 중간선거해 2014 · 2018 · 2022 세 번 진입하고 52주 창이 찬다
 SYNTHETIC_START = "2012-01-02"
@@ -270,3 +277,82 @@ class TestStopGridSwitch:
 
         # Then
         assert levels == {"손절불가"}
+
+
+class TestStopNotes:
+    """`summary.json` 의 손절선 설명 문구는 «실제로 돈» 손절선을 따른다"""
+
+    def test_switch_swaps_the_stop_note(self, outputs: TradingOutputs, grid_outputs: TradingOutputs) -> None:
+        """
+        목적: 기본 실행은 확정 칸만 냈다는 문구를, 격자 실행은 가격 손절선의 기준 설명을 싣는다.
+
+        Given: 합성 ETF · 지수를 인자 없이 돈 산출물과 손절선 격자를 켜고 돈 산출물
+        When: 두 실행의 `notes` 를 본다
+        Then: 기본은 `NOTE_STOP_CONFIRMED` 만, 격자는 `NOTE_STOP_BASE` 만 갖는다
+        """
+        # When
+        default_notes = outputs.summary[KEY_NOTES]
+        grid_notes = grid_outputs.summary[KEY_NOTES]
+
+        # Then
+        assert NOTE_STOP_CONFIRMED in default_notes, "기본 실행에 확정 칸 문구가 없습니다"
+        assert NOTE_STOP_BASE not in default_notes, "기본 실행에 가격 손절선 설명이 실렸습니다"
+        assert NOTE_STOP_BASE in grid_notes, "격자 실행에 가격 손절선 설명이 없습니다"
+        assert NOTE_STOP_CONFIRMED not in grid_notes, "격자 실행에 확정 칸 문구가 실렸습니다"
+
+    def test_switch_changes_only_the_stop_note(self, outputs: TradingOutputs, grid_outputs: TradingOutputs) -> None:
+        """
+        목적: 스위치가 손절 문구 하나만 바꾸고 나머지 문구의 구성과 순서는 그대로 둔다.
+
+        Given: 합성 ETF · 지수를 인자 없이 돈 산출물과 손절선 격자를 켜고 돈 산출물
+        When: 각자의 손절 문구를 뺀 나머지 `notes` 를 견준다
+        Then: 순서까지 같다
+        """
+        # When
+        default_rest = [note for note in outputs.summary[KEY_NOTES] if note != NOTE_STOP_CONFIRMED]
+        grid_rest = [note for note in grid_outputs.summary[KEY_NOTES] if note != NOTE_STOP_BASE]
+
+        # Then
+        assert grid_rest == default_rest
+
+    def test_price_stop_note_sits_right_before_the_sample_note(self, grid_outputs: TradingOutputs) -> None:
+        """
+        목적: 격자 실행의 가격 손절선 설명은 표본 하한 문구 바로 앞이다.
+
+        결과 문서는 「`--stop-grid` 로 돌리면 좁히기 전 산출물과 `summary.json` 까지 바이트 단위로 같다」를
+        재실행 기록으로 갖고, 그 동일성이 이 자리에 달려 있다 — 좁히기 전 산출물이 이 순서다.
+        **전체 목록을 손으로 적지 않는다** — 새 문구가 더해질 때마다 이 테스트가 깨지게 된다.
+
+        Given: 합성 ETF · 지수를 손절선 격자를 켜고 돈 산출물
+        When: `NOTE_STOP_BASE` 다음 문구를 본다
+        Then: `NOTE_SAMPLE` 이다
+        """
+        # Given
+        notes = grid_outputs.summary[KEY_NOTES]
+
+        # When
+        following = notes[notes.index(NOTE_STOP_BASE) + 1]
+
+        # Then
+        assert following == NOTE_SAMPLE, "가격 손절선 설명의 자리가 바뀌었습니다 — 격자 실행이 좁히기 전 산출물과 달라집니다"
+
+    def test_index_only_grid_has_no_price_stop_note(self, datasets: tuple[Dataset, Dataset]) -> None:
+        """
+        목적: 지수만 돈 격자 실행에는 가격 손절선의 기준 설명을 싣지 않는다.
+
+        지수는 장중 고가·저가가 없어 스위치를 켜도 `손절불가` 한 줄뿐이다. 그 실행에
+        「갭 청산은 손절선보다 더 잃는다」가 실리면 돌지도 않은 조건을 말하게 된다.
+
+        Given: 합성 지수 하나
+        When: 손절선 격자를 켜고 돈다
+        Then: `notes` 에 `NOTE_STOP_BASE` 가 없다
+        """
+        # Given
+        index = datasets[1]
+        assert index.is_index, "픽스처의 두 번째 대상이 지수가 아닙니다 — 이 테스트가 다른 것을 봅니다"
+
+        # When
+        notes = run_midterm_cycle_trading((index,), stop_grid=True).summary[KEY_NOTES]
+
+        # Then
+        assert NOTE_STOP_BASE not in notes, "지수만 돈 격자 실행에 가격 손절선 설명이 실렸습니다"
