@@ -265,6 +265,83 @@ def test_change_just_below_threshold_is_accepted(tmp_path: Path) -> None:
     assert len(df) == 2
 
 
+def test_default_threshold_rejects_a_bitcoin_scale_move(tmp_path: Path) -> None:
+    """
+    목적: 임계값 인자를 주지 않으면 공용 임계값이 그대로임을 고정한다 (기존 호출의 동작 보존).
+
+    Given: +56.1% 하루 변동 (Bitstamp 2011-10-28 과 같은 크기)
+    When: 임계값 인자 없이 로드한다
+    Then: ValueError 가 발생한다
+    """
+    path = _write_csv(tmp_path / "btc_scale.csv", [_row("2026-01-02", 100.0), _row("2026-01-05", 156.1)])
+
+    with pytest.raises(ValueError, match="급등락"):
+        load_market_csv(path)
+
+
+def test_asset_threshold_accepts_a_move_below_it(tmp_path: Path) -> None:
+    """
+    목적: 자산군의 임계값을 넘기면 그 아래의 변동은 통과함을 고정한다.
+
+    자산군마다 정상 변동 폭이 달라서다 — 비트코인은 실제 체결로 하루 +56% 가 있었다.
+
+    Given: +56.1% 하루 변동
+    When: 임계값 0.75 로 로드한다
+    Then: 예외 없이 두 행이 반환된다
+    """
+    path = _write_csv(tmp_path / "btc_scale.csv", [_row("2026-01-02", 100.0), _row("2026-01-05", 156.1)])
+
+    assert len(load_market_csv(path, max_daily_change_rate=0.75)) == 2
+
+
+def test_asset_threshold_still_rejects_a_digit_error(tmp_path: Path) -> None:
+    """
+    목적: 임계값을 넓혀도 자릿수 오류 크기의 변동은 막음을 고정한다.
+
+    Given: ×10 (+900%)
+    When: 임계값 0.75 로 로드한다
+    Then: ValueError 가 발생하고 메시지에 그 임계값이 담긴다
+    """
+    path = _write_csv(tmp_path / "digit_error.csv", [_row("2026-01-02", 100.0), _row("2026-01-05", 1_000.0)])
+
+    with pytest.raises(ValueError, match="75%"):
+        load_market_csv(path, max_daily_change_rate=0.75)
+
+
+@pytest.mark.parametrize("threshold", [0.0, -0.5])
+def test_non_positive_threshold_is_rejected(tmp_path: Path, threshold: float) -> None:
+    """
+    목적: 0 이하 임계값을 받지 않음을 고정한다 (입력 검증).
+
+    0 이하면 모든 변동이 오류가 되어 정상 시세가 전부 막힌다 — 판정이 뜻을 잃는다.
+
+    Given: 정상 시세 파일 (+1% 변동)
+    When: 임계값 0 또는 −0.5 로 로드한다
+    Then: 급등락 판정이 아니라 임계값 자체를 거부하는 ValueError 가 발생한다
+    """
+    path = _write_csv(tmp_path / "ok.csv", [_row("2026-01-02", 100.0), _row("2026-01-05", 101.0)])
+
+    with pytest.raises(ValueError, match="유한한 양수"):
+        load_market_csv(path, max_daily_change_rate=threshold)
+
+
+@pytest.mark.parametrize("threshold", [float("nan"), float("inf")])
+def test_non_finite_threshold_is_rejected(tmp_path: Path, threshold: float) -> None:
+    """
+    목적: NaN · 무한대 임계값을 받지 않음을 고정한다 (입력 검증).
+
+    NaN 은 `<= 0` 비교마저 거짓으로 빠져나가고, 둘 다 어떤 변동도 막지 않아 **검사가 통째로 꺼진다.**
+
+    Given: ×10 (+900%) 변동이 있는 파일
+    When: NaN 또는 무한대 임계값으로 로드한다
+    Then: ValueError 가 발생한다 (자릿수 오류가 조용히 통과하지 않는다)
+    """
+    path = _write_csv(tmp_path / "digit_error.csv", [_row("2026-01-02", 100.0), _row("2026-01-05", 1_000.0)])
+
+    with pytest.raises(ValueError, match="유한한 양수"):
+        load_market_csv(path, max_daily_change_rate=threshold)
+
+
 def test_single_row_file_is_accepted(tmp_path: Path) -> None:
     """
     목적: 변동률을 계산할 수 없는 최소 길이 입력을 고정한다 (경계 조건).

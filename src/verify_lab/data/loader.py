@@ -25,6 +25,7 @@
 판정 자체가 뜻을 잃는다.
 """
 
+import math
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -49,23 +50,34 @@ logger = get_logger(__name__)
 
 # 전일 대비 변동 임계 (비율, 0.50 = 50%). 이를 넘으면 시장 움직임이 아니라 데이터 오류로 본다.
 # 국내 지수 ETF 의 가격제한폭(±30%)과 QQQ 의 역대 최대 일간 변동(약 ±17%)이 모두 이 아래에 있어
-# 정상적인 급변동을 오탐하지 않는다
+# 정상적인 급변동을 오탐하지 않는다.
+#
+# **주식·ETF 의 값이다.** 정상 변동 폭이 다른 자산군은 자기 값을 인자로 넘기고, 그 값은 그 자산군의
+# 수집 계층이 소유한다(비트코인은 `data/crypto_common.py`) — 여기 올리면 한 자산군의 값이
+# 모든 시세의 판정 기준이 된다
 MAX_DAILY_CHANGE_RATE = 0.50
 
 
-def validate_market_data(df: pd.DataFrame) -> None:
+def validate_market_data(df: pd.DataFrame, *, max_daily_change_rate: float = MAX_DAILY_CHANGE_RATE) -> None:
     """시세 DataFrame 의 이상 여부를 검사한다.
 
     결측·0 이하 가격·비정상 급등락을 검사하며, 어떤 형태의 보간도 하지 않는다.
     수집기와 로더가 이 함수를 함께 쓴다 — 판정이 두 곳으로 갈라지면
-    "수집은 통과했는데 로딩에서 막히는" 데이터가 생긴다.
+    "수집은 통과했는데 로딩에서 막히는" 데이터가 생긴다. **임계값을 넘기는 자산군은
+    수집기와 로더 양쪽에 같은 값을 넘긴다.**
 
     Args:
         df: 검사할 시세 DataFrame (필수 컬럼이 이미 존재한다고 전제)
+        max_daily_change_rate: 데이터 오류로 볼 일간 변동 임계 (비율, 0.50 = 50%)
 
     Raises:
-        ValueError: 결측, 0 이하 가격, 임계를 넘는 일간 변동이 발견된 경우
+        ValueError: 임계값이 유한한 양수가 아니거나, 결측, 0 이하 가격, 임계를 넘는 일간 변동이 발견된 경우
     """
+    # 0 이하면 모든 변동이 오류가 되어 정상 시세가 전부 막히고, NaN · 무한대면 어떤 비교도 참이 되지 않아
+    # 아무것도 막지 않는다 — 어느 쪽이든 판정이 뜻을 잃는다. `<= 0` 만 보면 NaN 이 그 비교마저 거짓으로 빠져나간다
+    if not (math.isfinite(max_daily_change_rate) and max_daily_change_rate > 0):
+        raise ValueError(f"일간 변동 임계는 유한한 양수여야 합니다: {max_daily_change_rate}")
+
     if df.empty:
         raise ValueError("시세 데이터가 비어 있습니다")
 
@@ -85,12 +97,12 @@ def validate_market_data(df: pd.DataFrame) -> None:
 
     # 3. 일간 변동 검사. 첫 행은 직전 값이 없어 NaN 이므로 검사 대상에서 빠진다
     change_rate = df[COL_CLOSE].pct_change()
-    extreme = change_rate.abs() > MAX_DAILY_CHANGE_RATE
+    extreme = change_rate.abs() > max_daily_change_rate
 
     if extreme.any():
         first_index = df.index[extreme][0]
         raise ValueError(
-            f"비정상 급등락 발견 (임계: {MAX_DAILY_CHANGE_RATE:.0%}) - "
+            f"비정상 급등락 발견 (임계: {max_daily_change_rate:.0%}) - "
             f"날짜: {df.loc[first_index, COL_DATE]}, "
             f"변동률: {change_rate[first_index]:+.2%}, 건수: {int(extreme.sum())}"
         )
@@ -123,7 +135,7 @@ def validate_market_frame(df: pd.DataFrame, required_columns: Sequence[str]) -> 
         raise ValueError("시세가 날짜 오름차순이 아닙니다")
 
 
-def load_market_csv(path: Path) -> pd.DataFrame:
+def load_market_csv(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHANGE_RATE) -> pd.DataFrame:
     """시세 CSV 를 읽어 검증된 DataFrame 으로 돌려준다.
 
     파일 존재 확인 → 필수 컬럼 검증 → 날짜 파싱 → 시간순 정렬 → 중복 제거 → 이상치 검사
@@ -131,6 +143,8 @@ def load_market_csv(path: Path) -> pd.DataFrame:
 
     Args:
         path: 시세 CSV 경로
+        max_daily_change_rate: 데이터 오류로 볼 일간 변동 임계 (비율). **그 파일을 저장한 수집기가
+            넘긴 값과 같아야 한다** — 다르면 저장은 됐는데 읽을 때 막힌다
 
     Returns:
         날짜 오름차순으로 정렬되고 인덱스가 0부터 다시 매겨진 DataFrame.
@@ -163,7 +177,7 @@ def load_market_csv(path: Path) -> pd.DataFrame:
         df = df.drop_duplicates(subset=[COL_DATE], keep="first").reset_index(drop=True)
 
     # 5. 이상치 검사. 통과한 데이터만 호출자에게 넘긴다
-    validate_market_data(df)
+    validate_market_data(df, max_daily_change_rate=max_daily_change_rate)
 
     logger.debug(f"시세 로딩 완료: {len(df):,}행, 기간 {df[COL_DATE].min().date()} ~ {df[COL_DATE].max().date()}")
 

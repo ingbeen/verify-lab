@@ -48,6 +48,7 @@
 | `ecos_probe` | `data/check_ecos.py` | 검색 키워드, 원자료 저장 폴더, 통계표 총 건수와 후보 건수, 항목을 조회한 통계표코드 |
 | `ecos_collect` | `data/collect_ecos.py` | 요청 구간, 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
 | `fred_collect` | `data/collect_fred.py` | 시계열별 저장 경로·행 수·기간·결측 제외 건수 |
+| `btc_collect` | `data/collect_btc.py` | 소스별(Bitstamp · Coin Metrics) 저장 경로·행 수·기간·**빠진 날 수**·UTC 로 끝나지 않아 뺀 건수, 크로스체크 요약(허용폭 · 겹친 날 · 허용폭 초과 일수 · 한쪽에만 있는 날 양방향 · 거래량 0 인 날) |
 | `usdkrw_equivalence` | `run_usdkrw_equivalence.py` | 이론값 모형, 결과 폴더, 산출물 행 수, 달력 정렬의 제외·이월 건수 |
 | `reverse` | `run_reverse.py` | 결과 폴더, 대상 시세 목록과 **체결 대상(종목 × 순위 컷 — 확정 칸)**, 신호군 수와 **신호 0건이라 빠진 신호군 수**, **손절선(확정 한 종)·보유 한도**, 산출물 행 수, 순열 검정 반복 수·시드 |
 | `midterm_cycle` | `run_midterm_cycle.py` | 결과 폴더, 대상 종목, 무작위 뽑기 대조 반복 수·시드, **손절선 격자 스위치(`stop_grid`)**, 표별 산출 행 수. **기본은** 대상 전부 × **중간선거해** × **확정 손절선(무손절) 한 종**(방향은 「위」 하나)이고 `--ticker` 로 좁히며, `--stop-grid` 는 손절선 격자를 전부 켠다. 측정·성적표·거래내역에 더해 **분기 표 둘**(`분기.csv`·`분기내역.csv`), **분할매수 표 둘**(`분할매수.csv`·`분할매수내역.csv`), **진입 위치 표**(`진입위치.csv`)가 나오며 그 다섯은 **무손절 경로로만** 나온다. `summary.json` 의 `rule` 에 분할매수 격자(`split_methods`)가 실린다. `summary.json` 에는 대상별 **진입·제외 건수**와 지수의 **원 심볼**(`^GSPC`)도 남는다 |

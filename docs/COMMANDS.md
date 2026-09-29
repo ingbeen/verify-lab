@@ -30,7 +30,7 @@ poetry run black .                                   # 포맷 적용 (계획서�
 
 ## 데이터 수집
 
-> 외부 서버(Yahoo Finance · KRX · ECOS · FRED)에 실제 요청을 보냅니다. 이미 받은 파일이 있으면 다시 받지 않고,
+> 외부 서버(Yahoo Finance · KRX · ECOS · FRED · Bitstamp · Coin Metrics)에 실제 요청을 보냅니다. 이미 받은 파일이 있으면 다시 받지 않고,
 > 덮어썼으면 그 수치를 쓴 결과 문서에 새 데이터 기간을 적습니다 (루트 [CLAUDE.md](../CLAUDE.md) 「재수집은 이미 나온 결과를 바꿉니다」).
 
 ### 미국 — yfinance
@@ -79,6 +79,12 @@ poetry run python scripts/data/collect_ecos.py --series usdkrw_close --start 199
 
 ```bash
 poetry run python scripts/data/collect_fred.py   # 미국 3개월 T-bill (DTB3). 인증키가 필요 없다
+```
+
+### 비트코인 — Bitstamp · Coin Metrics
+
+```bash
+poetry run python scripts/data/collect_btc.py   # Bitstamp 일봉 + Coin Metrics 기준가 전 기간, 받은 뒤 두 소스를 크로스체크. 인증키가 필요 없다
 ```
 
 ---

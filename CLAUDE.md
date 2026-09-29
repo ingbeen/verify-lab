@@ -392,7 +392,7 @@ verify-lab/
 | `scripts/run_<매매법>.py` (측정과 체결을 한 번에) | AI 모델이 직접 실행 가능 |
 | `validate_project.py` | AI 모델이 직접 실행 가능 |
 
-수집 스크립트는 yfinance·KRX·ECOS·FRED 외부 서버에 **실제 요청**을 보냅니다. 실행은 자유롭되
+수집 스크립트는 yfinance·KRX·ECOS·FRED·Bitstamp·Coin Metrics 외부 서버에 **실제 요청**을 보냅니다. 실행은 자유롭되
 **같은 데이터를 이유 없이 다시 받지 않습니다** — 이미 `storage/market/` 에 있으면 그것을 읽습니다.
 
 ### 외부 요청이 실패하면 — 네트워크 문제로 결론짓기 전에
