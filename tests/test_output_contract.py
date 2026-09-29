@@ -90,6 +90,10 @@ from verify_lab.report.run_summary import (
     KEY_DATASET_TICKER,
     KEY_TRACK,
 )
+from verify_lab.studies.halving_cycle.constants import Dataset as HalvingCycleDataset
+from verify_lab.studies.halving_cycle.trading import KEY_TARGETS as HALVING_CYCLE_KEY_TARGETS
+from verify_lab.studies.halving_cycle.trading import TradingOutputs as HalvingCycleOutputs
+from verify_lab.studies.halving_cycle.trading import run_halving_cycle_trading
 from verify_lab.studies.midterm_cycle.constants import Dataset as MidtermCycleDataset
 from verify_lab.studies.midterm_cycle.trading import KEY_TARGETS as MIDTERM_CYCLE_KEY_TARGETS
 from verify_lab.studies.midterm_cycle.trading import TradingOutputs as MidtermCycleOutputs
@@ -175,6 +179,10 @@ AXIS_REVERSE = ("파라미터", "시작연도")
 # (신호가 4년에 한 번이라 어느 사이클의 체결인지 날짜만으로는 바로 읽히지 않는다)
 AXIS_MIDTERM_CYCLE = ("사이클 위치",)
 AXIS_MIDTERM_CYCLE_TRADES = ("사이클 위치", "진입 연도")
+# 반감기_사이클 — 성적표는 격자 두 축, **거래내역은 반감기 날짜가 더 붙는다**
+# (한 칸에 사이클마다 한 체결이라 어느 사이클의 체결인지가 날짜만으로 바로 읽히지 않는다)
+AXIS_HALVING_CYCLE = ("반감기 뒤 진입(개월)", "보유(개월)")
+AXIS_HALVING_CYCLE_TRADES = ("반감기 뒤 진입(개월)", "보유(개월)", "반감기")
 
 # 합성 지수 대상의 표시 이름. **살 수 없어 판정하지 않는 행**을 고르는 데 쓴다
 INDEX_LABEL = "합성 지수"
@@ -200,6 +208,9 @@ TICKER_SHAPE = re.compile(r"[0-9A-Z]+")
 # 합성 시세 구간. 12개월이 다 차고 만기일이 해마다 나오려면 몇 해가 필요하다
 SYNTHETIC_START = "2016-01-04"
 SYNTHETIC_END = "2025-12-31"
+
+# 반감기_사이클의 합성 시세 시작. **첫 반감기(2012-11-28) 앞이어야** 네 사이클이 모두 든다
+HALVING_SYNTHETIC_START = "2012-01-01"
 
 # 합성 시세를 만드는 난수 시드. 시드 없는 난수는 금지다
 SYNTHETIC_SEED = 20260911
@@ -382,13 +393,21 @@ METHOD_SPECS = {
         trade_tail=(),
         targets_key=MIDTERM_CYCLE_KEY_TARGETS,
     ),
+    "halving_cycle": MethodSpec(
+        fixture="halving_cycle_outputs",
+        summary_axis=AXIS_HALVING_CYCLE,
+        summary_tail=(),
+        trade_axis=AXIS_HALVING_CYCLE_TRADES,
+        trade_tail=(),
+        targets_key=HALVING_CYCLE_KEY_TARGETS,
+    ),
 }
 
 # 「매매법 전부」 검사에 붙이는 매개변수화. 값은 slug 이고 결과는 `_outputs` 로 꺼낸다
 _BY_METHOD = pytest.mark.parametrize("slug", sorted(METHOD_SPECS))
 
 
-def _outputs(request: pytest.FixtureRequest, slug: str) -> StrategyOutputs | MidtermCycleOutputs:
+def _outputs(request: pytest.FixtureRequest, slug: str) -> StrategyOutputs | MidtermCycleOutputs | HalvingCycleOutputs:
     """그 매매법의 실행 결과를 픽스처에서 꺼낸다.
 
     Args:
@@ -459,6 +478,57 @@ def midterm_cycle_grid_outputs(tmp_path_factory: pytest.TempPathFactory) -> Midt
     """
     return run_midterm_cycle_trading(
         _midterm_cycle_datasets(tmp_path_factory.mktemp("midterm_cycle_grid")), stop_grid=True
+    )
+
+
+@pytest.fixture(scope="module")
+def halving_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> HalvingCycleOutputs:
+    """매일 거래하는 합성 시세로 **인자 없이** 돈 반감기_사이클 결과.
+
+    **다른 매매법의 합성 시세(영업일)를 쓰지 않는다** — 반감기 날(2016-07-09 는 토요일)이 영업일에 없어
+    진입일을 만들지 못한다. 비트코인 시세처럼 휴장 없는 달력일로 만들고, 네 반감기가 모두 들도록
+    첫 반감기(2012-11-28) 앞에서 시작한다.
+    """
+    return run_halving_cycle_trading((_halving_cycle_dataset(tmp_path_factory.mktemp("halving_cycle")),))
+
+
+def _halving_cycle_dataset(directory: Path) -> HalvingCycleDataset:
+    """매일 거래하는 합성 시세와 합성 기준가를 파일로 쓰고 반감기_사이클 대상을 만든다.
+
+    Args:
+        directory: 시세를 쓸 폴더
+
+    Returns:
+        합성 대상
+    """
+    days = pd.date_range(HALVING_SYNTHETIC_START, SYNTHETIC_END, freq="D")
+    closes = _closes(len(days), SIGNAL_POSITIONS)
+    opens = np.concatenate([[closes[0]], closes[:-1] * 1.001])
+    dates = days.strftime("%Y-%m-%d")
+
+    pd.DataFrame(
+        {
+            COL_DATE: dates,
+            COL_OPEN: np.round(opens, PRICE_DECIMALS),
+            COL_HIGH: np.round(np.maximum(opens, closes) * 1.01, PRICE_DECIMALS),
+            COL_LOW: np.round(np.minimum(opens, closes) * 0.99, PRICE_DECIMALS),
+            COL_CLOSE: np.round(closes, PRICE_DECIMALS),
+            COL_VOLUME: 1_000.0,
+        }
+    ).to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="SYN"), index=False)
+    reference_path = directory / "SYN_PriceUSD.csv"
+    pd.DataFrame({COL_DATE: dates, COL_VALUE: np.round(closes * 1.001, PRICE_DECIMALS)}).to_csv(
+        reference_path, index=False
+    )
+
+    return HalvingCycleDataset(
+        ticker="SYN",
+        label="합성 비트코인",
+        directory=directory,
+        file_template=MARKET_FILE_TEMPLATE,
+        reference_path=reference_path,
+        price_decimals=PRICE_DECIMALS,
+        is_judged=True,
     )
 
 

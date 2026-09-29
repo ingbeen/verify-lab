@@ -10,11 +10,13 @@ Coin Metrics 일별 값은 둘 다 **UTC 00:00 ~ 24:00** 이 하루이고, 날�
 """
 
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from typing import Final
 
 import pandas as pd
 
 from verify_lab.common_constants import COL_DATE
+from verify_lab.data.loader import load_market_csv
 
 # 비트코인 시세를 데이터 오류로 볼 일간 변동 임계 (비율, 0.75 = 75%).
 #
@@ -24,6 +26,25 @@ from verify_lab.common_constants import COL_DATE
 # ÷10 = −90%)는 여전히 걸린다.** 데이터 오류 판정값이지 측정 파라미터가 아니다.
 # 수집기와 로더가 **같은 값**을 넘겨야 「저장은 됐는데 읽을 때 막히는」 파일이 생기지 않는다
 CRYPTO_MAX_DAILY_CHANGE_RATE: Final = 0.75
+
+
+def load_crypto_market_csv(path: Path) -> pd.DataFrame:
+    """비트코인 시세 CSV 를 비트코인의 급등락 임계값으로 읽는다.
+
+    **임계값을 넘기는 자리를 여기 하나로 둔다.** 공용 로더에 호출마다 넘기면 「수집기와 로더가 같은 값을
+    넘긴다」는 약속이 기억에만 걸리고, 넘기지 않은 호출은 2011-10-28 +56.1% 에서 막힌다
+    (`docs/검증/반감기_사이클/설계.md` 결정 ③ · 2026-09-29 사용자 결정).
+
+    Args:
+        path: 시세 CSV 경로
+
+    Returns:
+        날짜 오름차순의 검증된 시세 DataFrame
+
+    Raises:
+        ValueError: `load_market_csv` 가 거부하는 모든 경우
+    """
+    return load_market_csv(path, max_daily_change_rate=CRYPTO_MAX_DAILY_CHANGE_RATE)
 
 
 def unfinished_utc_day(now: datetime) -> date:
@@ -139,6 +160,7 @@ __all__ = [
     "CRYPTO_MAX_DAILY_CHANGE_RATE",
     "count_missing_days",
     "exclude_unfinished_days",
+    "load_crypto_market_csv",
     "require_complete_range",
     "unfinished_utc_day",
 ]

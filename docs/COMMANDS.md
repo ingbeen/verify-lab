@@ -110,6 +110,15 @@ poetry run python scripts/run_midterm_cycle.py --repeats 5000 --seed 42     # �
 poetry run python scripts/run_midterm_cycle.py --stop-grid                  # 손절선 격자 전부 (기본은 확정 무손절 한 종)
 ```
 
+### 반감기_사이클
+
+```bash
+poetry run python scripts/run_halving_cycle.py                              # 반감기 경과 격자 48칸 · 무손절 체결 (기본값). 원시 시세만 읽는다
+poetry run python scripts/run_halving_cycle.py --repeats 5000 --seed 42     # 무작위 뽑기 대조의 반복 수·시드 (칸마다 표본이 하한 미만이라 검정은 붙지 않는다)
+```
+
+선행 조건은 비트코인 수집(위 「비트코인 — Bitstamp · Coin Metrics」)이 받은 두 파일이다.
+
 ### 원달러_ETF_등가성
 
 ```bash

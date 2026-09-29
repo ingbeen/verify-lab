@@ -1,7 +1,7 @@
 """역방향 매매 실행 — 대상과 손절선을 순회해 산출물을 조립한다
 
 이 모듈은 **매매 규칙을 계산하지 않는다.** 신호 판정은 `studies`, 체결은 `execution/trade_fill.py`,
-구간별 성적은 `execution/periods.py` 가 이미 하므로, 하는 일은 그것을 조합해 돌리고
+거래내역의 공통 칸은 `execution/trade_rows.py`, 구간별 성적은 `execution/periods.py` 가 이미 하므로, 하는 일은 그것을 조합해 돌리고
 사람이 읽을 형태로 쌓는 것이다.
 
 **보유 한도는 D+2 하나이고 손절선은 확정 −5% 하나다** (`docs/매매/역방향/규칙.md` 결정 ⑤ · ⑥ · ⑭).
@@ -20,19 +20,11 @@ from verify_lab.data.loader import load_market_csv
 from verify_lab.execution.constants import (
     DISPLAY_CHANGE_RATE,
     DISPLAY_DIRECTION,
-    DISPLAY_ENTRY_DATE,
-    DISPLAY_ENTRY_PRICE,
     DISPLAY_EVENT_ID,
-    DISPLAY_EXIT_DATE,
-    DISPLAY_EXIT_PRICE,
-    DISPLAY_EXIT_REASON,
-    DISPLAY_HOLD_DAYS,
     DISPLAY_PARAMETER,
-    DISPLAY_RETURN,
     DISPLAY_START_YEAR,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
-    DISPLAY_WORST_HOLD,
     PARAMETER_PREFIX_RANK_CUT,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -41,7 +33,8 @@ from verify_lab.execution.constants import (
 from verify_lab.execution.periods import period_rows, to_summary_frame
 from verify_lab.execution.run_summary import build_run_summary
 from verify_lab.execution.trade_fill import TradeResult, simulate_signal
-from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
+from verify_lab.execution.trade_rows import trade_columns
+from verify_lab.report.constants import PERCENT_DECIMALS
 from verify_lab.report.run_summary import dataset_record
 from verify_lab.studies.reverse.annotations import assign_event_ids
 from verify_lab.studies.reverse.constants import (
@@ -433,26 +426,20 @@ def _trade_row(
     Returns:
         표 한 줄
     """
-    frame = signals.frame
-    row = frame.iloc[position]
     upward = bool(signals.upward[order])
     direction = Direction.UP if upward else Direction.DOWN
-    entry_price = float(row[COL_CLOSE])
 
-    # 수익률은 방향 부호가 적용된 값이므로, 체결가를 되돌리려면 같은 부호를 다시 곱한다
-    sign = -1.0 if upward else 1.0
-    exit_price = entry_price * (1.0 + sign * result.return_rate)
-
+    # 폭등 신호는 인버스로 들어가므로 «아래로» 건 체결이다
     return {
         **_identity(target, direction=EXTREME_DIRECTION_LABELS[direction], stop_level=stop_level),
-        DISPLAY_ENTRY_DATE: pd.Timestamp(row[COL_DATE]).strftime(DATE_FORMAT),
-        DISPLAY_ENTRY_PRICE: round(entry_price, target.dataset.price_decimals),
-        DISPLAY_EXIT_DATE: pd.Timestamp(frame.iloc[position + result.hold_days][COL_DATE]).strftime(DATE_FORMAT),
-        DISPLAY_HOLD_DAYS: result.hold_days,
-        DISPLAY_EXIT_PRICE: round(exit_price, target.dataset.price_decimals),
-        DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
-        DISPLAY_WORST_HOLD: round(result.worst_hold_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
-        DISPLAY_EXIT_REASON: result.reason,
+        **trade_columns(
+            signals.frame,
+            position,
+            result,
+            bet_down=upward,
+            price_column=COL_CLOSE,
+            price_decimals=target.dataset.price_decimals,
+        ),
         DISPLAY_CHANGE_RATE: round(float(signals.change_rates[order]) * RATE_TO_PERCENT, PERCENT_DECIMALS),
         DISPLAY_EVENT_ID: int(signals.event_ids[order]),
     }

@@ -7,6 +7,7 @@
 | --- | --- |
 | 진입일·청산일 정의 | `studies/midterm_cycle/runner.signal_returns` — 측정과 **같은 날에 들어간다** |
 | 손절 판정 (시가 → 장중 → 청산일) | `execution/trade_fill.simulate_scheduled_trade` |
+| 거래내역의 공통 칸 (진입일 ~ 청산 사유) | `execution/trade_rows.trade_columns` |
 | 구간별 성적 산식 | `execution/periods.period_rows` |
 | 분기 분해와 낙폭 분포 | `studies/midterm_cycle/quarters` |
 | 분할매수 체결 | `studies/midterm_cycle/split_entry` |
@@ -64,7 +65,6 @@ from verify_lab.execution.constants import (
     DISPLAY_ENTRY_PRICE,
     DISPLAY_EXIT_DATE,
     DISPLAY_EXIT_PRICE,
-    DISPLAY_EXIT_REASON,
     DISPLAY_HOLD_DAYS,
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
@@ -79,6 +79,7 @@ from verify_lab.execution.constants import (
 from verify_lab.execution.periods import period_rows, to_summary_frame
 from verify_lab.execution.run_summary import build_run_summary
 from verify_lab.execution.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
+from verify_lab.execution.trade_rows import trade_columns
 from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
     COL_EXIT_DATE,
@@ -360,27 +361,20 @@ def _trade_row(
     Returns:
         표 한 줄
     """
-    entry_price = float(frame.iloc[entry_position][dataset.price_column])
-    exit_position = entry_position + result.hold_days
-
-    # 수익률은 방향 부호가 적용된 값이므로, 체결가를 되돌리려면 같은 부호를 다시 곱한다
-    sign = -1.0 if bet_down else 1.0
-    exit_price = entry_price * (1.0 + sign * result.return_rate)
-
     return {
         DISPLAY_TICKER: dataset.label,
         DISPLAY_CYCLE_POSITION: position,
         DISPLAY_CYCLE_YEAR: entry_year,
         DISPLAY_DIRECTION: DIRECTION_DOWN if bet_down else DIRECTION_UP,
         DISPLAY_STOP_LEVEL: stop_display,
-        DISPLAY_ENTRY_DATE: pd.Timestamp(frame.iloc[entry_position][COL_DATE]).strftime(DATE_FORMAT),
-        DISPLAY_ENTRY_PRICE: round(entry_price, dataset.price_decimals),
-        DISPLAY_EXIT_DATE: pd.Timestamp(frame.iloc[exit_position][COL_DATE]).strftime(DATE_FORMAT),
-        DISPLAY_HOLD_DAYS: result.hold_days,
-        DISPLAY_EXIT_PRICE: round(exit_price, dataset.price_decimals),
-        DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
-        DISPLAY_WORST_HOLD: round(result.worst_hold_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
-        DISPLAY_EXIT_REASON: result.reason,
+        **trade_columns(
+            frame,
+            entry_position,
+            result,
+            bet_down=bet_down,
+            price_column=dataset.price_column,
+            price_decimals=dataset.price_decimals,
+        ),
     }
 
 

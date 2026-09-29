@@ -55,7 +55,7 @@ _OWNER = Path(measure_constants.__file__).resolve()
 _DATA_CONSTANTS = "verify_lab/data/constants.py"
 
 # 매매 계층의 공유 로직을 소유한 모듈. 매매법 모듈은 여기서만 가져온다
-_EXECUTION_SHARED = ("trade_fill", "periods", "constants", "run_summary")
+_EXECUTION_SHARED = ("trade_fill", "trade_rows", "periods", "constants", "run_summary")
 
 # 측정과 체결의 요약을 합치는 공유 함수. **이 함수에서 온 이름만 허용한다** —
 # 「`summary` 라는 이름이면 통과」로 두면 사전 리터럴을 그 이름에 담는 우회가 열린다
@@ -1315,7 +1315,7 @@ class TestExecutionLayerComposition:
         slugs = {path.parent.name for path in _trading_modules()}
 
         # Then
-        assert slugs == {"reverse", "midterm_cycle"}
+        assert slugs == {"reverse", "midterm_cycle", "halving_cycle"}
 
     def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
         """
@@ -1343,23 +1343,25 @@ class TestDatasetRecordKeys:
     있으므로 여기서는 그쪽을 본다.
     """
 
-    def test_네_산출_지점이_모두_공통_함수를_쓴다(self) -> None:
+    def test_매매법의_측정과_체결_지점이_모두_공통_함수를_쓴다(self) -> None:
         """
-        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 네 산출 지점이 같은 말로 이행한다.
+        목적: 「범위의 SoT 는 `summary.json` 의 `datasets`」를 매매법의 산출 지점 전부가 같은 말로 이행한다.
 
         **월말만 계약대로였다.** 역방향은 `ticker` 에 «표시 이름»을 담고 `label` 이 아예 없었으며
         기간을 `start_date`+`end_date`, 행 수를 `row_count` 로 불렀다.
 
         Given: `src/verify_lab` 전체
         When: `dataset_record` 를 부르는 파일을 모은다
-        Then: 두 매매법의 측정·체결 넷이 전부 들어 있다
+        Then: 매매법마다 측정(`runner.py`)과 체결(`trading.py`)이 전부 들어 있다
         """
         # Given
         expected = {
             "verify_lab/studies/reverse/runner.py",
             "verify_lab/studies/midterm_cycle/runner.py",
+            "verify_lab/studies/halving_cycle/runner.py",
             "verify_lab/studies/reverse/trading.py",
             "verify_lab/studies/midterm_cycle/trading.py",
+            "verify_lab/studies/halving_cycle/trading.py",
         }
 
         # When

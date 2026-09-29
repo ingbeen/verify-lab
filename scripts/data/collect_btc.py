@@ -36,8 +36,8 @@ from verify_lab.data.crosscheck import (
     CrosscheckResult,
     crosscheck_closes,
 )
-from verify_lab.data.crypto_common import CRYPTO_MAX_DAILY_CHANGE_RATE
-from verify_lab.data.loader import load_market_csv, load_series_csv
+from verify_lab.data.crypto_common import load_crypto_market_csv
+from verify_lab.data.loader import load_series_csv
 from verify_lab.utils.cli_helpers import cli_exception_handler
 from verify_lab.utils.formatting import Align, TableLogger
 from verify_lab.utils.logger import get_logger
@@ -180,7 +180,7 @@ def main() -> int:
     _print_sources(bitstamp, coinmetrics)
 
     # 저장한 파일을 로더로 다시 읽어 대조한다 — 측정이 읽을 바로 그 파일을 확인하기 위해서다
-    primary = load_market_csv(bitstamp.path, max_daily_change_rate=CRYPTO_MAX_DAILY_CHANGE_RATE)
+    primary = load_crypto_market_csv(bitstamp.path)
     price_path = next(result.path for result in coinmetrics if result.series_key == BTC_PRICE_SERIES.key)
     secondary = load_series_csv(price_path)
     crosscheck = crosscheck_closes(primary, secondary)

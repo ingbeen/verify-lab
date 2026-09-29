@@ -269,6 +269,7 @@ class TestSingleOwner:
         GATE_DEFINER: GATE_NAMES | {CANDIDATE_VALUE},
         # 1차 판정이 「후보」인 행을 화면에 고른다 — 판정을 다시 하지 않고 성적표의 판정 값으로 거른다
         "scripts/run_midterm_cycle.py": frozenset({"SCREEN_CANDIDATE"}),
+        "scripts/run_halving_cycle.py": frozenset({"SCREEN_CANDIDATE"}),
     }
 
     def test_성적_산식_계층이_이_게이트를_쓴다(self) -> None:
