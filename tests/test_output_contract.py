@@ -521,12 +521,15 @@ def _halving_cycle_dataset(directory: Path) -> HalvingCycleDataset:
         reference_path, index=False
     )
 
+    # 온체인 두 계열은 측정(2단계)만 읽고 체결은 읽지 않는다 — 파일을 만들지 않는다
     return HalvingCycleDataset(
         ticker="SYN",
         label="합성 비트코인",
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         reference_path=reference_path,
+        mvrv_path=directory / "SYN_CapMVRVCur.csv",
+        market_cap_path=directory / "SYN_CapMrktCurUSD.csv",
         price_decimals=PRICE_DECIMALS,
         is_judged=True,
     )

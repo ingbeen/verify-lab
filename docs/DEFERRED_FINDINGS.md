@@ -47,6 +47,15 @@
 | `tests/test_studies_halving_cycle_runner.py:253` `test_우연확률은_표본_부족으로_검정하지_않는다` docstring | 표본 하한을 숫자로 적었다(「하한(10)」). 값은 `tests/test_measure_statistics.py` 가 고정하고 `tests/test_execution_periods.py:198` 에도 같은 관용이 있어 받아들일 만하다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 수정분 검증 (마지막 수정) |
 
 
+### 반감기_사이클 2단계 (보조지표 · 온체인 지표 신호)
+
+줄 번호 기준: PLAN_halving_cycle_indicators 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `tests/test_studies_halving_cycle_runner.py:659` `TestOnchainLoading.test_끝이_허용치보다_크게_어긋나면_멈춘다` · `:720` `test_시세보다_크게_짧은_온체인은_멈춘다` | 「공개 지연 허용치 + 1」을 `iloc[:-2]` · `_shorten_onchain(dataset, 2)` 로 박았다 — `data/coinmetrics_collector.PUBLICATION_LAG_DAYS` 를 2 로 올리면 두 테스트가 실패한다(시끄럽게 실패하는 쪽이다) | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 수정분 검증 (1회차 수정) |
+
+
 ## 코드
 
 줄 번호 기준: PLAN_deferred_tests_midterm_notes 완료 시점의 작업 트리 (2026-09-29 확인).
@@ -73,7 +82,6 @@
 | `src/verify_lab/data/bitstamp_collector.py:76` · `src/verify_lab/data/coinmetrics_collector.py:47` · `src/verify_lab/data/fred_collector.py:38` | HTTP 요청(`urllib` · User-Agent · 제한 시간 · `HTTPError`/`URLError` → `ValueError`)과 상수 `USER_AGENT`(세 벌) · `REQUEST_TIMEOUT_SECONDS`(`ecos_collector.py:56` 까지 네 벌)가 수집기마다 복사돼 있다 — 「한 계층 내 2개 이상 파일에서 사용 → `<계층>/constants.py`」(`src/verify_lab/CLAUDE.md` 「상수 관리」). 한 소스의 제한 시간만 바꾸면 나머지와 조용히 갈린다 | 그 외 | PLAN_halving_cycle_data (2026-09-29) 리뷰 1회차 · 2회차 |
 | `src/verify_lab/data/loader.py:105` `validate_market_data` 오류 문구 | 임계값을 `:.0%` 로 찍어 정수 퍼센트가 아닌 값은 반올림돼 보인다(0.755 → 「임계: 76%」인데 +75.8% 를 거부) | 그 외 | PLAN_halving_cycle_data (2026-09-29) 리뷰 2회차 |
 | `scripts/data/collect_btc.py:184` · `:149` | Coin Metrics 결과를 돈 뒤 `next(...)` 로 가격 계열을 다시 찾는다(`BTC_PRICE_SERIES` 를 바로 받으면 되고 `StopIteration` 경로도 사라진다) · `reindex(abs().sort_values().index)` 는 `sort_values(COL_DIFF_RATE, key=abs, ascending=False)` 와 같다 | 그 외 | PLAN_halving_cycle_data (2026-09-29) 리뷰 2회차 |
-| `src/verify_lab/data/coinmetrics_collector.py:289` 5-1 주석 | 「무한대면 그 날의 대조가 무한대가 되며」 — 분모가 무한대라 실제로는 −100% 다(위 테스트 docstring 과 같은 지적) | 그 외 | PLAN_halving_cycle_data (2026-09-29) 수정분 검증 (마지막 수정) |
 | `src/verify_lab/data/bitstamp_collector.py:200` `fetch_ohlc_history` docstring · `scripts/data/collect_btc.py:126` 표 제목 | 「`require_complete_range` 가 양 끝을 본다」 — 이제 사이의 빠진 날도 본다. 표 제목 「빠진 날은 메우지 않았다」는 빠진 날이 있으면 애초에 저장하지 않으므로 그 열이 늘 0 이라는 사실과 어긋난다 | 그 외 | PLAN_halving_cycle_data (2026-09-29) 수정분 검증 (마지막 수정) |
 
 ### 반감기_사이클 측정 · 체결 (반감기 경과 격자 · 무손절 체결)
@@ -97,6 +105,27 @@
 | `src/verify_lab/execution/trade_rows.py:6` 모듈 docstring | 「세 번째가 오면 공유 계층에 둔다」가 「셋이 되면 자동으로 올린다」로 읽힌다 — `src/verify_lab/CLAUDE.md` 는 「세 번째가 올 때 정합니다」 · 「개수는 판단 기준이 아닙니다」라고 적는다. 「세 번째가 오면 정하고, 이 여덟 칸은 공유 계층이 갖는다」 정도가 정확하다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 수정분 검증 (마지막 수정) |
 
 
+### 반감기_사이클 2단계 (보조지표 · 온체인 지표 신호)
+
+줄 번호 기준: PLAN_halving_cycle_indicators 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/runner.py:1057` `_rounded_indicators` | 지표신호의 직전 값 · 판정 값을 저장 직전에 4자리로 자른다 — 연속 지표(Pi Cycle 비율 · MVRV-Z · NUPL · MACD − 시그널)가 문턱에서 0.00005 안이면 표시가 돌파와 어긋난다(예: 직전 0.99996 이 `1.0000` 으로 찍힌 상향 돌파). 실제 산출물 226건 중 어긋나는 행 0(2026-09-29 대조). 또 월간 RSI 신호의 값은 지표신호에서 4자리, 진입지표에서 2자리다 — `RSI_DECIMALS` 가 `monthly_rsi` 컬럼에만 걸린다 | 가벼운 버그 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/indicator_signals.py:227` `signal_entries` | `crossed[crossed.isin(trading_days)]` 가 거래일이 아닌 날의 돌파를 건수도 사유도 없이 버린다. 러너는 시세 날짜에 맞춘 일간 표와 말일(전부 거래일) 월간 표만 넘겨 실제 0건. 시세 첫날(2011-08-18)은 직전 관측이 잘려 판정하지 않는다(판정 구간 앞이라 결과는 같다) | 가벼운 버그 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/indicator_signals.py:230` `signal_entries` | 판정일은 거래일에서 걸러 낸 것이라 위치를 못 찾으면 내부 불변조건 위반인데, `trading_positions` 의 `ValueError`(입력 오류)로 낸다 — 전역 규칙은 `RuntimeError` + 「내부 불변조건 위반」. 구조상 일어나지 않는다 | 가벼운 버그 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:497` `_onchain_gap` 오류 문구 | 온체인 표가 비면 문구를 만들다 `iloc[0]` 에서 `IndexError` 가 먼저 난다 — 두 온체인 파일이 각 1행이고 날짜가 서로 다를 때만(`load_onchain` 이 끝 1일씩을 빼고 빈 표를 넘긴다). 어느 쪽이든 멈춘다 | 가벼운 버그 | PLAN_halving_cycle_indicators (2026-09-30) 수정분 검증 (2회차 수정) |
+| `src/verify_lab/studies/halving_cycle/runner.py:600` `_empty_summary` · `:619` `_untested` · `:769` `_indicator_statistics` | 0건 신호 칸의 집계를 공통 스키마의 **위치 슬라이스**(`SUMMARY_COLUMNS[2:]` · `TEST_COLUMNS[3:]` · `_TEST_VALUES[1:]`)와 손으로 든 건수 컬럼 목록으로 다시 만든다 — `measure/statistics` 가 건수 컬럼을 더하거나 순서를 바꾸면 그 행이 조용히 틀린 기본값을 갖는다. 근원은 `summarize` · `permutation_test` 가 기대 구간을 받아 빈 칸도 내는 것 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:784` `_indicator_cycles` · `:998` `run_study` 의 신호별 건수 | (신호, 반감기) 56쌍마다 전체 long-form 을 거르고 `summarize` 를 부르며, 요약은 같은 마스크를 신호마다 두 번 만든다 — groupby 한 번으로 된다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:998` 요약의 `indicator_signals[].signal_count` | 신호 × 보유 행을 센다(Pi Cycle 12) — 지표통계의 `신호` 는 보유마다 판정 수(4)다. 1단계 요약의 `signal_count`(진입 × 보유 칸)와 같은 관용이지만 키 이름이 그것을 말하지 않는다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/indicators.py:70` `pi_cycle_ratio` · `constants.py:342` `COL_PI_CYCLE` | 1 을 넘는 값(교차 = 1 돌파)에 `_ratio` 접미사 — 전역 `python.md` 「`_rate`·`_ratio`·`_pct` 는 0~1」 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/indicator_signals.py:111` `_require_date_index` | 오름차순 · 중복 없음 검사가 `measure.calendar_entry.validate_trading_days` 와 겹친다 — 한쪽에만 검사가 더해지면 갈린다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:884` `_series_record` | `report.run_summary.dataset_record` 가 소유하는 기간 · 행 수 계산을 다시 쓴다(빈 계열 가드 없음) — 기준가 · 온체인 두 계열의 요약이 `datasets` 와 형식이 갈릴 수 있다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:936` `run_study` | 온체인을 1단계 집계(순열 검정 포함) **뒤에** 읽어, 온체인 파일이 없거나 어긋나면 그 계산을 다 한 뒤에 멈춘다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/halving_calendar.py:83` `trading_positions` docstring | 「이 패키지의 날짜 → 위치 변환은 이것 하나다」가 틀렸다 — `runner._non_overlapping` · `trading._run_cell` 이 `execution/trade_fill.resolve_positions` 를 쓰고, `src/verify_lab/CLAUDE.md` 가 그것을 소유자로 적는다(두 함수는 예외 종류만 다르다) | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 |
+| `scripts/run_halving_cycle.py:104` `--repeats` 도움말 | 한 줄에 문자열 리터럴 둘이 암묵적으로 이어져 있다 — 사이에 쉼표가 들어가면 `help` 가 튜플이 된다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 · 2회차 |
+
+
 ## 문서
 
 줄 번호 기준: PLAN_deferred_tests_midterm_notes 완료 시점의 작업 트리 (2026-09-29 확인).
@@ -117,3 +146,13 @@
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
 | `src/verify_lab/CLAUDE.md:150` · `:164` | 현재형만 쓰는 계약 문서에 과거형이 남아 있다 — 「쓰던 매매법이 모두 사라진 달력 함수는 지웠고」 · 「원칙 13 이 실제로 그 상태였습니다」. **이 계획 전부터 있던 문장**이다(`.claude/rules/docs.md` 「과거형이 허용되는 자리는 둘뿐입니다」) | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 수정분 검증 (마지막 수정) |
+
+### 반감기_사이클 2단계 (보조지표 · 온체인 지표 신호)
+
+줄 번호 기준: PLAN_halving_cycle_indicators 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `scripts/run_halving_cycle.py:8` · `:98` · `src/verify_lab/studies/halving_cycle/indicators.py:3` 모듈 docstring 표 · `src/verify_lab/data/coinmetrics_collector.py:100` 주석 | 개수 · 값을 적었다 — 「신호 열넷」, 지표 창 값(111 · 350 · 14 · 5 · 15 · 9), 수집 계층 주석의 반감기_사이클 문턱 목록(1 · 1.7 · 3 · 3.7 · 4). 전역 「구체적 수치와 가변 정보를 직접 적지 않는다」 — 상수가 바뀌면 조용히 낡는다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
+| `docs/검증/반감기_사이클/설계.md` 결정 ㉚ 근거 | 「표시 이름 「돌파일」은 승인 뒤 구현 중에 정했다」에 **주어가 없다** — AI 가 정했고 사용자 확인 전이다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 수정분 검증 (2회차 수정) |
+| `docs/검증/반감기_사이클/설계.md` §4.8 | 「가격 지표 넷의 돌파일」(지표 넷 · 신호 다섯 행)과 「MVRV 계열 아홉」(신호 수)의 단위가 섞인다. 「MVRV 계열 아홉 … 따로 다시 센 것과 전부 같다」의 대조 출력과 「산출물 코드를 쓰지 않은 계산」의 스크립트는 저장소 밖(계획서 진행 로그 · 세션 스크래치)에만 있다 — 저장 파일에서 누구나 다시 셀 수는 있다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 수정분 검증 (2회차 수정) |

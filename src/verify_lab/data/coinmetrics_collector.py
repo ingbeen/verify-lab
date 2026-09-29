@@ -1,8 +1,11 @@
 """Coin Metrics 커뮤니티 API 일별 지표 수집
 
 Coin Metrics 무료(커뮤니티) API 에서 비트코인 일별 지표를 전 기간으로 받아 `storage/series/` 에 남긴다.
-반감기_사이클의 **보완 계열이자 크로스체크 상대**다 — Bitstamp 가 없는 2011-08-17 이전과
-거래가 없던 날을 덮고, 같은 날 종가를 대조한다(`docs/검증/반감기_사이클/설계.md`).
+반감기_사이클이 두 가지로 쓴다(`docs/검증/반감기_사이클/설계.md`).
+
+- **기준가** — 보완 계열이자 크로스체크 상대다. 거래가 없던 날을 덮고, 같은 날 종가를 대조한다
+- **MVRV · 시가총액** — 2단계 온체인 지표의 원자료다(결정 ⑧). 실현 시가총액은 무료 목록에 없어
+  `시가총액 ÷ MVRV` 로 나온다
 
 **인증키가 필요 없다.** 커뮤니티 엔드포인트는 IP 당 6초에 10회까지 받으며, 요청 한 번에 최대 10,000행을
 주므로 지금 전 기간(2010-07-18 ~)이 한 번에 끝난다. 그 너머는 `next_page_url` 을 따라간다.
@@ -94,8 +97,33 @@ BTC_PRICE_SERIES: Final = CoinMetricsSeries(
     first_date=date(2010, 7, 18),
 )
 
+# MVRV — 시가총액 ÷ 실현 시가총액. 배수라 비율과 같은 4자리로 둔다 — 문턱(1 · 1.7 · 3 · 3.7 · 4) 판정이
+# 반올림에 흔들릴 수 있는 날은 저장값이 문턱에서 0.00005 안인 날뿐이고, 그 수는 설계 문서 실측 기록이 갖는다
+MVRV_SERIES: Final = CoinMetricsSeries(
+    key="btc_mvrv",
+    label="비트코인 MVRV (Coin Metrics)",
+    asset="btc",
+    metric="CapMVRVCur",
+    file_name="BTC_CapMVRVCur.csv",
+    decimals=4,
+    unit="배",
+    first_date=date(2010, 7, 18),
+)
+
+# 시가총액. 달러 단위라 소수 자리를 두지 않는다 — MVRV-Z 의 분자와 분모(표준편차)가 이 값에서 나온다
+MARKET_CAP_SERIES: Final = CoinMetricsSeries(
+    key="btc_market_cap",
+    label="비트코인 시가총액 (Coin Metrics)",
+    asset="btc",
+    metric="CapMrktCurUSD",
+    file_name="BTC_CapMrktCurUSD.csv",
+    decimals=0,
+    unit="달러",
+    first_date=date(2010, 7, 18),
+)
+
 # 수집 대상 전부. 지표를 더할 때는 여기에 한 줄을 더한다
-COINMETRICS_SERIES: Final = (BTC_PRICE_SERIES,)
+COINMETRICS_SERIES: Final = (BTC_PRICE_SERIES, MVRV_SERIES, MARKET_CAP_SERIES)
 
 
 @dataclass(frozen=True)
@@ -286,9 +314,9 @@ def collect_coinmetrics_series(
     validate_series_data(frame)
 
     # 5-1. 값의 범위. 단일 값 로더는 부호도 무한대도 보지 않고 범위를 수집기에 맡긴다(`loader.validate_series_data`).
-    # 지금 받는 지표는 가격이라 **유한한 양수**여야 한다 — 0 이면 크로스체크가 무한대를 내고, 무한대면
-    # 그 날의 대조가 무한대가 되며, 측정의 대체가 그 값을 옮긴다. 반올림으로 0 이 된 값도 여기서 걸린다.
-    # 부호가 있는 지표를 더하면 이 판정을 지표마다 가른다
+    # 지금 받는 지표(가격 · MVRV · 시가총액)는 전부 **유한한 양수**여야 한다 — 가격이 0 이면 크로스체크가
+    # 무한대를, 무한대면 −100% 를 내고 측정의 대체가 그 값을 옮긴다. MVRV 가 0 이면 실현 시가총액(시가총액 ÷ MVRV)이
+    # 무한대가 된다. 반올림으로 0 이 된 값도 여기서 걸린다. 부호가 있는 지표를 더하면 이 판정을 지표마다 가른다
     invalid = ~(np.isfinite(frame[COL_VALUE]) & (frame[COL_VALUE] > 0))
     if invalid.any():
         raise ValueError(

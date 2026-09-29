@@ -9,6 +9,9 @@
 **달력을 공통 계층에 올리지 않는다.** 진입이 「반감기일 + 개월」이라 중간선거_사이클의 「그 달 마지막
 거래일」과 모양이 다르다 — 원칙에 없는 달력은 같은 모양이 세 번째로 올 때 정한다
 (`src/verify_lab/CLAUDE.md` 「어디까지가 공통이고 어디부터 그 검증의 것인가」).
+
+**2단계(보조지표 · 온체인)의 창 · 문턱 · 신호 목록도 결과를 보기 전에 정한 값이다** — 책이 적은 값 그대로이고
+지표마다 정의가 하나다(결정 ㉒ · ㉓ · ㉕ · ㉖).
 """
 
 from dataclasses import dataclass
@@ -20,7 +23,7 @@ import pandas as pd
 
 from verify_lab.common_constants import COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE, PRICE_DECIMALS, SERIES_DIR
 from verify_lab.data.bitstamp_collector import BITSTAMP_TICKER
-from verify_lab.data.coinmetrics_collector import BTC_PRICE_SERIES
+from verify_lab.data.coinmetrics_collector import BTC_PRICE_SERIES, MARKET_CAP_SERIES, MVRV_SERIES
 from verify_lab.data.crosscheck import COL_DIFF_RATE, COL_PRIMARY, COL_SECONDARY
 from verify_lab.execution.constants import DISPLAY_ENTRY_DATE, DISPLAY_EXIT_DATE, DISPLAY_RETURN, DISPLAY_TICKER
 from verify_lab.measure.constants import (
@@ -187,13 +190,65 @@ STOP_LEVELS: Final[tuple[float | None, ...]] = (None,)
 
 
 # ============================================================
+# 2단계 — 지표의 창 (결정 ㉒ · ㉓ · ㉕)
+# ============================================================
+
+# Pi Cycle — 111일 SMA 가 350일 SMA 의 2배를 상향 돌파 (책 A 232 ~ 233쪽). 창은 지표의 정의 그대로다
+PI_CYCLE_SHORT_WINDOW: Final = 111
+PI_CYCLE_LONG_WINDOW: Final = 350
+PI_CYCLE_LONG_MULTIPLIER: Final = 2.0
+
+# 100일 이격도 — 신호로 재지 않고 1단계 진입일의 값으로만 낸다 (결정 ㉖ 탈락안 ②)
+DISPARITY_WINDOW: Final = 100
+
+# 월간 RSI — Wilder 평활 (책 B 차트 「RSI 14 close」)
+RSI_WINDOW: Final = 14
+
+# 월간 MACD — 로그 종가의 EMA 5 · 15, 시그널 EMA 9 (책 B 차트 「LMACD 5 15 close 9」 · 결정 ㉕)
+MACD_FAST_SPAN: Final = 5
+MACD_SLOW_SPAN: Final = 15
+MACD_SIGNAL_SPAN: Final = 9
+
+# MVRV-Z 표준편차의 최소 기간(일). **첫 값의 날짜만 정하고 그 뒤의 값을 바꾸지 않는다** — 표준편차가
+# 그날까지의 시가총액 전부로 나오기 때문이다(결정 ㉓). 365일은 사전조사 §6.2 가 쓴 값이다
+MVRV_Z_MIN_DAYS: Final = 365
+
+
+# ============================================================
+# 2단계 — 책 신호 (결정 ㉖ 첫 표)
+# ============================================================
+
+
+@dataclass(frozen=True)
+class IndicatorSignal:
+    """책이 문턱을 적은 신호 하나 — 그 지표가 문턱을 돌파한 날
+
+    **돌파는 상태 `값 ≥ 문턱` 이 바뀐 날이다** (`indicator_signals.crossing_days`). 문턱과 같은 값은
+    문턱 이상으로 센다.
+
+    Attributes:
+        name: 산출물에 싣는 신호 이름. **신호의 구분자이므로 겹치면 안 된다**
+        indicator: 지표 컬럼 토큰. 일간 지표면 판정일이 날마다, 월간 지표면 달의 마지막 날이다
+        threshold: 문턱
+        upward: 상향 돌파인가. 거짓이면 하향 돌파다
+        meaning: 책이 그 신호에 붙인 뜻 — 판정이 아니라 **책의 주장**이다
+    """
+
+    name: str
+    indicator: str
+    threshold: float
+    upward: bool
+    meaning: str
+
+
+# ============================================================
 # 검증 대상
 # ============================================================
 
 
 @dataclass(frozen=True)
 class Dataset:
-    """검증 대상 하나 — 시세와 거래량 0 인 날을 채울 대조 계열의 짝
+    """검증 대상 하나 — 시세 · 거래량 0 인 날을 채울 대조 계열 · 온체인 두 계열
 
     Attributes:
         ticker: 파일명에 쓰는 코드. **산출물의 데이터셋 구분자이므로 겹치면 안 된다**
@@ -201,6 +256,8 @@ class Dataset:
         directory: 시세 파일이 있는 폴더
         file_template: 시세 파일명 템플릿
         reference_path: 대조 계열(일별 단일 값) 파일. 거래량 0 인 날의 종가를 이 값으로 바꾼다(결정 ④)
+        mvrv_path: MVRV 계열 파일. 2단계 측정만 읽는다(결정 ⑧)
+        market_cap_path: 시가총액 계열 파일. 2단계 측정만 읽는다 — 실현 시가총액은 `시가총액 ÷ MVRV` 다
         price_decimals: 가격 출력 자릿수. 원시 데이터를 저장한 값과 같아야 한다
         is_judged: 1차 판정을 거는가 — **살 수 있는 대상에만 건다** (측정의 원칙 9 · 결정 ⑤)
     """
@@ -210,6 +267,8 @@ class Dataset:
     directory: Path
     file_template: str
     reference_path: Path
+    mvrv_path: Path
+    market_cap_path: Path
     price_decimals: int
     is_judged: bool
 
@@ -232,6 +291,8 @@ DATASETS: Final = (
         directory=MARKET_DIR,
         file_template=MARKET_FILE_TEMPLATE,
         reference_path=SERIES_DIR / BTC_PRICE_SERIES.file_name,
+        mvrv_path=SERIES_DIR / MVRV_SERIES.file_name,
+        market_cap_path=SERIES_DIR / MARKET_CAP_SERIES.file_name,
         price_decimals=PRICE_DECIMALS,
         is_judged=True,
     ),
@@ -273,6 +334,54 @@ BASELINE_SUFFIX: Final = "_baseline"
 COL_NON_OVERLAPPING: Final = "NonOverlappingCount"
 COL_BASELINE_NON_OVERLAPPING: Final = f"{COL_NON_OVERLAPPING}{BASELINE_SUFFIX}"
 
+# 2단계 — 지표 값. 일간 다섯은 시세의 날짜 위에, 월간 둘은 끝난 달의 말일 위에 있다
+COL_MVRV: Final = "mvrv"
+COL_MARKET_CAP: Final = "market_cap"
+COL_MVRV_Z: Final = "mvrv_z"
+COL_NUPL: Final = "nupl"
+COL_PI_CYCLE: Final = "pi_cycle_ratio"
+COL_DISPARITY: Final = "disparity"
+COL_MONTHLY_RSI: Final = "monthly_rsi"
+COL_MACD_HISTOGRAM: Final = "macd_histogram"
+
+# 2단계 — 신호일 목록과 집계
+COL_INDICATOR_SIGNAL: Final = "indicator_signal"
+COL_SIGNAL_MEANING: Final = "signal_meaning"
+COL_JUDGMENT_DATE: Final = "judgment_date"
+COL_PREVIOUS_VALUE: Final = "previous_value"
+COL_INDICATOR_VALUE: Final = "indicator_value"
+COL_MONTHS_SINCE_HALVING: Final = "months_since_halving"
+
+# 유효 표본이 있는 반감기 사이클의 수. 표본과 함께 보면 한 사이클에 몰렸는지 보인다 (측정의 원칙 5)
+COL_CYCLE_COUNT: Final = "cycle_count"
+
+# 2단계 — 1단계 진입일에 붙이는 값의 기준 (결정 ㉗). 값 기준일은 진입 전날, 기준 달은 그날이나 그 전에 끝난 달이다
+COL_VALUE_DAY: Final = "value_day"
+COL_INDICATOR_MONTH: Final = "indicator_month"
+
+# 진입지표 표의 보유별 수익률 — 진입내역의 같은 값을 한 행에 펼친다
+COL_HOLD_RETURNS: Final = {months: f"return_{months}m" for months in HOLD_MONTHS}
+
+
+# 책이 문턱을 적은 신호 전부 — **결정 ㉖ 첫 표의 순서 그대로다.** 책의 「마지막」 · 「바닥 뒤」 처럼 지나고 나서야
+# 정해지는 조건은 빼고 돌파를 전부 잰다. 변형(다른 문턱 · 다른 창)을 더하지 않는다 — 고를 여지가 생긴다
+INDICATOR_SIGNALS: Final = (
+    IndicatorSignal("Pi Cycle 상향 돌파", COL_PI_CYCLE, 1.0, True, "고점"),
+    IndicatorSignal("MVRV-Z 7 상향 돌파", COL_MVRV_Z, 7.0, True, "과대평가 (강도 3)"),
+    IndicatorSignal("MVRV-Z 6 상향 돌파", COL_MVRV_Z, 6.0, True, "강도 2"),
+    IndicatorSignal("MVRV-Z 0 하향 돌파", COL_MVRV_Z, 0.0, False, "재진입 준비"),
+    IndicatorSignal("MVRV 1 하향 돌파", COL_MVRV, 1.0, False, "바닥 구간"),
+    IndicatorSignal("MVRV 1 상향 돌파", COL_MVRV, 1.0, True, "새 사이클"),
+    IndicatorSignal("MVRV 1.7 하향 돌파", COL_MVRV, 1.7, False, "적극 매수"),
+    IndicatorSignal("MVRV 3 상향 돌파", COL_MVRV, 3.0, True, "매도 준비"),
+    IndicatorSignal("MVRV 3.7 상향 돌파", COL_MVRV, 3.7, True, "매도 · 고점 구간"),
+    IndicatorSignal("NUPL 0.75 상향 돌파", COL_NUPL, 0.75, True, "Euphoria — 고점 의심"),
+    IndicatorSignal("월간 RSI 50 하향 이탈", COL_MONTHLY_RSI, 50.0, False, "사이클 전환점"),
+    IndicatorSignal("월간 RSI 50 상향 돌파", COL_MONTHLY_RSI, 50.0, True, "새 사이클"),
+    IndicatorSignal("월간 MACD 시그널 상향 돌파", COL_MACD_HISTOGRAM, 0.0, True, "매수 · 새 사이클"),
+    IndicatorSignal("월간 MACD 시그널 하향 돌파", COL_MACD_HISTOGRAM, 0.0, False, "매도"),
+)
+
 
 # ============================================================
 # 값 — 달력 연도의 위치와 제외 사유
@@ -288,6 +397,12 @@ POSITION_AFTER_TEMPLATE: Final = "반감기 + {years}"
 # 끝나지 않은 해의 「연초 대비」는 그해 수익률과 다른 양이라 값을 채우지 않는다
 REASON_NO_PREVIOUS_YEAR_END: Final = "전년 말 종가가 데이터 앞"
 REASON_YEAR_UNFINISHED: Final = "그해가 데이터 안에서 끝나지 않음"
+
+# 2단계 신호의 제외 사유. **행을 남긴다** (결정 ㉘ ① · 표본 보존). 청산일이 데이터 뒤인 것은 1단계와 같은 사유다.
+# 판정 구간은 1단계와 기준선처럼 첫 반감기부터다 — 그 앞의 신호는 기준선과 기간이 갈린다
+REASON_BEFORE_FIRST_HALVING: Final = "첫 반감기 전 판정"
+# 판정은 났는데 다음날이 데이터 뒤다. 1단계의 「아직 오지 않은 진입」(행 없음)과 달리 신호는 이미 있다
+REASON_ENTRY_AFTER_DATA: Final = "진입일이 데이터 뒤"
 
 
 # ============================================================
@@ -314,6 +429,23 @@ DISPLAY_ZERO_VOLUME: Final = "거래량 0"
 
 # 기준선 값 컬럼 앞에 붙이는 말
 BASELINE_PREFIX: Final = "기준선 "
+
+# 2단계. **「신호」를 쓰지 않는다** — 공통 계층의 신호 «건수» 머리다(`report/constants.DISPLAY_SIGNAL_COUNT`)
+DISPLAY_INDICATOR_SIGNAL: Final = "지표 신호"
+DISPLAY_SIGNAL_MEANING: Final = "책이 붙인 뜻"
+DISPLAY_JUDGMENT_DATE: Final = "돌파일"
+DISPLAY_PREVIOUS_VALUE: Final = "직전 값"
+DISPLAY_INDICATOR_VALUE: Final = "판정 값"
+DISPLAY_MONTHS_SINCE_HALVING: Final = "반감기 뒤 경과(개월)"
+DISPLAY_CYCLE_COUNT: Final = "사이클 수"
+DISPLAY_VALUE_DAY: Final = "값 기준일"
+DISPLAY_INDICATOR_MONTH: Final = "월간 지표 기준 달"
+DISPLAY_MVRV: Final = "MVRV"
+DISPLAY_MVRV_Z: Final = "MVRV-Z"
+DISPLAY_PI_CYCLE: Final = "Pi Cycle 비율"
+DISPLAY_DISPARITY: Final = f"{DISPARITY_WINDOW}일 이격도(%)"
+DISPLAY_MONTHLY_RSI: Final = f"월간 RSI({RSI_WINDOW})"
+DISPLAY_MACD_HISTOGRAM: Final = "월간 MACD − 시그널"
 
 
 # ============================================================
@@ -385,6 +517,24 @@ COLUMN_LABELS: Final = {
     COL_SECONDARY: DISPLAY_REFERENCE_CLOSE,
     COL_DIFF_RATE: DISPLAY_DIFF_RATE,
     COL_ZERO_VOLUME: DISPLAY_ZERO_VOLUME,
+    # 2단계 — 신호일 목록 · 지표통계 · 지표사이클
+    COL_INDICATOR_SIGNAL: DISPLAY_INDICATOR_SIGNAL,
+    COL_SIGNAL_MEANING: DISPLAY_SIGNAL_MEANING,
+    COL_JUDGMENT_DATE: DISPLAY_JUDGMENT_DATE,
+    COL_PREVIOUS_VALUE: DISPLAY_PREVIOUS_VALUE,
+    COL_INDICATOR_VALUE: DISPLAY_INDICATOR_VALUE,
+    COL_MONTHS_SINCE_HALVING: DISPLAY_MONTHS_SINCE_HALVING,
+    COL_CYCLE_COUNT: DISPLAY_CYCLE_COUNT,
+    # 2단계 — 진입지표
+    COL_VALUE_DAY: DISPLAY_VALUE_DAY,
+    COL_INDICATOR_MONTH: DISPLAY_INDICATOR_MONTH,
+    COL_MVRV: DISPLAY_MVRV,
+    COL_MVRV_Z: DISPLAY_MVRV_Z,
+    COL_PI_CYCLE: DISPLAY_PI_CYCLE,
+    COL_DISPARITY: DISPLAY_DISPARITY,
+    COL_MONTHLY_RSI: DISPLAY_MONTHLY_RSI,
+    COL_MACD_HISTOGRAM: DISPLAY_MACD_HISTOGRAM,
+    **{column: f"{months}개월 {DISPLAY_RETURN}" for months, column in COL_HOLD_RETURNS.items()},
 }
 
 # 비율(0~1)로 들어와 백분율로 내보낼 컬럼. **기준선과 차이 컬럼도 빠짐없이 넣는다** —
@@ -410,6 +560,21 @@ PERCENT_COLUMNS: Final = (
     COL_LOSS_RATE_EXCESS,
     COL_FORWARD_RETURN,
     COL_DIFF_RATE,
+    COL_DISPARITY,
+    *COL_HOLD_RETURNS.values(),
+)
+
+# 저장 직전에 자릿수만 맞출 지표 값. **돌파 판정은 반올림 «전» 값으로 이미 끝났다** — 여기서 자르는 것은
+# 부동소수점 잡음이 CSV 로 나가지 않게 하는 것뿐이다. RSI 는 0 ~ 100 지수라 백분율처럼 2자리다
+INDICATOR_DECIMALS: Final = 4
+RSI_DECIMALS: Final = 2
+INDICATOR_VALUE_COLUMNS: Final = (
+    COL_PREVIOUS_VALUE,
+    COL_INDICATOR_VALUE,
+    COL_MVRV,
+    COL_MVRV_Z,
+    COL_PI_CYCLE,
+    COL_MACD_HISTOGRAM,
 )
 
 # 확률로 들어와 자릿수만 맞출 컬럼. **100 을 곱하지 않는다** — 우연확률은 비율이 아니다
@@ -434,6 +599,13 @@ CALENDAR_YEARS_FILENAME: Final = "달력연도.csv"
 CROSSCHECK_FILENAME: Final = "크로스체크.csv"
 REPLACED_FILENAME: Final = "대체일.csv"
 
+# 2단계 넷. **지표통계는 한 장이다** — 통계 · excess · test 세 이름은 1단계 격자가 쓰고, 이 표는 판정이 없어
+# 기준선을 옆에 두는 것이 「비율 옆에 기준선 비율」(`.claude/rules/docs.md`) 그대로다
+INDICATOR_SIGNALS_FILENAME: Final = "지표신호.csv"
+INDICATOR_STATISTICS_FILENAME: Final = "지표통계.csv"
+INDICATOR_CYCLES_FILENAME: Final = "지표사이클.csv"
+ENTRY_INDICATORS_FILENAME: Final = "진입지표.csv"
+
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 # **키는 문자열 리터럴이다** — 계약 검사가 이 사전을 AST 로 읽으므로 상수를 키에 쓰면 선언이 없는 것으로 보인다
 OUTPUT_FILES: Final[dict[str, str]] = {
@@ -444,6 +616,10 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     "calendar_years": CALENDAR_YEARS_FILENAME,
     "crosscheck": CROSSCHECK_FILENAME,
     "replaced": REPLACED_FILENAME,
+    "indicator_signals": INDICATOR_SIGNALS_FILENAME,
+    "indicator_statistics": INDICATOR_STATISTICS_FILENAME,
+    "indicator_cycles": INDICATOR_CYCLES_FILENAME,
+    "entry_indicators": ENTRY_INDICATORS_FILENAME,
 }
 
 # 산출물 필드 이름. **사전에서 꺼낸다** — 같은 리터럴을 두 번 적으면 한쪽만 바뀌었을 때
@@ -456,6 +632,10 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     FIELD_CALENDAR_YEARS,
     FIELD_CROSSCHECK,
     FIELD_REPLACED,
+    FIELD_INDICATOR_SIGNALS,
+    FIELD_INDICATOR_STATISTICS,
+    FIELD_INDICATOR_CYCLES,
+    FIELD_ENTRY_INDICATORS,
 ) = OUTPUT_FILES
 
 

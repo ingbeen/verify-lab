@@ -8,6 +8,10 @@
     "달력연도.csv": 16,
     "크로스체크.csv": 107,
     "대체일.csv": 33,
+    "지표신호.csv": 678,
+    "지표통계.csv": 42,
+    "지표사이클.csv": 168,
+    "진입지표.csv": 58,
     "거래내역.csv": 167,
     "성적표.csv": 240
   },
@@ -61,6 +65,107 @@
       12
     ],
     "baseline_start": "2012-11-28",
+    "indicators": {
+      "pi_cycle_windows": [
+        111,
+        350
+      ],
+      "pi_cycle_multiplier": 2.0,
+      "disparity_window": 100,
+      "monthly_rsi_window": 14,
+      "monthly_log_macd_spans": [
+        5,
+        15,
+        9
+      ],
+      "mvrv_z_min_days": 365,
+      "signals": [
+        {
+          "name": "Pi Cycle 상향 돌파",
+          "indicator": "pi_cycle_ratio",
+          "threshold": 1.0,
+          "upward": true
+        },
+        {
+          "name": "MVRV-Z 7 상향 돌파",
+          "indicator": "mvrv_z",
+          "threshold": 7.0,
+          "upward": true
+        },
+        {
+          "name": "MVRV-Z 6 상향 돌파",
+          "indicator": "mvrv_z",
+          "threshold": 6.0,
+          "upward": true
+        },
+        {
+          "name": "MVRV-Z 0 하향 돌파",
+          "indicator": "mvrv_z",
+          "threshold": 0.0,
+          "upward": false
+        },
+        {
+          "name": "MVRV 1 하향 돌파",
+          "indicator": "mvrv",
+          "threshold": 1.0,
+          "upward": false
+        },
+        {
+          "name": "MVRV 1 상향 돌파",
+          "indicator": "mvrv",
+          "threshold": 1.0,
+          "upward": true
+        },
+        {
+          "name": "MVRV 1.7 하향 돌파",
+          "indicator": "mvrv",
+          "threshold": 1.7,
+          "upward": false
+        },
+        {
+          "name": "MVRV 3 상향 돌파",
+          "indicator": "mvrv",
+          "threshold": 3.0,
+          "upward": true
+        },
+        {
+          "name": "MVRV 3.7 상향 돌파",
+          "indicator": "mvrv",
+          "threshold": 3.7,
+          "upward": true
+        },
+        {
+          "name": "NUPL 0.75 상향 돌파",
+          "indicator": "nupl",
+          "threshold": 0.75,
+          "upward": true
+        },
+        {
+          "name": "월간 RSI 50 하향 이탈",
+          "indicator": "monthly_rsi",
+          "threshold": 50.0,
+          "upward": false
+        },
+        {
+          "name": "월간 RSI 50 상향 돌파",
+          "indicator": "monthly_rsi",
+          "threshold": 50.0,
+          "upward": true
+        },
+        {
+          "name": "월간 MACD 시그널 상향 돌파",
+          "indicator": "macd_histogram",
+          "threshold": 0.0,
+          "upward": true
+        },
+        {
+          "name": "월간 MACD 시그널 하향 돌파",
+          "indicator": "macd_histogram",
+          "threshold": 0.0,
+          "upward": false
+        }
+      ]
+    },
     "datasets": [
       {
         "ticker": "BTCUSD",
@@ -73,6 +178,92 @@
           "period": "2010-07-18 ~ 2026-09-28",
           "rows": 5917
         },
+        "onchain": {
+          "mvrv": {
+            "file": "BTC_CapMVRVCur.csv",
+            "period": "2010-07-18 ~ 2026-09-28",
+            "rows": 5917
+          },
+          "market_cap": {
+            "file": "BTC_CapMrktCurUSD.csv",
+            "period": "2010-07-18 ~ 2026-09-28",
+            "rows": 5917
+          },
+          "dropped_tail_days": 0,
+          "missing_price_days": 0
+        },
+        "indicator_signals": [
+          {
+            "name": "Pi Cycle 상향 돌파",
+            "signal_count": 12,
+            "excluded_count": 0
+          },
+          {
+            "name": "MVRV-Z 7 상향 돌파",
+            "signal_count": 18,
+            "excluded_count": 0
+          },
+          {
+            "name": "MVRV-Z 6 상향 돌파",
+            "signal_count": 30,
+            "excluded_count": 0
+          },
+          {
+            "name": "MVRV-Z 0 하향 돌파",
+            "signal_count": 81,
+            "excluded_count": 27
+          },
+          {
+            "name": "MVRV 1 하향 돌파",
+            "signal_count": 81,
+            "excluded_count": 27
+          },
+          {
+            "name": "MVRV 1 상향 돌파",
+            "signal_count": 81,
+            "excluded_count": 27
+          },
+          {
+            "name": "MVRV 1.7 하향 돌파",
+            "signal_count": 180,
+            "excluded_count": 27
+          },
+          {
+            "name": "MVRV 3 상향 돌파",
+            "signal_count": 72,
+            "excluded_count": 0
+          },
+          {
+            "name": "MVRV 3.7 상향 돌파",
+            "signal_count": 21,
+            "excluded_count": 0
+          },
+          {
+            "name": "NUPL 0.75 상향 돌파",
+            "signal_count": 21,
+            "excluded_count": 0
+          },
+          {
+            "name": "월간 RSI 50 하향 이탈",
+            "signal_count": 24,
+            "excluded_count": 1
+          },
+          {
+            "name": "월간 RSI 50 상향 돌파",
+            "signal_count": 24,
+            "excluded_count": 3
+          },
+          {
+            "name": "월간 MACD 시그널 상향 돌파",
+            "signal_count": 15,
+            "excluded_count": 0
+          },
+          {
+            "name": "월간 MACD 시그널 하향 돌파",
+            "signal_count": 18,
+            "excluded_count": 0
+          }
+        ],
         "signal_count": 174,
         "excluded_count": 7,
         "replaced_count": 33,

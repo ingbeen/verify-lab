@@ -84,7 +84,7 @@ poetry run python scripts/data/collect_fred.py   # 미국 3개월 T-bill (DTB3).
 ### 비트코인 — Bitstamp · Coin Metrics
 
 ```bash
-poetry run python scripts/data/collect_btc.py   # Bitstamp 일봉 + Coin Metrics 기준가 전 기간, 받은 뒤 두 소스를 크로스체크. 인증키가 필요 없다
+poetry run python scripts/data/collect_btc.py   # Bitstamp 일봉 + Coin Metrics 기준가 · MVRV · 시가총액 전 기간, 받은 뒤 두 소스 종가를 크로스체크. 인증키가 필요 없다
 ```
 
 ---
@@ -113,11 +113,11 @@ poetry run python scripts/run_midterm_cycle.py --stop-grid                  # �
 ### 반감기_사이클
 
 ```bash
-poetry run python scripts/run_halving_cycle.py                              # 반감기 경과 격자 48칸 · 무손절 체결 (기본값). 원시 시세만 읽는다
-poetry run python scripts/run_halving_cycle.py --repeats 5000 --seed 42     # 무작위 뽑기 대조의 반복 수·시드 (칸마다 표본이 하한 미만이라 검정은 붙지 않는다)
+poetry run python scripts/run_halving_cycle.py                              # 1단계 반감기 경과 격자 48칸 · 무손절 체결 + 2단계 지표 신호 열넷 (기본값). 원시 파일만 읽는다
+poetry run python scripts/run_halving_cycle.py --repeats 5000 --seed 42     # 무작위 뽑기 대조의 반복 수·시드 (표본이 하한 이상인 칸에만 검정이 붙는다 — 1단계 격자는 전 칸 미만)
 ```
 
-선행 조건은 비트코인 수집(위 「비트코인 — Bitstamp · Coin Metrics」)이 받은 두 파일이다.
+선행 조건은 비트코인 수집(위 「비트코인 — Bitstamp · Coin Metrics」)이 받은 네 파일이다.
 
 ### 원달러_ETF_등가성
 

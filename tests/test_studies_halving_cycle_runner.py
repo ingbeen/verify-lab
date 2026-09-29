@@ -27,11 +27,14 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
 )
 from verify_lab.data.crosscheck import COL_PRIMARY, COL_SECONDARY
-from verify_lab.execution.run_summary import KEY_ROW_COUNTS
+from verify_lab.execution.run_summary import KEY_DATASETS, KEY_ROW_COUNTS
 from verify_lab.measure.constants import (
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
+    COL_FORWARD_RETURN,
+    COL_JUDGEABLE,
     COL_SIGNAL_COUNT,
+    JUDGEABLE_NO,
     REASON_NONE,
 )
 from verify_lab.measure.statistics import COL_MEAN, COL_SAMPLE_COUNT, COL_TEST_NOTE, NOTE_TOO_FEW_SAMPLES
@@ -40,18 +43,34 @@ from verify_lab.studies.halving_cycle.constants import (
     BASELINE_SUFFIX,
     COL_BASELINE_NON_OVERLAPPING,
     COL_CALENDAR_YEAR,
+    COL_CYCLE_COUNT,
     COL_ENTRY_MONTHS,
+    COL_HALVING,
     COL_HOLD_MONTHS,
+    COL_HOLD_RETURNS,
+    COL_INDICATOR_SIGNAL,
+    COL_JUDGMENT_DATE,
     COL_NON_OVERLAPPING,
+    COL_SIGNAL_MEANING,
+    COL_VALUE_DAY,
     DATASETS,
     ENTRY_MONTHS,
     HALVINGS,
     HOLD_MONTHS,
+    INDICATOR_SIGNALS,
     OUTPUT_FILES,
     TRACK_NAME,
     Dataset,
 )
-from verify_lab.studies.halving_cycle.runner import StudyOutputs, display_tables, run_study
+from verify_lab.studies.halving_cycle.runner import (
+    KEY_DROPPED_TAIL_DAYS,
+    KEY_MISSING_PRICE_DAYS,
+    KEY_ONCHAIN,
+    StudyOutputs,
+    display_tables,
+    load_onchain,
+    run_study,
+)
 
 # 합성 시세 구간. **첫 반감기(2012-11-28) 앞에서 시작해야** 네 반감기가 모두 시세 안에 든다
 SYNTHETIC_START = "2012-01-01"
@@ -68,6 +87,15 @@ HALT_REFERENCE_GAP = 1.20
 
 # 순열 검정 반복 수. 계약만 보므로 적게 돌린다
 TEST_REPEATS = 20
+
+# 합성 온체인 계열의 시작 — 시세보다 앞이다
+ONCHAIN_START = "2011-01-01"
+
+# 합성 MVRV 의 주기(일)
+MVRV_PERIOD_DAYS = 900
+
+# 0건이 되도록 만든 신호 — 합성 MVRV 가 4 를 넘지 않는다
+NEVER_CROSSED = "NUPL 0.75 상향 돌파"
 
 
 def _market() -> pd.DataFrame:
@@ -103,15 +131,35 @@ def _reference(market: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame({COL_DATE: market[COL_DATE], COL_VALUE: values.round(PRICE_DECIMALS)})
 
 
+def _onchain(market: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """합성 MVRV 와 시가총액. **시세보다 1년 앞에서 시작한다** — 실제 Coin Metrics 가 Bitstamp 보다 먼저 시작한다.
+
+    MVRV 는 900일 주기로 0.2 ~ 3.8 을 오가 문턱 1 · 1.7 · 3 · 3.7 을 여러 번 지나고, **4 는 한 번도 넘지 않는다** —
+    NUPL 0.75(= MVRV 4) 신호가 0건인 칸이 생겨 「0건이어도 행을 남긴다」를 기본 신호 목록 그대로 검사한다.
+    """
+    days = pd.date_range(ONCHAIN_START, SYNTHETIC_END, freq="D")
+    phase = 2.0 * np.pi * np.arange(len(days)) / MVRV_PERIOD_DAYS
+    mvrv = pd.DataFrame({COL_DATE: days, COL_VALUE: np.round(2.0 + 1.8 * np.sin(phase), 4)})
+    closes = market.set_index(COL_DATE)[COL_CLOSE].reindex(days).bfill()
+    market_cap = pd.DataFrame({COL_DATE: days, COL_VALUE: np.round(closes.to_numpy() * 1e7, 0)})
+
+    return mvrv, market_cap
+
+
+def _write_series(frame: pd.DataFrame, path: Path) -> Path:
+    """단일 값 계열을 로더가 읽는 모양(날짜 문자열)으로 쓴다."""
+    frame.assign(**{COL_DATE: frame[COL_DATE].dt.strftime("%Y-%m-%d")}).to_csv(path, index=False)
+    return path
+
+
 def _dataset(directory: Path) -> Dataset:
-    """합성 시세와 합성 기준가를 파일로 쓰고 대상 하나를 만든다."""
+    """합성 시세 · 기준가 · MVRV · 시가총액을 파일로 쓰고 대상 하나를 만든다."""
     market = _market()
     market.assign(**{COL_DATE: market[COL_DATE].dt.strftime("%Y-%m-%d")}).to_csv(
         directory / MARKET_FILE_TEMPLATE.format(ticker="SYN"), index=False
     )
-    reference = _reference(market)
-    reference_path = directory / "SYN_PriceUSD.csv"
-    reference.assign(**{COL_DATE: reference[COL_DATE].dt.strftime("%Y-%m-%d")}).to_csv(reference_path, index=False)
+    reference_path = _write_series(_reference(market), directory / "SYN_PriceUSD.csv")
+    mvrv, market_cap = _onchain(market)
 
     return Dataset(
         ticker="SYN",
@@ -119,6 +167,8 @@ def _dataset(directory: Path) -> Dataset:
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         reference_path=reference_path,
+        mvrv_path=_write_series(mvrv, directory / "SYN_CapMVRVCur.csv"),
+        market_cap_path=_write_series(market_cap, directory / "SYN_CapMrktCurUSD.csv"),
         price_decimals=PRICE_DECIMALS,
         is_judged=True,
     )
@@ -167,7 +217,37 @@ class TestConstants:
         assert len(DATASETS) == 1
         assert DATASETS[0].path.name == "BTCUSD_max.csv"
         assert DATASETS[0].reference_path.name == "BTC_PriceUSD.csv"
+        assert DATASETS[0].mvrv_path.name == "BTC_CapMVRVCur.csv"
+        assert DATASETS[0].market_cap_path.name == "BTC_CapMrktCurUSD.csv"
         assert DATASETS[0].is_judged
+
+    def test_지표_신호는_책이_문턱을_적은_열넷이다(self) -> None:
+        """
+        목적: 결정 ㉖ 첫 표의 신호 목록(결과를 보기 전에 정한 값)을 순서까지 고정한다.
+
+        기대값은 손으로 적는다 — 상수에서 가져오면 목록을 고칠 때 테스트가 함께 따라온다.
+
+        Given: 신호 상수
+        When: 이름 · 문턱 · 방향을 본다
+        Then: 설계 문서의 표와 같다
+        """
+        expected = [
+            ("Pi Cycle 상향 돌파", 1.0, True),
+            ("MVRV-Z 7 상향 돌파", 7.0, True),
+            ("MVRV-Z 6 상향 돌파", 6.0, True),
+            ("MVRV-Z 0 하향 돌파", 0.0, False),
+            ("MVRV 1 하향 돌파", 1.0, False),
+            ("MVRV 1 상향 돌파", 1.0, True),
+            ("MVRV 1.7 하향 돌파", 1.7, False),
+            ("MVRV 3 상향 돌파", 3.0, True),
+            ("MVRV 3.7 상향 돌파", 3.7, True),
+            ("NUPL 0.75 상향 돌파", 0.75, True),
+            ("월간 RSI 50 하향 이탈", 50.0, False),
+            ("월간 RSI 50 상향 돌파", 50.0, True),
+            ("월간 MACD 시그널 상향 돌파", 0.0, True),
+            ("월간 MACD 시그널 하향 돌파", 0.0, False),
+        ]
+        assert [(signal.name, signal.threshold, signal.upward) for signal in INDICATOR_SIGNALS] == expected
 
 
 class TestStatistics:
@@ -372,3 +452,322 @@ class TestSummaryAndDisplay:
             (outputs.statistics[COL_MEAN] * 100).round(2).to_numpy(dtype=float),
             atol=1e-9,
         )
+
+
+class TestIndicatorStatistics:
+    """2단계 지표통계 — 신호 × 보유"""
+
+    def test_신호_곱하기_보유_칸마다_한_행이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 신호 열넷 × 보유 셋이 신호 순서 → 보유 순서로 빠짐없이 한 번씩 나옴을 고정한다.
+
+        Given: 합성 입력의 측정 결과
+        When: 지표통계의 칸을 본다
+        Then: (신호, 보유) 쌍이 목록 순서와 같다
+        """
+        cells = list(
+            zip(
+                outputs.indicator_statistics[COL_INDICATOR_SIGNAL],
+                outputs.indicator_statistics[COL_HOLD_MONTHS],
+                strict=True,
+            )
+        )
+
+        assert cells == [(signal.name, hold) for signal in INDICATOR_SIGNALS for hold in HOLD_MONTHS]
+
+    def test_신호는_표본과_제외의_합이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 잴 수 없던 판정이 제외로 세어지고 사라지지 않음을 고정한다 (표본 보존).
+
+        Given: 지표통계
+        When: 칸마다 세 수를 본다
+        Then: 신호 = 표본 + 제외
+        """
+        table = outputs.indicator_statistics
+
+        assert (table[COL_SIGNAL_COUNT] == table[COL_SAMPLE_COUNT] + table[COL_EXCLUDED_COUNT]).all()
+
+    def test_한_번도_없던_신호도_행이_남고_지표가_빈다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 0건인 신호의 행을 지우지도 0 으로 채우지도 않음을 고정한다 (측정의 원칙 17).
+
+        Given: 합성 MVRV 가 4 를 넘지 않아 NUPL 0.75 신호가 0건인 입력
+        When: 그 신호의 행을 본다
+        Then: 보유마다 한 행이고 신호 0 · 평균이 비어 있으며 판정가능이 「아니오」다
+        """
+        rows = outputs.indicator_statistics[outputs.indicator_statistics[COL_INDICATOR_SIGNAL] == NEVER_CROSSED]
+
+        assert len(rows) == len(HOLD_MONTHS)
+        assert (rows[COL_SIGNAL_COUNT] == 0).all()
+        assert rows[COL_MEAN].isna().all()
+        assert (rows[COL_JUDGEABLE] == JUDGEABLE_NO).all()
+
+    def test_책이_붙인_뜻이_신호마다_실린다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 산출물만 보고도 그 신호가 책에서 무엇을 뜻했는지 읽힘을 고정한다.
+
+        Given: 지표통계
+        When: 뜻 컬럼을 본다
+        Then: 신호 상수의 뜻과 같다
+        """
+        meanings = {signal.name: signal.meaning for signal in INDICATOR_SIGNALS}
+        table = outputs.indicator_statistics
+
+        assert list(table[COL_SIGNAL_MEANING]) == [meanings[name] for name in table[COL_INDICATOR_SIGNAL]]
+
+    def test_사이클_수는_유효_표본이_있는_반감기_수다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 사이클 수가 신호일 목록의 유효 행에서 센 반감기 수와 같음을 고정한다 (측정의 원칙 5).
+
+        Given: 지표통계와 지표신호
+        When: 칸마다 유효 행의 반감기 종류를 센다
+        Then: 사이클 수와 같고 반감기 수(4)를 넘지 않는다
+        """
+        signals = outputs.indicator_signals
+        valid = signals[signals[COL_EXCLUDED_REASON] == REASON_NONE]
+        counted = valid.groupby([COL_INDICATOR_SIGNAL, COL_HOLD_MONTHS])[COL_HALVING].nunique()
+
+        for _, row in outputs.indicator_statistics.iterrows():
+            expected = int(counted.get((row[COL_INDICATOR_SIGNAL], row[COL_HOLD_MONTHS]), 0))
+            assert row[COL_CYCLE_COUNT] == expected
+        assert outputs.indicator_statistics[COL_CYCLE_COUNT].max() <= len(HALVINGS)
+
+    def test_기준선은_1단계와_같은_보유의_기준선이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 2단계가 1단계와 같은 기준선(결정 ⑬)을 씀을 고정한다 — 두 표의 기준선 값이 같다.
+
+        Given: 지표통계와 1단계 excess
+        When: 보유마다 기준선 평균을 견준다
+        Then: 같다
+        """
+        column = f"{COL_MEAN}{BASELINE_SUFFIX}"
+        stage_one = outputs.excess.groupby(COL_HOLD_MONTHS)[column].first()
+
+        for _, row in outputs.indicator_statistics.iterrows():
+            assert row[column] == pytest.approx(stage_one[row[COL_HOLD_MONTHS]], abs=1e-12)
+
+
+class TestIndicatorSignalsAndCycles:
+    """2단계 원자료 — 신호일 목록과 사이클 분해"""
+
+    def test_신호일_목록의_행은_지표통계의_신호_합이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 원자료와 집계가 같은 판정을 셈을 고정한다 (측정의 원칙 8).
+
+        Given: 지표신호와 지표통계
+        When: 행 수와 신호 합을 견준다
+        Then: 같고, 판정일이 전부 시세 안이다
+        """
+        assert len(outputs.indicator_signals) == int(outputs.indicator_statistics[COL_SIGNAL_COUNT].sum())
+        assert outputs.indicator_signals[COL_JUDGMENT_DATE].min() >= pd.Timestamp(SYNTHETIC_START)
+
+    def test_사이클_분해는_신호_곱하기_보유_곱하기_반감기다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 0건인 사이클도 행이 남음을 고정한다 — 한 사이클에 몰린 신호가 보이려면 빈 사이클도 보여야 한다.
+
+        Given: 지표사이클
+        When: 행 수와 칸 구성을 본다
+        Then: 신호 × 보유 × 반감기이고, 사이클마다 센 신호에 첫 반감기 전 판정을 더하면 지표통계의 신호와 같다
+        """
+        cycles = outputs.indicator_cycles
+        assert len(cycles) == len(INDICATOR_SIGNALS) * len(HOLD_MONTHS) * len(HALVINGS)
+        assert set(cycles[COL_HALVING]) == {halving.label for halving in HALVINGS}
+
+        signals = outputs.indicator_signals
+        before = signals[~signals[COL_HALVING].isin([halving.label for halving in HALVINGS])]
+        before_counts = before.groupby([COL_INDICATOR_SIGNAL, COL_HOLD_MONTHS]).size()
+        cycle_sums = cycles.groupby([COL_INDICATOR_SIGNAL, COL_HOLD_MONTHS])[COL_SIGNAL_COUNT].sum()
+        for _, row in outputs.indicator_statistics.iterrows():
+            key = (row[COL_INDICATOR_SIGNAL], row[COL_HOLD_MONTHS])
+            assert int(cycle_sums[key]) + int(before_counts.get(key, 0)) == row[COL_SIGNAL_COUNT]
+
+
+class TestEntryIndicators:
+    """1단계 진입일의 지표 값"""
+
+    def test_1단계_진입마다_한_행이고_값은_전날_것이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 진입지표가 1단계 진입마다 한 행이고 값 기준일이 진입 전날임을 고정한다 (결정 ㉗).
+
+        Given: 진입지표와 1단계 진입내역
+        When: 행과 날짜를 본다
+        Then: 행 수가 1단계 진입 수이고 값 기준일 = 진입일 − 1 일이다
+        """
+        table = outputs.entry_indicators
+        stage_one = outputs.entries.drop_duplicates([COL_HALVING, COL_ENTRY_MONTHS])
+
+        assert len(table) == len(stage_one)
+        assert (table[COL_VALUE_DAY] == table[COL_DATE] - pd.Timedelta(days=1)).all()
+
+    def test_수익률은_1단계_진입내역과_같다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 진입지표에 붙인 보유별 수익률이 1단계 원자료와 같음을 고정한다 — 두 표가 다른 값을 싣지 않는다.
+
+        Given: 진입지표와 진입내역
+        When: 보유마다 수익률을 견준다
+        Then: 같다 (청산 전인 칸은 둘 다 비어 있다)
+        """
+        entries = outputs.entries.set_index([COL_HALVING, COL_ENTRY_MONTHS, COL_HOLD_MONTHS])[COL_FORWARD_RETURN]
+
+        for _, row in outputs.entry_indicators.iterrows():
+            for hold in HOLD_MONTHS:
+                expected = entries[(row[COL_HALVING], row[COL_ENTRY_MONTHS], hold)]
+                actual = row[COL_HOLD_RETURNS[hold]]
+                assert (pd.isna(expected) and pd.isna(actual)) or actual == pytest.approx(expected, abs=1e-12)
+
+
+class TestOnchainLoading:
+    """온체인 두 계열 읽기"""
+
+    def test_끝이_하루_어긋나면_함께_있는_날만_쓴다(self, tmp_path: Path) -> None:
+        """
+        목적: 두 계열의 끝이 공개 지연으로 하루 어긋나도 측정이 멈추지 않음을 고정한다 — 한쪽에만 있는 끝 날을 뺀다.
+
+        두 계열은 따로 받고 각자 공개 지연 하루를 허용받으므로 실제로 일어날 수 있는 모양이다. 멈추면 1단계와 체결까지
+        산출물이 하나도 나오지 않는다.
+
+        Given: 시가총액만 하루 짧은 입력
+        When: 온체인 계열을 읽는다
+        Then: 한 표의 마지막 날이 시가총액의 마지막 날이고, 두 파일의 원래 행 수는 따로 남으며, 뺀 날 1일을 돌려준다
+        """
+        # Given
+        dataset = _dataset(tmp_path)
+        market_cap = pd.read_csv(dataset.market_cap_path).iloc[:-1]
+        market_cap.to_csv(dataset.market_cap_path, index=False)
+
+        # When
+        loaded = load_onchain(dataset)
+
+        # Then
+        assert loaded.frame[COL_DATE].iloc[-1] == pd.Timestamp(market_cap[COL_DATE].iloc[-1])
+        assert len(loaded.frame) == len(loaded.market_cap) == len(loaded.mvrv) - 1
+        assert loaded.dropped_days == 1
+
+    def test_끝이_허용치보다_크게_어긋나면_멈춘다(self, tmp_path: Path) -> None:
+        """
+        목적: 묵은 파일이 섞이면 멈춤을 고정한다 — 끝 날을 빼고 지나가면 그 사이의 온체인 돌파가 예외 없이 사라진다.
+
+        허용치는 수집기의 공개 지연 일수(`data/coinmetrics_collector.PUBLICATION_LAG_DAYS`)다. 두 계열을 같은 수집에서
+        받으면 그보다 크게 어긋날 수 없다.
+
+        Given: 시가총액만 이틀 짧은 입력 (허용치 하루)
+        When: 온체인 계열을 읽는다
+        Then: ValueError
+        """
+        # Given
+        dataset = _dataset(tmp_path)
+        pd.read_csv(dataset.market_cap_path).iloc[:-2].to_csv(dataset.market_cap_path, index=False)
+
+        # When / Then
+        with pytest.raises(ValueError, match="공개 지연 허용치"):
+            load_onchain(dataset)
+
+    def test_중간에서_어긋나면_멈춘다(self, tmp_path: Path) -> None:
+        """
+        목적: 끝이 아닌 자리에서 날짜가 어긋나면 계산하지 않음을 고정한다 — 다른 날의 값끼리 나누면 예외 없이 틀린다.
+
+        Given: 시가총액의 한가운데 하루가 빠진 입력
+        When: 온체인 계열을 읽는다
+        Then: ValueError
+        """
+        # Given
+        dataset = _dataset(tmp_path)
+        market_cap = pd.read_csv(dataset.market_cap_path)
+        market_cap.drop(index=len(market_cap) // 2).to_csv(dataset.market_cap_path, index=False)
+
+        # When / Then
+        with pytest.raises(ValueError, match="끝이 아닌 자리"):
+            load_onchain(dataset)
+
+    @staticmethod
+    def _shorten_onchain(dataset: Dataset, days: int) -> None:
+        """두 온체인 파일을 함께 끝에서 `days` 일 자른다 — 시세만 새롭고 온체인은 묵은 상태를 만든다."""
+        for path in (dataset.mvrv_path, dataset.market_cap_path):
+            pd.read_csv(path).iloc[:-days].to_csv(path, index=False)
+
+    def test_시세보다_하루_짧은_온체인은_받고_요약에_센다(self, tmp_path: Path) -> None:
+        """
+        목적: 온체인이 시세보다 공개 지연 허용치(하루)만큼 짧으면 측정이 멈추지 않고, 그 날 수가 요약에 남음을 고정한다.
+
+        Given: 두 온체인 파일이 함께 시세보다 하루 짧은 입력
+        When: 측정을 돌린다
+        Then: 요약의 온체인 칸에 값이 없는 시세 날 1 · 두 파일 사이에서 뺀 날 0 이 적힌다
+        """
+        # Given
+        dataset = _dataset(tmp_path)
+        self._shorten_onchain(dataset, 1)
+
+        # When
+        outputs = run_study((dataset,), repeats=TEST_REPEATS, seed=0)
+
+        # Then
+        onchain = outputs.summary[KEY_DATASETS][0][KEY_ONCHAIN]
+        assert onchain[KEY_MISSING_PRICE_DAYS] == 1
+        assert onchain[KEY_DROPPED_TAIL_DAYS] == 0
+
+    def test_시세보다_크게_짧은_온체인은_멈춘다(self, tmp_path: Path) -> None:
+        """
+        목적: 묵은 온체인 파일이 새 시세 옆에 남으면 멈춤을 고정한다 — 빈칸으로 두면 그 사이의 온체인 돌파가 예외 없이 사라진다.
+
+        수집 스크립트는 시세를 먼저 저장하므로, 온체인 수집이 실패하면 이 상태가 된다.
+
+        Given: 두 온체인 파일이 함께 시세보다 이틀 짧은 입력 (허용치 하루)
+        When: 측정을 돌린다
+        Then: ValueError
+        """
+        # Given
+        dataset = _dataset(tmp_path)
+        self._shorten_onchain(dataset, 2)
+
+        # When / Then
+        with pytest.raises(ValueError, match="온체인 계열이 시세의 거래일을 덮지 못합니다"):
+            run_study((dataset,), repeats=TEST_REPEATS, seed=0)
+
+    def test_온체인이_시세의_중간_하루를_비우면_멈춘다(self, tmp_path: Path) -> None:
+        """
+        목적: 빈 날이 하루여도 끝이 아닌 자리면 멈춤을 고정한다 — 공개 지연은 끝에서만 생긴다.
+
+        두 온체인 파일이 같은 날을 함께 빠뜨리면 두 파일 사이의 검사(`load_onchain`)는 통과하므로, 시세와의 사이에서 잡는다.
+
+        Given: 두 온체인 파일이 시세 한가운데의 같은 하루를 함께 빠뜨린 입력
+        When: 측정을 돌린다
+        Then: ValueError
+        """
+        # Given
+        dataset = _dataset(tmp_path)
+        middle = pd.read_csv(dataset.mvrv_path)[COL_DATE].iloc[-400]
+        for path in (dataset.mvrv_path, dataset.market_cap_path):
+            series = pd.read_csv(path)
+            series[series[COL_DATE] != middle].to_csv(path, index=False)
+
+        # When / Then
+        with pytest.raises(ValueError, match="온체인 계열이 시세의 거래일을 덮지 못합니다"):
+            run_study((dataset,), repeats=TEST_REPEATS, seed=0)
+
+
+class TestIndicatorDisplay:
+    """2단계 표시용 표"""
+
+    def test_지표통계는_한글_헤더다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 2단계 표의 영문 토큰이 CSV 로 나가지 않음을 고정한다 (내부/출력 분리).
+
+        Given: 표시용 지표통계
+        When: 헤더를 본다
+        Then: 신호 · 뜻 · 사이클 수 · 기준선 컬럼이 한글이다
+        """
+        table = display_tables(outputs)["indicator_statistics"]
+
+        assert {"지표 신호", "책이 붙인 뜻", "보유(개월)", "사이클 수", "기준선 평균(%)"} <= set(table.columns)
+
+    def test_지표_값은_네_자리로_반올림한다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 지표 값의 부동소수점 잡음이 CSV 로 나가지 않음을 고정한다 — 판정은 반올림 «전» 값으로 이미 끝났다.
+
+        Given: 표시용 지표신호
+        When: 판정 값을 본다
+        Then: 소수 4자리를 넘지 않는다
+        """
+        values = display_tables(outputs)["indicator_signals"]["판정 값"].to_numpy(dtype=float)
+
+        np.testing.assert_allclose(values, np.round(values, 4), atol=0.0)

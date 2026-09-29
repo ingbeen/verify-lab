@@ -318,6 +318,36 @@ def test_registered_series_keys_and_files_are_unique() -> None:
     assert len({s.file_name for s in COINMETRICS_SERIES}) == len(COINMETRICS_SERIES)
 
 
+def test_registered_series_are_price_mvrv_and_market_cap() -> None:
+    """
+    목적: 반감기_사이클이 받는 세 지표의 이름 · 파일 · 자릿수 · 첫 날을 고정한다.
+
+    **파일 이름은 `{자산}_{지표}.csv` 이고 지표 이름은 Coin Metrics 의 것 그대로다**(설계 결정 ⑨).
+    MVRV 계열만 데이터로 받는다(결정 ⑧) — 실현 시가총액은 무료 목록에 없어 시가총액 ÷ MVRV 로 나온다.
+    기대값은 손으로 적는다 — 프로덕션 상수에서 가져오면 상수를 바꿀 때 테스트가 함께 따라온다.
+
+    Given: 등록된 수집 대상 목록
+    When: 지표 이름으로 대상을 찾는다
+    Then: 가격 · MVRV · 시가총액 셋이며 각각 약속한 파일 이름 · 자릿수 · 첫 날을 갖는다
+    """
+    # Given / When
+    by_metric = {series.metric: series for series in COINMETRICS_SERIES}
+
+    # Then
+    assert set(by_metric) == {"PriceUSD", "CapMVRVCur", "CapMrktCurUSD"}
+    expected = {
+        "PriceUSD": ("BTC_PriceUSD.csv", 4),
+        "CapMVRVCur": ("BTC_CapMVRVCur.csv", 4),
+        "CapMrktCurUSD": ("BTC_CapMrktCurUSD.csv", 0),
+    }
+    for metric, (file_name, decimals) in expected.items():
+        series = by_metric[metric]
+        assert series.asset == "btc"
+        assert series.file_name == file_name
+        assert series.decimals == decimals
+        assert series.first_date == date(2010, 7, 18)
+
+
 @freeze_time("2010-07-21 00:30:00")
 def test_collect_accepts_one_day_publication_lag(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """

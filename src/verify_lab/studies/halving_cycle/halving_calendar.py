@@ -77,8 +77,10 @@ CALENDAR_YEAR_COLUMNS = [
 _ORDER = "_entry_order"
 
 
-def _positions(trading_days: pd.DatetimeIndex, dates: pd.DatetimeIndex, *, label: str) -> np.ndarray:
+def trading_positions(trading_days: pd.DatetimeIndex, dates: pd.DatetimeIndex, *, label: str) -> np.ndarray:
     """날짜를 거래일 위치로 바꾼다. 없는 날짜가 하나라도 있으면 멈춘다.
+
+    **이 패키지의 날짜 → 위치 변환은 이것 하나다** — 1단계 달력과 2단계 지표 신호가 함께 쓴다.
 
     Args:
         trading_days: 거래일 목록
@@ -156,7 +158,7 @@ def halving_entries(
             rows.append({COL_HALVING: halving.label, COL_ENTRY_MONTHS: months, COL_DATE: entry})
 
     entries = pd.DataFrame(rows, columns=ENTRY_COLUMNS).astype({COL_ENTRY_MONTHS: "int64", COL_DATE: "datetime64[ns]"})
-    _positions(trading_days, pd.DatetimeIndex(entries[COL_DATE]), label="진입일")
+    trading_positions(trading_days, pd.DatetimeIndex(entries[COL_DATE]), label="진입일")
 
     logger.debug(f"진입일 산출: 반감기 {len(halvings)} × 진입 개월 {len(entry_months)} 중 {len(entries):,}건")
 
@@ -213,7 +215,7 @@ def exit_schedule(trading_days: pd.DatetimeIndex, entries: pd.DataFrame, hold_mo
 
     last_day = trading_days[-1]
     entry_dates = pd.DatetimeIndex(entries[COL_DATE])
-    entry_positions = _positions(trading_days, entry_dates, label="진입일")
+    entry_positions = trading_positions(trading_days, entry_dates, label="진입일")
 
     blocks: list[pd.DataFrame] = []
     for months in hold_months:
@@ -221,7 +223,7 @@ def exit_schedule(trading_days: pd.DatetimeIndex, entries: pd.DataFrame, hold_mo
         usable = np.asarray(exits <= last_day)
 
         exit_positions = np.zeros(len(exits), dtype=np.int64)
-        exit_positions[usable] = _positions(trading_days, exits[usable], label="청산일")
+        exit_positions[usable] = trading_positions(trading_days, exits[usable], label="청산일")
 
         block = entries.copy()
         block[_ORDER] = np.arange(len(block))
@@ -317,7 +319,7 @@ def calendar_year_returns(df: pd.DataFrame, halvings: Sequence[Halving]) -> pd.D
     def close_on(day: pd.Timestamp) -> float:
         if not first_day <= day <= last_day:
             return np.nan
-        position = int(_positions(trading_days, pd.DatetimeIndex([day]), label="연말")[0])
+        position = int(trading_positions(trading_days, pd.DatetimeIndex([day]), label="연말")[0])
 
         return float(prices.iloc[position])
 
@@ -358,4 +360,5 @@ __all__ = [
     "exit_schedule",
     "halving_entries",
     "halving_position",
+    "trading_positions",
 ]

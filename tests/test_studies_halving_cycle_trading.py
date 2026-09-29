@@ -80,12 +80,20 @@ def _dataset(directory: Path) -> Dataset:
     reference_path = directory / "SYN_PriceUSD.csv"
     pd.DataFrame({COL_DATE: dates, COL_VALUE: np.round(closes * 1.001, 4)}).to_csv(reference_path, index=False)
 
+    # 온체인 두 계열은 측정(2단계)만 읽는다 — 이 파일의 대조 테스트가 측정을 함께 돌려 파일이 있어야 한다
+    mvrv_path = directory / "SYN_CapMVRVCur.csv"
+    pd.DataFrame({COL_DATE: dates, COL_VALUE: 2.0}).to_csv(mvrv_path, index=False)
+    market_cap_path = directory / "SYN_CapMrktCurUSD.csv"
+    pd.DataFrame({COL_DATE: dates, COL_VALUE: np.round(closes * 1e6, 0)}).to_csv(market_cap_path, index=False)
+
     return Dataset(
         ticker="SYN",
         label="합성 비트코인",
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         reference_path=reference_path,
+        mvrv_path=mvrv_path,
+        market_cap_path=market_cap_path,
         price_decimals=PRICE_DECIMALS,
         is_judged=True,
     )

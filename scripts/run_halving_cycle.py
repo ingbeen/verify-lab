@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """반감기_사이클 실행 CLI — 측정과 체결을 한 번에 돈다
 
-**격자 하나를 잰다** — 비트코인 반감기 뒤 0 ~ 45개월(3개월 간격)에 진입해 3 · 6 · 12개월 드는 48칸이다.
+**1단계 격자 하나를 잰다** — 비트코인 반감기 뒤 0 ~ 45개월(3개월 간격)에 진입해 3 · 6 · 12개월 드는 48칸이다.
 기준선은 첫 반감기부터 매일 진입해 같은 기간 든 성적이다. 한 번 돌리면 측정 표와 체결 산출물이 **한 폴더에**
 함께 나오며, 어느 등급 폴더에 쌓일지는 `verify_lab/tracks.py` 의 레지스트리가 정한다.
+
+**2단계(보조지표 · 온체인)도 같은 실행에서 잰다** — 책이 문턱을 적은 신호 열넷이 문턱을 돌파한 다음날 종가에 들어가
+같은 보유 · 같은 기준선으로 잰다. 1단계 진입일마다 진입 전날까지의 지표 값도 낸다. **측정만 하고 체결하지 않는다.**
 
 **대상은 Bitstamp BTC/USD 하나다.** 거래량이 0 인 날의 종가는 Coin Metrics 기준가로 바꿔 재고(원시 파일은
 그대로), 두 소스의 차이가 허용폭을 넘은 날과 바꾼 날을 표로 함께 낸다.
 
 **체결은 무손절 한 종 · 「위」 한 방향이다** — 손절은 사용자가 따로 정한다.
 
-[중요] **칸마다 표본이 사이클 수(3 ~ 4건)라 칸당 하한(`measure/constants.MIN_SAMPLE_PER_CELL`)에 못 미친다.** 「판정가능」이 전부 「아니오」이고
-우연확률도 붙지 않는다 — **결론의 일부이지 버그가 아니다.** 48칸은 같은 사이클을 나눈 것이라 서로 독립이 아니다.
+[중요] **1단계는 칸마다 표본이 사이클 수(3 ~ 4건)라 칸당 하한(`measure/constants.MIN_SAMPLE_PER_CELL`)에 못 미친다.** 「판정가능」이
+전부 「아니오」이고 우연확률도 붙지 않는다 — **결론의 일부이지 버그가 아니다.** 48칸은 같은 사이클을 나눈 것이라 서로 독립이 아니다.
+2단계 신호는 돌파가 한 바닥에 몰리는 것이 많아 표본이 하한을 넘어도 서로 독립이 아니다 — 사이클 수와 비중첩 표본을 함께 본다.
 
 **맨몸 성적이다** — 수수료·슬리피지·세금을 넣지 않는다 (루트 `CLAUDE.md` 2026-09-06 확정).
 
@@ -52,12 +56,16 @@ from verify_lab.report.constants import (
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.halving_cycle.constants import (
+    BASELINE_PREFIX,
     DATASETS,
     DISPLAY_CALENDAR_YEAR,
+    DISPLAY_CYCLE_COUNT,
     DISPLAY_ENTRY_MONTHS,
     DISPLAY_HALVING_POSITION,
     DISPLAY_HOLD_MONTHS,
+    DISPLAY_INDICATOR_SIGNAL,
     FIELD_CALENDAR_YEARS,
+    FIELD_INDICATOR_STATISTICS,
     FIELD_STATISTICS,
     OUTPUT_FILES,
     TRACK_NAME,
@@ -86,13 +94,14 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         description="반감기_사이클 — 비트코인 반감기 뒤 0 ~ 45개월(3개월 간격)에 진입해 3 · 6 · 12개월 드는 48칸을 "
-        "Bitstamp BTC/USD 로 재고, 무손절 체결 성적과 두 소스 대조 표를 함께 냅니다."
+        "Bitstamp BTC/USD 로 재고, 무손절 체결 성적과 두 소스 대조 표를 함께 냅니다. "
+        "책이 문턱을 적은 보조지표 · 온체인 신호 열넷도 같은 보유와 기준선으로 잽니다(체결하지 않습니다)."
     )
     parser.add_argument(
         "--repeats",
         type=int,
         default=DEFAULT_REPEAT_COUNT,
-        help=f"무작위 뽑기 대조 반복 수 (기본값: {DEFAULT_REPEAT_COUNT}). 칸마다 표본이 하한 미만이라 검정은 붙지 않는다",
+        help=f"무작위 뽑기 대조 반복 수 (기본값: {DEFAULT_REPEAT_COUNT}). 표본이 하한 이상인 칸에만 검정이 붙는다 — " "1단계 격자는 전 칸이 하한 미만이다",
     )
     parser.add_argument(
         "--seed",
@@ -135,6 +144,31 @@ def _print_calendar_years(tables: dict[str, pd.DataFrame]) -> None:
     # 연도는 수가 아니라 이름이다 — 숫자로 두면 화면 표가 천 단위 쉼표(`2,011`)를 붙인다. CSV 는 그대로다
     table = tables[FIELD_CALENDAR_YEARS][columns].astype({DISPLAY_CALENDAR_YEAR: str})
     print_dataframe(table, logger, title="달력 연도 — 전년 말 종가 대비 그해 말 종가 (관찰용)")
+
+
+def _print_indicator_statistics(tables: dict[str, pd.DataFrame]) -> None:
+    """2단계 신호마다의 핵심 값을 기준선과 나란히 화면에 띄운다. 전체 값은 지표통계 표에 있다.
+
+    Args:
+        tables: 저장할 표시용 프레임
+    """
+    columns = [
+        DISPLAY_INDICATOR_SIGNAL,
+        DISPLAY_HOLD_MONTHS,
+        DISPLAY_SIGNAL_COUNT,
+        DISPLAY_SAMPLE_COUNT,
+        DISPLAY_CYCLE_COUNT,
+        DISPLAY_MEAN,
+        DISPLAY_MEDIAN,
+        DISPLAY_UP_RATE,
+        f"{BASELINE_PREFIX}{DISPLAY_UP_RATE}",
+        DISPLAY_DOWN_RATE,
+    ]
+    print_dataframe(
+        tables[FIELD_INDICATOR_STATISTICS][columns],
+        logger,
+        title="2단계 지표 신호 — 돌파 다음날 종가 진입, 1배 롱 기준 (측정만 — 체결하지 않는다)",
+    )
 
 
 def _print_candidates(trading: TradingOutputs) -> None:
@@ -216,6 +250,7 @@ def main() -> int:
 
     _print_statistics(tables)
     _print_calendar_years(tables)
+    _print_indicator_statistics(tables)
     _print_candidates(trading)
     print_dataframe(
         pd.DataFrame([{DISPLAY_FILE: name, DISPLAY_ROW_COUNT: rows} for name, rows in counts.items()]),
