@@ -88,6 +88,7 @@
 | 문서 | 담당 |
 | --- | --- |
 | [COMMANDS.md](COMMANDS.md) | 실행 명령어 |
+| [DEFERRED_FINDINGS.md](DEFERRED_FINDINGS.md) | 코드 리뷰에서 미룬 지적 — 판단 대기열 |
 | [../README.md](../README.md) | 사람용 소개 |
 | [../reference/README.md](../reference/README.md) | 참고 원본(읽기 전용)의 파일별 용도 |
 
