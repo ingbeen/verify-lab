@@ -22,10 +22,13 @@
 [중요] **분기 표는 «무손절» 경로 하나로만 낸다** (`설계.md` 결정 ⑮). 손절이 걸리면 보유가
 중간에 끊겨 남은 분기의 표본이 사라진다. 그래서 그 두 표에 `손절선(%)` 축이 없다.
 
-**손절선은 격자다** (`.claude/rules/trading.md` 「경계는 행위」 — 고르지 않으므로 허용).
-무손절 대조와 −5 ~ −30% 여덟 종이며, **며칠짜리 매매법에 쓰는 −2 ~ −10% 폭은 9개월 보유에
-너무 좁다** — 2018년 4분기 하나만 S&P 500 −14% 라 그 폭으로는 전 구간이 손절로
-끊겨 「평평한 구간」을 찾을 수 없다. **값을 확정하는 것은 `규칙.md` 의 몫이다.**
+**손절선은 기본이 확정 규칙의 무손절 한 종이고, 격자는 `stop_grid` 로 «전부» 켠다.**
+확정 규칙이 기간 손절(가격 손절 없음)이라 무손절 행이 그 규칙의 1배 측정 기준이다 — 규칙이 사는
+2배 상품(QLD)의 성적은 산출물에 없다(`규칙.md` §2.5).
+격자는 무손절 대조와 −5 ~ −30% 여덟 종이며 그 규칙을 고른 근거다 — **며칠짜리 매매법에 쓰는
+−2 ~ −10% 폭은 9개월 보유에 너무 좁다**(2018년 4분기 하나만 S&P 500 −14% 라 그 폭으로는
+전 구간이 손절로 끊겨 「평평한 구간」을 찾을 수 없다). 스위치가 값을 고르지 않고 격자 전부를
+켜는 이유는 `constants.STOP_LEVELS_ETF` 주석에 있다.
 
 **방향은 「위」 하나다.** 측정의 원칙 11(방향을 가리지 않는다)은 **측정 표의 오른 비율·내린
 비율**이 충족한다 — 두 값이 1배 롱 기준으로 나란히 실려 반대 방향을 그대로 되짚을 수 있다.
@@ -155,6 +158,7 @@ from verify_lab.studies.midterm_cycle.constants import (
     SPLIT_SUMMARY_FILENAME,
     SPLIT_TRADES_FILENAME,
     STOP_LEVELS_ETF,
+    STOP_LEVELS_ETF_CONFIRMED,
     STOP_LEVELS_INDEX,
     TRACK_NAME,
     TRANCHE_FIELD_DATE,
@@ -212,6 +216,10 @@ NOTE_SPLIT = (
 )
 NOTE_ENTRY_CONTEXT = (
     "`진입위치.csv` 의 지표는 진입일 종가까지로만 계산한다. 창(52주 = 252거래일 · 200일)이 차기 전인 " "진입은 그 칸을 비운다 — 0 으로 채우면 「그때 고점이었다」 같은 없는 사실이 된다"
+)
+NOTE_STOP_CONFIRMED = (
+    "ETF 손절선은 확정 규칙의 무손절 한 종만 냈다 — 규칙이 기간 손절(가격 손절 없음)이라서다. "
+    "가격 손절선 격자(`constants.STOP_LEVELS_ETF`)는 스위치(CLI `--stop-grid`)를 켜야 나온다"
 )
 NOTE_DIVIDEND = "보유가 9개월이라 분기 배당 3회가 «매번» 구조적으로 들어온다. 원본가로 재므로 " "「위」 칸의 성적은 그만큼 과소평가돼 있으며, 그 크기는 측정 표의 배당락 세 컬럼이 낸다"
 NOTE_INDEX = (
@@ -900,14 +908,16 @@ def _run_quarters(
         )
 
 
-def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> TradingOutputs:
+def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS, *, stop_grid: bool = False) -> TradingOutputs:
     """중간선거_사이클 체결 성적과 분기 분해를 낸다.
 
-    **대상 × 중간선거해 × 손절선 격자**를 돌고, 그와 별도로 **무손절 경로에서 분기 표 둘 ·
+    **대상 × 중간선거해 × 손절선**을 돌고, 그와 별도로 **무손절 경로에서 분기 표 둘 ·
     분할매수 표 둘 · 진입 위치 표**를 낸다. 방향은 「위」 하나다 (모듈 docstring).
 
     Args:
         datasets: 대상 목록
+        stop_grid: 참이면 ETF 손절선 격자 «전부», 거짓이면 확정 규칙의 무손절 한 종.
+            지수는 어느 쪽이든 `손절불가` 한 줄이다
 
     Returns:
         체결 원자료와 성적표
@@ -921,11 +931,12 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> Tradi
     accumulator = _Accumulator()
     dataset_records: list[dict[str, Any]] = []
     target_records: list[dict[str, Any]] = []
+    etf_levels = STOP_LEVELS_ETF if stop_grid else STOP_LEVELS_ETF_CONFIRMED
 
     for dataset in datasets:
         frame = load_dataset(dataset)
         last_day = pd.Timestamp(frame[COL_DATE].iloc[-1])
-        levels = STOP_LEVELS_INDEX if dataset.is_index else STOP_LEVELS_ETF
+        levels = STOP_LEVELS_INDEX if dataset.is_index else etf_levels
 
         by_position, excluded_count = _collect_entries(dataset, frame)
 
@@ -986,9 +997,16 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS) -> Tradi
     # 돌지도 않은 손절선을 적게 된다
     stop_levels_run = list(dict.fromkeys(performance[DISPLAY_STOP_LEVEL]))
 
-    notes = [NOTE_ENTRY, NOTE_AXIS, NOTE_QUARTER, NOTE_SPLIT, NOTE_ENTRY_CONTEXT, NOTE_STOP_BASE, NOTE_SAMPLE]
+    notes = [NOTE_ENTRY, NOTE_AXIS, NOTE_QUARTER, NOTE_SPLIT, NOTE_ENTRY_CONTEXT]
+    # **손절선의 기준 설명은 가격 손절선을 돈 실행에만 싣는다** — 확정 칸만 낸 실행에는 가격 손절이
+    # 없어 「갭 청산은 손절선보다 더 잃는다」가 없는 조건을 말하게 된다
+    if stop_grid:
+        notes.append(NOTE_STOP_BASE)
+    notes.append(NOTE_SAMPLE)
     if any(not dataset.is_index for dataset in datasets):
         notes.append(NOTE_DIVIDEND)
+        if not stop_grid:
+            notes.append(NOTE_STOP_CONFIRMED)
     if any(dataset.is_index for dataset in datasets):
         notes.append(NOTE_INDEX)
 

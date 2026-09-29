@@ -14,6 +14,11 @@
 **분할매수 격자와 진입 위치**도 함께 낸다 — 분할매수는 무손절 · 배정액 기준이고, 진입 위치는
 진입일의 지표(52주 최고 대비 · 이격도 · RSI)를 그 해의 결과와 나란히 싣는다.
 
+**손절선은 기본이 확정 규칙의 무손절 한 종이다** — 규칙이 기간 손절(가격 손절 없음)이라서다.
+`--stop-grid` 는 그 규칙을 고른 근거인 손절선 격자(무손절 대조와 −5 ~ −30%)를 «전부» 켤 뿐
+값을 고르지 않는다. 켜고 돈 실행도 같은 산출물 폴더를 덮으므로, 결과 문서의 기본 산출물로
+되돌리려면 인자 없이 다시 돈다.
+
 [중요] **살 수 있는 대상의 중간선거 칸 표본이 6~8건이라 칸당 하한(10)에 못 미친다.**
 「판정가능」이 전 구간에서 「아니오」가 되고 우연확률도 붙지 않는다 — **결론의 일부이지
 버그가 아니다.** 지수 둘은 그 앞을 보여주려고 함께 재지만 살 수 없어 판정하지 않는다.
@@ -131,6 +136,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_RANDOM_SEED,
         help=f"무작위 뽑기 대조 시드 (기본값: {DEFAULT_RANDOM_SEED}). 결과 재현에 필요하다",
+    )
+    parser.add_argument(
+        "--stop-grid",
+        action="store_true",
+        help="ETF 손절선 격자(무손절 대조와 −5 ~ −30%%)를 전부 낸다 (기본값: 확정 규칙의 무손절 한 종). "
+        "같은 산출물 폴더를 덮으므로 기본 산출물로 되돌리려면 인자 없이 다시 돈다",
     )
 
     return parser.parse_args()
@@ -317,7 +328,7 @@ def main() -> int:
 
     study = run_study(datasets, repeats=args.repeats, seed=args.seed)
     tables = display_tables(study)
-    trading = run_midterm_cycle_trading(datasets)
+    trading = run_midterm_cycle_trading(datasets, stop_grid=args.stop_grid)
 
     directory = create_run_directory(TRACK_NAME)
     counts = _save(study, tables, trading, directory)
@@ -340,6 +351,7 @@ def main() -> int:
             "tickers": [dataset.ticker for dataset in datasets],
             "repeats": args.repeats,
             "seed": args.seed,
+            "stop_grid": args.stop_grid,
             KEY_ROW_COUNTS: counts,
         },
     )

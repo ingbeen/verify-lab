@@ -419,7 +419,7 @@ def reverse_outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs
 
 @pytest.fixture(scope="module")
 def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCycleOutputs:
-    """합성 시세와 합성 지수로 돈 중간선거_사이클 결과.
+    """합성 시세와 합성 지수로 **인자 없이** 돈 중간선거_사이클 결과.
 
     **매매법마다 픽스처가 하나씩 있어야 한다.** 이 파일이 매매법 전부를 검사한다고
     `src/verify_lab/CLAUDE.md` 가 적어 두었는데 새 매매법을 넣고 여기 픽스처를 안 만들면
@@ -427,13 +427,39 @@ def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCy
     `TestCoverage` 가 레지스트리의 매매법과 `METHOD_SPECS` 를 대조한다.
 
     **지수를 함께 넣는다** — 장중 손절을 못 거는 대상이 있어야 `손절불가` 표기가 검사된다.
-    **손절선 격자에 무손절과 −5% 가 함께 있어** 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의
-    두 실패 방식이 이 결과 하나로 재현된다.
 
     합성 시세가 2016-01 ~ 2025-12 라 **중간선거해 9월 마지막 거래일 진입이 2018 · 2022 두 번**
     생긴다 — 대상마다 사이클 위치 한 칸에 표본 둘이다.
     """
-    directory = tmp_path_factory.mktemp("midterm_cycle")
+    return run_midterm_cycle_trading(_midterm_cycle_datasets(tmp_path_factory.mktemp("midterm_cycle")))
+
+
+@pytest.fixture(scope="module")
+def midterm_cycle_grid_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCycleOutputs:
+    """같은 합성 입력으로 **손절선 격자를 켜고** 돈 중간선거_사이클 결과.
+
+    **무손절과 숫자 손절선을 한 성적표에 함께 내는 실행이 이것뿐이다** — 기본 실행은 확정 규칙의
+    무손절 한 종이고 역방향은 −5% 한 종이다. 그래서 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의
+    두 실패 방식이 이 결과로만 재현된다. 판정이 「후보」·「제외」로 갈리는 행도 이 실행에만 있다.
+
+    [주의] **공유 계약이 한 매매법의 실행을 빌려 쓴다** (`docs/MEMORY.md` 「공유 계층의 테스트는
+    «자기 픽스처»를 갖는다」). 중간선거의 손절선 격자를 코드에서 지우는 날에는 이 픽스처를
+    합성 성적표로 바꿔야 한다.
+    """
+    return run_midterm_cycle_trading(
+        _midterm_cycle_datasets(tmp_path_factory.mktemp("midterm_cycle_grid")), stop_grid=True
+    )
+
+
+def _midterm_cycle_datasets(directory: Path) -> tuple[MidtermCycleDataset, MidtermCycleDataset]:
+    """합성 ETF 와 합성 지수를 파일로 쓰고 중간선거_사이클 대상 둘을 만든다.
+
+    Args:
+        directory: 시세를 쓸 폴더
+
+    Returns:
+        (합성 ETF, 합성 지수)
+    """
     _write_market(directory, "SYN")
     _write_index(directory, "SYNIDX")
 
@@ -458,7 +484,7 @@ def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCy
         is_index=True,
     )
 
-    return run_midterm_cycle_trading((etf, index))
+    return (etf, index)
 
 
 def _expected_summary(axis: tuple[str, ...], tail: tuple[str, ...] = ()) -> list[str]:
@@ -626,6 +652,20 @@ class TestStopLevelFormat:
         """
         # Given / When / Then
         assert self._levels(reverse_outputs.performance) == {-5.0}
+
+    def test_중간선거_기본_실행은_무손절과_손절불가뿐이다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
+        """
+        목적: 인자 없이 돌린 산출물이 **확정 규칙의 칸만** 담는지 고정한다
+
+        확정 규칙이 기간 손절(가격 손절 없음)이라 ETF 는 `무손절` 행이 그 규칙의 1배 측정 기준이다.
+        격자 값이 섞이면 확정 칸을 고르려고 매번 필터를 걸어야 하고, 격자는 스위치로만 켠다.
+
+        Given: 합성 시세와 합성 지수로 인자 없이 돈 중간선거_사이클 결과
+        When: 성적표의 손절선 값을 봤을 때
+        Then: ETF 의 `무손절` 과 지수의 `손절불가` 둘뿐이다
+        """
+        # Given / When / Then
+        assert self._levels(midterm_cycle_outputs.performance) == {NO_STOP_LABEL, STOP_NOT_MEASURABLE_LABEL}
 
     def test_잴_수_없는_대상만_손절불가다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
@@ -900,16 +940,16 @@ class TestSingleColumnStopFilter:
     # 아무것도 고정하지 못한다 (이 모듈 머리말)
     FIXED_LEVEL = -5.0
 
-    def test_한_컬럼_필터가_모든_칸을_한_번씩_준다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
+    def test_한_컬럼_필터가_모든_칸을_한_번씩_준다(self, midterm_cycle_grid_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 지수를 잃지도, ETF 무손절을 더하지도 않는다는 것을 고정한다
 
-        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
+        Given: 합성 시세와 합성 지수로 손절선 격자를 켜고 돈 중간선거_사이클 결과
         When: `손절선(%)` 이 그 숫자이거나 `손절불가` 인 행만 걸렀을 때
         Then: (종목 × 사이클 위치 × 방향 × 구간) 칸마다 정확히 한 행이고 두 대상이 다 있다
         """
         # Given
-        table = midterm_cycle_outputs.performance
+        table = midterm_cycle_grid_outputs.performance
         # **축 컬럼을 빠짐없이 넣는다.** 하나라도 빠지면 서로 다른 칸이 같은 키로 묶여
         # 「한 칸이 두 행」으로 읽힌다 — 이 매매법의 축은 (종목 × 사이클 위치 × 방향) 이다
         cells = [DISPLAY_TICKER, *AXIS_MIDTERM_CYCLE, DISPLAY_DIRECTION, DISPLAY_PERIOD]
@@ -922,19 +962,19 @@ class TestSingleColumnStopFilter:
         assert len(picked) == len(table.drop_duplicates(subset=cells)), "칸 하나가 빠졌습니다"
         assert set(picked[DISPLAY_TICKER]) == set(table[DISPLAY_TICKER]), "대상 하나가 필터에서 사라졌습니다"
 
-    def test_무손절을_같이_걸면_ETF_행이_섞인다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
+    def test_무손절을_같이_걸면_ETF_행이_섞인다(self, midterm_cycle_grid_outputs: MidtermCycleOutputs) -> None:
         """
         목적: **왜 두 문자열을 갈랐는지**를 실패 모드로 고정한다
 
         `무손절` 은 ETF 의 대조축 행이라 그 손절선 행과 함께 걸리면 대상이 두 번 실린다.
         에러가 나지 않으므로 표를 보는 사람은 알아채지 못한다.
 
-        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
+        Given: 합성 시세와 합성 지수로 손절선 격자를 켜고 돈 중간선거_사이클 결과
         When: `무손절` 까지 포함해 걸렀을 때
         Then: 칸이 중복돼 위 필터보다 행이 많다
         """
         # Given
-        table = midterm_cycle_outputs.performance
+        table = midterm_cycle_grid_outputs.performance
         # **축 컬럼을 빠짐없이 넣는다.** 하나라도 빠지면 서로 다른 칸이 같은 키로 묶여
         # 「한 칸이 두 행」으로 읽힌다 — 이 매매법의 축은 (종목 × 사이클 위치 × 방향) 이다
         cells = [DISPLAY_TICKER, *AXIS_MIDTERM_CYCLE, DISPLAY_DIRECTION, DISPLAY_PERIOD]
@@ -946,16 +986,16 @@ class TestSingleColumnStopFilter:
         assert naive.duplicated(subset=cells).any()
         assert len(naive) > len(table.drop_duplicates(subset=cells))
 
-    def test_숫자값만_걸면_지수가_통째로_사라진다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
+    def test_숫자값만_걸면_지수가_통째로_사라진다(self, midterm_cycle_grid_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 반대쪽 실패 모드를 고정한다 — 지수를 잃으면 긴 기간 축이 없어진다
 
-        Given: 합성 시세와 합성 지수로 돈 중간선거_사이클 결과
+        Given: 합성 시세와 합성 지수로 손절선 격자를 켜고 돈 중간선거_사이클 결과
         When: 숫자 손절선 값만으로 걸렀을 때
         Then: 지수 행이 하나도 없다
         """
         # Given
-        table = midterm_cycle_outputs.performance
+        table = midterm_cycle_grid_outputs.performance
 
         # When
         numeric_only = table[table[DISPLAY_STOP_LEVEL] == self.FIXED_LEVEL]
@@ -1591,22 +1631,28 @@ class TestScreenColumn:
         assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다"
         assert (empty[self.SCREEN_COLUMN] == self.NOT_JUDGED).all()
 
-    def test_판정이_승률과_평균에서_그대로_유도된다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
+    def test_판정이_승률과_평균에서_그대로_유도된다(self, midterm_cycle_grid_outputs: MidtermCycleOutputs) -> None:
         """
         목적: **같은 행의 값으로 다시 세지 않는다** (절대 원칙 5 — 판정식 단일화).
 
         성적표가 판정을 따로 계산하면 같은 행 안에서 승률·평균과 판정이 어긋날 수 있다.
+        **격자를 켠 실행을 쓴다** — 기본 실행(무손절 한 종)은 합성 입력에서 판정이 「후보」와
+        「판정 안 함」뿐이라 「제외」 쪽 분기를 한 번도 지나지 않는다.
 
-        Given: 합성 시세로 돈 중간선거_사이클 성적표의 전체 구간 행
+        Given: 합성 시세로 손절선 격자를 켜고 돈 중간선거_사이클 성적표의 전체 구간 행
         When: 그 행의 승률·평균으로 게이트를 직접 걸었을 때
         Then: 행에 실린 판정과 같다
         """
         # Given
         from verify_lab.measure.screening import SCREEN_CANDIDATE, SCREEN_EXCLUDED
 
-        table = midterm_cycle_outputs.performance
+        table = midterm_cycle_grid_outputs.performance
         whole = table[table[DISPLAY_PERIOD] == self.PERIOD_ALL_LABEL]
         assert not whole.empty, "전체 구간 행이 없습니다"
+        assert set(whole[self.SCREEN_COLUMN]) >= {
+            SCREEN_CANDIDATE,
+            SCREEN_EXCLUDED,
+        }, "「후보」와 「제외」가 함께 있어야 두 분기를 모두 검사합니다"
 
         # When / Then — 게이트는 **회당 기대값 1.0% 이상 하나뿐**이다 (손으로 박아 둔다).
         # 여기서 상수를 가져오면 게이트가 바뀌어도 이 검사가 함께 따라와 **독립 검증이 아니게

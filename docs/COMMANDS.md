@@ -101,6 +101,7 @@ poetry run python scripts/run_reverse.py --repeats 5000 --seed 42   # 무작위 
 poetry run python scripts/run_midterm_cycle.py                              # 전 대상 (기본값)
 poetry run python scripts/run_midterm_cycle.py --ticker SPY --ticker GSPC   # 대상을 좁힌다 (여러 번 줄 수 있다)
 poetry run python scripts/run_midterm_cycle.py --repeats 5000 --seed 42     # 무작위 뽑기 대조의 반복 수·시드
+poetry run python scripts/run_midterm_cycle.py --stop-grid                  # 손절선 격자 전부 (기본은 확정 무손절 한 종)
 ```
 
 ### 원달러_ETF_등가성

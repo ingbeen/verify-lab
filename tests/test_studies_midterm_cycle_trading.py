@@ -1,4 +1,4 @@
-"""중간선거_사이클 체결 조립 — 분할매수 표와 진입 위치 표
+"""중간선거_사이클 체결 조립 — 분할매수 표와 진입 위치 표 · 손절선 격자 스위치
 
 **새 표 셋이 기존 표와 어긋나지 않는지를 본다.** 산식은 `split_entry`·`indicators` 테스트가
 고정하고, 여기서는 **조립의 계약**만 본다.
@@ -8,6 +8,7 @@
 | 표본 보존 — 칸마다 원자료 행 수 = 진입 수 | 칸이 조용히 줄면 그 칸만 좋은 해로 평균이 난다 |
 | 분할매수 집계의 **일시매수 행 = 성적표의 무손절 전체 행** | 두 표가 같은 체결을 다른 값으로 적으면 어느 쪽이 맞는지 판별할 수 없다 |
 | 진입 위치 표는 진입마다 한 행 | 사용자가 해마다 차트와 대조하는 원자료다 (측정의 원칙 8) |
+| **스위치를 켜면 손절선 격자 아홉 종이 전부 나온다** | 격자는 확정 규칙을 고른 근거이고, 시세를 다시 받으면 이 스위치로 다시 판단한다 — 값이 빠지거나 바뀌면 그 근거를 재현하지 못한다 |
 """
 
 import numpy as np
@@ -82,8 +83,8 @@ def _frame() -> pd.DataFrame:
 
 
 @pytest.fixture(scope="module")
-def outputs(tmp_path_factory: pytest.TempPathFactory) -> TradingOutputs:
-    """합성 ETF 와 합성 지수로 돈 체결 산출물.
+def datasets(tmp_path_factory: pytest.TempPathFactory) -> tuple[Dataset, Dataset]:
+    """합성 ETF 와 합성 지수.
 
     **지수를 함께 넣는다** — 종가 계열(`Value`)에서도 분할매수와 지표가 도는지 봐야 한다.
     """
@@ -115,7 +116,19 @@ def outputs(tmp_path_factory: pytest.TempPathFactory) -> TradingOutputs:
         is_index=True,
     )
 
-    return run_midterm_cycle_trading((etf, index))
+    return (etf, index)
+
+
+@pytest.fixture(scope="module")
+def outputs(datasets: tuple[Dataset, Dataset]) -> TradingOutputs:
+    """합성 대상으로 인자 없이 돈 체결 산출물."""
+    return run_midterm_cycle_trading(datasets)
+
+
+@pytest.fixture(scope="module")
+def grid_outputs(datasets: tuple[Dataset, Dataset]) -> TradingOutputs:
+    """같은 합성 대상으로 손절선 격자를 켜고 돈 체결 산출물."""
+    return run_midterm_cycle_trading(datasets, stop_grid=True)
 
 
 def _cell_count() -> int:
@@ -219,3 +232,41 @@ class TestRunSummary:
         assert counts[ENTRY_CONTEXT_FILENAME] == len(outputs.entry_context)
         assert counts[SPLIT_SUMMARY_FILENAME] == len(outputs.split_summary)
         assert counts[SPLIT_TRADES_FILENAME] == len(outputs.split_trades)
+
+
+class TestStopGridSwitch:
+    """손절선 격자는 스위치를 켰을 때만 전부 나온다"""
+
+    # 격자 아홉 종. **프로덕션 상수를 import 하지 않고 손으로 박는다** — 격자 값을 다시 고르면
+    # 여기서 걸려야 한다(`.claude/rules/trading.md` 「값을 재선정하지 않는다」)
+    GRID_LEVELS = frozenset({"무손절", -5.0, -8.0, -10.0, -12.0, -15.0, -20.0, -25.0, -30.0})
+
+    def test_stop_grid_emits_every_level_for_etf(self, grid_outputs: TradingOutputs) -> None:
+        """
+        목적: 스위치를 켜면 ETF 의 손절선이 격자 아홉 종 전부다.
+
+        Given: 합성 ETF · 지수를 손절선 격자를 켜고 돈 산출물
+        When: 성적표에서 ETF 행의 손절선 값을 모은다
+        Then: 손으로 적은 아홉 종과 같다
+        """
+        # When
+        performance = grid_outputs.performance
+        levels = set(performance.loc[performance[DISPLAY_TICKER] == "합성 ETF", DISPLAY_STOP_LEVEL])
+
+        # Then
+        assert levels == self.GRID_LEVELS
+
+    def test_stop_grid_leaves_index_single_row(self, grid_outputs: TradingOutputs) -> None:
+        """
+        목적: 스위치를 켜도 지수는 `손절불가` 한 줄이다 — 장중 고가·저가가 없어 손절을 잴 수 없다.
+
+        Given: 합성 ETF · 지수를 손절선 격자를 켜고 돈 산출물
+        When: 성적표에서 지수 행의 손절선 값을 모은다
+        Then: `손절불가` 하나뿐이다
+        """
+        # When
+        performance = grid_outputs.performance
+        levels = set(performance.loc[performance[DISPLAY_TICKER] == "합성 지수", DISPLAY_STOP_LEVEL])
+
+        # Then
+        assert levels == {"손절불가"}
