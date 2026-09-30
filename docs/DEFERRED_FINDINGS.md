@@ -23,6 +23,15 @@
 | `tests/test_studies_midterm_cycle_trading.py:285` `TestStopNotes` | `NOTE_STOP_CONFIRMED` 의 **내용**(1배 측정 기준이 대상 QQQ 의 무손절 행 · QLD 성적은 산출물에 없음)을 보는 테스트가 없다 — 테스트가 프로덕션 상수를 import 하므로 문구를 옛 것으로 되돌려도 전체가 통과하고, 재실행 뒤 `summary.json` diff 로만 드러난다 | 그 외 | PLAN_deferred_tests_midterm_notes (2026-09-29) 리뷰 1회차 |
 | `tests/test_measure_screening.py:345` `TestSingleOwner.test_게이트의_기준값과_판정_값을_소유자_밖에서_쓰지_않는다` 의 `offenders` | `used - self.GATE_OWNERS.get(path, frozenset())` 를 파일마다 두 번(거르는 조건과 값) 계산한다 — 허용 목록 조회가 두 벌이다 | 그 외 | PLAN_deferred_tests_midterm_notes (2026-09-29) 리뷰 1회차 |
 
+### 반감기_사이클 3단계 혼합 분할
+
+줄 번호 기준: PLAN_halving_cycle_split_hybrid 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `tests/test_studies_halving_cycle_split_rule.py:6` 모듈 설명 · `:102` `_buy_leg` | 「창 개월을 실제와 다르게 둔다」가 신고가 창(픽스처 `start_months=1` = 실제 `SPLIT_BUY_START_MONTHS_HIGH` 의 첫 값)과 `TestSplitGrid._sell_legs` 의 매도 창 `(0,)`(실제 첫 값)에는 틀리다. 수정분 검증의 메모리 변형 — `window_open` 이 신고가 기준에서 `leg.start_months` 대신 1 을 읽게 해도, `_fill_rows` 가 인자 `tranches` 대신 `SPLIT_TRANCHES` 를 읽게 해도 전 테스트 통과(「다른 회차 수는 … 테스트가 본다」는 `leg_fills` 경로만 맞다). 이 계획서가 다시 재지 않았다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
+| `tests/test_studies_halving_cycle_split_rule.py:557` `TestLegFills.test_신고가_창과_순위_문턱도_뒤를_잘라도_그_전에_체결한_회차가_같다` | 설명은 순위의 미래 참조도 잡는다고 하지만 신고가 창만 잡는다 — `trailing_rank` 를 전 기간 순위 · ±1년 창 · `shift(-1)` 로 바꾼 변형 셋이 모두 통과한다(`TestTrailingRank` 의 직접 테스트만 잡는다). 딥 하루가 전 기간 최저라 미래를 넣어도 순위가 바닥에 남기 때문이다. 제안: 자른 뒤의 값을 딥보다 낮게 둔다. `split_grid` 단계에서 순위 · 신고가를 잇는 부분에는 자르기 테스트가 없다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
+
 ## 코드
 
 줄 번호 기준: PLAN_deferred_tests_midterm_notes 완료 시점의 작업 트리 (2026-09-29 확인).
@@ -42,6 +51,23 @@
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
 | `src/verify_lab/data/loader.py:206` `validate_series_data` · `:278` `validate_futures_data` | `validate_market_data` 는 가격 · 거래량의 무한대를 막지만 형제 검증기 둘은 무한대를 보지 않는다 — 계열은 결측만 보고(값의 타당 범위는 수집기에 맡기는 설계인데 유한성을 검사하는 수집기는 `coinmetrics_collector` 하나다), 선물은 체결가 · 미결제약정의 무한대와 계약 첫 행 정산가의 무한대가 통과한다. 재현: `validate_series_data(pd.DataFrame({"Date": ["2020-01-01"], "Value": [np.inf]}))` 가 통과. 실제 저장 파일은 계열 17개 149,398행 · 선물 2개 56,946행에서 무한대 0 | 가벼운 버그 | PLAN_deferred_halving_fixes (2026-09-30) 리뷰 1회차 |
+
+### 반감기_사이클 3단계 혼합 분할 (split_rule · runner)
+
+줄 번호 기준: PLAN_halving_cycle_split_hybrid 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:744` `split_grid` · `docs/검증/반감기_사이클/설계.md` 결정 ㊼ ④ | 포지션 수익률에 하드포크 몫이 없다. 리뷰가 잰 값(이 계획서가 다시 재지 않았다): 2012 사이클 포지션이 최대 +1,167%p · 중앙값 +72%p 과소평가되고, 매도 시점에 따라 고르지 않다 — 4년 순위 매도는 전부 2017-08-01 전이라 배수 1.000, 달력 기한 21 매도는 ×1.145. 그래서 `결과.md` §20 의 2012 사이클 비교에서 포크 뒤에 판 쪽이 덜 잡힌다(온체인 매도가 이미 낮아 방향은 같다). 결정 ㊼ ④ 의 근거(`trading` → `runner` 순환 import)는 순수 함수 `trading.hard_fork_share` 를 잎 모듈로 옮기면 사라진다. **계획서가 비목표로 받아들인 것 — 넣을지 사용자 결정** | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:811` `split_grid` · `:466` `position_result` | 호출자 입력(반감기 목록 · 격자 값 · 손으로 만든 회차)으로 닿는 조건에 `RuntimeError`(「내부 불변조건 위반」)를 낸다 — 전역 `~/.claude/rules/python.md` 는 입력 검증을 `ValueError` 로 둔다. 재현: 간격 5개월짜리 반감기 둘로 `split_grid` → `RuntimeError`. 실제 산출물에서는 발동하지 않는다(매수 기한 최대 36개월 < 가장 짧은 간격 43.37개월) | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:183` `_require_increasing` | `measure.calendar_entry.validate_trading_days`(이 패키지에서 7곳이 부른다)를 다시 구현했고, `split_grid` · `position_result` 가 입력 시세를 `validate_market_frame` 으로 검사하지 않는다 — 저가 없는 시세는 맨 `KeyError`, 빈 시세는 `leg_fills` 의 `trading_days[-1]` 에서 `IndexError` 로 멈춘다(패키지의 분명한 `ValueError` 대신). 실제 경로는 로더를 지나 발동하지 않는다 | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:633` `_fill_rows` | 온체인 체결은 판정일의 «다음 거래일»인데 「체결 전날 MVRV · 4년 순위」는 «달력 전날»(체결일 − 1일)을 읽는다. 시세에 빠진 날이 있으면 d 판정 → d+2 체결 → d+1 의 값이 실리고 예외가 없다. 지금 시세는 수집기가 빠진 날 0 을 보장한다(`설계.md` 결정 ⑪) | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:489` · `:856` | `COL_HOLD_DAYS`(표시 「보유 거래일」)에 달력 날 수 차이를 싣는다 — 비트코인은 매일 거래라 값이 같다. 휴장이 있는 계열에 쓰면 달력 날 수가 「거래일」 머리로 나간다 | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:436` `position_result` · `:396` `leg_fills` | 성능 — `position_result` 가 3,060번 불리며 매번 시세 전체를 `DatetimeIndex` · 배열로 다시 만들고, 매수 쪽 조화평균 · 누적 역수를 매도 조합마다 다시 계산한다. `leg_fills` 는 값 계열을 조합 × 사이클마다 다시 `reindex` 한다. 축이 늘면 선형으로 는다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:646` `_leg_identity` · `_fill_rows` | 조합의 식별 칸에 문턱 «값»(`levels`)이 없고 조합이 겹치는지 검사하지 않는다 — 같은 방식에 두 번째 문턱 범위를 더하면 표에서 구별되지 않는 행이 예외 없이 생긴다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:96` `_DATE_COLUMNS` 주석 | 「전부 비어도 날짜 열로 남긴다」가 회차 표의 체결일에는 틀리다 — 체결한 회차가 하나도 없으면 그 키가 행에 없어 `_frame_of` 에 열이 없고, `reindex` 가 float64 열로 만든다(CSV 는 같은 빈칸) | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
+| `src/verify_lab/studies/halving_cycle/runner.py:262` `NOTE_SPLIT_FORK` · `scripts/run_halving_cycle.py:15` 모듈 설명 | 바로 위 주석 「격자 값을 글자로 박지 않는다」와 달리 「(2012 사이클)」(격자 · 포크 · 반감기에서 따라 나오는 사실)과 「세 번」(`SPLIT_TRANCHES`)을 문장에 박았다 — 지금은 맞지만 매수 창 · 매도 기한 · 회차 수가 바뀌면 조용히 낡는다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
+| `src/verify_lab/studies/halving_cycle/constants.py:399` · `:400` `Dataset.mvrv_path` · `market_cap_path` 설명 | 「2단계 측정만 읽는다」인데 3단계 혼합 분할도 MVRV 를 쓰고, 시가총액도 `runner.load_onchain` 의 공통 날짜 자르기로 분할이 쓰는 MVRV 날짜 범위에 영향을 준다. `docs/검증/반감기_사이클/설계.md` §3 데이터 소스 표의 역할 칸도 「2단계 온체인」이다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
 
 
 ## 문서

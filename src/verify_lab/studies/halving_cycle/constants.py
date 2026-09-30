@@ -14,6 +14,9 @@
 
 **2단계(보조지표 · 온체인)의 창 · 문턱 · 신호 목록도 결과를 보기 전에 정한 값이다** — 책이 적은 값 그대로이고
 지표마다 정의가 하나다(결정 ㉒ · ㉓ · ㉕ · ㉖).
+
+**3단계 혼합 분할(달력 + MVRV)은 측정 표로만 낸다** — 격자 전부를 내고 고르지 않는다(결정 ㊹ ~ ㊼). 달력 쪽 값에는
+결과를 본 뒤 정한 것이 섞여 있다 — 그 절의 주석이 어느 값인지 말한다.
 """
 
 from dataclasses import dataclass
@@ -27,7 +30,13 @@ from verify_lab.common_constants import COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLA
 from verify_lab.data.bitstamp_collector import BITSTAMP_TICKER
 from verify_lab.data.coinmetrics_collector import BTC_PRICE_SERIES, MARKET_CAP_SERIES, MVRV_SERIES
 from verify_lab.data.crosscheck import COL_DIFF_RATE, COL_PRIMARY, COL_SECONDARY
-from verify_lab.execution.constants import DISPLAY_ENTRY_DATE, DISPLAY_EXIT_DATE, DISPLAY_RETURN, DISPLAY_TICKER
+from verify_lab.execution.constants import (
+    DISPLAY_ENTRY_DATE,
+    DISPLAY_EXIT_DATE,
+    DISPLAY_RETURN,
+    DISPLAY_TICKER,
+    DISPLAY_TOTAL,
+)
 from verify_lab.measure.constants import (
     COL_ENTRY_CLOSE,
     COL_EXCLUDED_COUNT,
@@ -311,6 +320,41 @@ MVRV_Z_MIN_DAYS: Final = 365
 
 
 # ============================================================
+# 3단계 — 달력 + MVRV 혼합 분할매수 · 매도 (결정 ㊹ ~ ㊼)
+# ============================================================
+
+# **측정 표로만 낸다** — 성적표 · 1차 판정 · 손절이 없다(결정 ㊼). 포지션 하나는 반감기 뒤에 사서 다음 반감기 뒤에 판다.
+#
+# [중요] **결과를 본 뒤 정한 값이 섞여 있다** — 매수 창(반감기 기준) · 매수 기한 · 매도 기한은 과거 고점(반감기 뒤
+# 12.2 ~ 17.9개월) · 바닥(25.5 ~ 30.4개월)을 본 뒤 정했다. 온체인 문턱(책 범위 · 4년 순위)은 결과를 보기 전의 값이다(결정 ㊺)
+
+# 회차 수 — 매수는 같은 금액, 매도는 보유량을 같은 몫으로 나눈다
+SPLIT_TRANCHES: Final = 3
+# 회차 기한의 간격(개월). 마지막 기한이 D 면 회차 기한은 D − 6 · D − 3 · D 다
+SPLIT_DEADLINE_STEP_MONTHS: Final = 3
+
+# 매수 창 — 반감기 기준은 「반감기 뒤 N개월부터」, 신고가 기준은 「반감기 뒤 신고가가 났고 가장 최근 신고가 뒤 N개월부터」다
+SPLIT_BUY_START_MONTHS_HALVING: Final = (12, 15, 18, 21, 24)
+SPLIT_BUY_START_MONTHS_HIGH: Final = (1, 3, 6)
+SPLIT_BUY_LAST_DEADLINES: Final = (30, 33, 36)
+# 매도 창 — 다음 반감기 뒤 N개월부터
+SPLIT_SELL_START_MONTHS: Final = (0, 6)
+SPLIT_SELL_LAST_DEADLINES: Final = (15, 18, 21)
+
+# 문턱 — 회차 순서대로다. 매수는 그 값 이하, 매도는 그 값 이상에 닿으면 그 회차다.
+# 책 고정은 책 B 의 구간 양끝(적극 매수 1.7 ~ 바닥 1 · 매도 준비 3 ~ 매도 3.7)과 그 중간이다
+SPLIT_BUY_BOOK_LEVELS: Final = (1.7, 1.35, 1.0)
+SPLIT_SELL_BOOK_LEVELS: Final = (3.0, 3.35, 3.7)
+# 4년 순위는 비율(0.20 = 하위 20%)이다 — MVRV 의 수준이 사이클마다 옮겨 가도 따라간다
+SPLIT_BUY_RANK_LEVELS: Final = (0.20, 0.10, 0.05)
+SPLIT_SELL_RANK_LEVELS: Final = (0.80, 0.90, 0.95)
+
+# 4년 순위의 창(년) — 사이클 한 번이다. 창의 관측이 최소 일수보다 적으면 순위를 비운다(MVRV-Z 와 같은 최소 기간)
+SPLIT_RANK_YEARS: Final = 4
+SPLIT_RANK_MIN_DAYS: Final = MVRV_Z_MIN_DAYS
+
+
+# ============================================================
 # 2단계 — 책 신호 (결정 ㉖ 첫 표)
 # ============================================================
 
@@ -459,6 +503,49 @@ COL_INDICATOR_MONTH: Final = "indicator_month"
 # 진입지표 표의 보유별 수익률 — 진입내역의 같은 값을 한 행에 펼친다
 COL_HOLD_RETURNS: Final = {months: f"return_{months}m" for months in HOLD_MONTHS}
 
+# 3단계 혼합 분할 — 회차 표. 한쪽(매수 또는 매도)의 조합을 네 칸으로 식별한다
+COL_SPLIT_SIDE: Final = "split_side"
+COL_SPLIT_THRESHOLD: Final = "split_threshold"
+COL_SPLIT_START_ANCHOR: Final = "split_start_anchor"
+COL_SPLIT_START_MONTHS: Final = "split_start_months"
+COL_SPLIT_LAST_DEADLINE: Final = "split_last_deadline"
+COL_SPLIT_TRANCHE: Final = "split_tranche"
+# 그 쪽의 기준 반감기 — 매수는 포지션의 반감기, 매도는 그다음 반감기다
+COL_SPLIT_ANCHOR_HALVING: Final = "split_anchor_halving"
+COL_SPLIT_DEADLINE: Final = "split_deadline"
+COL_SPLIT_FILL_DATE: Final = "split_fill_date"
+COL_SPLIT_FILL_CLOSE: Final = "split_fill_close"
+COL_SPLIT_TRIGGER: Final = "split_trigger"
+# 체결 전날의 값 — 온체인 회차는 그날이 판정일이고, 달력 회차도 체결 시점에 완성된 값이 전날 것이다 (결정 ㉗)
+COL_SPLIT_PRIOR_MVRV: Final = "split_prior_mvrv"
+COL_SPLIT_PRIOR_RANK: Final = "split_prior_rank"
+
+# 3단계 혼합 분할 — 포지션 표 · 조합 표. 매수 쪽 네 칸과 매도 쪽 세 칸이 조합을 식별한다 —
+# 매도 창은 다음 반감기 기준 하나라 기준 칸이 없다
+COL_BUY_THRESHOLD: Final = "buy_threshold"
+COL_BUY_START_ANCHOR: Final = "buy_start_anchor"
+COL_BUY_START_MONTHS: Final = "buy_start_months"
+COL_BUY_LAST_DEADLINE: Final = "buy_last_deadline"
+COL_SELL_THRESHOLD: Final = "sell_threshold"
+COL_SELL_START_MONTHS: Final = "sell_start_months"
+COL_SELL_LAST_DEADLINE: Final = "sell_last_deadline"
+COL_AVG_BUY_PRICE: Final = "avg_buy_price"
+COL_AVG_SELL_PRICE: Final = "avg_sell_price"
+COL_POSITION_RETURN: Final = "position_return"
+# 체결의 「보유 중 최악」과 다른 값이다 — 회차가 늘며 바뀌는 평균 단가에 대한 장중 저가의 최저라 이름을 가른다
+COL_WORST_VS_COST: Final = "worst_vs_cost"
+COL_FIRST_BUY_DATE: Final = "first_buy_date"
+COL_LAST_SELL_DATE: Final = "last_sell_date"
+COL_BUY_ONCHAIN_COUNT: Final = "buy_onchain_count"
+COL_BUY_CALENDAR_COUNT: Final = "buy_calendar_count"
+COL_SELL_ONCHAIN_COUNT: Final = "sell_onchain_count"
+COL_SELL_CALENDAR_COUNT: Final = "sell_calendar_count"
+COL_FINISHED_COUNT: Final = "finished_count"
+COL_SPLIT_TOTAL: Final = "split_total"
+# 조합 표의 사이클별 가로 칸 — 반감기 표지로 이름을 만든다. 반감기 목록이 인자라 이름도 틀로 둔다
+COL_CYCLE_RETURN_TEMPLATE: Final = "return_{halving}"
+COL_CYCLE_WORST_TEMPLATE: Final = "worst_vs_cost_{halving}"
+
 
 # 책이 문턱을 적은 신호 전부 — **결정 ㉖ 첫 표의 순서 그대로다.** 책의 「마지막」 · 「바닥 뒤」 처럼 지나고 나서야
 # 정해지는 조건은 빼고 돌파를 전부 잰다. 변형(다른 문턱 · 다른 창)을 더하지 않는다 — 고를 여지가 생긴다
@@ -504,6 +591,23 @@ REASON_ENTRY_AFTER_DATA: Final = "진입일이 데이터 뒤"
 # 3단계 체결 격자의 제외 사유 — 진입은 했는데 **청산 시점이 오기 전에 반감기가 한 번 더 왔다**(결정 ㊴).
 # 사이클이 격자보다 짧아 그 시점이 그 사이클에 없는 것이라 청산일을 정할 수 없다
 REASON_EXIT_AFTER_NEXT_HALVING: Final = "청산 시점 전에 다음 반감기"
+
+# 3단계 혼합 분할 — 조합을 식별하는 값과 회차의 계기
+SPLIT_SIDE_BUY: Final = "매수"
+SPLIT_SIDE_SELL: Final = "매도"
+SPLIT_THRESHOLD_NONE: Final = "달력만"
+SPLIT_THRESHOLD_BOOK: Final = "책 고정"
+SPLIT_THRESHOLD_RANK: Final = f"{SPLIT_RANK_YEARS}년 순위"
+SPLIT_ANCHOR_HALVING: Final = "반감기"
+SPLIT_ANCHOR_HIGH: Final = "신고가"
+SPLIT_TRIGGER_ONCHAIN: Final = "온체인"
+SPLIT_TRIGGER_CALENDAR: Final = "달력"
+
+# 3단계 혼합 분할의 제외 사유. **회차도 포지션도 행을 남긴다** (표본 보존)
+REASON_SPLIT_PENDING: Final = "기한이 데이터 뒤라 아직 체결 전"
+REASON_NO_NEXT_HALVING: Final = "다음 반감기가 반감기 목록에 없음"
+REASON_POSITION_BUYING: Final = "매수 회차가 남음"
+REASON_POSITION_SELLING: Final = "매도 회차가 남음"
 
 
 # ============================================================
@@ -551,6 +655,42 @@ DISPLAY_PI_CYCLE: Final = "Pi Cycle 비율"
 DISPLAY_DISPARITY: Final = f"{DISPARITY_WINDOW}일 이격도(%)"
 DISPLAY_MONTHLY_RSI: Final = f"월간 RSI({RSI_WINDOW})"
 DISPLAY_MACD_HISTOGRAM: Final = "월간 MACD − 시그널"
+
+# 3단계 혼합 분할. **「구분」 · 「체결일」 · 「체결가」를 쓰지 않는다** — 다른 매매법이 다른 뜻으로 이미 쓴다
+# (`tests/test_layer_contracts.py` 레이블 겹침 검사)
+DISPLAY_SPLIT_SIDE: Final = "매수 · 매도"
+DISPLAY_SPLIT_THRESHOLD: Final = "문턱"
+DISPLAY_SPLIT_START_ANCHOR: Final = "시작 기준"
+DISPLAY_SPLIT_START_MONTHS: Final = "시작(개월)"
+DISPLAY_SPLIT_LAST_DEADLINE: Final = "마지막 기한(개월)"
+DISPLAY_SPLIT_TRANCHE: Final = "회차"
+DISPLAY_SPLIT_ANCHOR_HALVING: Final = "기준 반감기"
+DISPLAY_SPLIT_DEADLINE: Final = "회차 기한"
+DISPLAY_SPLIT_FILL_DATE: Final = "회차 체결일"
+DISPLAY_SPLIT_FILL_CLOSE: Final = "회차 종가"
+DISPLAY_SPLIT_TRIGGER: Final = "계기"
+DISPLAY_SPLIT_PRIOR_MVRV: Final = "체결 전날 MVRV"
+DISPLAY_SPLIT_PRIOR_RANK: Final = f"체결 전날 {SPLIT_RANK_YEARS}년 순위(%)"
+DISPLAY_BUY_THRESHOLD: Final = "매수 문턱"
+DISPLAY_BUY_START_ANCHOR: Final = "매수 시작 기준"
+DISPLAY_BUY_START_MONTHS: Final = "매수 시작(개월)"
+DISPLAY_BUY_LAST_DEADLINE: Final = "매수 마지막 기한(개월)"
+DISPLAY_SELL_THRESHOLD: Final = "매도 문턱"
+DISPLAY_SELL_START_MONTHS: Final = "매도 시작(개월)"
+DISPLAY_SELL_LAST_DEADLINE: Final = "매도 마지막 기한(개월)"
+DISPLAY_AVG_BUY_PRICE: Final = "평균 매수가"
+DISPLAY_AVG_SELL_PRICE: Final = "평균 매도가"
+DISPLAY_WORST_VS_COST: Final = "평균 단가 대비 최악(%)"
+DISPLAY_FIRST_BUY_DATE: Final = "첫 매수일"
+DISPLAY_LAST_SELL_DATE: Final = "마지막 매도일"
+DISPLAY_BUY_ONCHAIN_COUNT: Final = "매수 온체인 회차"
+DISPLAY_BUY_CALENDAR_COUNT: Final = "매수 달력 회차"
+DISPLAY_SELL_ONCHAIN_COUNT: Final = "매도 온체인 회차"
+DISPLAY_SELL_CALENDAR_COUNT: Final = "매도 달력 회차"
+DISPLAY_FINISHED_COUNT: Final = "끝난 포지션"
+# 조합 표의 사이클별 가로 칸 이름의 틀
+CYCLE_RETURN_LABEL_TEMPLATE: Final = "{halving} " + DISPLAY_RETURN
+CYCLE_WORST_LABEL_TEMPLATE: Final = "{halving} " + DISPLAY_WORST_VS_COST
 
 
 # ============================================================
@@ -640,6 +780,40 @@ COLUMN_LABELS: Final = {
     COL_MONTHLY_RSI: DISPLAY_MONTHLY_RSI,
     COL_MACD_HISTOGRAM: DISPLAY_MACD_HISTOGRAM,
     **{column: f"{months}개월 {DISPLAY_RETURN}" for months, column in COL_HOLD_RETURNS.items()},
+    # 3단계 혼합 분할 — 회차 표
+    COL_SPLIT_SIDE: DISPLAY_SPLIT_SIDE,
+    COL_SPLIT_THRESHOLD: DISPLAY_SPLIT_THRESHOLD,
+    COL_SPLIT_START_ANCHOR: DISPLAY_SPLIT_START_ANCHOR,
+    COL_SPLIT_START_MONTHS: DISPLAY_SPLIT_START_MONTHS,
+    COL_SPLIT_LAST_DEADLINE: DISPLAY_SPLIT_LAST_DEADLINE,
+    COL_SPLIT_TRANCHE: DISPLAY_SPLIT_TRANCHE,
+    COL_SPLIT_ANCHOR_HALVING: DISPLAY_SPLIT_ANCHOR_HALVING,
+    COL_SPLIT_DEADLINE: DISPLAY_SPLIT_DEADLINE,
+    COL_SPLIT_FILL_DATE: DISPLAY_SPLIT_FILL_DATE,
+    COL_SPLIT_FILL_CLOSE: DISPLAY_SPLIT_FILL_CLOSE,
+    COL_SPLIT_TRIGGER: DISPLAY_SPLIT_TRIGGER,
+    COL_SPLIT_PRIOR_MVRV: DISPLAY_SPLIT_PRIOR_MVRV,
+    COL_SPLIT_PRIOR_RANK: DISPLAY_SPLIT_PRIOR_RANK,
+    # 3단계 혼합 분할 — 포지션 표 · 조합 표 (사이클별 가로 칸은 반감기 목록에서 만든다 — `runner.display_tables`)
+    COL_BUY_THRESHOLD: DISPLAY_BUY_THRESHOLD,
+    COL_BUY_START_ANCHOR: DISPLAY_BUY_START_ANCHOR,
+    COL_BUY_START_MONTHS: DISPLAY_BUY_START_MONTHS,
+    COL_BUY_LAST_DEADLINE: DISPLAY_BUY_LAST_DEADLINE,
+    COL_SELL_THRESHOLD: DISPLAY_SELL_THRESHOLD,
+    COL_SELL_START_MONTHS: DISPLAY_SELL_START_MONTHS,
+    COL_SELL_LAST_DEADLINE: DISPLAY_SELL_LAST_DEADLINE,
+    COL_AVG_BUY_PRICE: DISPLAY_AVG_BUY_PRICE,
+    COL_AVG_SELL_PRICE: DISPLAY_AVG_SELL_PRICE,
+    COL_POSITION_RETURN: DISPLAY_RETURN,
+    COL_WORST_VS_COST: DISPLAY_WORST_VS_COST,
+    COL_FIRST_BUY_DATE: DISPLAY_FIRST_BUY_DATE,
+    COL_LAST_SELL_DATE: DISPLAY_LAST_SELL_DATE,
+    COL_BUY_ONCHAIN_COUNT: DISPLAY_BUY_ONCHAIN_COUNT,
+    COL_BUY_CALENDAR_COUNT: DISPLAY_BUY_CALENDAR_COUNT,
+    COL_SELL_ONCHAIN_COUNT: DISPLAY_SELL_ONCHAIN_COUNT,
+    COL_SELL_CALENDAR_COUNT: DISPLAY_SELL_CALENDAR_COUNT,
+    COL_FINISHED_COUNT: DISPLAY_FINISHED_COUNT,
+    COL_SPLIT_TOTAL: DISPLAY_TOTAL,
 }
 
 # 비율(0~1)로 들어와 백분율로 내보낼 컬럼. **기준선과 차이 컬럼도 빠짐없이 넣는다** —
@@ -667,6 +841,10 @@ PERCENT_COLUMNS: Final = (
     COL_DIFF_RATE,
     COL_DISPARITY,
     *COL_HOLD_RETURNS.values(),
+    COL_SPLIT_PRIOR_RANK,
+    COL_POSITION_RETURN,
+    COL_WORST_VS_COST,
+    COL_SPLIT_TOTAL,
 )
 
 # 저장 직전에 자릿수만 맞출 지표 값. **돌파 판정은 반올림 «전» 값으로 이미 끝났다** — 여기서 자르는 것은
@@ -680,6 +858,7 @@ INDICATOR_VALUE_COLUMNS: Final = (
     COL_MVRV_Z,
     COL_PI_CYCLE,
     COL_MACD_HISTOGRAM,
+    COL_SPLIT_PRIOR_MVRV,
 )
 
 # 확률로 들어와 자릿수만 맞출 컬럼. **100 을 곱하지 않는다** — 우연확률은 비율이 아니다
@@ -711,6 +890,11 @@ INDICATOR_STATISTICS_FILENAME: Final = "지표통계.csv"
 INDICATOR_CYCLES_FILENAME: Final = "지표사이클.csv"
 ENTRY_INDICATORS_FILENAME: Final = "진입지표.csv"
 
+# 3단계 혼합 분할 셋. **측정 표다** — 1차 판정이 없고 성적표 · 거래내역과 다른 파일이다(결정 ㊼)
+SPLIT_FILLS_FILENAME: Final = "분할회차.csv"
+SPLIT_POSITIONS_FILENAME: Final = "분할포지션.csv"
+SPLIT_COMBINATIONS_FILENAME: Final = "분할조합.csv"
+
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 # **키는 문자열 리터럴이다** — 계약 검사가 이 사전을 AST 로 읽으므로 상수를 키에 쓰면 선언이 없는 것으로 보인다
 OUTPUT_FILES: Final[dict[str, str]] = {
@@ -725,6 +909,9 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     "indicator_statistics": INDICATOR_STATISTICS_FILENAME,
     "indicator_cycles": INDICATOR_CYCLES_FILENAME,
     "entry_indicators": ENTRY_INDICATORS_FILENAME,
+    "split_fills": SPLIT_FILLS_FILENAME,
+    "split_positions": SPLIT_POSITIONS_FILENAME,
+    "split_combinations": SPLIT_COMBINATIONS_FILENAME,
 }
 
 # 산출물 필드 이름. **사전에서 꺼낸다** — 같은 리터럴을 두 번 적으면 한쪽만 바뀌었을 때
@@ -741,6 +928,9 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     FIELD_INDICATOR_STATISTICS,
     FIELD_INDICATOR_CYCLES,
     FIELD_ENTRY_INDICATORS,
+    FIELD_SPLIT_FILLS,
+    FIELD_SPLIT_POSITIONS,
+    FIELD_SPLIT_COMBINATIONS,
 ) = OUTPUT_FILES
 
 

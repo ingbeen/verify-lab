@@ -16,6 +16,9 @@
 
 **값은 1배 롱 기준 그대로다.** `방향` 은 식별 라벨이고 부호를 뒤집지 않는다 — 뒤집으면 `기준선 오른 비율` 이
 실제로는 내린 비율을 가리켜 이름이 거짓이 된다.
+
+**3단계 혼합 분할(달력 + MVRV)도 측정 표로만 낸다** (결정 ㊼) — 회차 체결과 포지션 성적은 `split_rule` 이 소유하고,
+1차 판정 · 손절 · 기준선이 없다. 체결 성적표(`trading.py`)와 다른 파일이다.
 """
 
 from dataclasses import dataclass
@@ -24,7 +27,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from verify_lab.common_constants import COL_DATE, COL_VALUE
+from verify_lab.common_constants import COL_DATE, COL_VALUE, PRICE_DECIMALS
 from verify_lab.data.coinmetrics_collector import PUBLICATION_LAG_DAYS
 from verify_lab.data.crosscheck import (
     COL_DIFF_RATE,
@@ -89,8 +92,12 @@ from verify_lab.report.tables import to_display_columns
 from verify_lab.studies.halving_cycle.constants import (
     BASELINE_SUFFIX,
     BET_DOWN,
+    COL_AVG_BUY_PRICE,
+    COL_AVG_SELL_PRICE,
     COL_BASELINE_NON_OVERLAPPING,
     COL_CYCLE_COUNT,
+    COL_CYCLE_RETURN_TEMPLATE,
+    COL_CYCLE_WORST_TEMPLATE,
     COL_DISPARITY,
     COL_ENTRY_DATE,
     COL_ENTRY_MONTHS,
@@ -110,9 +117,12 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_PI_CYCLE,
     COL_PREVIOUS_VALUE,
     COL_SIGNAL_MEANING,
+    COL_SPLIT_FILL_CLOSE,
     COL_TICKER,
     COL_ZERO_VOLUME,
     COLUMN_LABELS,
+    CYCLE_RETURN_LABEL_TEMPLATE,
+    CYCLE_WORST_LABEL_TEMPLATE,
     DATASETS,
     DISPARITY_WINDOW,
     ENTRY_MONTHS,
@@ -125,6 +135,9 @@ from verify_lab.studies.halving_cycle.constants import (
     FIELD_INDICATOR_SIGNALS,
     FIELD_INDICATOR_STATISTICS,
     FIELD_REPLACED,
+    FIELD_SPLIT_COMBINATIONS,
+    FIELD_SPLIT_FILLS,
+    FIELD_SPLIT_POSITIONS,
     FIELD_STATISTICS,
     FIELD_TEST,
     HALVINGS,
@@ -153,6 +166,21 @@ from verify_lab.studies.halving_cycle.constants import (
     PROBABILITY_COLUMNS,
     RSI_DECIMALS,
     RSI_WINDOW,
+    SPLIT_BUY_BOOK_LEVELS,
+    SPLIT_BUY_LAST_DEADLINES,
+    SPLIT_BUY_RANK_LEVELS,
+    SPLIT_BUY_START_MONTHS_HALVING,
+    SPLIT_BUY_START_MONTHS_HIGH,
+    SPLIT_DEADLINE_STEP_MONTHS,
+    SPLIT_RANK_MIN_DAYS,
+    SPLIT_RANK_YEARS,
+    SPLIT_SELL_BOOK_LEVELS,
+    SPLIT_SELL_LAST_DEADLINES,
+    SPLIT_SELL_RANK_LEVELS,
+    SPLIT_SELL_START_MONTHS,
+    SPLIT_SIDE_BUY,
+    SPLIT_SIDE_SELL,
+    SPLIT_TRANCHES,
     TRACK_NAME,
     Dataset,
     IndicatorSignal,
@@ -167,6 +195,7 @@ from verify_lab.studies.halving_cycle.halving_calendar import (
 from verify_lab.studies.halving_cycle.indicator_signals import entry_indicator_values, indicator_signal_returns
 from verify_lab.studies.halving_cycle.indicators import daily_indicator_frame, monthly_indicator_frame
 from verify_lab.studies.halving_cycle.price_series import replace_zero_volume_closes
+from verify_lab.studies.halving_cycle.split_rule import SplitGrid, split_grid, split_legs
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -206,6 +235,72 @@ KEY_MARKET_CAP = "market_cap"
 KEY_DROPPED_TAIL_DAYS = "dropped_tail_days"
 KEY_MISSING_PRICE_DAYS = "missing_price_days"
 KEY_INDICATOR_SIGNALS = "indicator_signals"
+
+# `summary.json` 의 측정 칸 — 3단계 혼합 분할의 규칙과 대상별 건수 (결정 ㊺ ~ ㊼)
+KEY_SPLIT_RULE = "split_rule"
+KEY_SPLIT_TRANCHES = "tranches"
+KEY_SPLIT_DEADLINE_STEP = "deadline_step_months"
+KEY_SPLIT_BUY = "buy"
+KEY_SPLIT_SELL = "sell"
+KEY_SPLIT_START_HALVING = "start_months_after_halving"
+KEY_SPLIT_START_HIGH = "start_months_after_new_high"
+KEY_SPLIT_LAST_DEADLINES = "last_deadlines"
+KEY_SPLIT_BOOK_LEVELS = "book_mvrv_levels"
+KEY_SPLIT_RANK_LEVELS = "rank_levels"
+KEY_SPLIT_COMBINATIONS = "combinations"
+KEY_SPLIT_RANK_YEARS = "rank_years"
+KEY_SPLIT_RANK_MIN_DAYS = "rank_min_days"
+KEY_SPLIT_NOTES = "notes"
+KEY_SPLIT = "split"
+KEY_SPLIT_FILL_COUNT = "fill_rows"
+KEY_SPLIT_UNFILLED = "unfilled_by_reason"
+KEY_SPLIT_POSITION_COUNT = "position_rows"
+KEY_SPLIT_UNFINISHED = "unfinished_by_reason"
+
+# 3단계 혼합 분할 표만 보고는 알 수 없는 조건 (결정 ㊺ · ㊼). **격자 값을 글자로 박지 않는다** — 값은 같은 칸의 목록이 말한다
+NOTE_SPLIT_MEASURE_ONLY = "혼합 분할 표 셋은 측정 표다 — 1차 판정 · 손절 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다. 조합을 고르지 않는다"
+NOTE_SPLIT_FORK = "혼합 분할 포지션에는 하드포크 몫이 없다 — 포크일에 코인을 들고 있던 포지션(2012 사이클)은 그만큼 과소평가된다. " "거래내역 끝 칸의 하드포크 몫은 체결 격자에만 있다"
+NOTE_SPLIT_HINDSIGHT = (
+    "혼합 분할의 달력 쪽 값(반감기 기준 매수 창 · 매수 기한 · 매도 기한)은 과거 고점 · 바닥 시점을 본 뒤 정했다 — "
+    "달력만 조합이 유리하게 짜여 있다. 온체인 문턱(책 범위 · 4년 순위)은 결과를 보기 전의 값이다"
+)
+SPLIT_NOTES = (NOTE_SPLIT_MEASURE_ONLY, NOTE_SPLIT_FORK, NOTE_SPLIT_HINDSIGHT)
+
+# 3단계 혼합 분할의 조합 — **격자 전부**다. 값의 출처와 「결과를 본 뒤 정한 값」 표시는 `constants.py` 의 그 절이 갖는다
+_SPLIT_BUY_LEGS = split_legs(
+    SPLIT_SIDE_BUY,
+    halving_starts=SPLIT_BUY_START_MONTHS_HALVING,
+    high_starts=SPLIT_BUY_START_MONTHS_HIGH,
+    last_deadlines=SPLIT_BUY_LAST_DEADLINES,
+    book_levels=SPLIT_BUY_BOOK_LEVELS,
+    rank_levels=SPLIT_BUY_RANK_LEVELS,
+)
+# 매도 창은 다음 반감기 기준 하나다 — 신고가 기준을 두지 않는다
+_SPLIT_SELL_LEGS = split_legs(
+    SPLIT_SIDE_SELL,
+    halving_starts=SPLIT_SELL_START_MONTHS,
+    high_starts=(),
+    last_deadlines=SPLIT_SELL_LAST_DEADLINES,
+    book_levels=SPLIT_SELL_BOOK_LEVELS,
+    rank_levels=SPLIT_SELL_RANK_LEVELS,
+)
+
+# 3단계 혼합 분할 표에서 가격으로 내는 컬럼 — 평균 단가는 계산값이라 저장 직전에 가격 자릿수로 자른다
+_SPLIT_PRICE_COLUMNS = (COL_SPLIT_FILL_CLOSE, COL_AVG_BUY_PRICE, COL_AVG_SELL_PRICE)
+
+# 조합 표의 사이클별 가로 칸 — 반감기 목록에서 이름을 만든다
+_CYCLE_LABELS = {
+    **{
+        COL_CYCLE_RETURN_TEMPLATE.format(halving=halving.label): CYCLE_RETURN_LABEL_TEMPLATE.format(
+            halving=halving.label
+        )
+        for halving in HALVINGS
+    },
+    **{
+        COL_CYCLE_WORST_TEMPLATE.format(halving=halving.label): CYCLE_WORST_LABEL_TEMPLATE.format(halving=halving.label)
+        for halving in HALVINGS
+    },
+}
 
 # 진입내역의 컬럼 — 측정 long-form 에서 사용자가 대조할 값만 남긴다 (측정의 원칙 8). 종목은 조립 때 앞에 붙는다
 _ENTRY_COLUMNS = [
@@ -341,6 +436,9 @@ class StudyOutputs:
             **0건인 신호도 행이 있다**
         indicator_cycles: 2단계 (신호 × 보유 × 반감기)마다 한 행. **0건인 사이클도 행이 있다**
         entry_indicators: 1단계 진입마다 진입 전날까지의 지표 값과 보유별 수익률
+        split_fills: 3단계 혼합 분할의 회차 — 쪽 × 조합 × 사이클 × 회차. **체결 전 회차도 행이 있다**
+        split_positions: 3단계 혼합 분할의 포지션 — 매수 조합 × 매도 조합 × 사이클. **끝나지 않은 포지션도 행이 있다**
+        split_combinations: 3단계 혼합 분할의 조합 — 사이클별 수익률을 가로로, 끝난 포지션의 집계를 함께
         summary: 실행 요약
     """
 
@@ -355,6 +453,9 @@ class StudyOutputs:
     indicator_statistics: pd.DataFrame
     indicator_cycles: pd.DataFrame
     entry_indicators: pd.DataFrame
+    split_fills: pd.DataFrame
+    split_positions: pd.DataFrame
+    split_combinations: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -416,7 +517,8 @@ class LoadedOnchain:
 def load_onchain(dataset: Dataset) -> LoadedOnchain:
     """MVRV 와 시가총액을 읽어 **두 계열이 함께 있는 날**만 한 표로 맞춘다.
 
-    **2단계 측정만 쓴다** — 체결은 읽지 않으므로 `load_dataset` 에 넣지 않는다.
+    **측정만 쓴다** — 2단계 지표와 3단계 혼합 분할의 문턱 · 4년 순위가 이 표의 MVRV 를 쓴다. 체결은 읽지 않으므로
+    `load_dataset` 에 넣지 않는다.
 
     두 계열은 따로 받고 각자 공개 지연을 허용받으므로(`data/coinmetrics_collector.PUBLICATION_LAG_DAYS`)
     **끝이 그만큼 어긋날 수 있다** — 그때는 한쪽에만 있는 끝 날을 빼고 경고하며 뺀 날 수를 돌려준다.
@@ -897,6 +999,58 @@ def _series_record(path_name: str, frame: pd.DataFrame) -> dict[str, Any]:
     return {KEY_FILE: path_name, KEY_PERIOD: format_period(dates.iloc[0], dates.iloc[-1]), KEY_ROWS: len(frame)}
 
 
+def _split_rule() -> dict[str, Any]:
+    """요약에 싣는 3단계 혼합 분할의 규칙 — 격자 값 전부와 조합 수.
+
+    Returns:
+        요약의 한 칸
+    """
+    return {
+        KEY_SPLIT_TRANCHES: SPLIT_TRANCHES,
+        KEY_SPLIT_DEADLINE_STEP: SPLIT_DEADLINE_STEP_MONTHS,
+        KEY_SPLIT_BUY: {
+            KEY_SPLIT_START_HALVING: list(SPLIT_BUY_START_MONTHS_HALVING),
+            KEY_SPLIT_START_HIGH: list(SPLIT_BUY_START_MONTHS_HIGH),
+            KEY_SPLIT_LAST_DEADLINES: list(SPLIT_BUY_LAST_DEADLINES),
+            KEY_SPLIT_BOOK_LEVELS: list(SPLIT_BUY_BOOK_LEVELS),
+            KEY_SPLIT_RANK_LEVELS: list(SPLIT_BUY_RANK_LEVELS),
+            KEY_SPLIT_COMBINATIONS: len(_SPLIT_BUY_LEGS),
+        },
+        KEY_SPLIT_SELL: {
+            KEY_SPLIT_START_HALVING: list(SPLIT_SELL_START_MONTHS),
+            KEY_SPLIT_LAST_DEADLINES: list(SPLIT_SELL_LAST_DEADLINES),
+            KEY_SPLIT_BOOK_LEVELS: list(SPLIT_SELL_BOOK_LEVELS),
+            KEY_SPLIT_RANK_LEVELS: list(SPLIT_SELL_RANK_LEVELS),
+            KEY_SPLIT_COMBINATIONS: len(_SPLIT_SELL_LEGS),
+        },
+        KEY_SPLIT_RANK_YEARS: SPLIT_RANK_YEARS,
+        KEY_SPLIT_RANK_MIN_DAYS: SPLIT_RANK_MIN_DAYS,
+        KEY_SPLIT_NOTES: list(SPLIT_NOTES),
+    }
+
+
+def _split_counts(split: SplitGrid) -> dict[str, Any]:
+    """요약에 싣는 대상별 3단계 혼합 분할 건수 — **몇 건이 왜 빠졌는지** (표본 보존).
+
+    Args:
+        split: 혼합 분할 격자
+
+    Returns:
+        요약의 한 칸
+    """
+
+    def by_reason(table: pd.DataFrame) -> dict[str, int]:
+        reasons = table[COL_EXCLUDED_REASON]
+        return {str(reason): int(count) for reason, count in reasons[reasons != REASON_NONE].value_counts().items()}
+
+    return {
+        KEY_SPLIT_FILL_COUNT: len(split.fills),
+        KEY_SPLIT_UNFILLED: by_reason(split.fills),
+        KEY_SPLIT_POSITION_COUNT: len(split.positions),
+        KEY_SPLIT_UNFINISHED: by_reason(split.positions),
+    }
+
+
 def run_study(
     datasets: tuple[Dataset, ...] = DATASETS,
     *,
@@ -945,6 +1099,19 @@ def run_study(
         }
         indicator_returns = indicator_signal_returns(frame, indicator_values, INDICATOR_SIGNALS, HALVINGS, HOLD_MONTHS)
 
+        # 3단계 혼합 분할 — MVRV 는 2단계 지표와 같은 계열(두 온체인 계열이 함께 있는 날)이다
+        split = split_grid(
+            frame,
+            onchain.frame.set_index(COL_DATE)[COL_MVRV],
+            HALVINGS,
+            _SPLIT_BUY_LEGS,
+            _SPLIT_SELL_LEGS,
+            tranches=SPLIT_TRANCHES,
+            step_months=SPLIT_DEADLINE_STEP_MONTHS,
+            rank_years=SPLIT_RANK_YEARS,
+            rank_min_days=SPLIT_RANK_MIN_DAYS,
+        )
+
         direction = DIRECTION_DOWN if BET_DOWN else DIRECTION_UP
         tables = {
             FIELD_STATISTICS: statistics,
@@ -965,6 +1132,9 @@ def run_study(
             ),
             FIELD_INDICATOR_CYCLES: _indicator_cycles(indicator_returns, INDICATOR_SIGNALS),
             FIELD_ENTRY_INDICATORS: _entry_indicator_table(signal, trading_days, daily, monthly),
+            FIELD_SPLIT_FILLS: split.fills,
+            FIELD_SPLIT_POSITIONS: split.positions,
+            FIELD_SPLIT_COMBINATIONS: split.combinations,
         }
         for field, table in tables.items():
             labelled = table.copy()
@@ -1008,6 +1178,7 @@ def run_study(
                 KEY_SIGNAL_COUNT: len(signal),
                 KEY_EXCLUDED_COUNT: excluded_count,
                 KEY_REPLACED_COUNT: len(loaded.replaced),
+                KEY_SPLIT: _split_counts(split),
                 KEY_CROSSCHECK: {
                     KEY_TOLERANCE: crosscheck.tolerance,
                     KEY_OVERLAP_DAYS: len(crosscheck.overlap),
@@ -1030,6 +1201,7 @@ def run_study(
         KEY_HOLD_MONTHS: list(HOLD_MONTHS),
         KEY_BASELINE_START: HALVINGS[0].label,
         KEY_INDICATOR_RULE: _indicator_rule(INDICATOR_SIGNALS),
+        KEY_SPLIT_RULE: _split_rule(),
         KEY_DATASETS: dataset_summaries,
         KEY_ROW_COUNTS: {OUTPUT_FILES[field]: len(table) for field, table in combined.items()},
     }
@@ -1051,6 +1223,9 @@ def run_study(
         indicator_statistics=combined[FIELD_INDICATOR_STATISTICS],
         indicator_cycles=combined[FIELD_INDICATOR_CYCLES],
         entry_indicators=combined[FIELD_ENTRY_INDICATORS],
+        split_fills=combined[FIELD_SPLIT_FILLS],
+        split_positions=combined[FIELD_SPLIT_POSITIONS],
+        split_combinations=combined[FIELD_SPLIT_COMBINATIONS],
         summary=summary,
     )
 
@@ -1072,6 +1247,20 @@ def _rounded_indicators(table: pd.DataFrame) -> pd.DataFrame:
         decimals[COL_MONTHLY_RSI] = RSI_DECIMALS
 
     return table.round(decimals)
+
+
+def _rounded_prices(table: pd.DataFrame) -> pd.DataFrame:
+    """3단계 혼합 분할의 가격을 가격 자릿수로 자른다. 입력은 변경하지 않는다.
+
+    **평균 단가는 계산값이라 실제 시세에 없는 자리가 생긴다** — 그대로 내면 차트와 대조할 때 방해가 된다.
+
+    Args:
+        table: 가격 컬럼이 있는 표
+
+    Returns:
+        자릿수를 맞춘 사본
+    """
+    return table.round({column: PRICE_DECIMALS for column in _SPLIT_PRICE_COLUMNS if column in table.columns})
 
 
 def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
@@ -1106,13 +1295,19 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
         FIELD_ENTRY_INDICATORS: _rounded_indicators(
             outputs.entry_indicators.rename(columns={COL_DATE: COL_ENTRY_DATE})
         ),
+        FIELD_SPLIT_FILLS: _rounded_indicators(_rounded_prices(outputs.split_fills)),
+        FIELD_SPLIT_POSITIONS: _rounded_prices(outputs.split_positions),
+        FIELD_SPLIT_COMBINATIONS: outputs.split_combinations,
     }
+    # 조합 표의 사이클별 가로 칸은 반감기 목록에서 이름을 만든다 — 사전에 박아 두면 반감기가 늘 때 빠진다
+    labels = {**COLUMN_LABELS, **_CYCLE_LABELS}
+    percent = (*PERCENT_COLUMNS, *_CYCLE_LABELS)
 
     return {
         field: to_display_columns(
             table,
-            COLUMN_LABELS,
-            percent_columns=[column for column in PERCENT_COLUMNS if column in table.columns],
+            labels,
+            percent_columns=[column for column in percent if column in table.columns],
             probability_columns=[column for column in PROBABILITY_COLUMNS if column in table.columns],
         )
         for field, table in tables.items()

@@ -12,6 +12,9 @@
     "지표통계.csv": 42,
     "지표사이클.csv": 168,
     "진입지표.csv": 58,
+    "분할회차.csv": 792,
+    "분할포지션.csv": 3060,
+    "분할조합.csv": 765,
     "거래내역.csv": 8371,
     "성적표.csv": 14080
   },
@@ -166,6 +169,69 @@
         }
       ]
     },
+    "split_rule": {
+      "tranches": 3,
+      "deadline_step_months": 3,
+      "buy": {
+        "start_months_after_halving": [
+          12,
+          15,
+          18,
+          21,
+          24
+        ],
+        "start_months_after_new_high": [
+          1,
+          3,
+          6
+        ],
+        "last_deadlines": [
+          30,
+          33,
+          36
+        ],
+        "book_mvrv_levels": [
+          1.7,
+          1.35,
+          1.0
+        ],
+        "rank_levels": [
+          0.2,
+          0.1,
+          0.05
+        ],
+        "combinations": 51
+      },
+      "sell": {
+        "start_months_after_halving": [
+          0,
+          6
+        ],
+        "last_deadlines": [
+          15,
+          18,
+          21
+        ],
+        "book_mvrv_levels": [
+          3.0,
+          3.35,
+          3.7
+        ],
+        "rank_levels": [
+          0.8,
+          0.9,
+          0.95
+        ],
+        "combinations": 15
+      },
+      "rank_years": 4,
+      "rank_min_days": 365,
+      "notes": [
+        "혼합 분할 표 셋은 측정 표다 — 1차 판정 · 손절 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다. 조합을 고르지 않는다",
+        "혼합 분할 포지션에는 하드포크 몫이 없다 — 포크일에 코인을 들고 있던 포지션(2012 사이클)은 그만큼 과소평가된다. 거래내역 끝 칸의 하드포크 몫은 체결 격자에만 있다",
+        "혼합 분할의 달력 쪽 값(반감기 기준 매수 창 · 매수 기한 · 매도 기한)은 과거 고점 · 바닥 시점을 본 뒤 정했다 — 달력만 조합이 유리하게 짜여 있다. 온체인 문턱(책 범위 · 4년 순위)은 결과를 보기 전의 값이다"
+      ]
+    },
     "datasets": [
       {
         "ticker": "BTCUSD",
@@ -267,6 +333,17 @@
         "signal_count": 174,
         "excluded_count": 7,
         "replaced_count": 33,
+        "split": {
+          "fill_rows": 792,
+          "unfilled_by_reason": {
+            "기한이 데이터 뒤라 아직 체결 전": 70,
+            "다음 반감기가 반감기 목록에 없음": 45
+          },
+          "position_rows": 3060,
+          "unfinished_by_reason": {
+            "매수 회차가 남음": 765
+          }
+        },
         "crosscheck": {
           "tolerance": 0.05,
           "overlap_days": 5521,

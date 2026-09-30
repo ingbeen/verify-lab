@@ -51,6 +51,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_INDICATOR_SIGNAL,
     COL_JUDGMENT_DATE,
     COL_NON_OVERLAPPING,
+    COL_POSITION_RETURN,
     COL_SIGNAL_MEANING,
     COL_VALUE_DAY,
     DATASETS,
@@ -59,6 +60,12 @@ from verify_lab.studies.halving_cycle.constants import (
     HOLD_MONTHS,
     INDICATOR_SIGNALS,
     OUTPUT_FILES,
+    SPLIT_BUY_LAST_DEADLINES,
+    SPLIT_BUY_START_MONTHS_HALVING,
+    SPLIT_BUY_START_MONTHS_HIGH,
+    SPLIT_SELL_LAST_DEADLINES,
+    SPLIT_SELL_START_MONTHS,
+    SPLIT_TRANCHES,
     TRACK_NAME,
     Dataset,
 )
@@ -66,6 +73,15 @@ from verify_lab.studies.halving_cycle.runner import (
     KEY_DROPPED_TAIL_DAYS,
     KEY_MISSING_PRICE_DAYS,
     KEY_ONCHAIN,
+    KEY_SPLIT,
+    KEY_SPLIT_BUY,
+    KEY_SPLIT_COMBINATIONS,
+    KEY_SPLIT_FILL_COUNT,
+    KEY_SPLIT_POSITION_COUNT,
+    KEY_SPLIT_RULE,
+    KEY_SPLIT_SELL,
+    KEY_SPLIT_UNFILLED,
+    KEY_SPLIT_UNFINISHED,
     StudyOutputs,
     display_tables,
     load_onchain,
@@ -771,3 +787,114 @@ class TestIndicatorDisplay:
         values = display_tables(outputs)["indicator_signals"]["판정 값"].to_numpy(dtype=float)
 
         np.testing.assert_allclose(values, np.round(values, 4), atol=0.0)
+
+
+class TestSplitTables:
+    """3단계 혼합 분할 — 격자 크기 · 표본 보존 · 표시용 표 (결정 ㊺ ~ ㊼)"""
+
+    def test_조합_수는_창과_문턱과_기한의_곱에_달력만을_더한_것이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 결과를 보기 전에 정한 격자 크기를 고정한다 — 달력만은 창 없이 기한마다 한 조합이다.
+
+        Given: 격자 상수
+        When: 요약의 조합 수를 본다
+        Then: 매수 (창 × 문턱 2 + 달력만) × 기한 · 매도 (창 × 문턱 2 + 달력만) × 기한
+        """
+        # Given
+        buy_starts = len(SPLIT_BUY_START_MONTHS_HALVING) + len(SPLIT_BUY_START_MONTHS_HIGH)
+        expected_buy = (buy_starts * 2 + 1) * len(SPLIT_BUY_LAST_DEADLINES)
+        expected_sell = (len(SPLIT_SELL_START_MONTHS) * 2 + 1) * len(SPLIT_SELL_LAST_DEADLINES)
+
+        # When
+        rule = outputs.summary[KEY_SPLIT_RULE]
+
+        # Then
+        assert (rule[KEY_SPLIT_BUY][KEY_SPLIT_COMBINATIONS], rule[KEY_SPLIT_SELL][KEY_SPLIT_COMBINATIONS]) == (
+            expected_buy,
+            expected_sell,
+        )
+
+    def test_회차_포지션_조합_행_수가_격자와_같다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 표본 보존 — 체결 전 회차와 끝나지 않은 포지션도 행이 있다.
+
+        Given: 합성 입력 한 대상 · 반감기 넷
+        When: 세 표의 행 수를 본다
+        Then: 회차 = (매수 + 매도) × 반감기 × 회차 수 · 포지션 = 매수 × 매도 × 반감기 · 조합 = 매수 × 매도
+        """
+        # Given
+        rule = outputs.summary[KEY_SPLIT_RULE]
+        buys, sells = rule[KEY_SPLIT_BUY][KEY_SPLIT_COMBINATIONS], rule[KEY_SPLIT_SELL][KEY_SPLIT_COMBINATIONS]
+
+        # Then
+        assert len(outputs.split_fills) == (buys + sells) * len(HALVINGS) * SPLIT_TRANCHES
+        assert len(outputs.split_positions) == buys * sells * len(HALVINGS)
+        assert len(outputs.split_combinations) == buys * sells
+
+    def test_요약이_빠진_건수를_사유별로_센다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 몇 건이 왜 빠졌는지가 요약에 남는다 (절대 원칙 「표본 보존」).
+
+        Given: 합성 입력
+        When: 요약의 대상별 혼합 분할 건수를 본다
+        Then: 행 수가 표와 같고, 사유별 건수의 합이 사유가 붙은 행의 수와 같다
+        """
+        # When
+        counts = outputs.summary[KEY_DATASETS][0][KEY_SPLIT]
+
+        # Then
+        fills, positions = outputs.split_fills, outputs.split_positions
+        assert counts[KEY_SPLIT_FILL_COUNT] == len(fills)
+        assert counts[KEY_SPLIT_POSITION_COUNT] == len(positions)
+        assert sum(counts[KEY_SPLIT_UNFILLED].values()) == int((fills[COL_EXCLUDED_REASON] != REASON_NONE).sum())
+        assert sum(counts[KEY_SPLIT_UNFINISHED].values()) == int((positions[COL_EXCLUDED_REASON] != REASON_NONE).sum())
+
+    def test_마지막_반감기의_포지션은_끝나지_않는다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 다음 반감기가 목록에 없으면 매도 회차가 정의되지 않는다 — 수익률을 0 으로 채우지 않는다.
+
+        Given: 합성 입력
+        When: 마지막 반감기의 포지션을 본다
+        Then: 전부 사유가 있고 수익률이 비었다
+        """
+        # When
+        last = outputs.split_positions[outputs.split_positions[COL_HALVING] == HALVINGS[-1].label]
+
+        # Then
+        assert (last[COL_EXCLUDED_REASON] != REASON_NONE).all()
+        assert last[COL_POSITION_RETURN].isna().all()
+
+    def test_표시용_표는_한글_헤더와_사이클별_가로_칸이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 영문 토큰이 CSV 로 나가지 않고, 조합 표의 사이클별 칸이 반감기 목록에서 만들어진다.
+
+        Given: 표시용 세 표
+        When: 헤더를 본다
+        Then: 회차 · 포지션 표의 한글 헤더와 반감기마다 「수익률(%)」 · 「평균 단가 대비 최악(%)」 칸이 있다
+        """
+        # When
+        tables = display_tables(outputs)
+
+        # Then
+        assert {"매수 · 매도", "회차", "회차 체결일", "계기", "체결 전날 MVRV"} <= set(tables["split_fills"].columns)
+        assert {"매수 문턱", "매도 문턱", "평균 매수가", "평균 단가 대비 최악(%)"} <= set(tables["split_positions"].columns)
+        for halving in HALVINGS:
+            assert f"{halving.label} 수익률(%)" in tables["split_combinations"].columns
+            assert f"{halving.label} 평균 단가 대비 최악(%)" in tables["split_combinations"].columns
+
+    def test_평균_단가는_가격_자릿수로_수익률은_백분율로_낸다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 계산값인 평균 단가의 잡음 자리를 자르고, 비율을 백분율로 바꾼다.
+
+        Given: 포지션 표 (원래 값과 표시용)
+        When: 평균 매수가와 수익률을 본다
+        Then: 평균 매수가는 소수 4자리를 넘지 않고, 수익률은 원래 값 × 100 을 2자리로 반올림한 것이다
+        """
+        # When
+        table = display_tables(outputs)["split_positions"]
+
+        # Then
+        prices = table["평균 매수가"].dropna().to_numpy(dtype=float)
+        np.testing.assert_allclose(prices, np.round(prices, PRICE_DECIMALS), atol=0.0)
+        expected = (outputs.split_positions[COL_POSITION_RETURN] * 100.0).round(2)
+        pd.testing.assert_series_equal(table["수익률(%)"], expected, check_names=False)
