@@ -58,6 +58,7 @@ from verify_lab.studies.halving_cycle.constants import (
     DISPLAY_HALVING,
     ENTRY_MONTHS,
     EXIT_MONTHS,
+    GRID_BASELINE_FILENAME,
     HALVINGS,
     HARD_FORKS,
     KEY_BLOCK_TIME,
@@ -120,7 +121,9 @@ NOTE_STOP = (
 )
 NOTE_SCREEN = (
     "보유가 몇 달에서 한 사이클이라 평균이 양수인 칸은 거의 모두 1차 판정을 넘는다 — 게이트는 하나이고 이 격자에 맞춰 "
-    "바꾸지 않는다. 기준선은 두지 않는다 — 같은 칸도 사이클마다 보유 길이가 달라 같은 보유의 기준선이 정의되지 않는다"
+    "바꾸지 않는다. 성적표에는 기준선을 두지 않는다 — 같은 사이클에 파는 칸의 기준선은 측정 표"
+    f"({GRID_BASELINE_FILENAME})에 있고, 다음 사이클에 파는 칸은 사이클마다 보유 길이가 달라 같은 보유의 기준선이 "
+    "정의되지 않는다"
 )
 NOTE_DIRECTION = "방향은 「위」 하나다. 아래로 거는 칸의 크기와 빈도는 측정 표(통계)의 내린 비율과 평균이 준다"
 NOTE_REPLACED = "Bitstamp 에서 거래량이 0 인 날의 종가는 Coin Metrics 기준가로 바꿔 쟀다(시가·고가·저가는 받은 그대로). " "바꾼 날은 측정 산출물의 대체일 표에 있다"

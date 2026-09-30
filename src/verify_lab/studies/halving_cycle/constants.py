@@ -285,6 +285,12 @@ HOLD_MONTHS: Final = (3, 6, 12)
 # 청산 시점이 진입 시점보다 크면 같은 반감기 뒤, 같거나 작으면 **다음 반감기 뒤** 그 시점이다 — 보유는 최대 한 사이클
 EXIT_MONTHS: Final = ENTRY_MONTHS
 
+# 3단계 격자 중 **같은 사이클에 파는 칸**의 보유 — 기준선을 이 보유마다 낸다(결정 ㊶). **격자에서 유도한 값이라
+# 새로 정한 값이 없다.** 다음 사이클에 파는 칸은 사이클마다 보유 길이가 달라 기준선이 없다(결정 ㊵)
+GRID_BASELINE_HOLD_MONTHS: Final = tuple(
+    sorted({exit_ - entry for entry in ENTRY_MONTHS for exit_ in EXIT_MONTHS if exit_ > entry})
+)
+
 # 거는 방향. **「위」 하나다** — 측정과 체결이 같은 값을 봐야 두 표의 `방향` 이 같은 말을 한다
 BET_DOWN: Final = False
 
@@ -721,6 +727,7 @@ COLUMN_LABELS: Final = {
     # 식별
     COL_TICKER: DISPLAY_TICKER,
     COL_ENTRY_MONTHS: DISPLAY_ENTRY_MONTHS,
+    COL_EXIT_MONTHS: DISPLAY_EXIT_MONTHS,
     COL_HOLD_MONTHS: DISPLAY_HOLD_MONTHS,
     COL_HALVING: DISPLAY_HALVING,
     COL_DIRECTION: DISPLAY_DIRECTION,
@@ -895,6 +902,10 @@ SPLIT_FILLS_FILENAME: Final = "분할회차.csv"
 SPLIT_POSITIONS_FILENAME: Final = "분할포지션.csv"
 SPLIT_COMBINATIONS_FILENAME: Final = "분할조합.csv"
 
+# 3단계 체결 격자 중 같은 사이클에 파는 칸의 집계와 같은 보유의 기준선(결정 ㊶). **측정 표다** — 판정에 쓰지 않고
+# 성적표 옆에 두지 않는다(루트 `CLAUDE.md` 「기준선을 넘지 못하는 것은 탈락 사유가 아닙니다」). 지표통계처럼 한 장이다
+GRID_BASELINE_FILENAME: Final = "격자기준선.csv"
+
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 # **키는 문자열 리터럴이다** — 계약 검사가 이 사전을 AST 로 읽으므로 상수를 키에 쓰면 선언이 없는 것으로 보인다
 OUTPUT_FILES: Final[dict[str, str]] = {
@@ -912,6 +923,7 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     "split_fills": SPLIT_FILLS_FILENAME,
     "split_positions": SPLIT_POSITIONS_FILENAME,
     "split_combinations": SPLIT_COMBINATIONS_FILENAME,
+    "grid_baseline": GRID_BASELINE_FILENAME,
 }
 
 # 산출물 필드 이름. **사전에서 꺼낸다** — 같은 리터럴을 두 번 적으면 한쪽만 바뀌었을 때
@@ -931,6 +943,7 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     FIELD_SPLIT_FILLS,
     FIELD_SPLIT_POSITIONS,
     FIELD_SPLIT_COMBINATIONS,
+    FIELD_GRID_BASELINE,
 ) = OUTPUT_FILES
 
 

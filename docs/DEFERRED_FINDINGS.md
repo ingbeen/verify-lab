@@ -32,6 +32,17 @@
 | `tests/test_studies_halving_cycle_split_rule.py:6` 모듈 설명 · `:102` `_buy_leg` | 「창 개월을 실제와 다르게 둔다」가 신고가 창(픽스처 `start_months=1` = 실제 `SPLIT_BUY_START_MONTHS_HIGH` 의 첫 값)과 `TestSplitGrid._sell_legs` 의 매도 창 `(0,)`(실제 첫 값)에는 틀리다. 수정분 검증의 메모리 변형 — `window_open` 이 신고가 기준에서 `leg.start_months` 대신 1 을 읽게 해도, `_fill_rows` 가 인자 `tranches` 대신 `SPLIT_TRANCHES` 를 읽게 해도 전 테스트 통과(「다른 회차 수는 … 테스트가 본다」는 `leg_fills` 경로만 맞다). 이 계획서가 다시 재지 않았다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
 | `tests/test_studies_halving_cycle_split_rule.py:557` `TestLegFills.test_신고가_창과_순위_문턱도_뒤를_잘라도_그_전에_체결한_회차가_같다` | 설명은 순위의 미래 참조도 잡는다고 하지만 신고가 창만 잡는다 — `trailing_rank` 를 전 기간 순위 · ±1년 창 · `shift(-1)` 로 바꾼 변형 셋이 모두 통과한다(`TestTrailingRank` 의 직접 테스트만 잡는다). 딥 하루가 전 기간 최저라 미래를 넣어도 순위가 바닥에 남기 때문이다. 제안: 자른 뒤의 값을 딥보다 낮게 둔다. `split_grid` 단계에서 순위 · 신고가를 잇는 부분에는 자르기 테스트가 없다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
 
+### 반감기_사이클 3단계 격자기준선
+
+줄 번호 기준: PLAN_halving_grid_baseline 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `tests/test_studies_halving_cycle_runner.py:1093` `TestGridBaseline.test_유효_표본이_없는_칸도_행이_남고_지표는_빈칸이다` | 유효 기준선이 없는 보유의 `기준선 비중첩 표본` 이 **빈칸**인지 보지 않는다 — `runner._baseline_for` 의 대체 값 `pd.NA` 를 `0` 으로 바꿔도 통과한다(「잰 적 없음」이 「0건」으로 나간다 — 측정의 원칙 17). 변형 ②(대체 행을 지움)만 잡는다. `설계.md` 결정 ㊽ 의 「테스트가 고정한다」는 행이 사라지지 않는 것까지다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
+| `tests/test_studies_halving_cycle_runner.py:1022` `TestGridBaseline.test_보유_3_6_12개월의_기준선은_1단계_기준선과_같다` | 기준선 여섯 값 중 표본 · 평균 · 오른 비율 셋만 견준다 — 중앙값 · 내린 비율 · 비중첩을 다른 보유로 붙이는 회귀가 통과한다. 실제 실행 대조는 여섯 값을 봤다(`설계.md` §4.13) | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1회차 |
+| `tests/test_studies_halving_cycle_runner.py:956` `TestGridBaseline` | 「칸 값 = 무손절 체결」을 고정하는 테스트가 없다 — 체결 쪽 가격 규칙(예: 다음날 시가 진입)이 바뀌어도 격자기준선은 종가 ÷ 종가로 재 두 표가 같은 칸에서 어긋나고 전 테스트가 통과한다. 같은 합성 입력으로 `grid_baseline_table` 과 `run_halving_cycle_trading` 의 무손절 · 전체 행을 대조하면 잡힌다. 실제 실행 대조는 차이 0(`설계.md` §4.13) | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 2회차 |
+| `tests/test_studies_halving_cycle_runner.py:1120` · `:1137` 보유 전제 가드 테스트 둘 | 멈추는 날(7월 31일) 하나와 멈추지 않는 날(7월 30일) 하나만 고정한다 — 다른 대리 조건(예: 「어떤 진입이 말일로 당겨지는가」)으로 바꿔도 둘 다 통과할 수 있다. 등식과 같다는 것은 수정분 검증의 전수 대조로만 확인했다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 수정분 검증 |
+
 ## 코드
 
 줄 번호 기준: PLAN_deferred_tests_midterm_notes 완료 시점의 작업 트리 (2026-09-29 확인).
@@ -69,6 +80,19 @@
 | `src/verify_lab/studies/halving_cycle/runner.py:262` `NOTE_SPLIT_FORK` · `scripts/run_halving_cycle.py:15` 모듈 설명 | 바로 위 주석 「격자 값을 글자로 박지 않는다」와 달리 「(2012 사이클)」(격자 · 포크 · 반감기에서 따라 나오는 사실)과 「세 번」(`SPLIT_TRANCHES`)을 문장에 박았다 — 지금은 맞지만 매수 창 · 매도 기한 · 회차 수가 바뀌면 조용히 낡는다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
 | `src/verify_lab/studies/halving_cycle/constants.py:399` · `:400` `Dataset.mvrv_path` · `market_cap_path` 설명 | 「2단계 측정만 읽는다」인데 3단계 혼합 분할도 MVRV 를 쓰고, 시가총액도 `runner.load_onchain` 의 공통 날짜 자르기로 분할이 쓰는 MVRV 날짜 범위에 영향을 준다. `docs/검증/반감기_사이클/설계.md` §3 데이터 소스 표의 역할 칸도 「2단계 온체인」이다 | 그 외 | PLAN_halving_cycle_split_hybrid (2026-09-30) 수정분 검증 |
 
+### 반감기_사이클 3단계 격자기준선 (runner · halving_calendar)
+
+줄 번호 기준: PLAN_halving_grid_baseline 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/halving_calendar.py:277` `exit_schedule` 의 `pd.concat` | 한 보유의 청산일이 **전부** 데이터 뒤라 `COL_EXIT_DATE` 가 전부 NaT 인 블록을 이어 붙일 때 pandas 가 NumPy `DeprecationWarning`(「'generic' unit … will raise an error in the future」)을 낸다. 재현: `grid_baseline_table` 을 2013-06-30 에서 끝나는 합성 시세에 돌린다(러너 테스트 `test_유효_표본이_없는_칸도_행이_남고_지표는_빈칸이다`) — `-W error::DeprecationWarning` 이면 실패한다. NumPy 가 오류로 바꾸면 첫 반감기 + 45개월보다 짧은 입력에서 측정 전체가 멈춘다. 실제 데이터에서는 보유 45개월도 유효 청산이 있어 나지 않는다 | 가벼운 버그 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:828` `_cell_tables` 의 `cell_excess.merge(baseline.overlap, …)` · `:720` `_baseline` | `_baseline` 의 비중첩 표는 유효 행이 있는 보유만 담고 `_cell_tables` 가 inner merge 한다 — 1단계 `_aggregate` · 2단계 `_indicator_statistics` 경로에서 어떤 보유에 유효 기준선이 하나도 없으면 그 보유의 차이 행이 **예외 없이 빠져** 통계와 excess 의 행 수가 갈린다. 격자기준선은 `_baseline_for` 가 빈칸 한 행을 둬 막았다. 제안: `_baseline` 에서 비중첩을 집계의 보유 전부로 reindex 하면 세 호출처가 함께 막힌다. 실제 데이터(보유 3 · 6 · 12)에서는 발동하지 않는다 | 가벼운 버그 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:958` `grid_baseline_table` · `:909` `_indicator_statistics` | 칸 한 행을 만드는 조립(`_cell_tables` → 기준 제거 · 차이 병합 · 검정 병합 → 보유로 개명 → 비중첩 병합 → `Int64`)과 열 목록 뒤쪽이 2단계와 거의 같다 — 한쪽에만 열을 더하거나 `_TEST_VALUES[1:]` 같은 위치 슬라이스를 고치면 지표통계와 격자기준선의 구성이 예외 없이 갈린다. 제안: 칸 행 도우미 하나와 공통 꼬리 열 목록 하나 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:741` `_baseline_for` · `:958` `grid_baseline_table` | 성능 — 보유 15종인데 `_baseline_for` 가 120칸마다 약 7만 행의 기준선을 다시 거르고, 보유 3 · 6 · 12 기준선은 `run_study` 와 `grid_baseline_table` 에서 두 번 계산된다. 보유별 묶음을 한 번 만들어 조회하면 같다. 지금 실행은 45초 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:979` `pairs` · `:1001` `same_cycle` · `constants.py:290` `GRID_BASELINE_HOLD_MONTHS` · `halving_calendar.py:307` `_position_exit` | 「같은 사이클에 판다 = 청산 개월 > 진입 개월」이 src 네 곳에 따로 적혀 있다 — 같은 함수 안의 `pairs` 와 `same_cycle` 도 따로 판정한다. 한 곳만 바꾸면(예: `>=`) 나머지가 다른 칸 집합을 본다. 갈라지면 `_baseline_for` 의 `RuntimeError` 나 칸 0건으로 드러나 조용히 틀린 값이 나가지는 않는다(수정분 검증 확인) | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1회차 · 수정분 검증 |
+| `src/verify_lab/studies/halving_cycle/runner.py:979` ~ `:998` 보유 전제 가드 | 등식을 「격자 120쌍 × 모든 반감기」로 본다 — 다음 반감기 뒤라 재지 않는 쌍 · 데이터 뒤의 쌍까지 본다. 수정분 검증의 전수 대조(가상 반감기일 2012-01-01 ~ 2019-12-31)에서는 판정이 바뀌는 날 0 이고 틀리는 방향은 안전한 쪽(미리 멈춤)이다. 예외 문구가 어긋남 5건 이하일 때 「외 0건」을 찍는다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 수정분 검증 |
+
 
 ## 문서
 
@@ -79,11 +103,13 @@
 | `docs/매매/중간선거_사이클/결과.md:84` §1 한 줄 요약 | QLD 수치(2018 보유 중 −41.95%)를 인용하는데 머리말의 데이터 기간에 QLD 가 없다 — `.claude/rules/docs.md` 「수치를 적을 때는 데이터 기간을 함께 적는다」(파일이 여럿이면 파일마다). QLD 기간은 `규칙.md` 머리말에 있다(2006-06-21 부터) | 그 외 | PLAN_deferred_tests_midterm_notes (2026-09-29) 리뷰 1회차 — 같은 날 미룬 지적을 처리하며 직접 고친 문장 |
 | `.claude/rules/trading.md:126` 「기간 손절을 손절로 인정하는 경우」의 중간선거 문단 | 규칙 문서에 측정값(「2018 보유 중 −41.95%」)을 데이터 기간 없이 적어 `규칙.md` §2.5 와 두 벌이 됐다 — QLD 를 다시 받으면 두 곳의 최저가 갈리고 어느 쪽이 현재인지 알 수 없다(전역 「구체적 수치와 가변 정보를 직접 적지 않는다」) | 그 외 | PLAN_deferred_tests_midterm_notes (2026-09-29) 리뷰 1회차 — 같은 날 미룬 지적을 처리하며 직접 고친 문장 |
 
-### 반감기_사이클 3단계 (진입 × 청산 격자 · 손절선 · 하드포크)
+### 반감기_사이클 3단계 격자기준선 (결과 · 설계 문서)
 
-줄 번호 기준: PLAN_halving_cycle_trading_grid 완료 시점의 작업 트리 (2026-09-30 확인).
+줄 번호 기준: PLAN_halving_grid_baseline 완료 시점의 작업 트리 (2026-09-30 확인).
 
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
-| `docs/검증/반감기_사이클/결과.md:976` §16.1 · `설계.md` 결정 ㊵ · `trading.py` `NOTE_SCREEN` | 방향 비율 표(오른 체결 수 ÷ 표본)에 **기준선이 없다.** 결정 ㊵ 의 근거(「같은 칸도 사이클마다 보유 길이가 달라 기준선이 정의되지 않는다」)는 **다음 사이클에 파는 칸 136개에만** 맞는다 — 같은 사이클 칸 120개는 보유가 (청산 − 진입) 달력월로 고정돼 기존 `baseline_entries` + `exit_schedule` 로 기준선을 바로 낼 수 있다. 루트 `CLAUDE.md` 측정의 원칙 11 · `.claude/rules/docs.md` 「비율을 적을 때는 기준선 비율을 같은 표에 붙인다」 | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 2회차 · 판단: 고친다(사용자 2026-09-30) — `설계.md` 결정 ㊶, §16.2 와 한 계획서로 |
-| `docs/검증/반감기_사이클/결과.md:999` §16.2 | 256칸의 **중앙값만** 행렬로 싣고 평균은 `성적표.csv` 로 넘겼다(예 몇 칸만 본문에). 평균-부호 어긋남 표는 평균 · 표본은 있는데 **합산 수익률**이 없다 — 루트 `CLAUDE.md` 측정의 원칙 4(평균 · 중앙값 병기) · 16(회당 기대값 옆에 합산과 표본) | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 2회차 · 판단: 고친다(사용자 2026-09-30) — 결정 ㊶ 의 계획서에서 함께 |
+| `docs/검증/반감기_사이클/결과.md:997` §16.1 | 방향 비율 표(오른 체결 수 ÷ 표본, `3/4` · `4/4` …) **자체에는** 여전히 기준선 비율과 차이가 없다 — 표 머리에 §16.4 를 가리키는 한 줄만 있다. `.claude/rules/docs.md` 「방향 비율을 적는 모든 표에 같은 조건의 기준선 비율과 그 차이(%p)를 함께 둔다」. 이 표만 읽으면 보유 36개월 이상 칸의 `3/3` 을 우위로 읽는데 기준선이 99.17 ~ 100% 다. 기준선은 칸의 보유(청산 − 진입)로 정해져 한 열로 붙지 않는다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
+| `docs/검증/반감기_사이클/결과.md:1045` §16.2 평균 행렬 · `:1147` · `:1171` §16.4 차이 행렬 둘 | 새로 넣은 행렬 셋에 **칸별 표본**이 없다(칸마다 1 ~ 4건 · 같은 사이클 칸은 2 ~ 4건) — `.claude/rules/research.md` 「표본 수를 모든 표에 넣는다」. 평균 행렬에는 **합산**도 없다 — 루트 `CLAUDE.md` 측정의 원칙 16. 칸별 표본은 §16.1 의 분모에 있다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
+| `docs/검증/반감기_사이클/결과.md:1068` §16.2 평균-부호 어긋남 표 | 헤더가 `승률(%)` 이다 — `.claude/rules/docs.md` 는 결과 문서에서 「오른 비율」을 쓰고 `승률` 은 `규칙.md` · 체결 산출물에만 둔다. 14칸 중 같은 사이클 칸 11칸은 기준선이 있는데 기준선 비율 · 차이 열이 없다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 2회차 |
+| `docs/검증/반감기_사이클/설계.md:464` 결정 ㊽ · `격자기준선.csv` 의 `신호` | 「앞 넷은 성적표와 같은 헤더라 그대로 이어 본다」는데 **같은 이름 `신호` 의 뜻이 다르다** — 격자기준선은 측정 표 관용대로 표본 + 제외(1단계 `통계.csv` 와 같다), `성적표.csv` 는 체결된 건수(= 표본)다. 실제 산출물을 이어 보면 120칸 중 65칸에서 `신호` 가 다르다(예: (0, 30) 은 4 대 3). 측정 표와 체결 표의 이 차이는 기존 관용이다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1회차 |

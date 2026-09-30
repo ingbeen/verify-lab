@@ -19,8 +19,12 @@
 
 **3단계 혼합 분할(달력 + MVRV)도 측정 표로만 낸다** (결정 ㊼) — 회차 체결과 포지션 성적은 `split_rule` 이 소유하고,
 1차 판정 · 손절 · 기준선이 없다. 체결 성적표(`trading.py`)와 다른 파일이다.
+
+**3단계 체결 격자 중 같은 사이클에 파는 칸의 기준선도 측정 표로 낸다** (결정 ㊶) — 칸 값은 체결과 같은 일정을
+측정 쪽에서 종가로 잰 것이고, 기준선은 1단계와 같은 모집단에 보유(청산 − 진입)를 준 것이다. 판정에 쓰지 않는다.
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -101,6 +105,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_DISPARITY,
     COL_ENTRY_DATE,
     COL_ENTRY_MONTHS,
+    COL_EXIT_MONTHS,
     COL_HALVING,
     COL_HOLD_MONTHS,
     COL_HOLD_RETURNS,
@@ -126,11 +131,13 @@ from verify_lab.studies.halving_cycle.constants import (
     DATASETS,
     DISPARITY_WINDOW,
     ENTRY_MONTHS,
+    EXIT_MONTHS,
     FIELD_CALENDAR_YEARS,
     FIELD_CROSSCHECK,
     FIELD_ENTRIES,
     FIELD_ENTRY_INDICATORS,
     FIELD_EXCESS,
+    FIELD_GRID_BASELINE,
     FIELD_INDICATOR_CYCLES,
     FIELD_INDICATOR_SIGNALS,
     FIELD_INDICATOR_STATISTICS,
@@ -140,6 +147,7 @@ from verify_lab.studies.halving_cycle.constants import (
     FIELD_SPLIT_POSITIONS,
     FIELD_STATISTICS,
     FIELD_TEST,
+    GRID_BASELINE_HOLD_MONTHS,
     HALVINGS,
     HOLD_MONTHS,
     INDICATOR_DECIMALS,
@@ -191,6 +199,7 @@ from verify_lab.studies.halving_cycle.halving_calendar import (
     calendar_year_returns,
     exit_schedule,
     halving_entries,
+    position_schedule,
 )
 from verify_lab.studies.halving_cycle.indicator_signals import entry_indicator_values, indicator_signal_returns
 from verify_lab.studies.halving_cycle.indicators import daily_indicator_frame, monthly_indicator_frame
@@ -256,6 +265,9 @@ KEY_SPLIT_FILL_COUNT = "fill_rows"
 KEY_SPLIT_UNFILLED = "unfilled_by_reason"
 KEY_SPLIT_POSITION_COUNT = "position_rows"
 KEY_SPLIT_UNFINISHED = "unfinished_by_reason"
+
+# `summary.json` 의 측정 칸 — 3단계 같은 사이클 칸의 기준선 보유 (결정 ㊶ · ㊽)
+KEY_GRID_BASELINE_HOLD_MONTHS = "grid_baseline_hold_months"
 
 # 3단계 혼합 분할 표만 보고는 알 수 없는 조건 (결정 ㊺ · ㊼). **격자 값을 글자로 박지 않는다** — 값은 같은 칸의 목록이 말한다
 NOTE_SPLIT_MEASURE_ONLY = "혼합 분할 표 셋은 측정 표다 — 1차 판정 · 손절 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다. 조합을 고르지 않는다"
@@ -361,8 +373,9 @@ _INDICATOR_SIGNAL_COLUMNS = [
     COL_EXCLUDED_REASON,
 ]
 
-# 2단계 지표통계의 값. **판정이 없어 기준선을 옆에 둔다** — 기준선은 방향 비율을 읽는 데 필요한 것만 싣는다
-_INDICATOR_BASELINE_VALUES = [
+# 칸 집계 옆에 두는 기준선 값 — 2단계 지표통계와 3단계 격자기준선이 함께 쓴다. **판정이 없어 기준선을 옆에 둔다** —
+# 기준선은 방향 비율을 읽는 데 필요한 것만 싣는다
+_BASELINE_BESIDE_VALUES = [
     *(f"{column}{BASELINE_SUFFIX}" for column in (COL_SAMPLE_COUNT, COL_MEAN, COL_MEDIAN, COL_WIN_RATE, COL_LOSS_RATE)),
     COL_BASELINE_NON_OVERLAPPING,
 ]
@@ -378,7 +391,28 @@ _INDICATOR_STATISTICS_COLUMNS = [
     *(column for column in _SUMMARY_VALUES if column not in (COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT, COL_SAMPLE_COUNT)),
     COL_MEAN_RATE_CONFLICT,
     COL_JUDGEABLE,
-    *_INDICATOR_BASELINE_VALUES,
+    *_BASELINE_BESIDE_VALUES,
+    COL_MEAN_EXCESS,
+    COL_MEDIAN_EXCESS,
+    COL_WIN_RATE_EXCESS,
+    COL_LOSS_RATE_EXCESS,
+    *(column for column in _TEST_VALUES if column != COL_SAMPLE_COUNT),
+]
+
+# 3단계 격자기준선의 컬럼 — 지표통계와 같은 구성에서 신호 이름 · 뜻 대신 (진입 · 청산 · 보유)를 둔다.
+# **사이클 수는 싣지 않는다** — 칸마다 사이클당 한 번이라 표본과 늘 같다
+_GRID_BASELINE_COLUMNS = [
+    COL_ENTRY_MONTHS,
+    COL_EXIT_MONTHS,
+    COL_HOLD_MONTHS,
+    COL_SIGNAL_COUNT,
+    COL_EXCLUDED_COUNT,
+    COL_SAMPLE_COUNT,
+    COL_NON_OVERLAPPING,
+    *(column for column in _SUMMARY_VALUES if column not in (COL_SIGNAL_COUNT, COL_EXCLUDED_COUNT, COL_SAMPLE_COUNT)),
+    COL_MEAN_RATE_CONFLICT,
+    COL_JUDGEABLE,
+    *_BASELINE_BESIDE_VALUES,
     COL_MEAN_EXCESS,
     COL_MEDIAN_EXCESS,
     COL_WIN_RATE_EXCESS,
@@ -439,6 +473,8 @@ class StudyOutputs:
         split_fills: 3단계 혼합 분할의 회차 — 쪽 × 조합 × 사이클 × 회차. **체결 전 회차도 행이 있다**
         split_positions: 3단계 혼합 분할의 포지션 — 매수 조합 × 매도 조합 × 사이클. **끝나지 않은 포지션도 행이 있다**
         split_combinations: 3단계 혼합 분할의 조합 — 사이클별 수익률을 가로로, 끝난 포지션의 집계를 함께
+        grid_baseline: 3단계 격자 중 같은 사이클에 파는 (진입 × 청산) 칸마다 한 행 — 칸 집계 · 같은 보유의 기준선 ·
+            차이 · 우연확률. **진입이 없던 칸도 행이 있다**
         summary: 실행 요약
     """
 
@@ -456,6 +492,7 @@ class StudyOutputs:
     split_fills: pd.DataFrame
     split_positions: pd.DataFrame
     split_combinations: pd.DataFrame
+    grid_baseline: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -623,11 +660,12 @@ def signal_returns(frame: pd.DataFrame) -> pd.DataFrame:
     return calendar_returns(frame, exit_schedule(trading_days, entries, HOLD_MONTHS))
 
 
-def _baseline_returns(frame: pd.DataFrame) -> pd.DataFrame:
+def _baseline_returns(frame: pd.DataFrame, hold_months: Sequence[int] = HOLD_MONTHS) -> pd.DataFrame:
     """기준선(첫 반감기부터 매일 진입 × 같은 보유)의 long-form 수익률을 낸다.
 
     Args:
         frame: 날짜 오름차순 시세
+        hold_months: 보유 개월 — 기본은 1단계 격자의 보유다
 
     Returns:
         매일 × 보유 행
@@ -635,7 +673,7 @@ def _baseline_returns(frame: pd.DataFrame) -> pd.DataFrame:
     trading_days = pd.DatetimeIndex(frame[COL_DATE])
     entries = baseline_entries(trading_days, HALVINGS[0].day)
 
-    return calendar_returns(frame, exit_schedule(trading_days, entries, HOLD_MONTHS))
+    return calendar_returns(frame, exit_schedule(trading_days, entries, hold_months))
 
 
 def halving_records() -> list[dict[str, Any]]:
@@ -698,6 +736,39 @@ def _baseline(baseline: pd.DataFrame, trading_days: pd.DatetimeIndex) -> _Baseli
     )
 
     return _Baseline(returns=baseline, summary=summary, values=values, overlap=overlap)
+
+
+def _baseline_for(baseline: _Baseline, hold_months: int) -> _Baseline:
+    """기준선 묶음에서 보유 하나만 남긴다.
+
+    **칸의 보유 구성이 기준선과 같아야 `excess` 가 돈다** — 3단계 격자의 칸은 보유가 하나라, 여러 보유의 기준선을
+    그대로 넘기면 칸 구성이 달라 멈춘다. 유효 표본이 없는 보유는 비중첩 행이 없으므로 **빈칸 한 행**을 둔다 —
+    없으면 차이 표를 붙일 때 그 칸이 조용히 사라진다.
+
+    Args:
+        baseline: 여러 보유의 기준선 묶음
+        hold_months: 남길 보유 개월
+
+    Returns:
+        그 보유만 담은 기준선 묶음
+
+    Raises:
+        RuntimeError: 기준선 집계에 그 보유가 없는 경우 (내부 불변조건 위반 — 기준선 보유는 격자에서 유도한다)
+    """
+    summary = baseline.summary[baseline.summary[COL_HORIZON] == hold_months]
+    if summary.empty:
+        raise RuntimeError(f"내부 불변조건 위반: 기준선 집계에 보유 {hold_months}개월이 없습니다")
+
+    overlap = baseline.overlap[baseline.overlap[COL_HORIZON] == hold_months]
+    if overlap.empty:
+        overlap = pd.DataFrame({COL_HORIZON: [hold_months], COL_BASELINE_NON_OVERLAPPING: [pd.NA]})
+
+    return _Baseline(
+        returns=baseline.returns[baseline.returns[COL_HORIZON] == hold_months],
+        summary=summary,
+        values=baseline.values[baseline.values[COL_HORIZON] == hold_months],
+        overlap=overlap,
+    )
 
 
 def _empty_summary(baseline: _Baseline) -> pd.DataFrame:
@@ -882,6 +953,81 @@ def _indicator_statistics(
     combined[COL_CYCLE_COUNT] = combined[COL_CYCLE_COUNT].fillna(0).astype("int64")
 
     return combined[_INDICATOR_STATISTICS_COLUMNS]
+
+
+def grid_baseline_table(frame: pd.DataFrame, *, repeats: int, seed: int) -> pd.DataFrame:
+    """3단계 격자 중 **같은 사이클에 파는 칸**마다 칸 집계와 같은 보유의 기준선을 한 행에 낸다 (결정 ㊶).
+
+    칸 값은 체결 격자와 같은 일정(`halving_calendar.position_schedule`)을 **측정 쪽에서** 종가로 잰 것이라 무손절
+    체결과 같다 — 체결 코드는 부르지 않는다(`trading` 이 이 모듈을 가져온다). 보유는 청산 − 진입 달력월이고, 기준선은
+    1단계와 같은 모집단(첫 반감기부터 매일 진입)에 그 보유를 준 것이다. 칸 집계는 1단계 · 2단계와 같은 `_cell_tables` 다.
+
+    **진입이 한 번도 없던 칸도 행을 남긴다** (측정의 원칙 17). **판정에 쓰지 않는다.**
+
+    Args:
+        frame: 날짜 오름차순 시세 (측정 계열)
+        repeats: 무작위 뽑기 반복 수
+        seed: 무작위 뽑기 시드
+
+    Returns:
+        `_GRID_BASELINE_COLUMNS` 구성. 진입 → 청산 순서
+
+    Raises:
+        RuntimeError: 반감기일 + 진입 개월 + 보유 개월이 반감기일 + 청산 개월과 다른 (반감기 × 칸)이 있는 경우
+            (내부 불변조건 위반 — 아래 가드)
+    """
+    pairs = [(entry, exit_) for entry in ENTRY_MONTHS for exit_ in EXIT_MONTHS if exit_ > entry]
+
+    # **칸의 보유를 (청산 − 진입) 개월로 두는 전제를 지킨다.** 반감기일 + 진입 개월 + 보유 개월이 반감기일 + 청산 개월과
+    # 같은 날이어야 기준선이 칸과 같은 보유를 잰다. 반감기일이 29 ~ 31일이면 짧은 달의 말일 당김으로 며칠 어긋날 수 있고,
+    # 그러면 예외 없이 다른 보유와 견주게 된다. **반감기일이 아니라 등식 자체를 쌍마다 본다** — 격자가 지나는 달이 모두
+    # 길면 29 ~ 31일이어도 성립한다. 날짜만의 사실이라 데이터를 잘라도 판정이 바뀌지 않는다
+    broken = [
+        (halving.label, entry, exit_)
+        for halving in HALVINGS
+        for entry, exit_ in pairs
+        if halving.day + pd.DateOffset(months=entry) + pd.DateOffset(months=exit_ - entry)
+        != halving.day + pd.DateOffset(months=exit_)
+    ]
+    if broken:
+        raise RuntimeError(
+            "내부 불변조건 위반: 반감기일에 진입 개월과 보유 개월을 나눠 더한 날이 청산일과 다른 칸이 있어 같은 사이클 칸의 "
+            f"보유를 (청산 − 진입) 개월로 둘 수 없습니다 — (반감기, 진입, 청산) {broken[:5]} 외 {max(len(broken) - 5, 0)}건. "
+            "칸마다 실제 보유 일수로 기준선을 짝짓도록 설계를 먼저 정하세요"
+        )
+
+    trading_days = pd.DatetimeIndex(frame[COL_DATE])
+    schedule = position_schedule(trading_days, HALVINGS, ENTRY_MONTHS, EXIT_MONTHS).schedule
+    same_cycle = schedule[schedule[COL_EXIT_MONTHS] > schedule[COL_ENTRY_MONTHS]]
+    # **구간 축은 보유 개월이다** — 칸 집계가 기준선의 같은 보유와 짝지어지려면 보유가 칸의 이름이어야 한다
+    returns = calendar_returns(
+        frame, same_cycle.assign(**{COL_HOLD_MONTHS: same_cycle[COL_EXIT_MONTHS] - same_cycle[COL_ENTRY_MONTHS]})
+    )
+    baseline = _baseline(_baseline_returns(frame, GRID_BASELINE_HOLD_MONTHS), trading_days)
+
+    keys = [COL_ENTRY_MONTHS, COL_EXIT_MONTHS]
+    overlap = _non_overlapping(trading_days, returns, keys)
+
+    blocks: list[pd.DataFrame] = []
+    for entry_months, exit_months in pairs:
+        cell = returns[(returns[COL_ENTRY_MONTHS] == entry_months) & (returns[COL_EXIT_MONTHS] == exit_months)]
+        summary, cell_excess, cell_test = _cell_tables(
+            cell, _baseline_for(baseline, exit_months - entry_months), repeats=repeats, seed=seed
+        )
+        table = summary.drop(columns=[COL_BASIS]).merge(cell_excess.drop(columns=[COL_BASIS]), on=COL_HORIZON)
+        table = table.merge(cell_test[[COL_HORIZON, *_TEST_VALUES[1:]]], on=COL_HORIZON)
+        blocks.append(
+            table.rename(columns={COL_HORIZON: COL_HOLD_MONTHS}).assign(
+                **{COL_ENTRY_MONTHS: entry_months, COL_EXIT_MONTHS: exit_months}
+            )
+        )
+
+    combined = pd.concat(blocks, ignore_index=True).merge(overlap, on=keys, how="left")
+    # 유효 체결이 없는 칸 · 유효 기준선이 없는 보유는 비중첩을 «센 것이 없다»(빈칸)로 둔다
+    for column in (COL_NON_OVERLAPPING, COL_BASELINE_NON_OVERLAPPING):
+        combined[column] = combined[column].astype("Int64")
+
+    return combined[_GRID_BASELINE_COLUMNS]
 
 
 def _indicator_cycles(returns: pd.DataFrame, signals: tuple[IndicatorSignal, ...]) -> pd.DataFrame:
@@ -1086,6 +1232,8 @@ def run_study(
         statistics, cell_excess, cell_test = _aggregate(
             signal, baseline, trading_days=trading_days, repeats=repeats, seed=seed
         )
+        # 3단계 격자 중 같은 사이클에 파는 칸 — 1단계와 같은 모집단에 보유(청산 − 진입)를 준 기준선과 나란히 둔다
+        grid_baseline = grid_baseline_table(frame, repeats=repeats, seed=seed)
 
         # 2단계 — 지표는 측정 계열(종가 대체 뒤)로 내고, 신호는 1단계와 같은 기준선에 견준다
         onchain = load_onchain(dataset)
@@ -1135,12 +1283,13 @@ def run_study(
             FIELD_SPLIT_FILLS: split.fills,
             FIELD_SPLIT_POSITIONS: split.positions,
             FIELD_SPLIT_COMBINATIONS: split.combinations,
+            FIELD_GRID_BASELINE: grid_baseline,
         }
         for field, table in tables.items():
             labelled = table.copy()
             labelled.insert(0, COL_TICKER, dataset.label)
-            # **방향은 칸 표 셋에만 붙는다** — 성적표와 조인되는 표이고, 나머지는 칸이 아니다
-            if field in (FIELD_STATISTICS, FIELD_EXCESS, FIELD_TEST):
+            # **방향은 칸 표 넷에만 붙는다** — 성적표와 조인되는 표이고, 나머지는 칸이 아니다
+            if field in (FIELD_STATISTICS, FIELD_EXCESS, FIELD_TEST, FIELD_GRID_BASELINE):
                 labelled.insert(3, COL_DIRECTION, direction)
             blocks[field].append(labelled)
 
@@ -1200,6 +1349,7 @@ def run_study(
         KEY_ENTRY_MONTHS: list(ENTRY_MONTHS),
         KEY_HOLD_MONTHS: list(HOLD_MONTHS),
         KEY_BASELINE_START: HALVINGS[0].label,
+        KEY_GRID_BASELINE_HOLD_MONTHS: list(GRID_BASELINE_HOLD_MONTHS),
         KEY_INDICATOR_RULE: _indicator_rule(INDICATOR_SIGNALS),
         KEY_SPLIT_RULE: _split_rule(),
         KEY_DATASETS: dataset_summaries,
@@ -1226,6 +1376,7 @@ def run_study(
         split_fills=combined[FIELD_SPLIT_FILLS],
         split_positions=combined[FIELD_SPLIT_POSITIONS],
         split_combinations=combined[FIELD_SPLIT_COMBINATIONS],
+        grid_baseline=combined[FIELD_GRID_BASELINE],
         summary=summary,
     )
 
@@ -1298,6 +1449,7 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
         FIELD_SPLIT_FILLS: _rounded_indicators(_rounded_prices(outputs.split_fills)),
         FIELD_SPLIT_POSITIONS: _rounded_prices(outputs.split_positions),
         FIELD_SPLIT_COMBINATIONS: outputs.split_combinations,
+        FIELD_GRID_BASELINE: outputs.grid_baseline,
     }
     # 조합 표의 사이클별 가로 칸은 반감기 목록에서 이름을 만든다 — 사전에 박아 두면 반감기가 늘 때 빠진다
     labels = {**COLUMN_LABELS, **_CYCLE_LABELS}
@@ -1320,6 +1472,7 @@ __all__ = [
     "LoadedOnchain",
     "StudyOutputs",
     "display_tables",
+    "grid_baseline_table",
     "halving_records",
     "load_onchain",
     "load_dataset",

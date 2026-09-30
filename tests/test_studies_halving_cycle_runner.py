@@ -37,14 +37,22 @@ from verify_lab.measure.constants import (
     JUDGEABLE_NO,
     REASON_NONE,
 )
-from verify_lab.measure.statistics import COL_MEAN, COL_SAMPLE_COUNT, COL_TEST_NOTE, NOTE_TOO_FEW_SAMPLES
+from verify_lab.measure.statistics import (
+    COL_MEAN,
+    COL_SAMPLE_COUNT,
+    COL_TEST_NOTE,
+    COL_WIN_RATE,
+    NOTE_TOO_FEW_SAMPLES,
+)
 from verify_lab.report.run_summary import KEY_TRACK
+from verify_lab.studies.halving_cycle import runner as runner_module
 from verify_lab.studies.halving_cycle.constants import (
     BASELINE_SUFFIX,
     COL_BASELINE_NON_OVERLAPPING,
     COL_CALENDAR_YEAR,
     COL_CYCLE_COUNT,
     COL_ENTRY_MONTHS,
+    COL_EXIT_MONTHS,
     COL_HALVING,
     COL_HOLD_MONTHS,
     COL_HOLD_RETURNS,
@@ -56,6 +64,9 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_VALUE_DAY,
     DATASETS,
     ENTRY_MONTHS,
+    EXIT_MONTHS,
+    GRID_BASELINE_FILENAME,
+    GRID_BASELINE_HOLD_MONTHS,
     HALVINGS,
     HOLD_MONTHS,
     INDICATOR_SIGNALS,
@@ -68,9 +79,11 @@ from verify_lab.studies.halving_cycle.constants import (
     SPLIT_TRANCHES,
     TRACK_NAME,
     Dataset,
+    Halving,
 )
 from verify_lab.studies.halving_cycle.runner import (
     KEY_DROPPED_TAIL_DAYS,
+    KEY_GRID_BASELINE_HOLD_MONTHS,
     KEY_MISSING_PRICE_DAYS,
     KEY_ONCHAIN,
     KEY_SPLIT,
@@ -84,6 +97,8 @@ from verify_lab.studies.halving_cycle.runner import (
     KEY_SPLIT_UNFINISHED,
     StudyOutputs,
     display_tables,
+    grid_baseline_table,
+    load_dataset,
     load_onchain,
     run_study,
 )
@@ -191,9 +206,47 @@ def _dataset(directory: Path) -> Dataset:
 
 
 @pytest.fixture(scope="module")
-def outputs(tmp_path_factory: pytest.TempPathFactory) -> StudyOutputs:
+def synthetic_dataset(tmp_path_factory: pytest.TempPathFactory) -> Dataset:
+    """합성 입력 대상 — 측정 결과와 손 계산이 같은 파일을 읽는다."""
+    return _dataset(tmp_path_factory.mktemp("halving"))
+
+
+@pytest.fixture(scope="module")
+def outputs(synthetic_dataset: Dataset) -> StudyOutputs:
     """합성 입력으로 돈 측정 결과."""
-    return run_study((_dataset(tmp_path_factory.mktemp("halving")),), repeats=TEST_REPEATS, seed=0)
+    return run_study((synthetic_dataset,), repeats=TEST_REPEATS, seed=0)
+
+
+def _expected_same_cycle_cells(frame: pd.DataFrame) -> dict[tuple[int, int], tuple[int, list[float]]]:
+    """같은 사이클에 파는 칸마다 (신호 수, 유효 수익률)을 반감기 날짜와 달력월로 **직접** 센다.
+
+    구현의 일정 함수(`position_schedule`)를 쓰지 않는다 — 같은 함수로 기대값을 만들면 그 함수가 틀려도 통과한다.
+    진입일이 다음 반감기 뒤이거나 데이터 뒤면 신호가 아니고, 청산일이 다음 반감기 뒤이거나 데이터 뒤면 제외다.
+    """
+    closes = frame.set_index(COL_DATE)[COL_CLOSE]
+    last_day = frame[COL_DATE].iloc[-1]
+    halving_days = [halving.day for halving in HALVINGS]
+
+    cells: dict[tuple[int, int], tuple[int, list[float]]] = {}
+    for entry in ENTRY_MONTHS:
+        for exit_ in EXIT_MONTHS:
+            if exit_ <= entry:
+                continue
+            signals = 0
+            returns: list[float] = []
+            for index, start in enumerate(halving_days):
+                bound = halving_days[index + 1] if index + 1 < len(halving_days) else None
+                entry_day = start + pd.DateOffset(months=entry)
+                if (bound is not None and entry_day >= bound) or entry_day > last_day:
+                    continue
+                signals += 1
+                exit_day = start + pd.DateOffset(months=exit_)
+                if (bound is not None and exit_day >= bound) or exit_day > last_day:
+                    continue
+                returns.append(float(closes[exit_day] / closes[entry_day] - 1.0))
+            cells[(entry, exit_)] = (signals, returns)
+
+    return cells
 
 
 class TestConstants:
@@ -898,3 +951,204 @@ class TestSplitTables:
         np.testing.assert_allclose(prices, np.round(prices, PRICE_DECIMALS), atol=0.0)
         expected = (outputs.split_positions[COL_POSITION_RETURN] * 100.0).round(2)
         pd.testing.assert_series_equal(table["수익률(%)"], expected, check_names=False)
+
+
+class TestGridBaseline:
+    """3단계 격자 중 같은 사이클에 파는 칸의 집계와 같은 보유의 기준선 (결정 ㊶)"""
+
+    def test_같은_사이클에_파는_칸마다_한_행이고_보유는_청산_빼기_진입이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 청산 개월 > 진입 개월인 칸이 빠짐없이 한 번씩 나오고, 기준선의 보유가 그 차이임을 고정한다.
+
+        Given: 합성 입력의 측정 결과
+        When: 격자기준선 표의 칸을 본다
+        Then: (진입, 청산) 쌍이 격자의 「청산 > 진입」 쌍과 같고, 보유 = 청산 − 진입 이며, 보유가 3 ~ 45개월 3개월 간격이다
+        """
+        # Given
+        table = outputs.grid_baseline
+
+        # When
+        cells = list(zip(table[COL_ENTRY_MONTHS], table[COL_EXIT_MONTHS], strict=True))
+
+        # Then
+        assert sorted(cells) == sorted(
+            (entry, exit_) for entry in ENTRY_MONTHS for exit_ in EXIT_MONTHS if exit_ > entry
+        )
+        assert (table[COL_HOLD_MONTHS] == table[COL_EXIT_MONTHS] - table[COL_ENTRY_MONTHS]).all()
+        assert sorted(set(table[COL_HOLD_MONTHS])) == list(range(3, 46, 3)) == list(GRID_BASELINE_HOLD_MONTHS)
+
+    def test_신호는_직접_센_진입_수이고_표본과_제외의_합이다(self, outputs: StudyOutputs, synthetic_dataset: Dataset) -> None:
+        """
+        목적: 청산 시점 전에 다음 반감기가 오거나 데이터가 끝난 진입이 제외로 세어지고 사라지지 않음을 고정한다 (표본 보존).
+
+        Given: 합성 시세와 그 측정 결과
+        When: 칸마다 신호 · 표본 · 제외를 반감기 날짜와 달력월로 직접 센 값과 견준다
+        Then: 신호와 표본이 같고, 신호 = 표본 + 제외 이며, 제외가 있는 칸이 하나 이상이다
+        """
+        # Given
+        expected = _expected_same_cycle_cells(load_dataset(synthetic_dataset).frame)
+        table = outputs.grid_baseline
+
+        # When / Then
+        for _, row in table.iterrows():
+            signals, returns = expected[(int(row[COL_ENTRY_MONTHS]), int(row[COL_EXIT_MONTHS]))]
+            assert row[COL_SIGNAL_COUNT] == signals
+            assert row[COL_SAMPLE_COUNT] == len(returns)
+        assert (table[COL_SIGNAL_COUNT] == table[COL_SAMPLE_COUNT] + table[COL_EXCLUDED_COUNT]).all()
+        assert table[COL_EXCLUDED_COUNT].sum() > 0
+
+    def test_칸의_평균과_오른_비율은_청산_종가_나누기_진입_종가다(self, outputs: StudyOutputs, synthetic_dataset: Dataset) -> None:
+        """
+        목적: 칸 값이 반감기일 + 달력월 날의 종가 비율임을 고정한다 — 3단계 일정을 측정 수익률 함수에 처음 넘긴다 (산식 고정).
+
+        Given: 합성 시세에서 칸마다 직접 낸 수익률
+        When: 격자기준선 표의 평균 · 오른 비율과 견준다
+        Then: 유효 표본이 있는 칸마다 같다
+        """
+        # Given
+        expected = _expected_same_cycle_cells(load_dataset(synthetic_dataset).frame)
+
+        # When / Then
+        checked = 0
+        for _, row in outputs.grid_baseline.iterrows():
+            _, returns = expected[(int(row[COL_ENTRY_MONTHS]), int(row[COL_EXIT_MONTHS]))]
+            if not returns:
+                continue
+            assert row[COL_MEAN] == pytest.approx(float(np.mean(returns)), abs=1e-12)
+            assert row[COL_WIN_RATE] == pytest.approx(float(np.mean([value > 0 for value in returns])), abs=1e-12)
+            checked += 1
+        assert checked > 0
+
+    def test_보유_3_6_12개월의_기준선은_1단계_기준선과_같다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 같은 모집단(첫 반감기부터 매일 진입)과 같은 청산 규칙을 씀을 고정한다 (결정 ⑬ · ㊶).
+
+        Given: 격자기준선 표와 1단계 excess 표
+        When: 보유 3 · 6 · 12개월 칸의 기준선 표본 · 평균 · 오른 비율을 견준다
+        Then: 같다
+        """
+        # Given
+        columns = [f"{column}{BASELINE_SUFFIX}" for column in (COL_SAMPLE_COUNT, COL_MEAN, COL_WIN_RATE)]
+        stage_one = outputs.excess.groupby(COL_HOLD_MONTHS)[columns].first()
+        rows = outputs.grid_baseline[outputs.grid_baseline[COL_HOLD_MONTHS].isin(HOLD_MONTHS)]
+
+        # When / Then
+        assert set(rows[COL_HOLD_MONTHS]) == set(HOLD_MONTHS)
+        for _, row in rows.iterrows():
+            for column in columns:
+                assert row[column] == pytest.approx(stage_one.loc[row[COL_HOLD_MONTHS], column], abs=1e-12)
+
+    def test_가장_긴_보유의_기준선_표본은_청산일이_데이터_안인_날_수다(self, outputs: StudyOutputs, synthetic_dataset: Dataset) -> None:
+        """
+        목적: 1단계에 없던 긴 보유의 기준선이 첫 반감기부터 매일 진입해 청산일이 데이터 안인 날만 셈을 고정한다.
+
+        Given: 합성 시세
+        When: 가장 긴 보유 칸의 기준선 표본을 직접 센 값과 견준다
+        Then: 같다
+        """
+        # Given
+        last_day = load_dataset(synthetic_dataset).frame[COL_DATE].iloc[-1]
+        longest = max(GRID_BASELINE_HOLD_MONTHS)
+        days = pd.date_range(HALVINGS[0].day, last_day, freq="D")
+        expected = sum(1 for day in days if day + pd.DateOffset(months=longest) <= last_day)
+
+        # When
+        rows = outputs.grid_baseline[outputs.grid_baseline[COL_HOLD_MONTHS] == longest]
+
+        # Then
+        assert len(rows) > 0
+        assert (rows[f"{COL_SAMPLE_COUNT}{BASELINE_SUFFIX}"] == expected).all()
+
+    def test_요약에_기준선_보유_목록과_행_수가_실린다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 무엇을 어떤 보유로 쟀는지가 요약에 남음을 고정한다.
+
+        Given: 측정 요약
+        When: 기준선 보유 목록과 행 수를 본다
+        Then: 보유 목록이 격자에서 유도한 값이고 행 수가 표의 행 수다
+        """
+        assert outputs.summary[KEY_GRID_BASELINE_HOLD_MONTHS] == list(GRID_BASELINE_HOLD_MONTHS)
+        assert outputs.summary[KEY_ROW_COUNTS][GRID_BASELINE_FILENAME] == len(outputs.grid_baseline)
+
+    def test_표시용_표는_성적표와_같은_식별_헤더와_백분율이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 성적표와 같은 헤더로 이어 볼 수 있고 비율이 백분율로 나감을 고정한다 (내부/출력 분리).
+
+        Given: 격자기준선 표
+        When: 표시용으로 바꾼다
+        Then: 앞 다섯 헤더가 종목 · 진입 · 청산 · 방향 · 보유이고, 평균이 비율 × 100 (2자리)이다
+        """
+        # When
+        table = display_tables(outputs)["grid_baseline"]
+
+        # Then
+        assert list(table.columns[:5]) == ["종목", "반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)", "방향", "보유(개월)"]
+        assert {"평균(%)", "기준선 평균(%)", "오른 비율 차이(%p)"} <= set(table.columns)
+        np.testing.assert_allclose(
+            table["평균(%)"].to_numpy(dtype=float),
+            (outputs.grid_baseline[COL_MEAN] * 100).round(2).to_numpy(dtype=float),
+            atol=1e-9,
+        )
+
+    def test_유효_표본이_없는_칸도_행이_남고_지표는_빈칸이다(self) -> None:
+        """
+        목적: 진입이 아직 없거나 전부 제외된 칸이 사라지거나 0 으로 채워지지 않음을 고정한다 (측정의 원칙 17).
+
+        Given: 첫 반감기 뒤 7개월에서 끝나는 합성 시세 — 대부분의 칸은 진입이 없거나 청산이 데이터 뒤다
+        When: 격자기준선 표를 낸다
+        Then: 칸이 전부 남고, 표본 0 인 칸은 평균 · 기준선 평균 · 비중첩이 비며, 신호 0 인 칸과 전부 제외된 칸이 둘 다 있다
+        """
+        # Given
+        market = _market()
+        frame = market[market[COL_DATE] <= pd.Timestamp("2013-06-30")].reset_index(drop=True)
+
+        # When
+        table = grid_baseline_table(frame, repeats=TEST_REPEATS, seed=0)
+
+        # Then
+        empty = table[table[COL_SAMPLE_COUNT] == 0]
+        assert len(table) == sum(1 for entry in ENTRY_MONTHS for exit_ in EXIT_MONTHS if exit_ > entry)
+        assert (table[COL_SIGNAL_COUNT] == table[COL_SAMPLE_COUNT] + table[COL_EXCLUDED_COUNT]).all()
+        assert empty[COL_MEAN].isna().all()
+        assert empty[COL_NON_OVERLAPPING].isna().all()
+        assert (empty[COL_SIGNAL_COUNT] == 0).any()
+        assert ((empty[COL_SIGNAL_COUNT] > 0) & (empty[COL_EXCLUDED_COUNT] == empty[COL_SIGNAL_COUNT])).any()
+        longest = table[table[COL_HOLD_MONTHS] == max(GRID_BASELINE_HOLD_MONTHS)]
+        assert (longest[f"{COL_SAMPLE_COUNT}{BASELINE_SUFFIX}"] == 0).all()
+        assert longest[f"{COL_MEAN}{BASELINE_SUFFIX}"].isna().all()
+
+    def test_진입일에_보유_개월을_더한_날이_청산일과_다르면_멈춘다(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 칸의 보유를 (청산 − 진입) 개월로 두는 전제가 깨지면 기준선을 다른 보유로 조용히 재지 않고 멈춤을 고정한다.
+
+        Given: 두 번째 반감기를 7월 31일로 옮긴 반감기 목록 — 9개월 진입이 4월 30일로 당겨져, 보유 3개월을 더하면
+            7월 30일인데 청산일(반감기일 + 12개월)은 7월 31일이다
+        When: 격자기준선을 낸다
+        Then: 내부 불변조건 위반으로 멈춘다
+        """
+        # Given
+        moved = Halving(height=HALVINGS[1].height, block_time=datetime(2016, 7, 31, 16, 46, 13, tzinfo=UTC))
+        monkeypatch.setattr(runner_module, "HALVINGS", (HALVINGS[0], moved, *HALVINGS[2:]))
+
+        # When / Then
+        with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
+            grid_baseline_table(_market(), repeats=TEST_REPEATS, seed=0)
+
+    def test_29일_이후_반감기라도_격자가_긴_달만_지나면_멈추지_않는다(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        목적: 가드가 반감기일이라는 대리 조건이 아니라 등식 자체를 봄을 고정한다 — 3개월 간격 격자가 30일 이상인 달만
+        지나면 반감기일이 30일이어도 전제가 성립하므로 측정을 멈추지 않는다.
+
+        Given: 두 번째 반감기를 7월 30일로 옮긴 반감기 목록 — 격자가 7 · 10 · 1 · 4월만 지난다
+        When: 격자기준선을 낸다
+        Then: 멈추지 않고 칸이 전부 나온다
+        """
+        # Given
+        moved = Halving(height=HALVINGS[1].height, block_time=datetime(2016, 7, 30, 16, 46, 13, tzinfo=UTC))
+        monkeypatch.setattr(runner_module, "HALVINGS", (HALVINGS[0], moved, *HALVINGS[2:]))
+
+        # When
+        table = grid_baseline_table(_market(), repeats=TEST_REPEATS, seed=0)
+
+        # Then
+        assert len(table) == sum(1 for entry in ENTRY_MONTHS for exit_ in EXIT_MONTHS if exit_ > entry)
