@@ -33,6 +33,7 @@ import pandas as pd
 from verify_lab.execution.constants import (
     DISPLAY_RETURN,
     DISPLAY_STOP_LEVEL,
+    DISPLAY_TICKER,
     PERIOD_ALL,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -204,11 +205,12 @@ def _print_indicator_statistics(tables: dict[str, pd.DataFrame]) -> None:
 
 
 def _print_candidate_counts(trading: TradingOutputs) -> None:
-    """손절선마다 1차 판정이 「후보」인 칸의 수를 화면에 띄운다.
+    """종목 · 손절선마다 1차 판정이 「후보」인 칸의 수를 화면에 띄운다.
 
     **칸 목록을 띄우지 않는다** — 격자가 손절선마다 수백 칸이라 화면에서 읽히지 않고, 전체는 성적표가 갖는다.
     **후보는 자격이지 발견이 아니다.** 게이트를 넘었다는 뜻일 뿐이며, 표본이 하한에 못 미치고 칸끼리
-    독립이 아니라는 사실은 그대로다.
+    독립이 아니라는 사실은 그대로다. **종목으로도 묶는다** — 손절선으로만 묶으면 대상이 둘일 때 두 격자의 칸과
+    판정하지 않는 대상의 칸이 한 줄에 합쳐진다.
 
     Args:
         trading: 체결 산출물
@@ -217,13 +219,13 @@ def _print_candidate_counts(trading: TradingOutputs) -> None:
     whole = frame[frame[DISPLAY_PERIOD] == PERIOD_ALL]
     counts = (
         whole.assign(**{DISPLAY_CANDIDATE_COUNT: whole[DISPLAY_SCREEN] == SCREEN_CANDIDATE})
-        .groupby(DISPLAY_STOP_LEVEL, sort=False)
+        .groupby([DISPLAY_TICKER, DISPLAY_STOP_LEVEL], sort=False)
         .agg(
             **{DISPLAY_CELL_COUNT: (DISPLAY_SCREEN, "size"), DISPLAY_CANDIDATE_COUNT: (DISPLAY_CANDIDATE_COUNT, "sum")}
         )
         .reset_index()
     )
-    print_dataframe(counts, logger, title="1차 판정 「후보」 칸 수 — 손절선마다 (「위」 · 전체 구간). 칸 전체는 성적표에 있다")
+    print_dataframe(counts, logger, title="1차 판정 「후보」 칸 수 — 종목 · 손절선마다 (「위」 · 전체 구간). 칸 전체는 성적표에 있다")
 
 
 def _save(

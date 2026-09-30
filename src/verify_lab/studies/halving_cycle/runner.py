@@ -506,7 +506,8 @@ def _onchain_gap(trading_days: pd.DatetimeIndex, onchain: pd.DataFrame) -> int:
 def signal_returns(frame: pd.DataFrame) -> pd.DataFrame:
     """신호(반감기 × 진입 개월 × 보유 개월)의 long-form 수익률을 낸다.
 
-    **측정과 체결이 이 함수를 함께 쓴다** — 진입일 정의를 두 벌 만들면 두 계층이 다른 날에 들어간다.
+    **측정만 쓰고 체결은 부르지 않는다.** 3단계 체결은 `halving_calendar.position_schedule` 의 일정으로 들어가고,
+    두 일정은 진입일 규칙이 같고 구현이 둘이다 — 규칙을 바꿀 때 함께 바꿀 곳은 그 모듈 docstring 이 말한다.
 
     Args:
         frame: 날짜 오름차순 시세

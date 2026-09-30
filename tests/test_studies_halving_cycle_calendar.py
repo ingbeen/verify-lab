@@ -808,6 +808,7 @@ class TestLookAhead:
 
         # Then
         measured = short[short[COL_EXCLUDED_REASON] == REASON_NONE]
+        assert not measured.empty, "짧은 입력에서 잰 기준선 칸이 없어 계약을 검사하지 못했습니다"
         np.testing.assert_allclose(
             measured[COL_FORWARD_RETURN].to_numpy(), full.loc[measured.index, COL_FORWARD_RETURN].to_numpy(), rtol=1e-12
         )

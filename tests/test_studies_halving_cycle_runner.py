@@ -597,7 +597,7 @@ class TestEntryIndicators:
         stage_one = outputs.entries.drop_duplicates([COL_HALVING, COL_ENTRY_MONTHS])
 
         assert len(table) == len(stage_one)
-        assert (table[COL_VALUE_DAY] == table[COL_DATE] - pd.Timedelta(days=1)).all()
+        assert (table[COL_VALUE_DAY] == table[COL_DATE] - pd.Timedelta(1, unit="D")).all()
 
     def test_수익률은_1단계_진입내역과_같다(self, outputs: StudyOutputs) -> None:
         """

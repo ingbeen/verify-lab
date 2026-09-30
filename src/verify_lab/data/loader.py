@@ -14,6 +14,7 @@
 | 유일 키 | 날짜 | 날짜 | **날짜 + 계약** |
 | 0 이하 값 | 오류로 본다 | **정상이다** (마이너스 금리) | 정산가는 언제나, 체결가는 **체결이 있었던 날만** 오류로 본다 |
 | 결측 종가 | 오류로 본다 | — | **정상이다** (그날 체결 없음) |
+| 거래량 | 결측 · 무한대 · 음수를 오류로 본다. **0 은 정상이다** (거래가 없던 날) | — | 보지 않는다 |
 | 큰 일간 변동 | 오류로 본다 | **정상이다** (환위기의 환율) | 계약별로 나눠 본다 |
 
 값의 부호와 변동폭이 무엇을 뜻하는지는 소스마다 달라서, 시세의 판정을 시계열에 그대로
@@ -38,6 +39,7 @@ from verify_lab.common_constants import (
     COL_OPEN_INTEREST,
     COL_SETTLE,
     COL_VALUE,
+    COL_VOLUME,
     FUTURES_REQUIRED_COLUMNS,
     FUTURES_ROW_KEY,
     PRICE_COLUMNS,
@@ -61,7 +63,7 @@ MAX_DAILY_CHANGE_RATE = 0.50
 def validate_market_data(df: pd.DataFrame, *, max_daily_change_rate: float = MAX_DAILY_CHANGE_RATE) -> None:
     """시세 DataFrame 의 이상 여부를 검사한다.
 
-    결측·0 이하 가격·비정상 급등락을 검사하며, 어떤 형태의 보간도 하지 않는다.
+    가격과 거래량의 결측 · 무한대, 0 이하 가격, 음수 거래량, 비정상 급등락을 검사하며, 어떤 형태의 보간도 하지 않는다.
     수집기와 로더가 이 함수를 함께 쓴다 — 판정이 두 곳으로 갈라지면
     "수집은 통과했는데 로딩에서 막히는" 데이터가 생긴다. **임계값을 넘기는 자산군은
     수집기와 로더 양쪽에 같은 값을 넘긴다.**
@@ -71,7 +73,8 @@ def validate_market_data(df: pd.DataFrame, *, max_daily_change_rate: float = MAX
         max_daily_change_rate: 데이터 오류로 볼 일간 변동 임계 (비율, 0.50 = 50%)
 
     Raises:
-        ValueError: 임계값이 유한한 양수가 아니거나, 결측, 0 이하 가격, 임계를 넘는 일간 변동이 발견된 경우
+        ValueError: 임계값이 유한한 양수가 아니거나, 결측 · 무한대 · 0 이하 가격 · 음수 거래량 · 임계를 넘는 일간 변동이
+            발견된 경우
     """
     # 0 이하면 모든 변동이 오류가 되어 정상 시세가 전부 막히고, NaN · 무한대면 어떤 비교도 참이 되지 않아
     # 아무것도 막지 않는다 — 어느 쪽이든 판정이 뜻을 잃는다. `<= 0` 만 보면 NaN 이 그 비교마저 거짓으로 빠져나간다
@@ -81,21 +84,37 @@ def validate_market_data(df: pd.DataFrame, *, max_daily_change_rate: float = MAX
     if df.empty:
         raise ValueError("시세 데이터가 비어 있습니다")
 
+    value_columns = [*PRICE_COLUMNS, COL_VOLUME]
+
     # 1. 결측 검사
-    for column in PRICE_COLUMNS:
+    for column in value_columns:
         missing = df[column].isna()
         if missing.any():
             dates = df.loc[missing, COL_DATE].head().tolist()
             raise ValueError(f"결측 값 발견 - 컬럼: {column}, 건수: {int(missing.sum())}, 예시 날짜: {dates}")
 
-    # 2. 0 이하 가격 검사. 가격이 0이 되는 것은 거래정지나 수집 오류이며 시장가가 아니다
+    # 2. 무한대 검사. 0 이하 검사는 양의 무한대를 지나보내고 일간 변동 검사는 종가만 보므로 따로 막는다.
+    #    0 이하 검사보다 먼저 두어 음의 무한대를 「0 이하」가 아니라 무한대로 알린다
+    for column in value_columns:
+        infinite = df[column].isin([math.inf, -math.inf])
+        if infinite.any():
+            dates = df.loc[infinite, COL_DATE].head().tolist()
+            raise ValueError(f"무한대 값 발견 - 컬럼: {column}, 건수: {int(infinite.sum())}, 예시 날짜: {dates}")
+
+    # 3. 0 이하 가격 검사. 가격이 0이 되는 것은 거래정지나 수집 오류이며 시장가가 아니다
     for column in PRICE_COLUMNS:
         non_positive = df[column] <= 0
         if non_positive.any():
             dates = df.loc[non_positive, COL_DATE].head().tolist()
             raise ValueError(f"0 이하 가격 발견 - 컬럼: {column}, 건수: {int(non_positive.sum())}, 예시 날짜: {dates}")
 
-    # 3. 일간 변동 검사. 첫 행은 직전 값이 없어 NaN 이므로 검사 대상에서 빠진다
+    # 4. 음수 거래량 검사. 0 은 막지 않는다 — 거래가 없던 날이 실제 시세에 있다(비트코인 초기 · 인버스 ETF)
+    negative_volume = df[COL_VOLUME] < 0
+    if negative_volume.any():
+        dates = df.loc[negative_volume, COL_DATE].head().tolist()
+        raise ValueError(f"음수 거래량 발견 - 컬럼: {COL_VOLUME}, 건수: {int(negative_volume.sum())}, 예시 날짜: {dates}")
+
+    # 5. 일간 변동 검사. 첫 행은 직전 값이 없어 NaN 이므로 검사 대상에서 빠진다
     change_rate = df[COL_CLOSE].pct_change()
     extreme = change_rate.abs() > max_daily_change_rate
 
@@ -111,7 +130,7 @@ def validate_market_data(df: pd.DataFrame, *, max_daily_change_rate: float = MAX
 def validate_market_frame(df: pd.DataFrame, required_columns: Sequence[str]) -> None:
     """시세 DataFrame 이 위치 기반 계산의 전제를 만족하는지 확인한다.
 
-    값의 이상(결측·0 이하 가격·급등락)은 `validate_market_data` 가 본다. 이 함수는 **구조만** 본다 —
+    값의 이상은 `validate_market_data` 가 본다. 이 함수는 **구조만** 본다 —
     비었는가, 필요한 컬럼이 있는가, 날짜가 오름차순인가.
 
     측정 계층은 넘겨받은 DataFrame 의 출처를 알 수 없으므로 계산 전에 이 검사를 지난다.

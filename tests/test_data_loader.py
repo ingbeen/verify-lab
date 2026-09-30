@@ -226,6 +226,86 @@ def test_negative_price_raises(tmp_path: Path) -> None:
         load_market_csv(path)
 
 
+@pytest.mark.parametrize("value", [float("inf"), float("-inf")])
+@pytest.mark.parametrize("column", [COL_OPEN, COL_HIGH, COL_LOW])
+def test_infinite_price_raises(tmp_path: Path, column: str, value: float) -> None:
+    """
+    목적: 종가가 아닌 가격 컬럼의 무한대를 데이터 오류로 판정함을 고정한다.
+
+    일간 변동 검사는 종가만 보고 0 이하 검사는 양의 무한대를 지나보내므로, 따로 막지 않으면 시가 · 고가 ·
+    저가의 무한대가 그대로 저장되고 읽힌다. 음의 무한대도 「0 이하」가 아니라 무한대로 알린다 — 원인이 다르다.
+
+    Given: 시가 · 고가 · 저가 중 하나가 무한대인 행
+    When: 로드한다
+    Then: ValueError 가 발생하고 메시지가 무한대와 그 컬럼을 말한다
+    """
+    # Given
+    rows = [_row("2026-01-02", 100.0), _row("2026-01-05", 101.0)]
+    rows[1][column] = value
+    path = _write_csv(tmp_path / "infinite_price.csv", rows)
+
+    # When / Then
+    with pytest.raises(ValueError, match=f"무한대.*{column}"):
+        load_market_csv(path)
+
+
+def test_infinite_close_in_single_row_file_raises(tmp_path: Path) -> None:
+    """
+    목적: 일간 변동을 잴 수 없는 한 행짜리 파일에서도 종가의 무한대를 막음을 고정한다 (경계 조건).
+
+    여러 행이면 종가의 무한대는 일간 변동(+inf%)으로 걸리지만, 한 행이면 변동이 NaN 이라 그 검사를 지나간다.
+
+    Given: 종가만 무한대인 한 행짜리 파일
+    When: 로드한다
+    Then: ValueError 가 발생하고 메시지가 무한대와 종가 컬럼을 말한다
+    """
+    # Given
+    rows = [_row("2026-01-02", 100.0)]
+    rows[0][COL_CLOSE] = float("inf")
+    path = _write_csv(tmp_path / "single_infinite.csv", rows)
+
+    # When / Then
+    with pytest.raises(ValueError, match=f"무한대.*{COL_CLOSE}"):
+        load_market_csv(path)
+
+
+@pytest.mark.parametrize("volume", [None, float("inf"), -5])
+def test_invalid_volume_raises(tmp_path: Path, volume: float | int | None) -> None:
+    """
+    목적: 거래량의 결측 · 무한대 · 음수를 데이터 오류로 판정함을 고정한다.
+
+    거래량을 따로 보지 않으면 빈 값이 그대로 저장되고, 비트코인의 「거래량 0 인 날」 종가 대체와
+    크로스체크 목록이 그날을 놓친다.
+
+    Given: 거래량이 결측 · 무한대 · 음수인 행
+    When: 로드한다
+    Then: ValueError 가 발생하고 메시지가 거래량 컬럼을 말한다
+    """
+    # Given
+    rows = [_row("2026-01-02", 100.0), _row("2026-01-05", 101.0)]
+    rows[1][COL_VOLUME] = volume
+    path = _write_csv(tmp_path / "invalid_volume.csv", rows)
+
+    # When / Then
+    with pytest.raises(ValueError, match=COL_VOLUME):
+        load_market_csv(path)
+
+
+def test_zero_volume_is_accepted(tmp_path: Path) -> None:
+    """
+    목적: 거래량 0 은 정상으로 통과함을 고정한다 (경계 조건).
+
+    거래가 없던 날은 실제 시세에 있다 — 비트코인 초기 · 인버스 ETF. 0 을 막으면 그 파일들이 통째로 읽히지 않는다.
+
+    Given: 거래량이 0 인 행
+    When: 로드한다
+    Then: 예외 없이 두 행이 반환된다
+    """
+    path = _write_csv(tmp_path / "zero_volume.csv", [_row("2026-01-02", 100.0), _row("2026-01-05", 101.0, volume=0)])
+
+    assert len(load_market_csv(path)) == 2
+
+
 def test_extreme_daily_change_raises(tmp_path: Path) -> None:
     """
     목적: 물리적으로 불가능한 일간 변동을 데이터 오류로 판정함을 고정한다.
