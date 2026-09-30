@@ -6,6 +6,7 @@
 | 청산일 | 진입일 + 보유 개월(달력월). 같은 규칙이다 |
 | 기준선 | 첫 반감기일부터 **매일** 진입, 신호와 같은 청산 규칙 |
 | 달력 연도 | 전년 12-31 종가 대비 그해 12-31 종가 (관찰용) |
+| 3단계 체결 일정 | 진입 = 반감기일 + 진입 개월, 청산 = 청산 개월이 더 크면 **같은 반감기일** + 청산 개월 · 같거나 작으면 **다음 반감기일** + 청산 개월. 두 날 모두 **그 사이클 안**이어야 한다 |
 
 **반감기일은 블록 헤더 시각의 UTC 날짜다** (`constants.HALVINGS`). 블록 높이는 수년 전부터 정해져 있고
 진입·청산이 그 날짜와 달력으로만 정해지므로 **판정이 필요 없고 미래를 참조하지 않는다.** 다만 구현이
@@ -20,6 +21,7 @@
 """
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -44,6 +46,7 @@ from verify_lab.measure.forward_return import ReturnBasis
 from verify_lab.studies.halving_cycle.constants import (
     COL_CALENDAR_YEAR,
     COL_ENTRY_MONTHS,
+    COL_EXIT_MONTHS,
     COL_HALVING,
     COL_HALVING_POSITION,
     COL_HOLD_MONTHS,
@@ -52,6 +55,7 @@ from verify_lab.studies.halving_cycle.constants import (
     POSITION_AFTER_TEMPLATE,
     POSITION_BEFORE_FIRST,
     POSITION_HALVING_YEAR,
+    REASON_EXIT_AFTER_NEXT_HALVING,
     REASON_NO_PREVIOUS_YEAR_END,
     REASON_YEAR_UNFINISHED,
     Halving,
@@ -75,6 +79,34 @@ CALENDAR_YEAR_COLUMNS = [
 
 # 청산 일정을 진입 순서 → 보유 순서로 세우는 임시 컬럼
 _ORDER = "_entry_order"
+
+# 3단계 체결 일정의 컬럼
+POSITION_COLUMNS = [
+    COL_HALVING,
+    COL_ENTRY_MONTHS,
+    COL_EXIT_MONTHS,
+    COL_DATE,
+    COL_EXIT_DATE,
+    COL_HOLD_DAYS,
+    COL_EXCLUDED_REASON,
+]
+
+
+@dataclass(frozen=True)
+class PositionSchedule:
+    """3단계 체결 일정 — 진입 시점 × 청산 시점
+
+    **`사이클 수 × 진입 × 청산 = 행 + 그 사이클에 없음 + 아직 안 옴` 이 성립한다** (표본 보존).
+
+    Attributes:
+        schedule: 진입일이 있는 (반감기 × 진입 × 청산) 행. 청산일을 정하지 못한 행은 청산일 · 보유일이 비고 사유가 붙는다
+        outside_cycle_count: 진입일이 다음 반감기 뒤라 **그 사이클에 그 시점이 없어** 행을 만들지 않은 조합 수
+        not_yet_count: 진입일이 데이터 뒤라 **신호가 아직 없어** 행을 만들지 않은 조합 수
+    """
+
+    schedule: pd.DataFrame
+    outside_cycle_count: int
+    not_yet_count: int
 
 
 def trading_positions(trading_days: pd.DatetimeIndex, dates: pd.DatetimeIndex, *, label: str) -> np.ndarray:
@@ -248,6 +280,147 @@ def exit_schedule(trading_days: pd.DatetimeIndex, entries: pd.DataFrame, hold_mo
     return schedule
 
 
+def _position_exit(
+    anchors: tuple[pd.Timestamp, pd.Timestamp | None, pd.Timestamp | None],
+    entry_months: int,
+    exit_months: int,
+    last_day: pd.Timestamp,
+) -> tuple[pd.Timestamp | None, str]:
+    """3단계 체결 하나의 청산일과 제외 사유를 정한다.
+
+    Args:
+        anchors: (그 반감기일, 다음 반감기일, 그다음 반감기일). 목록에 없으면 `None`
+        entry_months: 진입 개월
+        exit_months: 청산 개월
+        last_day: 데이터 마지막 날
+
+    Returns:
+        (청산일 또는 `None`, 제외 사유). 청산일이 있으면 사유는 `REASON_NONE` 이다
+    """
+    halving_day, next_day, after_next_day = anchors
+    if exit_months > entry_months:
+        anchor, bound = halving_day, next_day
+    elif next_day is None:
+        # **반감기 목록이 데이터를 덮는다는 전제다** (결정 ⑫ — 그 해가 오면 실제 블록 시각으로 한 줄을 더한다).
+        # 그 전제 아래서 다음 반감기가 없다는 것은 그 청산일이 데이터 뒤라는 뜻이다
+        return None, REASON_OUT_OF_RANGE
+    else:
+        anchor, bound = next_day, after_next_day
+
+    exit_day = anchor + pd.DateOffset(months=exit_months)
+    # **데이터 끝보다 먼저 본다** — 이 판정은 데이터와 무관한 사실이라 뒤를 잘라도 사유가 바뀌지 않는다
+    if bound is not None and exit_day >= bound:
+        return None, REASON_EXIT_AFTER_NEXT_HALVING
+    if exit_day > last_day:
+        return None, REASON_OUT_OF_RANGE
+
+    return exit_day, REASON_NONE
+
+
+def position_schedule(
+    trading_days: pd.DatetimeIndex,
+    halvings: Sequence[Halving],
+    entry_months: Sequence[int],
+    exit_months: Sequence[int],
+) -> PositionSchedule:
+    """3단계 체결 일정 — 반감기 × 진입 시점 × 청산 시점마다 진입일과 청산일을 정한다.
+
+    **진입과 청산 모두 「가장 최근 반감기 뒤 몇 개월」이다.** 청산 개월이 진입 개월보다 크면 같은 반감기 뒤,
+    같거나 작으면 **다음 반감기 뒤** 그 시점에 판다 — 보유는 최대 한 사이클이다(설계 결정 ㉞). 다음 사이클의
+    청산일은 그 반감기가 지난 뒤에야 알 수 있지만, 그 날짜로 체결할 뿐 **그 뒤의 가격으로 무엇을 판정하지 않으므로**
+    미래 참조가 아니다.
+
+    **정해지지 않는 조합은 넷이고 두 갈래로 나뉜다** (결정 ㊴).
+
+    | 경우 | 처리 |
+    | --- | --- |
+    | 진입일이 다음 반감기 뒤 — 그 사이클에 그 시점이 없다 | 행 없음 · 건수만 |
+    | 진입일이 데이터 뒤 — 신호가 아직 없다 | 행 없음 · 건수만 |
+    | 청산 시점 전에 반감기가 한 번 더 왔다 | 제외 행 · `REASON_EXIT_AFTER_NEXT_HALVING` |
+    | 다음 사이클 청산인데 다음 반감기가 목록에 없다 · 청산일이 데이터 뒤 | 제외 행 · `REASON_OUT_OF_RANGE` |
+
+    Args:
+        trading_days: 거래일 목록 (오름차순 · 중복 없음)
+        halvings: 반감기 목록 — **날짜 오름차순**
+        entry_months: 진입 개월 (0 이상)
+        exit_months: 청산 개월 (0 이상)
+
+    Returns:
+        일정과 행을 만들지 않은 두 종의 건수. 일정은 `POSITION_COLUMNS` 구성이고 반감기 → 진입 → 청산 순서다
+
+    Raises:
+        ValueError: 반감기가 없거나 날짜 오름차순이 아니거나, 개월이 음수이거나, 거래일 목록이 잘못됐거나,
+            데이터 안의 진입일 · 청산일이 거래일 목록에 없는 경우
+    """
+    if not halvings:
+        raise ValueError("반감기가 하나도 없습니다")
+    halving_days = [halving.day for halving in halvings]
+    if any(later <= earlier for earlier, later in zip(halving_days, halving_days[1:], strict=False)):
+        raise ValueError(
+            "반감기는 날짜 오름차순이어야 합니다 — 순서가 틀리면 「다음 반감기」가 다른 날을 가리킵니다: "
+            f"{[day.date().isoformat() for day in halving_days]}"
+        )
+    negative = [months for months in (*entry_months, *exit_months) if months < 0]
+    if negative:
+        raise ValueError(f"진입 · 청산 개월은 0 이상이어야 합니다: {negative}")
+    validate_trading_days(trading_days, purpose="체결 일정")
+
+    last_day = trading_days[-1]
+    rows: list[dict[str, Any]] = []
+    outside_cycle = 0
+    not_yet = 0
+    for index, halving in enumerate(halvings):
+        next_day = halving_days[index + 1] if index + 1 < len(halving_days) else None
+        after_next_day = halving_days[index + 2] if index + 2 < len(halving_days) else None
+        for entry in entry_months:
+            entry_day = halving.day + pd.DateOffset(months=entry)
+            if next_day is not None and entry_day >= next_day:
+                outside_cycle += len(exit_months)
+                continue
+            # **아직 오지 않은 진입은 신호가 없는 것이다** — 제외 행으로 만들면 신호 수가 부푼다 (결정 ⑯)
+            if entry_day > last_day:
+                not_yet += len(exit_months)
+                continue
+            for exit_ in exit_months:
+                exit_day, reason = _position_exit((halving.day, next_day, after_next_day), entry, exit_, last_day)
+                rows.append(
+                    {
+                        COL_HALVING: halving.label,
+                        COL_ENTRY_MONTHS: entry,
+                        COL_EXIT_MONTHS: exit_,
+                        COL_DATE: entry_day,
+                        COL_EXIT_DATE: exit_day,
+                        COL_EXCLUDED_REASON: reason,
+                    }
+                )
+
+    schedule = pd.DataFrame(rows, columns=POSITION_COLUMNS).astype(
+        {
+            COL_ENTRY_MONTHS: "int64",
+            COL_EXIT_MONTHS: "int64",
+            COL_DATE: "datetime64[ns]",
+            COL_EXIT_DATE: "datetime64[ns]",
+        }
+    )
+
+    valid = np.asarray(schedule[COL_EXCLUDED_REASON] == REASON_NONE)
+    entry_positions = trading_positions(trading_days, pd.DatetimeIndex(schedule[COL_DATE]), label="진입일")
+    exit_positions = np.zeros(len(schedule), dtype=np.int64)
+    exit_positions[valid] = trading_positions(
+        trading_days, pd.DatetimeIndex(schedule.loc[valid, COL_EXIT_DATE]), label="청산일"
+    )
+    schedule[COL_HOLD_DAYS] = pd.array(
+        np.where(valid, exit_positions - entry_positions, np.nan), dtype="Float64"
+    ).astype("Int64")
+
+    logger.debug(
+        f"체결 일정 산출: 행 {len(schedule):,} (제외 {int((~valid).sum()):,}), "
+        f"그 사이클에 없는 진입 {outside_cycle:,} · 아직 오지 않은 진입 {not_yet:,}"
+    )
+
+    return PositionSchedule(schedule=schedule, outside_cycle_count=outside_cycle, not_yet_count=not_yet)
+
+
 def calendar_returns(df: pd.DataFrame, schedule: pd.DataFrame) -> pd.DataFrame:
     """청산 일정에 종가를 붙여 long-form 수익률을 낸다.
 
@@ -354,11 +527,14 @@ def calendar_year_returns(df: pd.DataFrame, halvings: Sequence[Halving]) -> pd.D
 __all__ = [
     "CALENDAR_YEAR_COLUMNS",
     "ENTRY_COLUMNS",
+    "POSITION_COLUMNS",
+    "PositionSchedule",
     "baseline_entries",
     "calendar_returns",
     "calendar_year_returns",
     "exit_schedule",
     "halving_entries",
     "halving_position",
+    "position_schedule",
     "trading_positions",
 ]

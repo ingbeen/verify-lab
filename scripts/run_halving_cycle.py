@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """반감기_사이클 실행 CLI — 측정과 체결을 한 번에 돈다
 
-**1단계 격자 하나를 잰다** — 비트코인 반감기 뒤 0 ~ 45개월(3개월 간격)에 진입해 3 · 6 · 12개월 드는 48칸이다.
+**1단계 측정 격자를 잰다** — 비트코인 반감기 뒤 몇 개월째에 진입해 몇 개월 드는 격자(진입 개월 × 보유 개월)다.
 기준선은 첫 반감기부터 매일 진입해 같은 기간 든 성적이다. 한 번 돌리면 측정 표와 체결 산출물이 **한 폴더에**
 함께 나오며, 어느 등급 폴더에 쌓일지는 `verify_lab/tracks.py` 의 레지스트리가 정한다.
 
 **2단계(보조지표 · 온체인)도 같은 실행에서 잰다** — 책이 문턱을 적은 신호 열넷이 문턱을 돌파한 다음날 종가에 들어가
 같은 보유 · 같은 기준선으로 잰다. 1단계 진입일마다 진입 전날까지의 지표 값도 낸다. **측정만 하고 체결하지 않는다.**
 
+**3단계 체결은 진입 시점 × 청산 시점 격자를 손절선 격자 전부로 · 「위」 한 방향으로 낸다** — 둘 다 가장 최근 반감기
+뒤 몇 개월이고, 청산 시점이 진입보다 같거나 앞이면 다음 반감기 뒤다. 칸과 손절선을 고르지 않는다 — 고르는 것은
+`규칙.md` 에서 한다. 하드포크 몫은 거래내역 끝 칸에 따로 싣는다.
+
 **대상은 Bitstamp BTC/USD 하나다.** 거래량이 0 인 날의 종가는 Coin Metrics 기준가로 바꿔 재고(원시 파일은
 그대로), 두 소스의 차이가 허용폭을 넘은 날과 바꾼 날을 표로 함께 낸다.
 
-**체결은 무손절 한 종 · 「위」 한 방향이다** — 손절은 사용자가 따로 정한다.
-
-[중요] **1단계는 칸마다 표본이 사이클 수(3 ~ 4건)라 칸당 하한(`measure/constants.MIN_SAMPLE_PER_CELL`)에 못 미친다.** 「판정가능」이
-전부 「아니오」이고 우연확률도 붙지 않는다 — **결론의 일부이지 버그가 아니다.** 48칸은 같은 사이클을 나눈 것이라 서로 독립이 아니다.
-2단계 신호는 돌파가 한 바닥에 몰리는 것이 많아 표본이 하한을 넘어도 서로 독립이 아니다 — 사이클 수와 비중첩 표본을 함께 본다.
+[중요] **칸마다 표본이 많아야 사이클 수라 칸당 하한(`measure/constants.MIN_SAMPLE_PER_CELL`)에 못 미친다.** 「판정가능」이
+전부 「아니오」이고 1단계 칸에는 우연확률도 붙지 않는다 — **결론의 일부이지 버그가 아니다.** 격자의 칸은 같은 사이클을 나눈 것이라
+서로 독립이 아니다. 2단계 신호는 돌파가 한 바닥에 몰리는 것이 많아 표본이 하한을 넘어도 서로 독립이 아니다 — 사이클 수와
+비중첩 표본을 함께 본다.
 
 **맨몸 성적이다** — 수수료·슬리피지·세금을 넣지 않는다 (루트 `CLAUDE.md` 2026-09-06 확정).
 
@@ -29,10 +32,7 @@ import pandas as pd
 
 from verify_lab.execution.constants import (
     DISPLAY_RETURN,
-    DISPLAY_TICKER,
-    DISPLAY_TOTAL,
-    DISPLAY_WIN_RATE,
-    DISPLAY_WORST_HOLD,
+    DISPLAY_STOP_LEVEL,
     PERIOD_ALL,
     SUMMARY_FILENAME,
     TRADES_FILENAME,
@@ -64,10 +64,14 @@ from verify_lab.studies.halving_cycle.constants import (
     DISPLAY_HALVING_POSITION,
     DISPLAY_HOLD_MONTHS,
     DISPLAY_INDICATOR_SIGNAL,
+    ENTRY_MONTHS,
+    EXIT_MONTHS,
     FIELD_CALENDAR_YEARS,
     FIELD_INDICATOR_STATISTICS,
     FIELD_STATISTICS,
+    HOLD_MONTHS,
     OUTPUT_FILES,
+    STOP_LEVELS,
     TRACK_NAME,
 )
 from verify_lab.studies.halving_cycle.runner import StudyOutputs, display_tables, run_study
@@ -85,6 +89,30 @@ KEY_META = "halving_cycle"
 DISPLAY_FILE = "파일"
 DISPLAY_ROW_COUNT = "행 수"
 
+# 손절선별 후보 수 표의 컬럼
+# **「후보」 한 낱말로 두지 않는다** — 1차 판정 값과 같은 글자라 판정을 CLI 에서 다시 쓰는 것으로 읽힌다
+DISPLAY_CELL_COUNT = "전체 칸"
+DISPLAY_CANDIDATE_COUNT = "후보 칸"
+
+
+def _grid_text(values: tuple[int, ...]) -> str:
+    """격자 개월 값을 설명에 싣는 글자로 바꾼다.
+
+    **범위로 줄이는 것은 간격이 고를 때뿐이다** — 3 · 6 · 12 를 「3 ~ 12개월」로 적으면 재지 않는 4 · 5 · 7개월이
+    있는 것처럼 읽히고 칸 수와도 어긋난다.
+
+    Args:
+        values: 격자 값 (오름차순)
+
+    Returns:
+        `처음 ~ 끝개월(간격개월 간격)` — 셋 이상이고 간격이 고를 때. 아니면 값을 전부 `·` 로 잇는다
+    """
+    steps = {later - earlier for earlier, later in zip(values, values[1:], strict=False)}
+    if len(values) > 2 and len(steps) == 1:
+        return f"{values[0]} ~ {values[-1]}개월({steps.pop()}개월 간격)"
+
+    return " · ".join(str(value) for value in values) + "개월"
+
 
 def parse_args() -> argparse.Namespace:
     """명령행 인자를 파싱한다.
@@ -92,10 +120,14 @@ def parse_args() -> argparse.Namespace:
     Returns:
         파싱된 인자
     """
+    # **격자 값을 글자로 박지 않는다** — 상수가 바뀌면 `--help` 가 거짓이 된다
     parser = argparse.ArgumentParser(
-        description="반감기_사이클 — 비트코인 반감기 뒤 0 ~ 45개월(3개월 간격)에 진입해 3 · 6 · 12개월 드는 48칸을 "
-        "Bitstamp BTC/USD 로 재고, 무손절 체결 성적과 두 소스 대조 표를 함께 냅니다. "
-        "책이 문턱을 적은 보조지표 · 온체인 신호 열넷도 같은 보유와 기준선으로 잽니다(체결하지 않습니다)."
+        description=(
+            f"반감기_사이클 — 비트코인 반감기 뒤 {_grid_text(ENTRY_MONTHS)} 진입 × 보유 {_grid_text(HOLD_MONTHS)} "
+            f"({len(ENTRY_MONTHS) * len(HOLD_MONTHS)}칸)을 Bitstamp BTC/USD 로 재고, 진입 × 청산 시점 "
+            f"({len(ENTRY_MONTHS) * len(EXIT_MONTHS)}칸)을 손절선 {len(STOP_LEVELS)}종으로 체결한 성적표와 두 소스 대조 표를 "
+            "함께 냅니다. 책이 문턱을 적은 보조지표 · 온체인 신호 열넷도 같은 보유와 기준선으로 잽니다(체결하지 않습니다)."
+        )
     )
     parser.add_argument(
         "--repeats",
@@ -171,9 +203,10 @@ def _print_indicator_statistics(tables: dict[str, pd.DataFrame]) -> None:
     )
 
 
-def _print_candidates(trading: TradingOutputs) -> None:
-    """1차 판정이 「후보」인 칸을 화면에 띄운다.
+def _print_candidate_counts(trading: TradingOutputs) -> None:
+    """손절선마다 1차 판정이 「후보」인 칸의 수를 화면에 띄운다.
 
+    **칸 목록을 띄우지 않는다** — 격자가 손절선마다 수백 칸이라 화면에서 읽히지 않고, 전체는 성적표가 갖는다.
     **후보는 자격이지 발견이 아니다.** 게이트를 넘었다는 뜻일 뿐이며, 표본이 하한에 못 미치고 칸끼리
     독립이 아니라는 사실은 그대로다.
 
@@ -181,24 +214,16 @@ def _print_candidates(trading: TradingOutputs) -> None:
         trading: 체결 산출물
     """
     frame = trading.performance
-    picked = frame[(frame[DISPLAY_PERIOD] == PERIOD_ALL) & (frame[DISPLAY_SCREEN] == SCREEN_CANDIDATE)]
-
-    if picked.empty:
-        logger.debug("1차 판정이 「후보」인 칸이 없습니다")
-        return
-
-    columns = [
-        DISPLAY_TICKER,
-        DISPLAY_ENTRY_MONTHS,
-        DISPLAY_HOLD_MONTHS,
-        DISPLAY_SIGNAL_COUNT,
-        DISPLAY_TOTAL,
-        DISPLAY_MEAN,
-        DISPLAY_WIN_RATE,
-        DISPLAY_WORST_HOLD,
-        DISPLAY_JUDGEABLE,
-    ]
-    print_dataframe(picked[columns], logger, title=f"1차 판정 「후보」 ({len(picked)}칸 — 무손절 · 「위」)")
+    whole = frame[frame[DISPLAY_PERIOD] == PERIOD_ALL]
+    counts = (
+        whole.assign(**{DISPLAY_CANDIDATE_COUNT: whole[DISPLAY_SCREEN] == SCREEN_CANDIDATE})
+        .groupby(DISPLAY_STOP_LEVEL, sort=False)
+        .agg(
+            **{DISPLAY_CELL_COUNT: (DISPLAY_SCREEN, "size"), DISPLAY_CANDIDATE_COUNT: (DISPLAY_CANDIDATE_COUNT, "sum")}
+        )
+        .reset_index()
+    )
+    print_dataframe(counts, logger, title="1차 판정 「후보」 칸 수 — 손절선마다 (「위」 · 전체 구간). 칸 전체는 성적표에 있다")
 
 
 def _save(
@@ -251,7 +276,7 @@ def main() -> int:
     _print_statistics(tables)
     _print_calendar_years(tables)
     _print_indicator_statistics(tables)
-    _print_candidates(trading)
+    _print_candidate_counts(trading)
     print_dataframe(
         pd.DataFrame([{DISPLAY_FILE: name, DISPLAY_ROW_COUNT: rows} for name, rows in counts.items()]),
         logger,

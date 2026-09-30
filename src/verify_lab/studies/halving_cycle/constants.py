@@ -1,10 +1,12 @@
 """반감기_사이클 — 파라미터와 레이블
 
-**격자는 결과를 보기 전에 정한 값이다** — 진입 = 반감기 뒤 0 ~ 45개월을 3개월 간격(16칸), 보유 = 3 · 6 · 12개월,
-합 48칸이다(`docs/검증/반감기_사이클/설계.md` 결정 ⑥). 긴 보유와 고점·바닥 축은 그 결정의 탈락안이다.
+**1단계 측정 격자는 결과를 보기 전에 정한 값이다** — 진입 = 반감기 뒤 0 ~ 45개월을 3개월 간격(16칸), 보유 = 3 · 6 · 12개월,
+합 48칸이다(`docs/검증/반감기_사이클/설계.md` 결정 ⑥). 긴 보유와 고점·바닥 축은 그 결정의 탈락안이고, 긴 보유는 3단계 체결
+격자(진입 시점 × 청산 시점)가 다룬다.
 
-**체결은 무손절 한 종 · 「위」 한 방향이다** (결정 ⑦ · 2026-09-29 사용자 결정). 손절은 사용자가 따로 정하고,
-아래로 거는 칸의 크기와 빈도는 측정 표의 내린 비율이 준다.
+**체결(3단계)은 진입 시점 × 청산 시점 격자 × 손절선 격자 전부 · 「위」 한 방향이다** (결정 ㉞ · ㉟ · ⑰).
+진입과 청산 모두 「가장 최근 반감기 뒤 몇 개월」이고 값은 1단계 진입 축과 같다. **칸을 고르지 않는다** — 고르는 것은
+사용자가 `규칙.md` 에서 한다. 아래로 거는 칸의 크기와 빈도는 측정 표의 내린 비율이 준다.
 
 **달력을 공통 계층에 올리지 않는다.** 진입이 「반감기일 + 개월」이라 중간선거_사이클의 「그 달 마지막
 거래일」과 모양이 다르다 — 원칙에 없는 달력은 같은 모양이 세 번째로 올 때 정한다
@@ -169,6 +171,93 @@ HALVINGS: Final = (
 
 
 # ============================================================
+# 하드포크 — BTC 를 들고 있으면 나눠 받은 코인 (결정 ㊲)
+# ============================================================
+
+
+@dataclass(frozen=True)
+class HardFork:
+    """BTC 를 들고 있으면 1:1 로 나눠 받은 코인 하나
+
+    **원본가에는 이 몫이 없다** — 배당락처럼 체결 수익률에 더하지 않고 따로 잰다(측정의 원칙 14).
+
+    Attributes:
+        name: 코인 이름. 산출물 설명과 요약에 싣는다
+        height: 스냅샷 블록 높이 — 이 블록까지 BTC 를 든 주소가 받았다
+        block_time: 그 블록 헤더의 시각. **시간대가 있어야 한다** — 날짜를 UTC 로 자르기 때문이다
+        price_day: 포크 코인의 첫 시세일 (Coin Metrics `PriceUSD`)
+        coin_price: 그날 포크 코인 가격 (USD)
+        btc_price: 그날 BTC 가격 (USD · 같은 소스). **Bitstamp 가 아니라 같은 소스를 쓴다** — 비율의 두 값이
+            다른 소스면 두 소스의 괴리가 비율에 섞인다
+    """
+
+    name: str
+    height: int
+    block_time: datetime
+    price_day: pd.Timestamp
+    coin_price: float
+    btc_price: float
+
+    def __post_init__(self) -> None:
+        """값을 검사한다.
+
+        Raises:
+            ValueError: 시각에 시간대가 없거나, 가격이 양수가 아니거나, 첫 시세일이 포크일 앞인 경우
+        """
+        if self.block_time.tzinfo is None:
+            raise ValueError(f"하드포크 블록 시각에 시간대가 없습니다: {self.name} {self.block_time}")
+        if self.coin_price <= 0 or self.btc_price <= 0:
+            raise ValueError(f"하드포크 가격은 양수여야 합니다: {self.name} {self.coin_price} · {self.btc_price}")
+        if self.price_day < self.day:
+            raise ValueError(f"첫 시세일이 포크일 앞입니다: {self.name} {self.price_day.date()} < {self.day.date()}")
+
+    @property
+    def day(self) -> pd.Timestamp:
+        """포크일 — 스냅샷 블록 헤더 시각의 **UTC** 날짜(자정).
+
+        Returns:
+            시간대 없는 자정 Timestamp. 시세의 날짜와 같은 모양이다
+        """
+        return pd.Timestamp(self.block_time.astimezone(UTC).date())
+
+    @property
+    def ratio(self) -> float:
+        """BTC 하나당 받은 코인의 가치를 BTC 로 잰 비율 (0.12 = 12%).
+
+        Returns:
+            첫 시세일의 포크 코인 가격 ÷ 같은 날 BTC 가격
+        """
+        return self.coin_price / self.btc_price
+
+
+# **스냅샷 블록은 두 체인이 공유하는 마지막 블록이다.** 시각은 mempool.space API 로 BTC 체인의 그 높이를 조회한 값이다
+# (2026-09-30). BCH 는 두 체인의 블록 해시가 478,558 까지 같고 478,559 부터 갈린다(BTC 는 mempool.space ·
+# BCH 는 Blockchair 로 대조). BTG 는 491,407 에서 갈렸고 그 앞 블록까지의 잔고를 나눴다(Ledger · KuCoin · OKX 공지).
+#
+# **가격은 Coin Metrics `PriceUSD` 를 조회한 값이다** (2026-09-30 · 가격 자릿수 규칙대로 4자리). BTG 는 포크 다음날부터
+# 값이 있다. BSV(2018-11-15)는 BCH 에서 갈라져 **BTC 만 드는 체결은 받지 않는다** — 넣지 않는다.
+# 포크 가치를 데이터에서 다시 받지 않는 것은 반감기 블록 시각과 같은 이유다 — 과거의 사건이라 값이 바뀌지 않는다
+HARD_FORKS: Final = (
+    HardFork(
+        name="BCH",
+        height=478_558,
+        block_time=datetime(2017, 8, 1, 13, 16, 14, tzinfo=UTC),
+        price_day=pd.Timestamp("2017-08-01"),
+        coin_price=328.3279,
+        btc_price=2727.3892,
+    ),
+    HardFork(
+        name="BTG",
+        height=491_406,
+        block_time=datetime(2017, 10, 24, 1, 17, 35, tzinfo=UTC),
+        price_day=pd.Timestamp("2017-10-25"),
+        coin_price=152.1593,
+        btc_price=5736.0178,
+    ),
+)
+
+
+# ============================================================
 # 격자 — 결과를 보기 전에 정한 값 (결정 ⑥)
 # ============================================================
 
@@ -176,17 +265,24 @@ HALVINGS: Final = (
 #
 # [주의] **다음 반감기 앞이라는 보장이 없다.** 첫 반감기 간격이 약 43.4개월이라 2012 사이클의 45개월 진입
 # (2016-08-28)은 다음 반감기(2016-07-09) «뒤»다. 그래도 격자를 고치지 않는다 — 결과를 본 뒤 칸의 정의를
-# 바꾸면 사후 선택과 구별되지 않는다(`docs/검증/반감기_사이클/설계.md` 결정 ㉑)
+# 바꾸면 사후 선택과 구별되지 않는다(`docs/검증/반감기_사이클/설계.md` 결정 ㉑). 3단계 체결 격자는 같은 값을
+# 쓰되 **그 사이클 안의 진입만** 둔다(`halving_calendar.position_schedule` · 결정 ㊴)
 ENTRY_MONTHS: Final = tuple(range(0, 46, 3))
 
-# 보유 개월. 청산일 = 진입일 + 보유 개월(달력월)이다
+# 보유 개월. 청산일 = 진입일 + 보유 개월(달력월)이다 — 1단계 측정 격자의 축이다
 HOLD_MONTHS: Final = (3, 6, 12)
 
-# 거는 방향. **「위」 하나다** — 측정과 체결이 같은 값을 봐야 두 표의 `방향` 이 1:1 로 조인된다
+# 3단계 체결 격자의 청산 시점 — 가장 최근 반감기 뒤 개월. **진입 축과 같은 범위 · 간격이다** (결정 ㉞).
+# 청산 시점이 진입 시점보다 크면 같은 반감기 뒤, 같거나 작으면 **다음 반감기 뒤** 그 시점이다 — 보유는 최대 한 사이클
+EXIT_MONTHS: Final = ENTRY_MONTHS
+
+# 거는 방향. **「위」 하나다** — 측정과 체결이 같은 값을 봐야 두 표의 `방향` 이 같은 말을 한다
 BET_DOWN: Final = False
 
-# 손절선. **무손절 한 종이다** (결정 ⑦). 손절은 사용자가 따로 정하며, 값을 골라 넣는 인자를 두지 않는다
-STOP_LEVELS: Final[tuple[float | None, ...]] = (None,)
+# 손절선 — 무손절과 진입가 대비 5%p 간격 격자 **전부**다 (결정 ㉟ · 2026-09-30 사용자 결정). 검증 등급이라 좁히지
+# 않는다(`.claude/rules/trading.md` 「검증 등급의 기본도 「좁히지 않음」」). **값을 골라 넣는 인자를 두지 않는다** —
+# 손절선을 고르는 것은 `규칙.md` 에서 평평한 구간과 최악 통제로 한다
+STOP_LEVELS: Final[tuple[float | None, ...]] = (None, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50)
 
 
 # ============================================================
@@ -308,9 +404,10 @@ COL_TICKER: Final = "ticker"
 # 어느 반감기 사이클의 진입인가 — 반감기 날짜 문자열이다
 COL_HALVING: Final = "halving"
 
-# 격자의 두 축
+# 격자의 축 — 진입은 두 격자가 함께 쓰고, 보유는 1단계 측정 · 청산 시점은 3단계 체결의 것이다
 COL_ENTRY_MONTHS: Final = "entry_months"
 COL_HOLD_MONTHS: Final = "hold_months"
+COL_EXIT_MONTHS: Final = "exit_months"
 
 # 진입내역의 진입일. **시세의 날짜 컬럼과 이름을 가른다** — 한 이름표 사전에서 `Date` 는 크로스체크 표의
 # 「날짜」를 가리키므로, 진입일을 같은 토큰으로 두면 거래내역의 「진입일」과 다른 헤더가 나간다
@@ -404,6 +501,10 @@ REASON_BEFORE_FIRST_HALVING: Final = "첫 반감기 전 판정"
 # 판정은 났는데 다음날이 데이터 뒤다. 1단계의 「아직 오지 않은 진입」(행 없음)과 달리 신호는 이미 있다
 REASON_ENTRY_AFTER_DATA: Final = "진입일이 데이터 뒤"
 
+# 3단계 체결 격자의 제외 사유 — 진입은 했는데 **청산 시점이 오기 전에 반감기가 한 번 더 왔다**(결정 ㊴).
+# 사이클이 격자보다 짧아 그 시점이 그 사이클에 없는 것이라 청산일을 정할 수 없다
+REASON_EXIT_AFTER_NEXT_HALVING: Final = "청산 시점 전에 다음 반감기"
+
 
 # ============================================================
 # 표시용 한글 레이블
@@ -413,6 +514,10 @@ REASON_ENTRY_AFTER_DATA: Final = "진입일이 데이터 뒤"
 DISPLAY_HALVING: Final = "반감기"
 DISPLAY_ENTRY_MONTHS: Final = "반감기 뒤 진입(개월)"
 DISPLAY_HOLD_MONTHS: Final = "보유(개월)"
+# **같은 사이클인지 다음 사이클인지를 가르는 칸을 두지 않는다** — 진입 · 청산 두 값에서 완전히 유도된다 (결정 ㉞)
+DISPLAY_EXIT_MONTHS: Final = "반감기 뒤 청산(개월)"
+# 거래내역 끝 칸 — 원본가에 없는 몫이라 수익률에 더하지 않고 따로 싣는다 (결정 ㊲)
+DISPLAY_FORK_SHARE: Final = "하드포크 몫(%p)"
 
 # **「연도」를 쓰지 않는다** — 원달러_ETF_등가성이 그 이름을 이미 쓴다 (`tests/test_layer_contracts.py` 레이블 겹침 검사).
 # 「사이클 위치」도 중간선거_사이클의 것이라 쓰지 않는다
@@ -650,7 +755,10 @@ KEY_DATE: Final = "date"
 KEY_ENTRY_MONTHS: Final = "entry_months"
 KEY_HOLD_MONTHS: Final = "hold_months"
 KEY_LABEL: Final = "label"
+# 이름 한 칸 — 측정은 지표 신호의 이름, 체결은 하드포크 코인의 이름을 싣는다
+KEY_NAME: Final = "name"
 
-# **진입 × 보유 칸의 수다** — 진입 하나가 보유 셋으로 세 번 세어진다. 제외는 청산이 데이터 끝을 넘은 칸이다
+# **진입 하나가 축의 칸 수만큼 세어진 행의 수다** — 측정은 진입 × 보유, 체결은 진입 × 청산이다.
+# 제외는 청산일을 정하지 못한 행이다
 KEY_SIGNAL_COUNT: Final = "signal_count"
 KEY_EXCLUDED_COUNT: Final = "excluded_count"

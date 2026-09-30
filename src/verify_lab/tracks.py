@@ -88,8 +88,8 @@ TRACKS: Final = (
     # 확정 규칙은 그 매매법의 `규칙.md` §1 이다. 보유가 9개월이라 다른 매매법(며칠)과
     # 성질이 다르고, 규칙이 레버리지 상품으로 집행하지만 **측정은 1배 그대로다** — 레버리지 성적은 문서가 갖는다
     Track("midterm_cycle", "중간선거_사이클", GRADE_TRADING, KIND_METHOD),
-    # 비트코인 반감기 뒤 경과 개월로 진입해 몇 달 드는 매매법. **아직 재는 중이라 검증 등급**이며
-    # 규칙(손절 · 분할매수 · 재매수)은 정하지 않았다 — 체결은 무손절 한 종의 맨몸 측정이다
+    # 비트코인 반감기 뒤 경과 개월로 사고파는 매매법. **아직 재는 중이라 검증 등급**이며
+    # 규칙(칸 · 손절선 · 분할 창 · 재매수)은 고르지 않았다 — 체결은 진입 × 청산 격자와 손절선 격자 전부의 맨몸 측정이다
     Track("halving_cycle", "반감기_사이클", GRADE_STUDY, KIND_METHOD),
     Track("usdkrw_equivalence", "원달러_ETF_등가성", GRADE_SURVEY, KIND_PROPERTY),
     Track("leverage_tracking", "레버리지_ETF_괴리", GRADE_SURVEY, KIND_PROPERTY),

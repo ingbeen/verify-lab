@@ -1,6 +1,6 @@
-"""반감기_사이클 달력 — 진입일 · 청산 일정 · 수익률 · 기준선 · 달력 연도의 정의를 고정한다.
+"""반감기_사이클 달력 — 진입일 · 청산 일정 · 수익률 · 기준선 · 달력 연도 · 3단계 체결 일정의 정의를 고정한다.
 
-**정의가 곧 결론을 만든다.** 진입일이 하루 밀리면 48칸 전부가 조용히 다른 날을 재고 예외는 나지 않는다.
+**정의가 곧 결론을 만든다.** 진입일이 하루 밀리면 격자 전부가 조용히 다른 날을 재고 예외는 나지 않는다.
 
 **픽스처 반감기는 실제 값과 다르게 고른다** (`docs/MEMORY.md` 「픽스처는 실제 쓰이는 값과 «다르게» 고른다」).
 실제 반감기 날(28 · 9 · 11 · 20일)은 어느 달에나 있어 말일 당김을 밟지 않으므로, 31일 · 29일 반감기를 두어
@@ -29,6 +29,7 @@ from verify_lab.measure.constants import (
 from verify_lab.studies.halving_cycle.constants import (
     COL_CALENDAR_YEAR,
     COL_ENTRY_MONTHS,
+    COL_EXIT_MONTHS,
     COL_HALVING,
     COL_HALVING_POSITION,
     COL_HOLD_MONTHS,
@@ -36,6 +37,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_YEAR_END_CLOSE,
     POSITION_BEFORE_FIRST,
     POSITION_HALVING_YEAR,
+    REASON_EXIT_AFTER_NEXT_HALVING,
     REASON_NO_PREVIOUS_YEAR_END,
     REASON_YEAR_UNFINISHED,
     Halving,
@@ -47,6 +49,7 @@ from verify_lab.studies.halving_cycle.halving_calendar import (
     exit_schedule,
     halving_entries,
     halving_position,
+    position_schedule,
 )
 
 
@@ -524,6 +527,226 @@ class TestCalendarYearReturns:
             calendar_year_returns(_prices(days), self.HALVINGS)
 
 
+class TestPositionSchedule:
+    """3단계 체결 일정 — 진입 시점 × 청산 시점, 둘 다 가장 최근 반감기 뒤 개월 (설계 결정 ㉞ · ㊴)
+
+    픽스처 반감기는 **격자보다 짧은 사이클**을 둔다 — 실제 사이클(43 ~ 47개월)은 격자(0 ~ 45개월)와 거의 같아
+    「그 사이클에 시점이 없다」가 한두 칸에서만 일어난다.
+    """
+
+    DAYS = _days("2020-01-01", "2021-12-31")
+
+    def _rows(self, schedule: pd.DataFrame, halving: str) -> pd.DataFrame:
+        return schedule[schedule[COL_HALVING] == halving].reset_index(drop=True)
+
+    def test_청산_시점이_진입보다_뒤면_같은_반감기_뒤다(self) -> None:
+        """
+        목적: 같은 사이클 청산의 날짜와 보유일 산식을 고정한다 (말일 당김 포함).
+
+        Given: 2020-01-31 · 2021-03-15 반감기, 진입 0 · 청산 3개월
+        When: 일정을 만든다
+        Then: 첫 사이클은 2020-01-31 진입 · 2020-04-30 청산(짧은 달의 말일) · 보유 90일이다
+        """
+        # When
+        result = position_schedule(self.DAYS, (_halving("2020-01-31"), _halving("2021-03-15")), (0,), (3,))
+
+        # Then
+        first = self._rows(result.schedule, "2020-01-31")
+        assert first[COL_DATE].tolist() == [pd.Timestamp("2020-01-31")]
+        assert first[COL_EXIT_DATE].tolist() == [pd.Timestamp("2020-04-30")]
+        assert first[COL_HOLD_DAYS].tolist() == [90]
+        assert first[COL_EXCLUDED_REASON].tolist() == [REASON_NONE]
+        assert self._rows(result.schedule, "2021-03-15")[COL_EXIT_DATE].tolist() == [pd.Timestamp("2021-06-15")]
+
+    def test_청산_시점이_진입과_같거나_앞이면_다음_반감기_뒤다(self) -> None:
+        """
+        목적: 다음 사이클 청산의 날짜를 고정한다 — 청산 < 진입 · 청산 = 진입 둘 다.
+
+        Given: 2020-01-31 · 2020-09-15 반감기, 진입 6개월 · 청산 3 · 6개월
+        When: 일정을 만든다
+        Then: 2020-07-31 진입 · 2020-12-15 청산(다음 반감기 + 3) · 2021-03-15 청산(다음 반감기 + 6)이고 입력 순서다
+        """
+        # When
+        result = position_schedule(self.DAYS, (_halving("2020-01-31"), _halving("2020-09-15")), (6,), (3, 6))
+
+        # Then
+        first = self._rows(result.schedule, "2020-01-31")
+        assert first[COL_DATE].tolist() == [pd.Timestamp("2020-07-31")] * 2
+        assert first[COL_EXIT_MONTHS].tolist() == [3, 6]
+        assert first[COL_EXIT_DATE].tolist() == [pd.Timestamp("2020-12-15"), pd.Timestamp("2021-03-15")]
+        assert first[COL_EXCLUDED_REASON].tolist() == [REASON_NONE, REASON_NONE]
+
+    def test_다음_반감기가_없으면_다음_사이클_청산은_구간_끝이다(self) -> None:
+        """
+        목적: 마지막 반감기의 다음 사이클 청산을 제외 행으로 남김을 고정한다 — 청산일이 데이터 뒤라는 사실이 참이다.
+
+        Given: 2020-01-31 반감기 하나, 진입 3 · 청산 0개월
+        When: 일정을 만든다
+        Then: 행이 하나 있고 청산일 · 보유일이 비고 사유는 구간 끝이다
+        """
+        # When
+        result = position_schedule(self.DAYS, (_halving("2020-01-31"),), (3,), (0,))
+
+        # Then
+        row = result.schedule.iloc[0]
+        assert len(result.schedule) == 1
+        assert pd.isna(row[COL_EXIT_DATE])
+        assert pd.isna(row[COL_HOLD_DAYS])
+        assert row[COL_EXCLUDED_REASON] == REASON_OUT_OF_RANGE
+
+    def test_그_사이클에_진입_시점이_없으면_행이_없고_건수를_센다(self) -> None:
+        """
+        목적: 진입일이 다음 반감기 뒤인 시점은 그 사이클에 신호가 없는 것으로 다룸을 고정한다 (표본 보존 — 건수는 남긴다).
+
+        Given: 2020-01-31 · 2020-09-15 반감기(첫 사이클 7.5개월), 진입 0 · 9개월, 청산 3개월
+        When: 일정을 만든다
+        Then: 첫 사이클은 진입 0개월 행만 있고, 그 사이클에 없는 진입이 1건으로 세어진다
+        """
+        # When
+        result = position_schedule(self.DAYS, (_halving("2020-01-31"), _halving("2020-09-15")), (0, 9), (3,))
+
+        # Then
+        cells = set(zip(result.schedule[COL_HALVING], result.schedule[COL_ENTRY_MONTHS], strict=True))
+        assert cells == {("2020-01-31", 0), ("2020-09-15", 0), ("2020-09-15", 9)}
+        assert result.outside_cycle_count == 1
+        assert result.not_yet_count == 0
+
+    def test_같은_사이클_청산_시점이_다음_반감기_뒤면_제외된다(self) -> None:
+        """
+        목적: 진입은 했는데 청산 시점 전에 반감기가 한 번 더 온 행을 새 사유로 남김을 고정한다.
+
+        Given: 2020-01-31 · 2020-09-15 반감기, 진입 0 · 청산 9개월
+        When: 일정을 만든다
+        Then: 첫 사이클 행은 청산 시점(2020-10-31)이 다음 반감기 뒤라 제외되고 청산일이 빈다
+        """
+        # When
+        result = position_schedule(self.DAYS, (_halving("2020-01-31"), _halving("2020-09-15")), (0,), (9,))
+
+        # Then
+        first = self._rows(result.schedule, "2020-01-31")
+        assert first[COL_EXCLUDED_REASON].tolist() == [REASON_EXIT_AFTER_NEXT_HALVING]
+        assert first[COL_EXIT_DATE].isna().all()
+        assert self._rows(result.schedule, "2020-09-15")[COL_EXCLUDED_REASON].tolist() == [REASON_NONE]
+
+    def test_다음_사이클_청산_시점이_그다음_반감기_뒤면_제외된다(self) -> None:
+        """
+        목적: 다음 사이클 청산도 그 사이클 안이어야 함을 고정한다 (경계 조건 — 짧은 가운데 사이클).
+
+        Given: 2020-01-10 · 2020-06-10 · 2020-07-20 반감기, 진입 3 · 청산 3개월
+        When: 일정을 만든다
+        Then: 첫 사이클 행은 청산 시점(2020-09-10)이 그다음 반감기 뒤라 제외된다
+        """
+        # Given
+        halvings = (_halving("2020-01-10"), _halving("2020-06-10"), _halving("2020-07-20"))
+
+        # When
+        result = position_schedule(self.DAYS, halvings, (3,), (3,))
+
+        # Then
+        assert self._rows(result.schedule, "2020-01-10")[COL_EXCLUDED_REASON].tolist() == [
+            REASON_EXIT_AFTER_NEXT_HALVING
+        ]
+
+    def test_청산일이_데이터_뒤면_구간_끝으로_제외된다(self) -> None:
+        """
+        목적: 청산이 아직 오지 않은 행을 지우지 않고 사유를 담음을 고정한다.
+
+        Given: 2020-03-31 까지의 거래일, 2020-01-31 반감기, 진입 0 · 청산 3개월
+        When: 일정을 만든다
+        Then: 행이 남고 사유는 구간 끝이다
+        """
+        # When
+        result = position_schedule(_days("2020-01-01", "2020-03-31"), (_halving("2020-01-31"),), (0,), (3,))
+
+        # Then
+        assert result.schedule[COL_EXCLUDED_REASON].tolist() == [REASON_OUT_OF_RANGE]
+
+    def test_진입일이_데이터_뒤면_행이_없고_건수를_센다(self) -> None:
+        """
+        목적: 아직 오지 않은 진입을 제외 행으로 만들지 않되 건수를 남김을 고정한다 (결정 ⑯ 과 같은 이유 · 표본 보존).
+
+        Given: 2020-03-31 까지의 거래일, 2020-01-31 반감기, 진입 0 · 3개월 · 청산 6개월
+        When: 일정을 만든다
+        Then: 진입 0개월 행만 있고 아직 오지 않은 진입이 1건이다
+        """
+        # When
+        result = position_schedule(_days("2020-01-01", "2020-03-31"), (_halving("2020-01-31"),), (0, 3), (6,))
+
+        # Then
+        assert result.schedule[COL_ENTRY_MONTHS].tolist() == [0]
+        assert result.not_yet_count == 1
+        assert result.outside_cycle_count == 0
+
+    def test_조합은_행과_행_없음으로_빠짐없이_나뉜다(self) -> None:
+        """
+        목적: 표본 보존을 고정한다 — `사이클 × 진입 × 청산 = 행 + 그 사이클에 없음 + 아직 안 옴`,
+        그리고 제외되지 않은 행은 청산일과 보유일이 다 있다.
+
+        Given: 세 반감기(가운데가 짧다) · 진입 0 ~ 9 · 청산 0 ~ 9개월 · 2021-06-30 까지의 거래일
+        When: 일정을 만든다
+        Then: 조합 수가 세 몫의 합이고, 유효 행은 값이 차 있고 제외 행은 비어 있다
+        """
+        # Given
+        halvings = (_halving("2020-01-31"), _halving("2020-09-15"), _halving("2021-01-20"))
+        months = (0, 3, 6, 9)
+
+        # When
+        result = position_schedule(_days("2020-01-01", "2021-06-30"), halvings, months, months)
+
+        # Then
+        schedule = result.schedule
+        assert len(halvings) * len(months) * len(months) == (
+            len(schedule) + result.outside_cycle_count + result.not_yet_count
+        )
+        valid = schedule[COL_EXCLUDED_REASON] == REASON_NONE
+        assert schedule.loc[valid, [COL_EXIT_DATE, COL_HOLD_DAYS]].notna().all().all()
+        assert schedule.loc[~valid, [COL_EXIT_DATE, COL_HOLD_DAYS]].isna().all().all()
+        assert (schedule.loc[valid, COL_EXIT_DATE] > schedule.loc[valid, COL_DATE]).all()
+
+    def test_거래일에_없는_목표일은_예외다(self) -> None:
+        """
+        목적: 데이터 안인데 거래일에 없는 청산일을 조용히 옮기지 않음을 고정한다 — 휴장이 없어 그런 날은 데이터의 빈틈이다.
+
+        Given: 2020-04-30 이 빠진 거래일, 2020-01-31 반감기, 진입 0 · 청산 3개월
+        When: 일정을 만든다
+        Then: ValueError 가 발생한다
+        """
+        # Given
+        days = self.DAYS.drop(pd.Timestamp("2020-04-30"))
+
+        # When / Then
+        with pytest.raises(ValueError, match="거래일"):
+            position_schedule(days, (_halving("2020-01-31"),), (0,), (3,))
+
+    @pytest.mark.parametrize(
+        ("halvings", "entry_months", "exit_months"),
+        [
+            ((), (0,), (3,)),
+            ((_halving("2020-09-15"), _halving("2020-01-31")), (0,), (3,)),
+            ((_halving("2020-01-31"),), (-3,), (3,)),
+            ((_halving("2020-01-31"),), (0,), (-3,)),
+        ],
+        ids=["반감기 없음", "반감기 순서 거꾸로", "음수 진입", "음수 청산"],
+    )
+    def test_잘못된_입력은_예외다(
+        self, halvings: tuple[Halving, ...], entry_months: tuple[int, ...], exit_months: tuple[int, ...]
+    ) -> None:
+        """
+        목적: 입력 검증을 고정한다 — 순서가 거꾸로면 「다음 반감기」가 틀린 반감기를 가리킨다.
+
+        Args:
+            halvings: 반감기 목록
+            entry_months: 진입 개월
+            exit_months: 청산 개월
+
+        Given: 잘못된 입력
+        When: 일정을 만든다
+        Then: ValueError 가 발생한다
+        """
+        with pytest.raises(ValueError):
+            position_schedule(self.DAYS, halvings, entry_months, exit_months)
+
+
 class TestLookAhead:
     """뒤를 잘라낸 입력과 전체 입력의 결과가 **겹치는 칸에서** 같다 (tests/CLAUDE.md — 필수)
 
@@ -588,6 +811,31 @@ class TestLookAhead:
         np.testing.assert_allclose(
             measured[COL_FORWARD_RETURN].to_numpy(), full.loc[measured.index, COL_FORWARD_RETURN].to_numpy(), rtol=1e-12
         )
+
+    def test_체결_일정이_뒤_데이터에_기대지_않는다(self) -> None:
+        """
+        목적: 3단계 체결 일정(진입 시점 × 청산 시점)이 판정일 이후 데이터 없이도 같음을 고정한다.
+
+        Given: 두 입력
+        When: 진입 0 · 3 · 30 · 42 × 청산 0 · 12 · 30개월 일정을 만든다
+        Then: 짧은 입력에서 청산일이 있는 행은 전체 입력의 진입일 · 청산일 · 보유일과 같다
+        """
+        # Given
+        short_days = self.FULL[self.FULL <= self.CUT]
+        keys = [COL_HALVING, COL_ENTRY_MONTHS, COL_EXIT_MONTHS]
+
+        def schedule(days: pd.DatetimeIndex) -> pd.DataFrame:
+            return position_schedule(days, self.HALVINGS, (0, 3, 30, 42), (0, 12, 30)).schedule.set_index(keys)
+
+        # When
+        full = schedule(self.FULL)
+        short = schedule(short_days)
+
+        # Then
+        measured = short[short[COL_EXCLUDED_REASON] == REASON_NONE]
+        assert not measured.empty, "짧은 입력에서 청산일이 정해진 행이 없어 계약을 검사하지 못했습니다"
+        columns = [COL_DATE, COL_EXIT_DATE, COL_HOLD_DAYS]
+        pd.testing.assert_frame_equal(measured[columns], full.loc[measured.index, columns])
 
     def test_달력_연도가_뒤_데이터에_기대지_않는다(self) -> None:
         """

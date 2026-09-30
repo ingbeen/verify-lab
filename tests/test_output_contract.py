@@ -179,17 +179,19 @@ AXIS_REVERSE = ("파라미터", "시작연도")
 # (신호가 4년에 한 번이라 어느 사이클의 체결인지 날짜만으로는 바로 읽히지 않는다)
 AXIS_MIDTERM_CYCLE = ("사이클 위치",)
 AXIS_MIDTERM_CYCLE_TRADES = ("사이클 위치", "진입 연도")
-# 반감기_사이클 — 성적표는 격자 두 축, **거래내역은 반감기 날짜가 더 붙는다**
+# 반감기_사이클 — 성적표는 격자 두 축(진입 시점 × 청산 시점), **거래내역은 반감기 날짜가 더 붙는다**
 # (한 칸에 사이클마다 한 체결이라 어느 사이클의 체결인지가 날짜만으로 바로 읽히지 않는다)
-AXIS_HALVING_CYCLE = ("반감기 뒤 진입(개월)", "보유(개월)")
-AXIS_HALVING_CYCLE_TRADES = ("반감기 뒤 진입(개월)", "보유(개월)", "반감기")
+AXIS_HALVING_CYCLE = ("반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)")
+AXIS_HALVING_CYCLE_TRADES = ("반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)", "반감기")
 
 # 합성 지수 대상의 표시 이름. **살 수 없어 판정하지 않는 행**을 고르는 데 쓴다
 INDEX_LABEL = "합성 지수"
 
-# 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향만 있다
+# 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향은 두 표에, 반감기_사이클은 거래내역에만 있다
 TAIL_REVERSE_SUMMARY = ("사건",)
 TAIL_REVERSE_TRADES = ("등락률(%)", "사건 번호")
+# 원본가에 없는 하드포크 몫 — 체결마다 청산가가 달라 체결마다 잰다
+TAIL_HALVING_CYCLE_TRADES = ("하드포크 몫(%p)",)
 
 # 실행 요약의 대상별 기록에 제외 건수를 담는 키. **계약이 키 이름 자체를 정한다**(`src/verify_lab/CLAUDE.md`
 # 「매매 산출물 계약」). 한 매매법의 상수를 빌리면 그 매매법이 이름을 바꾸는 순간 검사가 따라가, 틀린 쪽은
@@ -398,7 +400,7 @@ METHOD_SPECS = {
         summary_axis=AXIS_HALVING_CYCLE,
         summary_tail=(),
         trade_axis=AXIS_HALVING_CYCLE_TRADES,
-        trade_tail=(),
+        trade_tail=TAIL_HALVING_CYCLE_TRADES,
         targets_key=HALVING_CYCLE_KEY_TARGETS,
     ),
 }
@@ -468,9 +470,10 @@ def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCy
 def midterm_cycle_grid_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCycleOutputs:
     """같은 합성 입력으로 **손절선 격자를 켜고** 돈 중간선거_사이클 결과.
 
-    **무손절과 숫자 손절선을 한 성적표에 함께 내는 실행이 이것뿐이다** — 기본 실행은 확정 규칙의
-    무손절 한 종이고 역방향은 −5% 한 종이다. 그래서 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의
-    두 실패 방식이 이 결과로만 재현된다. 판정이 「후보」·「제외」로 갈리는 행도 이 실행에만 있다.
+    **무손절과 숫자 손절선에 지수의 `손절불가` 까지 한 성적표에 함께 내는 실행이 이것뿐이다** — 기본 실행은
+    확정 규칙의 무손절 한 종이고 역방향은 −5% 한 종이며, 반감기_사이클은 격자 전부를 내지만 지수 대상이 없다.
+    그래서 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의 두 실패 방식이 이 결과로만 재현된다.
+    판정이 「후보」·「제외」로 갈리는 행도 이 실행에 있다.
 
     [주의] **공유 계약이 한 매매법의 실행을 빌려 쓴다** (`docs/MEMORY.md` 「공유 계층의 테스트는
     «자기 픽스처»를 갖는다」). 중간선거의 손절선 격자를 코드에서 지우는 날에는 이 픽스처를

@@ -42,7 +42,7 @@
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
 | `tests/test_studies_halving_cycle_calendar.py:566` `TestLookAhead.test_기준선_수익률이_뒤_데이터에_기대지_않는다` | 옆의 두 look-ahead 테스트와 달리 `assert not measured.empty` 가드가 없다 — 짧은 입력에서 기준선 칸이 전부 제외되도록 바뀌면(보유 개월 · 자르는 날 변경 등) 빈 배열끼리 비교해 통과하고, 필수 미래 참조 감시가 아무것도 검사하지 않는다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 · 2회차 |
-| `tests/test_studies_halving_cycle_trading.py:63` `_dataset` | 합성 시세에 거래량 0 인 날이 없어(`COL_VOLUME: 1_000.0`) 「체결 = 측정과 같은 가격」 계약이 종가를 바꾼 날에서는 검사되지 않는다 — `run_halving_cycle_trading` 이 `load_dataset(...).frame` 대신 원시 시세(`load_crypto_market_csv`)를 읽게 바뀌어도 전부 통과한다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 2회차 |
+| `tests/test_studies_halving_cycle_trading.py:63` `_dataset` | 합성 시세에 거래량 0 인 날이 없어(`COL_VOLUME: 1_000.0`) 「체결 = 측정과 같은 가격」 계약이 종가를 바꾼 날에서는 검사되지 않는다 — `run_halving_cycle_trading` 이 `load_dataset(...).frame` 대신 원시 시세(`load_crypto_market_csv`)를 읽게 바뀌어도 전부 통과한다. 3단계 격자(손절선 11종)에서도 같다 — 시가가 늘 종가 × 0.999 라 **갭손절 경로도 한 번도 지나지 않는다** | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 2회차 · PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 |
 | `tests/test_execution_trade_rows.py:5` 모듈 docstring | 「세 번째가 와서 올렸다」 — `**/*.py` 는 현재형이어야 하는 자리다(`.claude/rules/docs.md` 「과거형이 허용되는 자리는 둘뿐입니다」). 같은 문장을 프로덕션 `execution/trade_rows.py` 에서는 고쳤다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 수정분 검증 (마지막 수정) |
 | `tests/test_studies_halving_cycle_runner.py:253` `test_우연확률은_표본_부족으로_검정하지_않는다` docstring | 표본 하한을 숫자로 적었다(「하한(10)」). 값은 `tests/test_measure_statistics.py` 가 고정하고 `tests/test_execution_periods.py:198` 에도 같은 관용이 있어 받아들일 만하다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 수정분 검증 (마지막 수정) |
 
@@ -54,6 +54,16 @@
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
 | `tests/test_studies_halving_cycle_runner.py:659` `TestOnchainLoading.test_끝이_허용치보다_크게_어긋나면_멈춘다` · `:720` `test_시세보다_크게_짧은_온체인은_멈춘다` | 「공개 지연 허용치 + 1」을 `iloc[:-2]` · `_shorten_onchain(dataset, 2)` 로 박았다 — `data/coinmetrics_collector.PUBLICATION_LAG_DAYS` 를 2 로 올리면 두 테스트가 실패한다(시끄럽게 실패하는 쪽이다) | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 수정분 검증 (1회차 수정) |
+
+
+### 반감기_사이클 3단계 (진입 × 청산 격자 · 손절선 · 하드포크)
+
+줄 번호 기준: PLAN_halving_cycle_trading_grid 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `tests/test_studies_halving_cycle_trading.py:204` `test_1단계와_날짜가_같은_체결은_측정과_수익률이_같다` | 1단계 진입내역과 **inner join 이 비지 않는지**만 본다 — 전에는 outer join 전부가 양쪽에 있고 체결 수가 측정 표본 수와 같아야 했다. `position_schedule` 이 일부 진입 개월에서만 1단계와 다른 날을 내도 겹치는 행이 하나라도 남으면 통과하고, 실측한 「1단계 체결 167건 중 143건이 날짜 그대로」 같은 수량 계약이 없다. 지운 `test_거래내역의_반감기는_상수의_날짜다`(반감기 표지가 상수 넷)를 대신하는 테스트도 없다. `TestSummary` 는 체결과 똑같은 `position_schedule` 호출과 견줘 일정 함수 안의 오류를 양쪽이 공유한다 | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 · 2회차 |
+| `tests/test_studies_halving_cycle_calendar.py:530` `TestPositionSchedule` | 경계 조건이 없다 — 청산일이 정확히 다음(그다음) 반감기 날인 경우(`exit_day >= bound`)와 진입일이 정확히 다음 반감기 날인 경우(`entry_day >= next_day`). `>=` 를 `>` 로 바꿔도 전부 통과한다 — 픽스처가 경계에서 하루 이상 떨어진 날만 쓴다 | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 2회차 |
 
 
 ## 코드
@@ -94,14 +104,12 @@
 | `src/verify_lab/studies/halving_cycle/runner.py:358` `_aggregate` | 진입이 0건인 진입 개월을 만나면 `ValueError` 로 실행 전체를 멈춘다 — 체결 `trading._run_cell` 은 같은 빈 칸에도 시기 5행을 남기게 짜여 두 계층의 빈 칸 처리가 반대다. 시세가 2016-08-28(첫 반감기 + 45개월) 전에 끝나는 입력이면 측정이 먼저 죽는다. 실제 16개 진입 개월 모두 3 ~ 4건 | 가벼운 버그 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 |
 | `src/verify_lab/studies/halving_cycle/halving_calendar.py:155` `halving_entries` 의 `continue` | 데이터 뒤의 진입(2024 사이클 30 ~ 45개월 6건)을 행 없이 건너뛰는데(설계 결정 ⑯) **건수가 요약 · 산출물 어디에도 없다** — 30 ~ 45개월 칸이 `신호 3` 으로만 보여 「사이클이 셋뿐」과 「넷째가 아직 안 왔다」가 산출물만으로 구별되지 않는다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 · 2회차 |
 | `src/verify_lab/studies/halving_cycle/halving_calendar.py:80` `_positions` | `execution/trade_fill.resolve_positions` 와 예외 타입(`ValueError` 대 `RuntimeError`)만 다른 사본이고, 중간선거 `cycle_calendar.py:294` 에도 같은 검사가 인라인으로 있어 세 벌이다 — `src/verify_lab/CLAUDE.md` 는 「어느 위치가 유효한가」의 소유자를 `trade_fill.py` 하나로 둔다. 리뷰 제안: 예외 타입을 고르는 인자 또는 일정 모듈 공용 변환 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 · 2회차 |
-| `src/verify_lab/studies/halving_cycle/trading.py:228` · `:142` | CLI 한 번에 `run_study` 와 `run_halving_cycle_trading` 이 각각 `load_dataset` · `signal_returns` 를 돌아 CSV 두 개를 두 번 읽고 크로스체크 · 종가 대체를 두 번 계산한다. `_run_cell` 은 칸마다 거래일 목록을 다시 만든다(48회). 중간선거_사이클도 같은 모양 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 · 2회차 |
-| `scripts/run_halving_cycle.py:140` `_print_candidates` | `run_midterm_cycle.py` 의 같은 함수를 거의 그대로 복제했다 — 후보 필터가 CLI 마다 사본으로 쌓이고, 새 매매법 CLI 마다 `tests/test_measure_screening.py` 의 `GATE_OWNERS` 에 한 줄씩 더해야 한다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/trading.py` `run_halving_cycle_trading` · `_run_cell` | CLI 한 번에 `run_study` 와 `run_halving_cycle_trading` 이 각각 `load_dataset` 을 돌아 CSV 두 개를 두 번 읽고 크로스체크 · 종가 대체를 두 번 계산한다(중간선거_사이클도 같은 모양). **3단계 격자에서는 `_run_cell` 이 손절선 11종마다 같은 칸의 진입 · 청산 위치를 `resolve_positions` 로 다시 구한다** — `position_schedule` 이 이미 `trading_positions` 로 위치를 구하고 `COL_HOLD_DAYS` 까지 만드는데 운영 경로는 그 둘을 버린다(`COL_HOLD_DAYS` 는 테스트만 읽는다). 실제 청산일도 `_run_cell` 과 `trade_rows.trade_columns` 가 두 번 유도한다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 · 2회차 · PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 · 2회차 |
+| `scripts/run_halving_cycle.py:206` `_print_candidate_counts` | 후보 목록 대신 손절선별 「후보」 칸 수를 띄우게 바뀌었지만 **여전히 CLI 가 1차 판정 값으로 거른다** — 후보 필터가 CLI 마다 쌓이고, 새 매매법 CLI 마다 `tests/test_measure_screening.py` 의 `GATE_OWNERS` 에 한 줄씩 더해야 한다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 · PLAN_halving_cycle_trading_grid (2026-09-30) 에서 함수가 바뀜 |
 | `src/verify_lab/studies/halving_cycle/runner.py:435` · `trading.py:150` · `trading.py:276` | 방향 식 `DIRECTION_DOWN if BET_DOWN else DIRECTION_UP` 이 여러 곳에서 되풀이된다 — 한 곳만 바뀌면 측정 표와 성적표의 `방향` 이 어긋나 1:1 조인이 조용히 깨진다. 리뷰 제안: `constants.py` 에 방향 값 하나 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 |
-| `src/verify_lab/studies/halving_cycle/runner.py:487` · `trading.py:273` | 반감기 넷 · 진입 개월 · 보유 개월이 측정 요약과 체결 `rule` 에 똑같이 두 벌 실린다 — 한쪽 생성만 바뀌면 `summary.json` 안에서 두 값이 갈라져도 예외가 없다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/runner.py:487` · `trading.py` `run_halving_cycle_trading` 의 `rule` | 반감기 넷 · 진입 개월이 측정 요약과 체결 `rule` 에 똑같이 두 벌 실린다(3단계 뒤로 보유 개월은 측정에만 있다) — 한쪽 생성만 바뀌면 `summary.json` 안에서 두 값이 갈라져도 예외가 없다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 1회차 |
 | `src/verify_lab/studies/halving_cycle/runner.py:450` `run_study` | 칸 표 셋에 방향 컬럼을 **숫자 자리 3** 에 넣는다 — `_aggregate` 의 `cells()` 가 앞에 두는 컬럼이 늘거나 바뀌면 방향이 엉뚱한 자리에 조용히 들어가고, 앞 네 칸 순서를 고정하는 테스트가 없다(`tests/test_studies_halving_cycle_runner.py` 는 컬럼이 있는지만 본다) | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 2회차 · 수정분 검증 (2회차 수정) |
-| `src/verify_lab/studies/halving_cycle/constants.py:467` `KEY_HEIGHT` · `KEY_BLOCK_TIME` · `KEY_DATE` | `runner.py` 한 파일에서만 쓰는데 패키지 `constants.py` 에 있다 — 「1개 파일에서만 사용 → 해당 파일 상단」(`src/verify_lab/CLAUDE.md` 「상수 관리」) | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 2회차 |
-| `src/verify_lab/studies/halving_cycle/trading.py:85` · `:88` · `:89` · `price_series.py:69` | black 이 한 줄로 합친 암묵 문자열 연결(`"… " "…"`)이 남아 있다 — 이음매에서 공백을 빠뜨리기 쉽다. 문자열 하나로 합치면 된다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 2회차 |
-| `scripts/run_halving_cycle.py:88` 설명 · `trading.py:85` `NOTE_INDEPENDENCE` | 격자 값(0 ~ 45개월 · 3개월 간격 · 3 · 6 · 12개월 · 48칸)을 상수가 아니라 글자로 적었다 — `ENTRY_MONTHS` · `HOLD_MONTHS` 가 바뀌면 `--help` 와 `summary.json` 의 `notes` 가 거짓이 된다(전역 「구체적 수치와 가변 정보를 직접 적지 않는다」). 같은 파일의 하한 리터럴(10)은 고쳤다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/trading.py:126` `NOTE_REPLACED` · `price_series.py:69` | black 이 한 줄로 합친 암묵 문자열 연결(`"… " "…"`)이 남아 있다 — 이음매에서 공백을 빠뜨리기 쉽다. 문자열 하나로 합치면 된다(같은 파일의 `NOTE_INDEPENDENCE` · `NOTE_FORK` 는 3단계에서 다시 쓰며 합쳤다) | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 리뷰 2회차 |
 | `src/verify_lab/execution/trade_rows.py:6` 모듈 docstring | 「세 번째가 오면 공유 계층에 둔다」가 「셋이 되면 자동으로 올린다」로 읽힌다 — `src/verify_lab/CLAUDE.md` 는 「세 번째가 올 때 정합니다」 · 「개수는 판단 기준이 아닙니다」라고 적는다. 「세 번째가 오면 정하고, 이 여덟 칸은 공유 계층이 갖는다」 정도가 정확하다 | 그 외 | PLAN_halving_cycle_measure (2026-09-29) 수정분 검증 (마지막 수정) |
 
 
@@ -124,6 +132,21 @@
 | `src/verify_lab/studies/halving_cycle/runner.py:936` `run_study` | 온체인을 1단계 집계(순열 검정 포함) **뒤에** 읽어, 온체인 파일이 없거나 어긋나면 그 계산을 다 한 뒤에 멈춘다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
 | `src/verify_lab/studies/halving_cycle/halving_calendar.py:83` `trading_positions` docstring | 「이 패키지의 날짜 → 위치 변환은 이것 하나다」가 틀렸다 — `runner._non_overlapping` · `trading._run_cell` 이 `execution/trade_fill.resolve_positions` 를 쓰고, `src/verify_lab/CLAUDE.md` 가 그것을 소유자로 적는다(두 함수는 예외 종류만 다르다) | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 |
 | `scripts/run_halving_cycle.py:104` `--repeats` 도움말 | 한 줄에 문자열 리터럴 둘이 암묵적으로 이어져 있다 — 사이에 쉼표가 들어가면 `help` 가 튜플이 된다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 1회차 · 2회차 |
+
+
+### 반감기_사이클 3단계 (진입 × 청산 격자 · 손절선 · 하드포크)
+
+줄 번호 기준: PLAN_halving_cycle_trading_grid 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/trading.py:168` `hard_fork_share` | 포크일 당일에 나간 체결을 날짜만 보고 「받았다」로 센다 — ① 시가에 체결되는 갭손절(00:00 UTC)은 스냅샷(BCH 13:16 · BTG 01:17 UTC)보다 앞서 받지 못했는데 `비율 × (1 + 수익률)` 이 붙는다 ② BTG 는 첫 시세일(10-25)이 포크일(10-24)보다 뒤라, 10-24 에 청산한 체결은 「첫 시세일에 팔아 BTC 를 더 샀다」가 성립하지 않는데 청산 가격으로 환산한다(맞는 값은 코인 가격(10-25) ÷ 진입가). 실제 산출물에서 포크일에 청산한 체결 0건(2026-09-30) | 가벼운 버그 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/trading.py:272` `_run_cell` 의 `hard_fork_share` 호출 | 하드포크 몫 산식은 「위」 체결에만 맞는데 `BET_DOWN` 을 확인하지 않고 docstring 에만 적었다 — `BET_DOWN = True` 가 되면 공매도 체결(포크 코인을 내줘야 한다)에도 양수 몫이 예외 없이 실린다. 내부 불변조건이니 `RuntimeError` 가드가 맞다. 지금 `BET_DOWN` 은 `False` 상수 | 가벼운 버그 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 · 2회차 |
+| `scripts/run_halving_cycle.py:206` `_print_candidate_counts` | 손절선으로만 묶고 옛 화면의 `종목` 을 뺐다 — 대상이 둘 이상이면 손절선마다 「전체 칸」이 512 가 되고 판정 안 함 대상의 행까지 섞여 센다. 지금 `DATASETS` 는 하나 | 가벼운 버그 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/halving_calendar.py:363` `position_schedule` | 진입 · 청산 개월의 **중복**을 검사하지 않는다 — `(0, 3, 3, …)` 이면 일정 행이 두 벌이 되고 체결이 칸을 값으로 걸러 표본 · 합계가 두 배가 되는데, 표본 보존 등식(`사이클 × 진입 × 청산 = 행 + 행 없음`)은 그대로 성립해 테스트가 잡지 못한다. 지금 상수에 중복 없음 | 가벼운 버그 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 |
+| `scripts/run_halving_cycle.py:128` `parse_args` 설명 | 「손절선 {len(STOP_LEVELS)}종」이 무손절까지 세어 `--help` 에 「손절선 11종」이 나간다 — 문서는 「무손절과 손절선 10종」이다. **1회차에 고친 같은 설명 문장에서 2회차에 다시 나온 지적**이라 고치지 않았다(「같은 자리에서 두 번」 — 설명을 어떻게 만들지 다시 정할 거리). 같은 문장의 「신호 열넷」은 아래 「문서」 절의 기존 항목이다 | 가벼운 버그 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 2회차 |
+| `src/verify_lab/studies/halving_cycle/halving_calendar.py:376` `position_schedule` · `:112` `trading_positions` docstring · `:20` 모듈 docstring · `runner.py:509` `signal_returns` docstring | **진입일 정의가 두 벌이다** — `position_schedule` 이 `halving_entries` 를 쓰지 않고 `halving.day + DateOffset(months)` 와 「아직 오지 않은 진입 건너뛰기」를 다시 구현했다. 그런데 `signal_returns` docstring 은 여전히 「측정과 체결이 이 함수를 함께 쓴다 — 진입일 정의를 두 벌 만들면 두 계층이 다른 날에 들어간다」고 적고, `trading_positions` docstring(「1단계 달력과 2단계 지표 신호가 함께 쓴다」)과 모듈 docstring(`진입 × 보유 = 유효 + 제외`)도 새 사용처를 반영하지 않았다. 한쪽 진입 규칙만 고치면 1단계와 3단계가 예외 없이 다른 날에 들어가고, 잡을 테스트는 위 「테스트」 절의 약해진 inner join 뿐이다. 리뷰 제안: 진입은 `halving_entries`(또는 공용 도우미)로 만들고 그 위에 「그 사이클 밖 · 아직 안 옴」 분류를 얹는다 | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 · 2회차 |
+| `src/verify_lab/studies/halving_cycle/trading.py:168` `hard_fork_share` | `src/verify_lab/CLAUDE.md` 「매매 계층 구성 계약」은 「trading.py ← 체결 조립. 조립만 하고 계산하지 않는다」인데 `trading.py` 가 하드포크 몫을 계산한다(모듈 docstring 이 예외를 스스로 선언했을 뿐 계약 문서는 그대로다). 중간선거_사이클은 계산을 `split_entry.py` · `quarters.py` 에 둔다. 리뷰 제안: 같은 패키지의 별도 모듈(예: `hard_forks.py`)로 옮기거나 계약 문서에 예외를 적는다 | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 1회차 · 2회차 |
 
 
 ## 문서
@@ -156,3 +179,13 @@
 | `scripts/run_halving_cycle.py:8` · `:98` · `src/verify_lab/studies/halving_cycle/indicators.py:3` 모듈 docstring 표 · `src/verify_lab/data/coinmetrics_collector.py:100` 주석 | 개수 · 값을 적었다 — 「신호 열넷」, 지표 창 값(111 · 350 · 14 · 5 · 15 · 9), 수집 계층 주석의 반감기_사이클 문턱 목록(1 · 1.7 · 3 · 3.7 · 4). 전역 「구체적 수치와 가변 정보를 직접 적지 않는다」 — 상수가 바뀌면 조용히 낡는다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 리뷰 2회차 |
 | `docs/검증/반감기_사이클/설계.md` 결정 ㉚ 근거 | 「표시 이름 「돌파일」은 승인 뒤 구현 중에 정했다」에 **주어가 없다** — AI 가 정했고 사용자 확인 전이다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 수정분 검증 (2회차 수정) |
 | `docs/검증/반감기_사이클/설계.md` §4.8 | 「가격 지표 넷의 돌파일」(지표 넷 · 신호 다섯 행)과 「MVRV 계열 아홉」(신호 수)의 단위가 섞인다. 「MVRV 계열 아홉 … 따로 다시 센 것과 전부 같다」의 대조 출력과 「산출물 코드를 쓰지 않은 계산」의 스크립트는 저장소 밖(계획서 진행 로그 · 세션 스크래치)에만 있다 — 저장 파일에서 누구나 다시 셀 수는 있다 | 그 외 | PLAN_halving_cycle_indicators (2026-09-30) 수정분 검증 (2회차 수정) |
+
+### 반감기_사이클 3단계 (진입 × 청산 격자 · 손절선 · 하드포크)
+
+줄 번호 기준: PLAN_halving_cycle_trading_grid 완료 시점의 작업 트리 (2026-09-30 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `docs/검증/반감기_사이클/결과.md:976` §16.1 · `설계.md` 결정 ㊵ · `trading.py` `NOTE_SCREEN` | 방향 비율 표(오른 체결 수 ÷ 표본)에 **기준선이 없다.** 결정 ㊵ 의 근거(「같은 칸도 사이클마다 보유 길이가 달라 기준선이 정의되지 않는다」)는 **다음 사이클에 파는 칸 136개에만** 맞는다 — 같은 사이클 칸 120개는 보유가 (청산 − 진입) 달력월로 고정돼 기존 `baseline_entries` + `exit_schedule` 로 기준선을 바로 낼 수 있다. 루트 `CLAUDE.md` 측정의 원칙 11 · `.claude/rules/docs.md` 「비율을 적을 때는 기준선 비율을 같은 표에 붙인다」 | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 2회차 |
+| `docs/검증/반감기_사이클/결과.md:999` §16.2 | 256칸의 **중앙값만** 행렬로 싣고 평균은 `성적표.csv` 로 넘겼다(예 몇 칸만 본문에). 평균-부호 어긋남 표는 평균 · 표본은 있는데 **합산 수익률**이 없다 — 루트 `CLAUDE.md` 측정의 원칙 4(평균 · 중앙값 병기) · 16(회당 기대값 옆에 합산과 표본) | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 2회차 |
+| `scripts/CLAUDE.md:54` `halving_cycle` 행 | 「하드포크 두 포크」라고 개수를 적었다 — 전역 「구체적 수치와 가변 정보를 직접 적지 않는다」 | 그 외 | PLAN_halving_cycle_trading_grid (2026-09-30) 리뷰 2회차 |

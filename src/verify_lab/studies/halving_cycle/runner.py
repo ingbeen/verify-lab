@@ -139,6 +139,7 @@ from verify_lab.studies.halving_cycle.constants import (
     KEY_HALVINGS,
     KEY_HEIGHT,
     KEY_HOLD_MONTHS,
+    KEY_NAME,
     KEY_SIGNAL_COUNT,
     MACD_FAST_SPAN,
     MACD_SIGNAL_SPAN,
@@ -196,7 +197,6 @@ KEY_RSI_WINDOW = "monthly_rsi_window"
 KEY_MACD_SPANS = "monthly_log_macd_spans"
 KEY_MVRV_Z_MIN_DAYS = "mvrv_z_min_days"
 KEY_SIGNALS = "signals"
-KEY_NAME = "name"
 KEY_INDICATOR = "indicator"
 KEY_THRESHOLD = "threshold"
 KEY_UPWARD = "upward"
