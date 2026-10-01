@@ -16,6 +16,9 @@
 내고 고르는 것은 사용자가 `규칙.md` 에서 한다.
 
 **모든 함수가 격자 값을 인자로 받는다** — 상수를 안에서 읽지 않는다. 테스트가 실제와 다른 값을 넣어 하드코딩을 잡는다.
+
+**달력 매달 분할(결정 51 · 52)도 여기서 잰다** — 「달력만」 조합을 폭마다 회차 수 · 간격만 바꿔 같은 두 함수
+(`leg_fills` · `position_result`)로 잰다. 회차 날짜와 평균 단가 · 최악의 정의가 두 벌이 되지 않는다(절대 원칙 5).
 """
 
 from collections.abc import Sequence
@@ -32,11 +35,13 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_AVG_BUY_PRICE,
     COL_AVG_SELL_PRICE,
     COL_BUY_CALENDAR_COUNT,
+    COL_BUY_FIRST_DEADLINE,
     COL_BUY_LAST_DEADLINE,
     COL_BUY_ONCHAIN_COUNT,
     COL_BUY_START_ANCHOR,
     COL_BUY_START_MONTHS,
     COL_BUY_THRESHOLD,
+    COL_CALENDAR_SPLIT,
     COL_CYCLE_RETURN_TEMPLATE,
     COL_CYCLE_WORST_TEMPLATE,
     COL_FINISHED_COUNT,
@@ -46,6 +51,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_MONTHS_SINCE_HALVING,
     COL_POSITION_RETURN,
     COL_SELL_CALENDAR_COUNT,
+    COL_SELL_FIRST_DEADLINE,
     COL_SELL_LAST_DEADLINE,
     COL_SELL_ONCHAIN_COUNT,
     COL_SELL_START_MONTHS,
@@ -63,6 +69,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SPLIT_THRESHOLD,
     COL_SPLIT_TOTAL,
     COL_SPLIT_TRANCHE,
+    COL_SPLIT_TRANCHES,
     COL_SPLIT_TRIGGER,
     COL_WORST_VS_COST,
     REASON_NO_NEXT_HALVING,
@@ -78,6 +85,7 @@ from verify_lab.studies.halving_cycle.constants import (
     SPLIT_THRESHOLD_RANK,
     SPLIT_TRIGGER_CALENDAR,
     SPLIT_TRIGGER_ONCHAIN,
+    CalendarSplit,
     Halving,
 )
 from verify_lab.studies.halving_cycle.halving_calendar import trading_positions
@@ -178,6 +186,19 @@ class SplitGrid:
     fills: pd.DataFrame
     positions: pd.DataFrame
     combinations: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class CalendarSplitGrid:
+    """달력 매달 분할의 표 둘 (내부 컬럼 토큰)
+
+    Attributes:
+        fills: 폭 × 반감기 × 쪽 × 회차. **체결 전 회차와 다음 반감기가 없는 매도 회차도 행이 있다**
+        positions: 폭 × 반감기. **끝나지 않은 포지션도 행이 있다**
+    """
+
+    fills: pd.DataFrame
+    positions: pd.DataFrame
 
 
 def _require_increasing(index: pd.Index, label: str) -> pd.DatetimeIndex:
@@ -586,8 +607,8 @@ def _fill_rows(
     *,
     tranches: int,
     closes: pd.Series,
-    mvrv: pd.Series,
-    ranks: pd.Series,
+    mvrv: pd.Series | None,
+    ranks: pd.Series | None,
 ) -> list[dict[str, Any]]:
     """회차 표의 행 — 회차마다 하나. 기준 반감기가 없으면(다음 반감기가 목록에 없는 매도) 회차 칸만 두고 사유를 단다.
 
@@ -598,8 +619,8 @@ def _fill_rows(
         fills: 회차 체결. 기준 반감기가 없으면 `None`
         tranches: 회차 수
         closes: 날짜 인덱스의 종가
-        mvrv: 날짜 인덱스의 MVRV
-        ranks: 날짜 인덱스의 순위
+        mvrv: 날짜 인덱스의 MVRV. `None` 이면 체결 전날 MVRV · 순위 칸을 싣지 않는다(달력 매달 분할)
+        ranks: 날짜 인덱스의 순위. `mvrv` 와 함께 `None` 이다
 
     Returns:
         행 목록
@@ -635,9 +656,12 @@ def _fill_rows(
                 COL_SPLIT_FILL_DATE: fill.fill_day,
                 COL_MONTHS_SINCE_HALVING: months_since(anchor.day, fill.fill_day),
                 COL_SPLIT_FILL_CLOSE: float(closes[fill.fill_day]),
-                COL_SPLIT_PRIOR_MVRV: _value_on(mvrv, prior_day),
-                COL_SPLIT_PRIOR_RANK: _value_on(ranks, prior_day),
             }
+            if mvrv is not None and ranks is not None:
+                row |= {
+                    COL_SPLIT_PRIOR_MVRV: _value_on(mvrv, prior_day),
+                    COL_SPLIT_PRIOR_RANK: _value_on(ranks, prior_day),
+                }
         rows.append(row)
 
     return rows
@@ -870,11 +894,145 @@ def split_grid(
     )
 
 
+_CALENDAR_FILL_COLUMNS = [
+    COL_CALENDAR_SPLIT,
+    COL_SPLIT_SIDE,
+    COL_HALVING,
+    COL_SPLIT_ANCHOR_HALVING,
+    COL_SPLIT_TRANCHE,
+    COL_SPLIT_DEADLINE,
+    COL_SPLIT_FILL_DATE,
+    COL_MONTHS_SINCE_HALVING,
+    COL_SPLIT_FILL_CLOSE,
+    COL_EXCLUDED_REASON,
+]
+
+_CALENDAR_POSITION_COLUMNS = [
+    COL_CALENDAR_SPLIT,
+    COL_SPLIT_TRANCHES,
+    COL_BUY_FIRST_DEADLINE,
+    COL_BUY_LAST_DEADLINE,
+    COL_SELL_FIRST_DEADLINE,
+    COL_SELL_LAST_DEADLINE,
+    COL_HALVING,
+    COL_AVG_BUY_PRICE,
+    COL_AVG_SELL_PRICE,
+    COL_POSITION_RETURN,
+    COL_WORST_VS_COST,
+    COL_FIRST_BUY_DATE,
+    COL_LAST_SELL_DATE,
+    COL_HOLD_DAYS,
+    COL_BUY_CALENDAR_COUNT,
+    COL_SELL_CALENDAR_COUNT,
+    COL_EXCLUDED_REASON,
+]
+
+
+def calendar_split_grid(
+    frame: pd.DataFrame,
+    halvings: Sequence[Halving],
+    splits: Sequence[CalendarSplit],
+    *,
+    step_months: int,
+) -> CalendarSplitGrid:
+    """달력 매달 분할 전부를 낸다 — 폭마다, 반감기 뒤에 사고 다음 반감기 뒤에 판다 (결정 51 · 52).
+
+    폭 하나는 「달력만」 매수 조합과 「달력만」 매도 조합의 짝이다 — 회차 k 는 기한 k 의 종가에 체결한다.
+    **마지막 반감기의 포지션은 다음 반감기가 목록에 없어 매도 회차가 정의되지 않는다** — 행은 남고 사유가 붙는다.
+
+    Args:
+        frame: 측정 시세 (날짜 · 종가 · 저가, 날짜 오름차순 · 휴장 없음)
+        halvings: 반감기 목록 (날짜 오름차순)
+        splits: 폭 목록. 이름이 겹치면 안 된다
+        step_months: 회차 간격(개월)
+
+    Returns:
+        표 둘. 회차 표는 폭 → 반감기 → 매수 · 매도 → 회차 순이다
+
+    Raises:
+        ValueError: 반감기나 폭이 없거나, 폭 이름이 겹치거나, 첫 매수 · 매도 회차가 기준 반감기 앞이거나,
+            매수 마지막 회차가 다음 반감기와 같거나 뒤인 경우 — 매도는 매수가 끝난 뒤에만 온다
+    """
+    if not halvings or not splits:
+        raise ValueError("반감기와 달력 분할의 폭이 하나 이상 있어야 합니다")
+    names = [split.name for split in splits]
+    if len(set(names)) != len(names):
+        raise ValueError(f"달력 분할 폭의 이름이 겹칩니다 — 식별 칸이라 두 폭의 행이 섞입니다: {names}")
+
+    trading_days = _require_increasing(pd.Index(frame[COL_DATE]), "시세")
+    closes = pd.Series(frame[COL_CLOSE].to_numpy(dtype=float), index=trading_days)
+    # 달력만 조합은 창을 쓰지 않는다 — `leg_fills` 가 받는 인자라 넘길 뿐이다
+    new_highs = new_high_flags(closes)
+
+    def fills_for(leg: SplitLeg, anchor: Halving, tranches: int) -> list[TrancheFill]:
+        return leg_fills(
+            trading_days,
+            leg,
+            anchor.day,
+            trigger_values=None,
+            new_highs=new_highs,
+            tranches=tranches,
+            step_months=step_months,
+        )
+
+    fill_rows: list[dict[str, Any]] = []
+    position_rows: list[dict[str, Any]] = []
+    for split in splits:
+        buy = SplitLeg(SPLIT_SIDE_BUY, SPLIT_THRESHOLD_NONE, (), None, None, split.buy_last_deadline)
+        sell = SplitLeg(SPLIT_SIDE_SELL, SPLIT_THRESHOLD_NONE, (), None, None, split.sell_last_deadline)
+        buy_first, sell_first = split.first_deadlines(step_months)
+        for cycle, halving in enumerate(halvings):
+            following = halvings[cycle + 1] if cycle + 1 < len(halvings) else None
+            buy_fills = fills_for(buy, halving, split.tranches)
+            if following is not None and buy_fills[-1].deadline >= following.day:
+                raise ValueError(
+                    f"달력 분할 「{split.name}」의 매수 마지막 회차({buy_fills[-1].deadline.date()})가 다음 반감기"
+                    f"({following.label})와 같거나 뒤입니다 — 매도는 매수가 끝난 뒤에만 와야 합니다"
+                )
+            sell_fills = fills_for(sell, following, split.tranches) if following is not None else None
+
+            for leg, anchor, fills in ((buy, halving, buy_fills), (sell, following, sell_fills)):
+                rows = _fill_rows(
+                    leg, halving, anchor, fills, tranches=split.tranches, closes=closes, mvrv=None, ranks=None
+                )
+                fill_rows.extend({COL_CALENDAR_SPLIT: split.name, **row} for row in rows)
+
+            result = position_result(frame, buy_fills, sell_fills)
+            position_rows.append(
+                {
+                    COL_CALENDAR_SPLIT: split.name,
+                    COL_SPLIT_TRANCHES: split.tranches,
+                    COL_BUY_FIRST_DEADLINE: buy_first,
+                    COL_BUY_LAST_DEADLINE: split.buy_last_deadline,
+                    COL_SELL_FIRST_DEADLINE: sell_first,
+                    COL_SELL_LAST_DEADLINE: split.sell_last_deadline,
+                    COL_HALVING: halving.label,
+                    COL_AVG_BUY_PRICE: _number(result.avg_buy_price),
+                    COL_AVG_SELL_PRICE: _number(result.avg_sell_price),
+                    COL_POSITION_RETURN: _number(result.return_rate),
+                    COL_WORST_VS_COST: _number(result.worst_vs_cost),
+                    COL_FIRST_BUY_DATE: result.first_buy_day,
+                    COL_LAST_SELL_DATE: result.last_sell_day,
+                    COL_HOLD_DAYS: result.hold_days,
+                    COL_BUY_CALENDAR_COUNT: result.buy_counts[1],
+                    COL_SELL_CALENDAR_COUNT: result.sell_counts[1],
+                    COL_EXCLUDED_REASON: result.reason,
+                }
+            )
+
+    return CalendarSplitGrid(
+        fills=_frame_of(fill_rows).reindex(columns=_CALENDAR_FILL_COLUMNS),
+        positions=_frame_of(position_rows).reindex(columns=_CALENDAR_POSITION_COLUMNS),
+    )
+
+
 __all__ = [
+    "CalendarSplitGrid",
     "PositionResult",
     "SplitGrid",
     "SplitLeg",
     "TrancheFill",
+    "calendar_split_grid",
     "leg_fills",
     "new_high_flags",
     "position_result",

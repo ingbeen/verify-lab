@@ -15,19 +15,15 @@
   --grid: #e1e0d9;
   --axis: #c3c2b7;
   --border: rgba(11,11,11,0.10);
-  --band: rgba(11,11,11,0.045);
-  --threshold: #898781;
   --halving: #52514e;
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --series-4: #eda100;
-  --div-neg: #256abf;
-  --div-mid: #f0efec;
-  --div-pos: #e34948;
-  --seq-zero: #cde2fb;
-  --seq-deep: #0d366b;
-  --select: #0b0b0b;
+  --buy: #d63b3a;
+  --sell: #1f5fae;
+  --band-buy: rgba(214,59,58,0.10);
+  --band-sell: rgba(31,95,174,0.10);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -40,19 +36,15 @@
     --grid: #2c2c2a;
     --axis: #383835;
     --border: rgba(255,255,255,0.10);
-    --band: rgba(255,255,255,0.05);
-    --threshold: #898781;
     --halving: #c3c2b7;
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
     --series-4: #c98500;
-    --div-neg: #3987e5;
-    --div-mid: #383835;
-    --div-pos: #e66767;
-    --seq-zero: #184f95;
-    --seq-deep: #cde2fb;
-    --select: #ffffff;
+    --buy: #ff6b6b;
+    --sell: #6aa7ff;
+    --band-buy: rgba(255,107,107,0.13);
+    --band-sell: rgba(106,167,255,0.14);
   }
 }
 :root[data-theme="dark"] {
@@ -65,19 +57,15 @@
   --grid: #2c2c2a;
   --axis: #383835;
   --border: rgba(255,255,255,0.10);
-  --band: rgba(255,255,255,0.05);
-  --threshold: #898781;
   --halving: #c3c2b7;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
   --series-4: #c98500;
-  --div-neg: #3987e5;
-  --div-mid: #383835;
-  --div-pos: #e66767;
-  --seq-zero: #184f95;
-  --seq-deep: #cde2fb;
-  --select: #ffffff;
+  --buy: #ff6b6b;
+  --sell: #6aa7ff;
+  --band-buy: rgba(255,107,107,0.13);
+  --band-sell: rgba(106,167,255,0.14);
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--page); color: var(--text-primary);
@@ -92,10 +80,6 @@ h3 { font-size: 14px; margin: 0 0 4px; }
 .card > p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin: 0 0 8px; }
 .chart { width: 100%; }
 ul.notes { color: var(--text-secondary); font-size: 13px; line-height: 1.7; margin: 0; padding-left: 20px; }
-.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 4px 0 10px;
-  font-size: 13px; color: var(--text-secondary); }
-.controls select { font: inherit; color: var(--text-primary); background: var(--surface-1);
-  border: 1px solid var(--axis); border-radius: 6px; padding: 4px 6px; max-width: 100%; }
 .table-wrap { overflow-x: auto; margin-top: 8px; }
 table { border-collapse: collapse; font-size: 13px; }
 th, td { padding: 6px 10px; border-bottom: 1px solid var(--grid); text-align: left; vertical-align: top; }
@@ -107,61 +91,86 @@ th { color: var(--text-secondary); font-weight: 600; }
 .guide p, .guide li { color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
 .guide p { margin: 0; }
 .guide ul { margin: 0; padding-left: 18px; }
+.buy { color: var(--buy); font-weight: 600; }
+.sell { color: var(--sell); font-weight: 600; }
 code { font-size: 12px; }
 </style>
 </head>
 <body>
 <main>
   <h1>반감기_사이클 판단 차트</h1>
-  <p class="lede">3단계에서 고를 것 — <b>① 매매 방식(달력형 · 혼합 분할) → ② 칸 · 창 → ③ 손절</b> — 을 보고 고르기 위한 차트입니다(설계 결정 ㊾).
+  <p class="lede">매매 방식은 <b>달력형 매달 분할</b>입니다(설계 결정 51). 이 차트는 그중 「<span class="fill-split-name"></span>」 폭 —
+  <b><span class="fill-split-rule"></span></b> — 이 사이클마다 언제 사고팔았는지를 세 가지 눈금으로 보입니다.
   <b>차트는 고르지도 판정하지도 않습니다.</b> 드래그로 확대, 더블클릭으로 원래 크기입니다. 범례를 누르면 그 계열을 숨깁니다.</p>
 
   <section class="card">
     <h2>먼저 읽을 것</h2>
     <ul class="notes">
-      <li><b>성적은 과거 재구성이지 예측이 아닙니다.</b> 반감기 사이클이 3 ~ 4개뿐이라 칸 하나의 성적은 체결 1 ~ 4건입니다 — 소수점 차이로 우열을 가릴 수 없고, 어떤 칸도 통계적 증명이 아닙니다.</li>
-      <li><b>칸끼리 독립이 아닙니다.</b> 이웃 칸은 같은 사이클의 거의 같은 구간을 잽니다 — 이웃 칸이 함께 좋은 것은 「여러 번 확인됐다」가 아니라 「같은 사건을 여러 번 쟀다」일 수 있습니다.</li>
-      <li><b>판정은 싣지 않았습니다.</b> 칸이 1차 판정의 「후보」인지는 산출물 <code>성적표.csv</code> 의 <code>1차 판정</code> 컬럼이 말합니다 — 게이트는 방향 기대값 하나입니다(기준값은 <code>measure/screening.py</code> 의 <code>MIN_EXPECTED_VALUE</code>). 기준선은 해석 재료이지 탈락 근거가 아닙니다.</li>
-      <li><b>맨몸 성적입니다</b> — 수수료 · 슬리피지 · 세금이 없습니다. 하드포크로 받은 코인(BCH · BTG)의 몫도 성적에 없습니다(③ 호버에만 적었습니다).</li>
-      <li><b>데이터</b>: <span id="sources"></span> · 만든 시각 <span id="created"></span>. 다시 만드는 명령은 <code>docs/COMMANDS.md</code> 「반감기_사이클」에 있습니다 — 시세를 다시 받고 <code>run_halving_cycle.py</code> 를 돌리지 않았다면 이 차트(새 시세)와 커밋된 CSV(옛 시세)가 어긋납니다.</li>
+      <li><b>성적은 과거 재구성이지 예측이 아닙니다.</b> 반감기 사이클이 3 ~ 4개뿐이라 어떤 기간도 통계적 증명이 아닙니다.</li>
+      <li><b>이 폭은 과거를 보고 정했습니다.</b> 매수 · 매도 기간의 가운데를 과거 바닥 · 고점에 두었습니다 — 과거에 맞춰져 있고,
+        다음 사이클에 시점이 옮겨 가면 빗나갑니다. 다른 폭의 성적은 산출물 <code>달력분할포지션.csv</code> 에 함께 있습니다.</li>
+      <li><b>맨몸 성적입니다</b> — 손절 · 수수료 · 세금이 없고, 하드포크로 받은 코인(BCH · BTG)의 몫도 없습니다.</li>
+      <li><b>데이터</b>: <span id="sources"></span> · 만든 시각 <span id="created"></span>. 다시 만드는 명령은 <code>docs/COMMANDS.md</code> 「반감기_사이클」에 있습니다 —
+        시세를 다시 받고 <code>run_halving_cycle.py</code> 를 돌리지 않았다면 이 차트(새 시세)와 커밋된 CSV(옛 시세)가 어긋납니다.</li>
     </ul>
   </section>
 
   <section class="card">
-    <h2>① 사이클 겹치기 — 반감기 뒤 경과 개월</h2>
-    <p>가로축은 반감기 뒤 경과 개월(3개월 눈금 = 격자의 칸)이고, 가격은 반감기일 종가를 1배로 맞춘 로그 눈금입니다. 점선은 혼합 분할의 문턱, 회색 띠는 반감기 뒤 2년차 · 4년차입니다. 각 사이클 선은 다음 반감기 전날에서 끝납니다 — 매도 문턱은 <b>다음</b> 사이클 선의 앞부분에 쓰입니다.</p>
+    <h2>① 반감기 기준 사이클 겹치기</h2>
+    <p>가로축은 반감기 뒤 경과 개월, 세로축은 반감기일 종가를 1배로 맞춘 로그 눈금입니다. <span class="buy">빨간 띠는 매수 기간</span>,
+    <span class="sell">파란 띠는 매도 기간</span>이고 <span class="buy">▲</span> 는 산 회차, <span class="sell">▼</span> 는 판 회차입니다.
+    <b>파란 띠의 ▼ 는 그 선의 앞 사이클 포지션을 판 것입니다</b> — 매도는 다음 반감기 뒤에서 세기 때문입니다.</p>
     <div id="overlay" class="chart"></div>
     <div class="guide">
-      <div><h3>이 차트로 무엇을 판단하나</h3>
-        <p>「3년 상승 · 1년 하락」이 사이클마다 되풀이되는가 — 매매 방식을 고르는 첫 재료입니다. 고점과 바닥이 반감기 뒤 몇 개월에 몰리는지, 그때 MVRV 가 어디 있었는지를 봅니다.</p></div>
-      <div><h3>보는 법</h3>
-        <ul><li>위 패널 — 선이 1배 위면 반감기일보다 비쌉니다. 눈금 한 칸이 몇 배인지는 세로축 글자를 봅니다.</li>
-        <li>가운데 MVRV, 아래 <span class="fill-rank-years"></span>년 순위(그날까지 <span class="fill-rank-years"></span>년 동안의 MVRV 중 그날 값 이하인 비율).</li>
-        <li>마우스를 올리면 네 사이클의 같은 개월 값이 한꺼번에 나옵니다.</li></ul></div>
-      <div><h3>판단 기준</h3>
-        <ul><li>네 선이 같은 개월대에서 함께 오르고 함께 꺾이면 달력이 쓸모 있다는 쪽입니다. 한 사이클만 다르면 그 사이클이 평균을 끌고 가는지 ③ 에서 평균과 중앙값을 견줍니다.</li>
-        <li>MVRV 의 고점은 사이클마다 내려가고 바닥은 올라갑니다(설계 §4.12) — 책의 고정 문턱은 최근 사이클에 닿지 않습니다. 순위 문턱이 그 추세를 따라가는지 아래 패널에서 봅니다.</li></ul></div>
+      <div><h3>무엇을 보나</h3>
+        <p>네 사이클이 반감기 뒤 같은 개월대에서 오르고 꺾였는지, 빨간 띠가 바닥 근처에 · 파란 띠가 고점 근처에 걸리는지 봅니다.
+        한 사이클만 띠에서 벗어나면 그 사이클에서는 이 달력이 빗나간 것입니다.</p></div>
       <div><h3>주의</h3>
-        <ul><li>2024 사이클은 진행 중입니다 — 아직 끝나지 않은 선을 앞 사이클과 같은 무게로 읽지 않습니다.</li>
-        <li>가로축 개월은 날 수 ÷ 30.4375 입니다. 격자의 달력월(반감기일 + N개월)과 이틀 안쪽으로 다릅니다.</li>
-        <li>모양이 닮아 보여도 사이클 3 ~ 4개로는 우연과 구별되지 않습니다.</li></ul></div>
+        <ul><li>2024 사이클은 진행 중입니다 — 끝나지 않은 선을 앞 사이클과 같은 무게로 읽지 않습니다.</li>
+        <li>가로축 개월은 날 수를 한 달 평균 길이로 나눈 값이라, 달력월로 정한 회차 날짜와 하루 이틀 다릅니다.</li></ul></div>
     </div>
   </section>
 
   <section class="card">
-    <h2>② 전 기간 시간축</h2>
-    <p>세로선은 반감기, 회색 띠는 반감기 뒤 2년차 · 4년차(달력월)입니다. 마우스를 올리면 그날이 어느 반감기 뒤 몇 개월째인지 함께 나옵니다.</p>
+    <h2>② 바닥 기준 사이클 겹치기</h2>
+    <p>사이클마다 바닥(고점 뒤 최저 종가)을 0개월 · 1배로 맞춘 그림입니다. 선은 바닥 <span class="fill-lead"></span>개월 앞부터 다음 바닥
+    전날까지입니다. <b>한 포지션의 <span class="buy">▲</span> · <span class="sell">▼</span> 가 그 사이클 바닥의 선 하나에 모입니다</b> — 산 회차가 바닥보다
+    얼마나 앞 · 뒤였는지, 판 회차가 바닥에서 몇 배 오른 자리였는지 봅니다.</p>
+    <div id="bottom" class="chart"></div>
+    <div class="guide">
+      <div><h3>무엇을 보나</h3>
+        <p>▲ 가 0 근처에 모이면 매수 기간이 바닥을 잘 덮은 것이고, 한쪽으로 몰리면 바닥이 기간보다 일렀거나 늦었던 것입니다.
+        ▼ 는 다음 고점 근처(선의 가장 높은 곳)에 가까울수록 고점 무렵에 판 것입니다.</p></div>
+      <div><h3>주의</h3>
+        <ul><li>바닥은 지나고 나서야 정해지는 값입니다 — 매매 신호가 아니라 그림을 읽는 기준점입니다.</li>
+        <li>진행 중 사이클의 바닥은 <b>잠정</b>입니다(점선). 데이터가 늘면 바닥이 바뀌어 그 선이 통째로 옮겨 갑니다.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>③ 전 기간 시간축</h2>
+    <p>세로선은 반감기, <span class="buy">빨간 띠</span> · <span class="sell">파란 띠</span>는 매수 · 매도 기간입니다. 마우스를 올리면 그날이 어느 반감기 뒤 몇 개월째인지 함께 나옵니다.</p>
     <div id="timeline" class="chart"></div>
     <div class="guide">
-      <div><h3>이 차트로 무엇을 판단하나</h3>
-        <p>격자의 칸이 가리키는 날이 실제로 어떤 시장이었는지 — ③ 에서 눈에 띈 칸이 한 번의 큰 사건에 기대는지 확인합니다.</p></div>
-      <div><h3>보는 법</h3>
-        <p>③ 의 호버에 나온 진입일 · 청산일을 여기서 찾아, 그 사이 가격과 MVRV 가 어떻게 움직였는지 봅니다.</p></div>
-      <div><h3>판단 기준</h3>
-        <p>좋은 칸의 성적이 한 구간(예: 2017 년 급등, 2022 년 급락)에서만 나왔다면 그 칸은 그 사건 하나를 잰 것입니다. 여러 사이클에서 비슷한 자리에 같은 일이 있었는지를 봅니다.</p></div>
+      <div><h3>무엇을 보나</h3>
+        <p>실제 날짜로 언제 사고팔았는지 봅니다. 띠가 큰 하락 · 상승의 어디에 걸렸는지, 띠 밖에서 더 싸거나 더 비쌌던 구간이 있었는지 확인합니다.</p></div>
       <div><h3>주의</h3>
-        <ul><li>2011 ~ 2013 은 Bitstamp 거래가 얇아 두 소스의 가격이 크게 갈렸습니다(설계 §4.3).</li>
-        <li>거래가 없던 33일의 종가는 Coin Metrics 값으로 바꾼 측정 계열입니다(결정 ④ · ⑭).</li></ul></div>
+        <ul><li>2024 사이클은 사는 중입니다. 팔 날은 다음 반감기가 반감기 목록에 들어와야 정해집니다.</li>
+        <li>2011 ~ 2013 은 Bitstamp 거래가 얇아 두 소스의 가격이 크게 갈렸습니다(설계 §4.3).</li></ul></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>사이클별 숫자표 — 「<span class="fill-split-name"></span>」</h2>
+    <p>값은 산출물 <code>달력분할포지션.csv</code> 그대로입니다. 포지션은 반감기 뒤에 사서 <b>다음</b> 반감기 뒤에 판 것이고, 매수는 회차마다 같은 금액 · 매도는 회차마다 같은 양입니다.</p>
+    <div class="table-wrap"><table id="split-table"></table></div>
+    <div class="guide">
+      <div><h3>보는 법</h3>
+        <ul><li>평균 매수가는 같은 금액으로 산 회차들의 평균 단가, 평균 매도가는 회차 종가의 평균입니다.</li>
+        <li>평균 단가 대비 최악은 들고 있는 동안 그때까지의 평균 단가보다 가장 많이 내려갔던 폭입니다(장중 저가).</li></ul></div>
+      <div><h3>주의</h3>
+        <ul><li>사이클마다 크기가 줄고 있습니다 — 앞 사이클의 수천 % 를 앞으로의 기대로 옮기지 않습니다.</li>
+        <li>끝나지 않은 포지션은 수익률이 비어 있고 상태에 그 까닭이 나옵니다.</li></ul></div>
     </div>
   </section>
 
@@ -169,87 +178,6 @@ code { font-size: 12px; }
     <h2>사이클 요약 — 차트를 읽는 기준점</h2>
     <p>고점 · 바닥은 <b>지나고 나서야 정해지는 값이라 매매 신호가 아닙니다.</b> 가격 고점은 반감기 뒤 24개월 안의 최고 종가(다음 반감기 직전의 더 높은 종가를 고점으로 물지 않게 — 설계 §4.14), 바닥은 고점 뒤 사이클 끝까지의 최저 종가입니다.</p>
     <div class="table-wrap"><table id="summary-table"></table></div>
-  </section>
-
-  <section class="card">
-    <h2>③ 3단계 격자 — 반감기 뒤 몇 개월에 사서 몇 개월에 파나</h2>
-    <p>세로는 진입, 가로는 청산 — 둘 다 가장 최근 반감기 뒤 개월입니다. <b>계단선 오른쪽 위</b>(청산 &gt; 진입)는 같은 반감기 안에서 팔고, <b>왼쪽 아래</b>(청산 ≤ 진입)는 다음 반감기 뒤 그 개월에 팝니다. <b>무손절 성적</b>이고, 칸 글자는 고른 값과 표본(n)입니다. <b>※ 는 평균의 부호와 오른 · 내린 비율이 어긋나는 칸</b>입니다(측정의 원칙 13 — 소수의 큰 사건이 평균을 만든 칸). 칸을 누르면 ④ 가 그 칸을 보입니다.</p>
-    <div class="controls"><label for="metric">색으로 볼 값</label><select id="metric"></select><span id="metric-note"></span></div>
-    <div id="heatmap" class="chart"></div>
-    <div class="guide">
-      <div><h3>이 차트로 무엇을 판단하나</h3>
-        <p>토론 ② — 달력형으로 간다면 어느 칸(언제 사서 언제 파나)을 고를지의 재료입니다.</p></div>
-      <div><h3>보는 법</h3>
-        <ul><li><b>빨강 = 위</b>(오름 · 기준선보다 큼), <b>파랑 = 아래</b> — 한국 증권앱과 같은 방향입니다. 보유 중 최악은 파랑이 <b>바탕색에서 멀수록</b> 깊이 밀렸습니다 — 밝은 화면에서는 짙은 파랑, 어두운 화면에서는 밝은 파랑입니다.</li>
-        <li>평균 · 중앙값 · 평균 차이 · 중앙값 차이의 색은 크기를 로그로 눌러 칠합니다 — 정확한 값은 칸 글자와 호버에 있습니다.</li>
-        <li>호버에 사이클별 체결(진입일 · 진입가 · 청산일 · 청산가 · 수익률 · 보유 중 최악)과 기준선이 나옵니다. 기준선 표본 옆 괄호는 겹치지 않게 고를 수 있는 표본 수입니다 — 매일 진입한 표본은 이웃끼리 심하게 겹쳐 실제보다 단단해 보입니다.</li>
-        <li>※ 칸은 평균만 보고 방향을 읽으면 정반대로 판단합니다 — 오른 비율과 중앙값을 함께 봅니다.</li></ul></div>
-      <div><h3>판단 기준</h3>
-        <ul><li>한 칸이 아니라 <b>이웃 칸이 함께 좋은 덩어리</b>를 찾습니다. 한 칸만 튀면 파라미터를 옮겼을 때 크게 흔들리는 것이라 오버피팅 신호입니다(측정의 원칙 7).</li>
-        <li><b>평균과 중앙값을 번갈아 봅니다.</b> 평균만 좋고 중앙값이 나쁘면 한 사이클이 평균을 끌어올린 것입니다(원칙 4).</li>
-        <li><b>보유 중 최악</b>으로 그 칸을 들고 버틸 수 있는지 봅니다 — 결과가 좋아도 들고 있는 동안 크게 밀린 칸이 있습니다.</li>
-        <li><b>기준선 대비 차이</b>는 「같은 보유를 아무 날에 산 것보다 나았나」입니다. 해석 재료이지 탈락 근거가 아닙니다 — 기준선과 같아도 그 적중률로 이기는 매매인 것은 그대로입니다.</li></ul></div>
-      <div><h3>주의</h3>
-        <ul><li>칸당 표본이 1 ~ 4건이라 우연확률이 붙지 않습니다(칸당 10건 미만).</li>
-        <li>다음 반감기 뒤에 파는 칸은 기준선이 없습니다 — 사이클마다 보유 길이가 달라 「같은 보유」가 정의되지 않습니다(결정 ㊵).</li>
-        <li>중앙값은 <code>거래내역.csv</code> 무손절 수익률(표에 실린 값)의 중앙값입니다 — 짝수 표본 칸은 <code>격자기준선.csv</code> 의 중앙값과 0.005 안쪽으로 다를 수 있습니다.</li>
-        <li>하드포크 몫은 성적에 없어 2012 · 2016 사이클 체결 일부가 과소평가됩니다 — 호버에 그 몫을 적었습니다.</li></ul></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>④ 칸별 손절선 — 손절선을 옮기면 무엇이 바뀌나</h2>
-    <p>한 칸의 손절선 전부(무손절과 진입가 대비 손절선)의 성적입니다. 손절선은 진입가 기준으로 고정이고, 장중 저가가 닿으면 그 값에, 시가가 이미 아래면 그 시가에 나갑니다. 표의 ※ 는 평균의 부호와 오른 · 내린 비율이 어긋나는 행입니다(측정의 원칙 13).</p>
-    <div class="controls">
-      <label for="cell-entry">반감기 뒤 진입</label><select id="cell-entry"></select>
-      <label for="cell-exit">반감기 뒤 청산</label><select id="cell-exit"></select>
-      <span id="cell-note"></span>
-    </div>
-    <div id="stops" class="chart"></div>
-    <div class="table-wrap"><table id="stops-table"></table></div>
-    <div class="guide">
-      <div><h3>이 차트로 무엇을 판단하나</h3>
-        <p>토론 ③ — 고른 칸에 손절선을 몇 %로 걸지입니다. 이 저장소의 매매 규칙에는 손절이 반드시 있습니다(<code>.claude/rules/trading.md</code>). 청산일에만 파는 기간 손절은 이 격자에 평평한 구간이 없음을 보이고 사용자가 명시할 때만 인정됩니다.</p></div>
-      <div><h3>보는 법</h3>
-        <ul><li>가로축은 손절선 — 왼쪽 무손절부터 오른쪽으로 갈수록 넓습니다.</li>
-        <li>패널 넷: 합계 · 평균과 중앙값 · 최악과 보유 중 최악 · 발동 수(장중손절 + 갭손절). 아래 표가 같은 값입니다. 중앙값은 ③ 과 같이 <code>거래내역.csv</code> 수익률의 중앙값입니다.</li>
-        <li>「최악」은 청산 시점의 가장 나쁜 결과, 「보유 중 최악」은 들고 있는 동안 가장 깊이 밀린 지점입니다.</li></ul></div>
-      <div><h3>판단 기준</h3>
-        <ul><li><b>평평한 구간</b> — 손절선을 옆으로 옮겨도 합계 · 평균 · 중앙값이 거의 안 바뀌는 범위를 찾고, 그 안에서 <b>최악이 가장 좁은 쪽</b>을 고릅니다. 손절의 효용은 수익이 아니라 최악 통제입니다.</li>
-        <li>좁은 손절선에서 발동 수가 늘며 합계가 무너지면 반등 구간을 끊는 것입니다 — 너무 좁습니다.</li>
-        <li>한 번도 발동하지 않는 넓은 손절선은 무손절과 같습니다 — 최악을 막지 못합니다.</li></ul></div>
-      <div><h3>주의</h3>
-        <ul><li>표본이 1 ~ 4건이라 손절선 하나 옮겨 한 건이 걸리고 안 걸리는 것으로 합계가 크게 흔들립니다. 그 흔들림은 「그 값이 좋다」가 아니라 「표본이 그 지점을 특정할 만큼 크지 않다」는 신호입니다.</li>
-        <li>갭으로 시가가 손절선 아래에서 열리면 그 시가에 나가 손절선보다 깊게 잃습니다 — 최악에 그대로 들어갑니다.</li>
-        <li>「후보가 가장 많아지는 손절선」이나 합계가 가장 큰 손절선으로 고르지 않습니다 — 결과를 보고 값을 찾는 것입니다.</li></ul></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>⑤ 달력 + MVRV 혼합 분할 — 세 번 사고 세 번 팔기</h2>
-    <p>반감기 뒤 세 번 사고(같은 금액) 다음 반감기 뒤 세 번 팝니다(보유량의 1/3씩). 회차마다 MVRV 문턱에 먼저 닿으면 그다음 날, 닿지 않으면 달력 기한에 체결합니다. <b>채운 점은 고른 조합, 속 빈 점은 마지막 기한이 같은 「달력만」 조합</b>입니다(▲ 매수 · ▼ 매도).</p>
-    <div class="controls">
-      <label for="buy-leg">매수 조합</label><select id="buy-leg"></select>
-      <label for="sell-leg">매도 조합</label><select id="sell-leg"></select>
-    </div>
-    <div class="table-wrap"><table id="split-table"></table></div>
-    <div id="split" class="chart"></div>
-    <div class="guide">
-      <div><h3>이 차트로 무엇을 판단하나</h3>
-        <p>토론 ① — 정해진 날 한 번에 사고파는 달력형과, 문턱에 닿으면 나눠 사고파는 혼합 분할 중 무엇으로 매매할지입니다. 고른 조합이 사이클마다 언제 사고팔았는지, 같은 기한의 달력만보다 나았는지를 봅니다.</p></div>
-      <div><h3>보는 법</h3>
-        <ul><li>매수 · 매도 조합을 목록에서 고릅니다. 이름이 문턱 · 시작 · 마지막 기한을 말합니다(기한은 매수는 반감기 뒤, 매도는 다음 반감기 뒤 개월).</li>
-        <li>표의 「계기」가 온체인이면 문턱에 닿아 다음 날 산 것, 달력이면 기한에 산 것입니다. 점에 마우스를 올리면 체결 전날 MVRV · 순위가 나옵니다.</li>
-        <li>체결 전 회차는 점이 없고 표에 건수로 남습니다.</li></ul></div>
-      <div><h3>판단 기준</h3>
-        <ul><li>사이클마다 달력만보다 나았는지 봅니다 — 한 사이클만 크게 이기고 나머지가 지면 그 조합은 한 번의 사건에 기댄 것입니다.</li>
-        <li>시작 개월이나 기한을 한 칸 옮긴 이웃 조합도 골라 봅니다. 크게 흔들리면 오버피팅 신호입니다.</li>
-        <li>평균 단가 대비 최악이 들고 버틸 수 있는 크기인지 봅니다.</li></ul></div>
-      <div><h3>주의</h3>
-        <ul><li>무손절이고 판정 · 하드포크 몫 · 기준선이 없습니다(결정 ㊼). 이 틀을 고르면 평균 단가 기준 손절 격자와 하드포크 몫을 따로 잽니다.</li>
-        <li>달력 쪽 값(매수 창 · 기한)은 <b>과거 고점 · 바닥을 본 뒤</b> 정했습니다 — 달력만 대조군이 유리하게 짜여 있습니다(결정 ㊺).</li>
-        <li>2024 사이클은 매수 회차가 남아 아직 끝나지 않았습니다.</li></ul></div>
-    </div>
   </section>
 </main>
 
@@ -259,42 +187,29 @@ code { font-size: 12px; }
 (() => {
   const DATA = JSON.parse(document.getElementById('chart-data').textContent);
   const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
-  const DOMAIN = { price: [0.54, 1], mvrv: [0.28, 0.49], rank: [0, 0.23] };
   const CONFIG = { responsive: true, displaylogo: false,
     modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'toggleSpikelines'] };
   const MINUS = '−';
-  const GRID = DATA.grid;
-  const STEP = GRID.entry_months.length > 1 ? GRID.entry_months[1] - GRID.entry_months[0] : 1;
-  const HALF = STEP / 2;
-  const PRICE_TICKS = [0, 1, 2, 3, 4, 5, 6].flatMap((k) => [1, 2, 5].map((m) => m * 10 ** k));
+  const SPLIT = DATA.split;
+  const SIDES = DATA.sides;
+  const MULTIPLE_TICKS = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
+  const PRICE_TICKS = [1, 10, 100, 1000, 10000, 100000];
 
   // ---------------- 글자 ----------------
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const signed = (v, digits, unit) => v === null || v === undefined ? '—'
     : (v > 0 ? '+' : v < 0 ? MINUS : '') + Math.abs(v).toLocaleString('en-US',
       { minimumFractionDigits: digits, maximumFractionDigits: digits }) + unit;
   const pct = (v) => signed(v, 2, '%');
-  const pp = (v) => signed(v, 2, '%p');
-  const rate = (v) => v === null || v === undefined ? '—' : v.toFixed(2) + '%';
-  const count = (v) => v === null || v === undefined ? '—' : v.toLocaleString('en-US');
   const price = (v) => v === null || v === undefined ? '—'
     : '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const stopText = (s) => typeof s === 'number' ? MINUS + Math.abs(s) + '%' : String(s);
-  const compact = (v, unit) => {
-    if (v === null || v === undefined) return '';
-    const digits = Math.abs(v) >= 100 ? 0 : 1;
-    return (v > 0 ? '+' : v < 0 ? MINUS : '') + Math.abs(v).toLocaleString('en-US',
-      { minimumFractionDigits: digits, maximumFractionDigits: digits }) + unit;
-  };
+  const span = (first, last) => first === null ? '—' : [first + ' ~', last];
 
   function tokens() {
     const s = getComputedStyle(document.documentElement);
     const g = (n) => s.getPropertyValue(n).trim();
     return { surface: g('--surface-1'), text: g('--text-primary'), text2: g('--text-secondary'),
-      muted: g('--muted'), grid: g('--grid'), axis: g('--axis'), band: g('--band'),
-      threshold: g('--threshold'), halving: g('--halving'), select: g('--select'),
-      divNeg: g('--div-neg'), divMid: g('--div-mid'), divPos: g('--div-pos'),
-      seqZero: g('--seq-zero'), seqDeep: g('--seq-deep'),
+      muted: g('--muted'), grid: g('--grid'), axis: g('--axis'), halving: g('--halving'),
+      buy: g('--buy'), sell: g('--sell'), bandBuy: g('--band-buy'), bandSell: g('--band-sell'),
       series: [1, 2, 3, 4].map((i) => g('--series-' + i)) };
   }
 
@@ -304,139 +219,133 @@ code { font-size: 12px; }
       title: { font: { color: t.text2, size: 12 }, standoff: 8 } }, extra);
   }
 
-  function yAxis(t, domain, extra) {
-    return axisStyle(t, Object.assign({ domain, anchor: 'x' }, extra));
-  }
-
-  function baseLayout(t, height, xaxis) {
+  function baseLayout(t, height, xaxis, yaxis) {
     return { height, paper_bgcolor: t.surface, plot_bgcolor: t.surface,
       font: { family: FONT, color: t.text, size: 12 },
-      margin: { l: 70, r: 150, t: 56, b: 52 },
+      margin: { l: 70, r: 150, t: 70, b: 52 },
       // 거리를 좁혀, 데이터가 끝난 사이클(진행 중)의 마지막 값이 그 뒤 개월의 호버에 끼지 않게 한다
-      hovermode: 'x unified', hoversubplots: 'axis', hoverdistance: 4,
+      hovermode: 'x unified', hoverdistance: 4,
       hoverlabel: { bgcolor: t.surface, bordercolor: t.axis, font: { color: t.text, family: FONT, size: 12 } },
-      xaxis: axisStyle(t, Object.assign({ anchor: 'y3',
-        showspikes: true, spikemode: 'across', spikesnap: 'hovered data', spikecolor: t.muted,
-        spikethickness: 1, spikedash: 'solid' }, xaxis)),
+      showlegend: true,
+      legend: { orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', yref: 'paper',
+        font: { color: t.text2, size: 12 }, bgcolor: 'rgba(0,0,0,0)' },
+      xaxis: axisStyle(t, Object.assign({ showspikes: true, spikemode: 'across', spikesnap: 'hovered data',
+        spikecolor: t.muted, spikethickness: 1, spikedash: 'solid' }, xaxis)),
+      yaxis: axisStyle(t, yaxis),
       shapes: [], annotations: [] };
   }
 
-  function thresholdLines(t, layout, yref, levels) {
-    levels.forEach((v) => layout.shapes.push({ type: 'line', xref: 'x domain', x0: 0, x1: 1, yref, y0: v, y1: v,
-      line: { color: t.threshold, width: 1, dash: 'dot' }, layer: 'below' }));
+  // 로그 세로축 — 값의 범위에서 범위를 잡고 눈금을 「N배」 · 「$N」 으로 단다
+  function logAxis(values, ticks, label, title) {
+    const known = values.filter((v) => v !== null && v > 0);
+    return { type: 'log',
+      range: [Math.log10(Math.min(...known)) - 0.08, Math.log10(Math.max(...known)) + 0.12],
+      tickvals: ticks, ticktext: ticks.map(label), title: { text: title } };
   }
 
-  function sideLabel(t, layout, yref, y, text) {
-    layout.annotations.push({ xref: 'x domain', x: 1, xanchor: 'left', xshift: 10, yref, y, yanchor: 'middle',
-      text, showarrow: false, align: 'left', font: { color: t.text2, size: 11 } });
+  // 1배 기준선 — 로그 축에 도형을 두면 축 범위가 무너진다(docs/MEMORY.md). 선 trace 로 그린다
+  function oneLine(t, x0, x1) {
+    return { type: 'scatter', mode: 'lines', x: [x0, x1], y: [1, 1], showlegend: false, hoverinfo: 'skip',
+      line: { color: t.axis, width: 1 } };
   }
 
-  function panelTitle(t, layout, top, text) {
-    layout.annotations.push({ xref: 'paper', x: 0, xanchor: 'left', yref: 'paper', y: top, yanchor: 'bottom',
-      yshift: 4, text, showarrow: false, font: { color: t.text, size: 12 } });
+  function band(layout, x0, x1, fill) {
+    layout.shapes.push({ type: 'rect', xref: 'x', x0, x1, yref: 'paper', y0: 0, y1: 1,
+      fillcolor: fill, line: { width: 0 }, layer: 'below' });
   }
 
-  function addThresholds(t, layout) {
-    const th = DATA.thresholds;
-    const join = (arr, suffix) => arr.map((v) => v + suffix).join(' · ');
-    const mid = (arr) => (Math.min(...arr) + Math.max(...arr)) / 2;
-    thresholdLines(t, layout, 'y2', th.mvrv_buy.concat(th.mvrv_sell));
-    thresholdLines(t, layout, 'y3', th.rank_buy.concat(th.rank_sell));
-    sideLabel(t, layout, 'y2', mid(th.mvrv_buy), '매수 문턱<br>' + join(th.mvrv_buy, ''));
-    sideLabel(t, layout, 'y2', mid(th.mvrv_sell), '매도 문턱<br>' + join(th.mvrv_sell, ''));
-    sideLabel(t, layout, 'y3', mid(th.rank_buy), '매수 문턱<br>' + join(th.rank_buy, '%'));
-    sideLabel(t, layout, 'y3', mid(th.rank_sell), '매도 문턱<br>' + join(th.rank_sell, '%'));
+  function bandLabel(t, layout, x, text, color) {
+    layout.annotations.push({ xref: 'x', x, yref: 'y domain', y: 1, yanchor: 'top', text, showarrow: false,
+      font: { color, size: 11 } });
   }
 
-  // ---------------- ① 사이클 겹치기 ----------------
+  // 회차 점 — 매수 ▲ 빨강 · 매도 ▼ 파랑. `pick` 이 그 보기의 가로 · 세로 값을 고른다
+  function markerTraces(t, pick) {
+    return [[SIDES.buy, 'triangle-up', t.buy], [SIDES.sell, 'triangle-down', t.sell]].map(([side, symbol, color]) => {
+      const pts = DATA.points.filter((p) => p.side === side && pick(p)[0] !== null);
+      return { type: 'scatter', mode: 'markers', name: side + ' 회차', x: pts.map((p) => pick(p)[0]),
+        y: pts.map((p) => pick(p)[1]), marker: { symbol, size: 11, color, line: { color: t.surface, width: 1 } },
+        customdata: pts.map((p) => [p.cycle.slice(0, 4), p.tranche, p.date, p.close]),
+        hovertemplate: '<b>' + side + ' %{customdata[1]}회차</b> · %{customdata[0]} 사이클 포지션 · '
+          + '%{customdata[2]} · $%{customdata[3]:,.2f}<extra></extra>' };
+    });
+  }
+
+  // ① 의 띠 — 회차 점이 실제로 앉은 자리까지 덮는다. 회차 날짜는 달력월이고 가로축은 날 수를 한 달 평균 길이로 나눈
+  // 값이라, 개월 수 그대로 그리면 끝 회차가 띠 밖에 찍혀 「기간 밖에서 샀다」로 읽힌다
+  function monthExtent(side, nominal) {
+    const xs = DATA.points.filter((p) => p.side === side).map((p) => p.halving_months);
+    return [Math.min(nominal[0], ...xs), Math.max(nominal[1], ...xs)];
+  }
+
+  // ---------------- ① 반감기 기준 ----------------
   function overlayFigure(t) {
-    const layout = baseLayout(t, 900, { range: [0, 48], dtick: 3, hoverformat: '.1f',
-      title: { text: '반감기 뒤 경과(개월)', font: { color: t.text2, size: 12 } } });
-    layout.showlegend = true;
-    layout.legend = { orientation: 'h', x: 0, xanchor: 'left', y: 1.0, yanchor: 'bottom', yref: 'paper',
-      font: { color: t.text2, size: 12 }, bgcolor: 'rgba(0,0,0,0)' };
-    layout.margin.t = 70;
-    const multiples = DATA.cycles.flatMap((c) => c.multiple).filter((v) => v !== null);
-    const priceTicks = [0.25, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
-    layout.yaxis = yAxis(t, DOMAIN.price, { type: 'log',
-      range: [Math.log10(Math.min(...multiples)) - 0.05, Math.log10(Math.max(...multiples)) + 0.1],
-      tickvals: priceTicks, ticktext: priceTicks.map((v) => v + '배'),
-      title: { text: '반감기일 대비 배수(로그)', font: { color: t.text2, size: 12 } } });
-    layout.yaxis2 = yAxis(t, DOMAIN.mvrv, { rangemode: 'tozero',
-      title: { text: 'MVRV', font: { color: t.text2, size: 12 } } });
-    layout.yaxis3 = yAxis(t, DOMAIN.rank, { range: [0, 100], dtick: 20, ticksuffix: '%',
-      title: { text: DATA.rank_years + '년 순위', font: { color: t.text2, size: 12 } } });
+    const maxMonths = Math.ceil(Math.max(...DATA.cycles.map((c) => c.months[c.months.length - 1])) / 3) * 3;
+    const layout = baseLayout(t, 560,
+      { range: [0, maxMonths], dtick: 3, hoverformat: '.1f', title: { text: '반감기 뒤 경과(개월)' } },
+      logAxis(DATA.cycles.flatMap((c) => c.multiple), MULTIPLE_TICKS, (v) => v + '배', '반감기일 대비 배수(로그)'));
+    const buy = monthExtent(SIDES.buy, SPLIT.buy);
+    const sell = monthExtent(SIDES.sell, SPLIT.sell);
+    band(layout, buy[0], buy[1], t.bandBuy);
+    band(layout, sell[0], sell[1], t.bandSell);
+    bandLabel(t, layout, (buy[0] + buy[1]) / 2, '매수 기간', t.buy);
+    bandLabel(t, layout, (sell[0] + sell[1]) / 2, '매도 기간<br>(앞 사이클 포지션)', t.sell);
 
-    [1, 3].forEach((year) => layout.shapes.push({ type: 'rect', xref: 'x', x0: 12 * year, x1: 12 * (year + 1),
-      yref: 'paper', y0: 0, y1: 1, fillcolor: t.band, line: { width: 0 }, layer: 'below' }));
-    [0, 1, 2, 3].forEach((year) => layout.annotations.push({ xref: 'x', x: 12 * year + 6, yref: 'y domain', y: 1,
-      yanchor: 'top', text: (year + 1) + '년차', showarrow: false, font: { color: t.muted, size: 11 } }));
-    addThresholds(t, layout);
-
-    // 반감기일 종가(1배) 기준선 — 로그 축에 도형을 두면 축 범위가 무너진다(docs/MEMORY.md). 선 trace 로 그린다
-    const traces = [{ type: 'scatter', mode: 'lines', x: [0, 48], y: [1, 1], yaxis: 'y', showlegend: false,
-      hoverinfo: 'skip', line: { color: t.axis, width: 1 } }];
+    const traces = [oneLine(t, 0, maxMonths)];
     DATA.cycles.forEach((c, i) => {
-      const color = t.series[i % t.series.length];
       const custom = c.dates.map((d, k) => [d, c.close[k]]);
-      traces.push({ type: 'scatter', mode: 'lines', x: c.months, y: c.multiple, yaxis: 'y', name: c.label,
-        legendgroup: c.label, line: { color, width: 2 }, customdata: custom,
+      traces.push({ type: 'scatter', mode: 'lines', x: c.months, y: c.multiple, name: c.label,
+        line: { color: t.series[i % t.series.length], width: 2 }, customdata: custom,
         hovertemplate: '<b>' + c.label + '</b> %{customdata[0]} · $%{customdata[1]:,.2f} · %{y:.2f}배<extra></extra>' });
-      traces.push({ type: 'scatter', mode: 'lines', x: c.months, y: c.mvrv, yaxis: 'y2', name: c.label,
-        legendgroup: c.label, showlegend: false, line: { color, width: 2 },
-        hovertemplate: 'MVRV %{y:.4f}<extra></extra>' });
-      traces.push({ type: 'scatter', mode: 'lines', x: c.months, y: c.rank, yaxis: 'y3', name: c.label,
-        legendgroup: c.label, showlegend: false, line: { color, width: 2 },
-        hovertemplate: DATA.rank_years + '년 순위 %{y:.1f}%<extra></extra>' });
       const last = c.months.length - 1;
       layout.annotations.push({ xref: 'x', x: c.months[last], yref: 'y', y: Math.log10(c.multiple[last]),
         xanchor: 'left', xshift: 6, text: c.short, showarrow: false, font: { color: t.text2, size: 12 } });
     });
-    panelTitle(t, layout, DOMAIN.mvrv[1], '<b>MVRV</b>');
-    panelTitle(t, layout, DOMAIN.rank[1], '<b>MVRV ' + DATA.rank_years + '년 순위</b>');
-    return { data: traces, layout };
+    return { data: traces.concat(markerTraces(t, (p) => [p.halving_months, p.halving_multiple])), layout };
   }
 
-  // ---------------- ② 전 기간 시간축 ----------------
+  // ---------------- ② 바닥 기준 ----------------
+  function bottomFigure(t) {
+    const lines = DATA.bottoms;
+    const minMonths = Math.floor(Math.min(...lines.map((b) => b.months[0])) / 6) * 6;
+    const maxMonths = Math.ceil(Math.max(...lines.map((b) => b.months[b.months.length - 1])) / 6) * 6;
+    const layout = baseLayout(t, 560,
+      { range: [minMonths, maxMonths], dtick: 6, hoverformat: '.1f', title: { text: '바닥 뒤 경과(개월)' } },
+      logAxis(lines.flatMap((b) => b.multiple), MULTIPLE_TICKS, (v) => v + '배', '바닥 종가 대비 배수(로그)'));
+    layout.shapes.push({ type: 'line', xref: 'x', x0: 0, x1: 0, yref: 'paper', y0: 0, y1: 1,
+      line: { color: t.halving, width: 1, dash: 'dot' }, layer: 'below' });
+    layout.annotations.push({ xref: 'x', x: 0, yref: 'y domain', y: 1, yanchor: 'top', xanchor: 'left', xshift: 4,
+      text: '바닥', showarrow: false, font: { color: t.text2, size: 11 } });
+
+    const traces = [oneLine(t, minMonths, maxMonths)];
+    lines.forEach((b, i) => {
+      const name = b.halving.slice(0, 4) + ' 사이클 · ' + b.label;
+      const custom = b.dates.map((d, k) => [d, b.close[k]]);
+      traces.push({ type: 'scatter', mode: 'lines', x: b.months, y: b.multiple, name,
+        line: { color: t.series[i % t.series.length], width: 2, dash: b.provisional ? 'dot' : 'solid' },
+        customdata: custom,
+        hovertemplate: '<b>' + name + '</b> %{customdata[0]} · $%{customdata[1]:,.2f} · %{y:.2f}배<extra></extra>' });
+    });
+    return { data: traces.concat(markerTraces(t, (p) => [p.bottom_months, p.bottom_multiple])), layout };
+  }
+
+  // ---------------- ③ 전 기간 시간축 ----------------
   function timelineFigure(t) {
     const tm = DATA.time;
-    const layout = baseLayout(t, 860, { type: 'date', hoverformat: '%Y-%m-%d',
-      range: [tm.dates[0], tm.dates[tm.dates.length - 1]] });
-    layout.showlegend = false;
-    const closes = tm.close.filter((v) => v !== null);
-    const closeTicks = [1, 10, 100, 1000, 10000, 100000];
-    layout.yaxis = yAxis(t, DOMAIN.price, { type: 'log',
-      range: [Math.log10(Math.min(...closes)) - 0.1, Math.log10(Math.max(...closes)) + 0.1],
-      tickvals: closeTicks, ticktext: closeTicks.map((v) => '$' + v.toLocaleString('en-US')),
-      title: { text: '종가(USD, 로그)', font: { color: t.text2, size: 12 } } });
-    layout.yaxis2 = yAxis(t, DOMAIN.mvrv, { rangemode: 'tozero',
-      title: { text: 'MVRV', font: { color: t.text2, size: 12 } } });
-    layout.yaxis3 = yAxis(t, DOMAIN.rank, { range: [0, 100], dtick: 20, ticksuffix: '%',
-      title: { text: DATA.rank_years + '년 순위', font: { color: t.text2, size: 12 } } });
-
-    tm.bands.forEach((b) => layout.shapes.push({ type: 'rect', xref: 'x', x0: b.x0, x1: b.x1, yref: 'paper',
-      y0: 0, y1: 1, fillcolor: t.band, line: { width: 0 }, layer: 'below' }));
+    const layout = baseLayout(t, 560,
+      { type: 'date', hoverformat: '%Y-%m-%d', range: [tm.dates[0], tm.dates[tm.dates.length - 1]] },
+      logAxis(tm.close, PRICE_TICKS, (v) => '$' + v.toLocaleString('en-US'), '종가(USD, 로그)'));
+    DATA.bands.forEach((b) => band(layout, b.x0, b.x1, b.side === SIDES.buy ? t.bandBuy : t.bandSell));
     DATA.halvings.forEach((d) => {
       layout.shapes.push({ type: 'line', xref: 'x', x0: d, x1: d, yref: 'paper', y0: 0, y1: 1,
         line: { color: t.halving, width: 1 }, layer: 'below' });
-      layout.annotations.push({ xref: 'x', x: d, yref: 'paper', y: 1, yanchor: 'bottom', xanchor: 'left',
+      layout.annotations.push({ xref: 'x', x: d, yref: 'y domain', y: 1, yanchor: 'top', xanchor: 'left',
         xshift: 3, text: '반감기 ' + d, showarrow: false, font: { color: t.text2, size: 11 } });
     });
-    addThresholds(t, layout);
-
-    const color = t.series[0];
-    const traces = [
-      { type: 'scatter', mode: 'lines', x: tm.dates, y: tm.close, yaxis: 'y', name: '종가',
-        line: { color, width: 1.5 }, customdata: tm.anchor,
-        hovertemplate: '종가 $%{y:,.2f} · %{customdata}<extra></extra>' },
-      { type: 'scatter', mode: 'lines', x: tm.dates, y: tm.mvrv, yaxis: 'y2', name: 'MVRV',
-        line: { color, width: 1.5 }, hovertemplate: 'MVRV %{y:.4f}<extra></extra>' },
-      { type: 'scatter', mode: 'lines', x: tm.dates, y: tm.rank, yaxis: 'y3', name: DATA.rank_years + '년 순위',
-        line: { color, width: 1.5 }, hovertemplate: DATA.rank_years + '년 순위 %{y:.1f}%<extra></extra>' },
-    ];
-    panelTitle(t, layout, DOMAIN.mvrv[1], '<b>MVRV</b>');
-    panelTitle(t, layout, DOMAIN.rank[1], '<b>MVRV ' + DATA.rank_years + '년 순위</b>');
-    return { data: traces, layout };
+    const line = { type: 'scatter', mode: 'lines', x: tm.dates, y: tm.close, name: '종가',
+      line: { color: t.series[0], width: 1.5 }, customdata: tm.anchor,
+      hovertemplate: '종가 $%{y:,.2f} · %{customdata}<extra></extra>' };
+    return { data: [line].concat(markerTraces(t, (p) => [p.date, p.close])), layout };
   }
 
   // ---------------- 표 (DOM 은 textContent 로만 채운다) ----------------
@@ -457,10 +366,10 @@ code { font-size: 12px; }
         // 배열은 한 칸의 여러 줄 — 줄마다 끊지 않아 날짜가 하이픈에서 갈리지 않는다
         if (Array.isArray(value)) {
           value.forEach((part) => {
-            const line = document.createElement('div');
-            line.className = 'nowrap';
-            line.textContent = part;
-            td.appendChild(line);
+            const lineEl = document.createElement('div');
+            lineEl.className = 'nowrap';
+            lineEl.textContent = part;
+            td.appendChild(lineEl);
           });
           return;
         }
@@ -471,394 +380,54 @@ code { font-size: 12px; }
     });
   }
 
+  function splitTable() {
+    const rows = DATA.table.map((r) => [
+      r.halving + ' 사이클', span(r.first_buy, r.last_buy), r.buys + '/' + r.tranches, price(r.avg_buy),
+      span(r.first_sell, r.last_sell), r.sells + '/' + r.tranches, price(r.avg_sell), pct(r.return), pct(r.worst),
+      r.reason === null ? '끝남' : r.reason,
+    ]);
+    fillTable(document.getElementById('split-table'),
+      ['포지션', '산 기간', '산 회차', '평균 매수가', '판 기간', '판 회차', '평균 매도가', '수익률', '평균 단가 대비 최악', '상태'],
+      rows, [false, false, true, true, false, true, true, true, true, false]);
+  }
+
   function summaryTable() {
-    const buyFirst = Math.max(...DATA.thresholds.mvrv_buy);
-    const day = (d, m) => d === null ? '없음' : d + ' (' + m.toFixed(1) + '개월)';
+    const day = (d, m) => d + ' (' + m.toFixed(1) + '개월)';
     const rows = DATA.summary.map((r) => [
       r.halving, price(r.base),
       [r.end + ' 까지', '(' + r.end_months.toFixed(1) + '개월' + (r.ongoing ? ', 진행 중' : '') + ')'],
       [day(r.peak, r.peak_months), price(r.peak_close)],
-      r.peak_mvrv === null ? '—' : r.peak_mvrv.toFixed(4),
-      day(r.first_below, r.first_below_months),
       [day(r.bottom, r.bottom_months) + (r.ongoing ? ' 잠정' : ''), price(r.bottom_close)],
-      r.bottom_mvrv === null ? '—' : r.bottom_mvrv.toFixed(4),
-      r.max_mvrv === null ? '—' : [r.max_mvrv.toFixed(4), day(r.max_mvrv_day, r.max_mvrv_months)],
-      r.min_mvrv === null ? '—' : r.min_mvrv.toFixed(4),
     ]);
     fillTable(document.getElementById('summary-table'),
-      ['반감기', '반감기일 종가', '사이클 범위', '가격 고점', '고점 날 MVRV', '고점 뒤 MVRV 가 처음 ' + buyFirst + ' 이하',
-        '고점 뒤 바닥', '바닥 날 MVRV', '사이클 최대 MVRV', '사이클 최소 MVRV'],
-      rows, [false, true, false, false, true, false, false, true, false, true]);
-  }
-
-  // ---------------- ③ 격자 히트맵 ----------------
-  const slog = (v) => Math.sign(v) * Math.log10(1 + Math.abs(v));
-  const METRICS = [
-    { key: 'up_rate', label: '오른 비율(%) — 성적표의 승률', unit: '%', scale: 'rate', get: (c) => c.up_rate },
-    { key: 'mean', label: '평균(%)', unit: '%', scale: 'slog', get: (c) => c.mean },
-    { key: 'median', label: '중앙값(%)', unit: '%', scale: 'slog', get: (c) => c.median },
-    { key: 'worst_hold', label: '보유 중 최악(%)', unit: '%', scale: 'seq', get: (c) => c.worst_hold },
-    { key: 'mean_diff', label: '기준선 대비 평균 차이(%p)', unit: '%p', scale: 'slog',
-      get: (c) => c.baseline ? c.baseline.mean_diff : null },
-    { key: 'median_diff', label: '기준선 대비 중앙값 차이(%p)', unit: '%p', scale: 'slog',
-      get: (c) => c.baseline ? c.baseline.median_diff : null },
-    { key: 'up_rate_diff', label: '기준선 대비 오른 비율 차이(%p)', unit: '%p', scale: 'diff',
-      get: (c) => c.baseline ? c.baseline.up_rate_diff : null },
-  ];
-  const cellIndex = new Map(GRID.cells.map((c) => [c.entry + ',' + c.exit, c]));
-  const stopIndex = new Map(DATA.stops.map((c) => [c.entry + ',' + c.exit, c]));
-  const state = { metric: METRICS[0].key, entry: GRID.entry_months[0], exit: GRID.exit_months[0],
-    buy: 0, sell: 0 };
-
-  function cellHover(c) {
-    const lines = ['<b>진입 ' + c.entry + '개월 · 청산 ' + c.exit + '개월</b> — '
-      + (c.next_cycle ? '다음 반감기 뒤에 판다' : '같은 반감기 안에서 판다') + ' (무손절)'];
-    lines.push('표본 ' + count(c.sample) + '건 · 평균 ' + pct(c.mean) + ' · 중앙값 ' + pct(c.median)
-      + ' · 오른 비율 ' + rate(c.up_rate) + ' · 합계 ' + pct(c.total));
-    lines.push('최악 ' + pct(c.worst) + ' · 보유 중 최악 ' + pct(c.worst_hold));
-    if (c.conflict) lines.push('<b>※ 평균의 부호와 방향 비율이 어긋난다</b> — 소수의 큰 사건이 평균을 만든 칸이다(측정의 원칙 13)');
-    if (c.baseline) {
-      const b = c.baseline;
-      lines.push('기준선(보유 ' + b.hold + '개월 · 첫 반감기부터 매일 진입): 표본 ' + count(b.sample)
-        + '(겹치지 않게 고르면 ' + count(b.non_overlapping) + ')'
-        + ' · 평균 ' + pct(b.mean) + ' · 중앙값 ' + pct(b.median) + ' · 오른 비율 ' + rate(b.up_rate));
-      lines.push('기준선 대비 차이: 평균 ' + pp(b.mean_diff) + ' · 중앙값 ' + pp(b.median_diff)
-        + ' · 오른 비율 ' + pp(b.up_rate_diff) + ' — 이 칸 신호 ' + count(b.cell_signals) + '건 중 제외 ' + count(b.cell_excluded) + '건');
-    } else {
-      lines.push('기준선 없음 — 다음 반감기 뒤에 파는 칸은 사이클마다 보유 길이가 달라 정의되지 않는다');
-    }
-    if (!c.trades.length) lines.push('체결 없음');
-    c.trades.forEach((tr) => lines.push(esc(tr.halving) + ' 사이클: ' + esc(tr.entry_date) + ' ' + price(tr.entry_price)
-      + ' → ' + esc(tr.exit_date) + ' ' + price(tr.exit_price) + ' · <b>' + pct(tr.return) + '</b> (보유 중 최악 '
-      + pct(tr.worst_hold) + (tr.fork_share ? ' · 하드포크 몫 ' + pp(tr.fork_share) + ' — 성적에 없음' : '') + ')'));
-    return lines.join('<br>');
-  }
-
-  function colorSpec(t, metric, values) {
-    const diverging = [[0, t.divNeg], [0.5, t.divMid], [1, t.divPos]];
-    const known = values.filter((v) => v !== null);
-    if (metric.scale === 'rate') {
-      return { z: values, zmin: 0, zmax: 100, colorscale: diverging, tickvals: [0, 25, 50, 75, 100],
-        ticktext: ['0%', '25%', '50%', '75%', '100%'], note: '50% 가 가운데 — 빨강은 오른 체결이 많은 칸' };
-    }
-    if (metric.scale === 'diff') {
-      return { z: values, zmin: -100, zmax: 100, colorscale: diverging, tickvals: [-100, -50, 0, 50, 100],
-        ticktext: [MINUS + '100%p', MINUS + '50%p', '0', '+50%p', '+100%p'], note: '같은 사이클 칸만 — 다음 사이클 칸은 기준선이 없다' };
-    }
-    if (metric.scale === 'seq') {
-      const low = Math.min(-1, ...known);
-      return { z: values, zmin: low, zmax: 0, colorscale: [[0, t.seqDeep], [1, t.seqZero]],
-        tickvals: null, ticktext: null, note: '바탕색에서 멀수록(밝은 화면은 짙게 · 어두운 화면은 밝게) 들고 있는 동안 깊이 밀렸다' };
-    }
-    const z = values.map((v) => v === null ? null : slog(v));
-    const reach = Math.max(1, ...z.filter((v) => v !== null).map(Math.abs));
-    const tickvals = [0];
-    const ticktext = ['0'];
-    [10, 100, 1000, 10000].forEach((k) => {
-      if (slog(k) <= reach) {
-        tickvals.push(slog(k), -slog(k));
-        ticktext.push('+' + k.toLocaleString('en-US') + metric.unit, MINUS + k.toLocaleString('en-US') + metric.unit);
-      }
-    });
-    return { z, zmin: -reach, zmax: reach, colorscale: diverging, tickvals, ticktext,
-      note: '색은 크기를 로그로 눌러 칠한다 — 값은 칸 글자와 호버' + (metric.key.endsWith('diff') ? ' · 같은 사이클 칸만' : '') };
-  }
-
-  function staircase() {
-    // 청산 ≤ 진입(다음 반감기 뒤에 판다)과 청산 > 진입(같은 반감기 안) 칸의 경계
-    const entries = GRID.entry_months;
-    let path = 'M ' + (entries[0] + HALF) + ' ' + (entries[0] - HALF);
-    entries.forEach((e) => { path += ' L ' + (e + HALF) + ' ' + (e - HALF) + ' L ' + (e + HALF) + ' ' + (e + HALF); });
-    return path;
-  }
-
-  function heatmapFigure(t) {
-    const metric = METRICS.find((m) => m.key === state.metric);
-    const xs = GRID.exit_months;
-    const ys = GRID.entry_months;
-    const raw = ys.map((e) => xs.map((x) => metric.get(cellIndex.get(e + ',' + x))));
-    const spec = colorSpec(t, metric, raw.flat());
-    const z = ys.map((_, i) => spec.z.slice(i * xs.length, (i + 1) * xs.length));
-    const text = ys.map((e, i) => xs.map((x, j) => {
-      const c = cellIndex.get(e + ',' + x);
-      const value = raw[i][j];
-      const shown = value === null ? '·' : metric.scale === 'rate' ? Math.round(value) + '%' : compact(value, '');
-      return shown + (c.conflict ? ' ※' : '') + '<br>n' + count(c.sample);
-    }));
-    const hover = ys.map((e) => xs.map((x) => cellHover(cellIndex.get(e + ',' + x))));
-    document.getElementById('metric-note').textContent = spec.note;
-
-    const layout = { height: 760, paper_bgcolor: t.surface, plot_bgcolor: t.surface,
-      font: { family: FONT, color: t.text, size: 12 }, margin: { l: 70, r: 30, t: 20, b: 60 },
-      hoverlabel: { bgcolor: t.surface, bordercolor: t.axis, align: 'left',
-        font: { color: t.text, family: FONT, size: 12 } },
-      xaxis: axisStyle(t, { tickvals: xs, showgrid: false, range: [xs[0] - HALF, xs[xs.length - 1] + HALF],
-        title: { text: '반감기 뒤 청산(개월)', font: { color: t.text2, size: 12 } } }),
-      yaxis: axisStyle(t, { tickvals: ys, showgrid: false, autorange: 'reversed',
-        title: { text: '반감기 뒤 진입(개월)', font: { color: t.text2, size: 12 } } }),
-      shapes: [
-        { type: 'path', path: staircase(), line: { color: t.text2, width: 2 }, layer: 'above' },
-        { type: 'rect', x0: state.exit - HALF, x1: state.exit + HALF, y0: state.entry - HALF, y1: state.entry + HALF,
-          line: { color: t.select, width: 3 }, fillcolor: 'rgba(0,0,0,0)', layer: 'above' },
-      ] };
-    const trace = { type: 'heatmap', x: xs, y: ys, z, zmin: spec.zmin, zmax: spec.zmax,
-      colorscale: spec.colorscale, xgap: 2, ygap: 2, text, texttemplate: '%{text}',
-      textfont: { size: 10 }, customdata: hover, hovertemplate: '%{customdata}<extra></extra>',
-      colorbar: { title: { text: metric.label, side: 'right', font: { color: t.text2, size: 11 } },
-        tickfont: { color: t.muted, size: 11 }, outlinewidth: 0, thickness: 12,
-        tickvals: spec.tickvals || undefined, ticktext: spec.ticktext || undefined } };
-    return { data: [trace], layout };
-  }
-
-  // ---------------- ④ 칸별 손절선 ----------------
-  function stopsFigure(t) {
-    const cell = stopIndex.get(state.entry + ',' + state.exit);
-    const labels = cell.stops.map((s) => stopText(s.stop));
-    const bar = (values, axis, name) => ({ type: 'bar', x: labels, y: values, xaxis: 'x', yaxis: axis, name,
-      marker: { color: t.series[0] }, showlegend: false, hovertemplate: name + ' %{y:,.2f}<extra></extra>' });
-    const domains = [[0.78, 1], [0.53, 0.73], [0.27, 0.48], [0, 0.21]];
-    const layout = { height: 820, paper_bgcolor: t.surface, plot_bgcolor: t.surface, bargap: 0.35,
-      font: { family: FONT, color: t.text, size: 12 }, margin: { l: 70, r: 30, t: 40, b: 50 },
-      hovermode: 'x unified', hoverlabel: { bgcolor: t.surface, bordercolor: t.axis,
-        font: { color: t.text, family: FONT, size: 12 } },
-      showlegend: true, legend: { orientation: 'h', x: 1, xanchor: 'right', y: domains[2][1], yanchor: 'bottom',
-        yref: 'paper', font: { color: t.text2, size: 12 }, bgcolor: 'rgba(0,0,0,0)' },
-      xaxis: axisStyle(t, { anchor: 'y4', type: 'category',
-        title: { text: '손절선 (진입가 대비)', font: { color: t.text2, size: 12 } } }),
-      yaxis: axisStyle(t, { domain: domains[0], anchor: 'x', ticksuffix: '%', zeroline: true, zerolinecolor: t.axis }),
-      yaxis2: axisStyle(t, { domain: domains[1], anchor: 'x', ticksuffix: '%', zeroline: true, zerolinecolor: t.axis }),
-      yaxis3: axisStyle(t, { domain: domains[2], anchor: 'x', ticksuffix: '%', zeroline: true, zerolinecolor: t.axis }),
-      yaxis4: axisStyle(t, { domain: domains[3], anchor: 'x', rangemode: 'tozero', tick0: 0, dtick: 1 }),
-      annotations: [] };
-    panelTitle(t, layout, domains[0][1], '<b>합계(%)</b> — 같은 금액을 체결 수만큼 넣었을 때의 단순 합');
-    panelTitle(t, layout, domains[1][1], '<b>평균(%)</b> · <b>중앙값(%)</b> — 회당. 둘이 벌어지면 한 사이클이 평균을 만든 것');
-    // 이 패널만의 범례 — 셋째 패널의 선 두 개와 색이 같아 한 범례에 두면 뜻이 섞인다
-    layout.legend2 = { orientation: 'h', x: 1, xanchor: 'right', y: domains[1][1], yanchor: 'bottom', yref: 'paper',
-      font: { color: t.text2, size: 12 }, bgcolor: 'rgba(0,0,0,0)' };
-    layout.barmode = 'group';
-    panelTitle(t, layout, domains[2][1], '<b>최악(%)</b> · <b>보유 중 최악(%)</b>');
-    panelTitle(t, layout, domains[3][1], '<b>발동 수</b> — 장중손절 + 갭손절 (표본 대비)');
-    const traces = [
-      bar(cell.stops.map((s) => s.total), 'y', '합계(%)'),
-      Object.assign(bar(cell.stops.map((s) => s.mean), 'y2', '평균(%)'), { showlegend: true, legend: 'legend2' }),
-      Object.assign(bar(cell.stops.map((s) => s.median), 'y2', '중앙값(%)'),
-        { showlegend: true, legend: 'legend2', marker: { color: t.series[1] } }),
-      { type: 'scatter', mode: 'lines+markers', x: labels, y: cell.stops.map((s) => s.worst), xaxis: 'x', yaxis: 'y3',
-        name: '최악(%)', line: { color: t.series[0], width: 2 }, marker: { size: 8 },
-        hovertemplate: '최악 %{y:,.2f}%<extra></extra>' },
-      { type: 'scatter', mode: 'lines+markers', x: labels, y: cell.stops.map((s) => s.worst_hold), xaxis: 'x',
-        yaxis: 'y3', name: '보유 중 최악(%)', line: { color: t.series[1], width: 2 }, marker: { size: 8 },
-        hovertemplate: '보유 중 최악 %{y:,.2f}%<extra></extra>' },
-      { type: 'bar', x: labels, y: cell.stops.map((s) => s.triggered), xaxis: 'x', yaxis: 'y4', name: '발동 수',
-        marker: { color: t.series[0] }, showlegend: false,
-        customdata: cell.stops.map((s) => count(s.sample)), hovertemplate: '발동 %{y}건 / 표본 %{customdata}건<extra></extra>' },
-    ];
-    return { data: traces, layout, cell };
-  }
-
-  function stopsTable(cell) {
-    fillTable(document.getElementById('stops-table'),
-      ['손절선', '표본', '합계(%)', '평균(%)', '중앙값(%)', '오른 비율(승률)', '최악(%)', '보유 중 최악(%)', '발동 수'],
-      cell.stops.map((s) => [stopText(s.stop), count(s.sample), pct(s.total), pct(s.mean) + (s.conflict ? ' ※' : ''), pct(s.median),
-        rate(s.up_rate), pct(s.worst), pct(s.worst_hold), count(s.triggered)]),
-      [false, true, true, true, true, true, true, true, true]);
-    const info = cellIndex.get(state.entry + ',' + state.exit);
-    document.getElementById('cell-note').textContent = info.next_cycle
-      ? '다음 반감기 뒤 ' + state.exit + '개월에 판다' : '같은 반감기 안에서 판다 (보유 ' + (state.exit - state.entry) + '개월)';
-  }
-
-  // ---------------- ⑤ 혼합 분할 ----------------
-  function splitFigure(t) {
-    const split = DATA.split;
-    const buy = split.buy_legs[state.buy];
-    const sell = split.sell_legs[state.sell];
-    const calBuy = split.buy_legs.find((l) => l.key === buy.calendar_key);
-    const calSell = split.sell_legs.find((l) => l.key === sell.calendar_key);
-    const sameAsCalendar = buy.key === calBuy.key && sell.key === calSell.key;
-    const n = split.cycles.length;
-    const gap = 0.06;
-    const height = (1 - gap * (n - 1)) / n;
-    const layout = { height: 280 * n, paper_bgcolor: t.surface, plot_bgcolor: t.surface,
-      font: { family: FONT, color: t.text, size: 12 }, margin: { l: 70, r: 30, t: 90, b: 40 },
-      hovermode: 'closest', hoverlabel: { bgcolor: t.surface, bordercolor: t.axis, align: 'left',
-        font: { color: t.text, family: FONT, size: 12 } },
-      showlegend: true, legend: { orientation: 'h', x: 0, xanchor: 'left', y: 1.035, yanchor: 'bottom', yref: 'paper',
-        font: { color: t.text2, size: 12 }, bgcolor: 'rgba(0,0,0,0)' },
-      shapes: [], annotations: [] };
-    const traces = [];
-    const tm = DATA.time;
-    const lastDay = tm.dates[tm.dates.length - 1];
-    const shown = new Set();
-    split.cycles.forEach((cycle, i) => {
-      const axis = i === 0 ? '' : String(i + 1);
-      const top = 1 - i * (height + gap);
-      const domain = [top - height, top];
-      const nextHalving = DATA.halvings[DATA.halvings.indexOf(cycle) + 1];
-      const endGuess = nextHalving ? addMonths(nextHalving, 24) : lastDay;
-      const end = endGuess < lastDay ? endGuess : lastDay;
-      const from = tm.dates.findIndex((d) => d >= cycle);
-      let to = tm.dates.findIndex((d) => d > end);
-      if (to < 0) to = tm.dates.length;
-      const dates = tm.dates.slice(from, to);
-      const closes = tm.close.slice(from, to);
-      layout['xaxis' + axis] = axisStyle(t, { type: 'date', anchor: 'y' + axis, range: [cycle, end] });
-      layout['yaxis' + axis] = axisStyle(t, { type: 'log', domain, anchor: 'x' + axis, tickvals: PRICE_TICKS,
-        ticktext: PRICE_TICKS.map((v) => '$' + v.toLocaleString('en-US')) });
-      traces.push({ type: 'scatter', mode: 'lines', x: dates, y: closes, xaxis: 'x' + axis, yaxis: 'y' + axis,
-        name: '종가', showlegend: i === 0, legendgroup: 'close', line: { color: t.muted, width: 1.2 },
-        hovertemplate: '%{x|%Y-%m-%d} · $%{y:,.2f}<extra></extra>' });
-      DATA.halvings.filter((d) => d >= cycle && d <= end).forEach((d) => layout.shapes.push({ type: 'line',
-        xref: 'x' + axis, x0: d, x1: d, yref: 'y' + axis + ' domain', y0: 0, y1: 1,
-        line: { color: t.halving, width: 1 }, layer: 'below' }));
-      const pos = (split.positions[buy.key] || {})[sell.key] || {};
-      const cal = (split.positions[calBuy.key] || {})[calSell.key] || {};
-      const result = (p) => p && p[cycle] ? (p[cycle].return === null ? '끝나지 않음' : pct(p[cycle].return)) : '—';
-      layout.annotations.push({ xref: 'paper', x: 0, xanchor: 'left', yref: 'paper', y: top, yanchor: 'bottom',
-        yshift: 4, showarrow: false, font: { color: t.text, size: 12 },
-        text: '<b>' + esc(cycle) + ' 사이클</b> — 고른 조합 ' + result(pos) + ' · 같은 기한의 달력만 ' + result(cal) });
-      const addFills = (leg, side, filled, color, name) => {
-        const cyc = ((split.fills[leg.key] || {})[cycle]) || { points: [] };
-        const pts = cyc.points;
-        if (!pts.length) return;
-        const symbol = (side === '매수' ? 'triangle-up' : 'triangle-down') + (filled ? '' : '-open');
-        const key = name + side;
-        traces.push({ type: 'scatter', mode: 'markers', x: pts.map((p) => p.date), y: pts.map((p) => p.close),
-          xaxis: 'x' + axis, yaxis: 'y' + axis, name: name + ' ' + side, legendgroup: key,
-          showlegend: !shown.has(key),
-          marker: { symbol, size: filled ? 14 : 12, color, line: { color: filled ? t.surface : color, width: filled ? 1.5 : 2 } },
-          customdata: pts.map((p) => [p.tranche, p.trigger || '—', p.deadline || '—',
-            p.prior_mvrv === null ? '—' : p.prior_mvrv.toFixed(4), p.prior_rank === null ? '—' : p.prior_rank.toFixed(2)]),
-          hovertemplate: '<b>' + name + ' ' + side + ' %{customdata[0]}회차</b><br>%{x|%Y-%m-%d} · $%{y:,.2f}<br>계기 %{customdata[1]}'
-            + ' · 회차 기한 %{customdata[2]}<br>체결 전날 MVRV %{customdata[3]} · ' + DATA.rank_years + '년 순위 %{customdata[4]}%<extra></extra>' });
-        shown.add(key);
-      };
-      addFills(buy, '매수', true, t.series[0], '고른 조합');
-      addFills(sell, '매도', true, t.series[0], '고른 조합');
-      if (!sameAsCalendar) {
-        if (calBuy.key !== buy.key) addFills(calBuy, '매수', false, t.series[1], '달력만');
-        if (calSell.key !== sell.key) addFills(calSell, '매도', false, t.series[1], '달력만');
-      }
-    });
-    return { data: traces, layout, buy, sell, calBuy, calSell };
-  }
-
-  function addMonths(day, months) {
-    const d = new Date(day + 'T00:00:00Z');
-    d.setUTCMonth(d.getUTCMonth() + months);
-    return d.toISOString().slice(0, 10);
-  }
-
-  function splitTable(fig) {
-    const split = DATA.split;
-    const pos = (split.positions[fig.buy.key] || {})[fig.sell.key] || {};
-    const cal = (split.positions[fig.calBuy.key] || {})[fig.calSell.key] || {};
-    const pending = (leg, cycle) => {
-      const cyc = (split.fills[leg.key] || {})[cycle];
-      return cyc && cyc.pending ? cyc.pending + '회 (' + cyc.reasons.join(' · ') + ')' : '';
-    };
-    const rows = split.cycles.map((cycle) => {
-      const p = pos[cycle] || {};
-      const c = cal[cycle] || {};
-      const notes = [p.reason, pending(fig.buy, cycle) && '매수 체결 전 ' + pending(fig.buy, cycle),
-        pending(fig.sell, cycle) && '매도 체결 전 ' + pending(fig.sell, cycle)].filter(Boolean).join(' · ');
-      return [cycle, pct(p.return), pct(p.worst), p.first_buy || '—', p.last_sell || '—', price(p.avg_buy), price(p.avg_sell),
-        pct(c.return), pct(c.worst), notes];
-    });
-    fillTable(document.getElementById('split-table'),
-      ['사이클', '고른 조합 수익률', '평균 단가 대비 최악', '첫 매수일', '마지막 매도일', '평균 매수가', '평균 매도가',
-        '달력만 수익률', '달력만 평균 단가 대비 최악', '비고'],
-      rows, [false, true, true, false, false, true, true, true, true, false]);
-  }
-
-  // ---------------- 고르기 · 그리기 ----------------
-  function fillSelect(select, options, value) {
-    select.replaceChildren();
-    options.forEach((o) => {
-      const opt = document.createElement('option');
-      opt.value = String(o.value);
-      opt.textContent = o.label;
-      select.appendChild(opt);
-    });
-    select.value = String(value);
-  }
-
-  function renderHeatmap(t) {
-    const h = heatmapFigure(t);
-    Plotly.react('heatmap', h.data, h.layout, CONFIG);
-  }
-
-  function renderStops(t) {
-    const s = stopsFigure(t);
-    Plotly.react('stops', s.data, s.layout, CONFIG);
-    stopsTable(s.cell);
-    document.getElementById('cell-entry').value = String(state.entry);
-    document.getElementById('cell-exit').value = String(state.exit);
-  }
-
-  function renderSplit(t) {
-    const f = splitFigure(t);
-    Plotly.react('split', f.data, f.layout, CONFIG);
-    splitTable(f);
+      ['반감기', '반감기일 종가', '사이클 범위', '가격 고점', '고점 뒤 바닥'], rows, [false, true, false, false, false]);
   }
 
   function render() {
     const t = tokens();
-    const o = overlayFigure(t);
-    const l = timelineFigure(t);
-    Plotly.react('overlay', o.data, o.layout, CONFIG);
-    Plotly.react('timeline', l.data, l.layout, CONFIG);
-    renderHeatmap(t);
-    renderStops(t);
-    renderSplit(t);
-  }
-
-  function selectCell(entry, exit) {
-    if (!cellIndex.has(entry + ',' + exit)) return;
-    state.entry = entry;
-    state.exit = exit;
-    const t = tokens();
-    renderHeatmap(t);
-    renderStops(t);
+    [['overlay', overlayFigure], ['bottom', bottomFigure], ['timeline', timelineFigure]].forEach(([id, make]) => {
+      const f = make(t);
+      Plotly.react(id, f.data, f.layout, CONFIG);
+    });
   }
 
   // 머리 · 채움 글자
   document.getElementById('sources').textContent = DATA.meta.sources
     .map((s) => s.name + ' ' + s.file + ' ' + s.period + ' (' + s.rows.toLocaleString('en-US') + '행)').join(' · ');
   document.getElementById('created').textContent = DATA.meta.created_at;
-  document.querySelectorAll('.fill-rank-years').forEach((el) => { el.textContent = String(DATA.rank_years); });
+  const rule = '반감기 뒤 ' + SPLIT.buy[0] + ' ~ ' + SPLIT.buy[1] + '개월에 매달 사고, 다음 반감기 뒤 '
+    + SPLIT.sell[0] + ' ~ ' + SPLIT.sell[1] + '개월에 매달 판다 (' + SPLIT.tranches + '번씩)';
+  document.querySelectorAll('.fill-split-name').forEach((el) => { el.textContent = SPLIT.name; });
+  document.querySelectorAll('.fill-split-rule').forEach((el) => { el.textContent = rule; });
+  document.querySelectorAll('.fill-lead').forEach((el) => { el.textContent = String(DATA.bottom_lead_months); });
 
-  fillSelect(document.getElementById('metric'), METRICS.map((m) => ({ value: m.key, label: m.label })), state.metric);
-  fillSelect(document.getElementById('cell-entry'), GRID.entry_months.map((v) => ({ value: v, label: v + '개월' })), state.entry);
-  fillSelect(document.getElementById('cell-exit'), GRID.exit_months.map((v) => ({ value: v, label: v + '개월' })), state.exit);
-  fillSelect(document.getElementById('buy-leg'), DATA.split.buy_legs.map((l, i) => ({ value: i, label: l.label })), state.buy);
-  fillSelect(document.getElementById('sell-leg'), DATA.split.sell_legs.map((l, i) => ({ value: i, label: l.label })), state.sell);
-
-  // 캡처 점검용 주소 표지: #theme=dark · #metric=mean · #cell=18,30 · #buy=5 · #sell=2
+  // 캡처 점검용 주소 표지: #theme=dark
   const hash = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map((p) => p.split('=')));
   if (hash.theme === 'light' || hash.theme === 'dark') document.documentElement.dataset.theme = hash.theme;
-  if (METRICS.some((m) => m.key === hash.metric)) state.metric = hash.metric;
-  if (hash.cell) {
-    const [e, x] = hash.cell.split(',').map(Number);
-    if (cellIndex.has(e + ',' + x)) { state.entry = e; state.exit = x; }
-  }
-  if (hash.buy !== undefined && DATA.split.buy_legs[Number(hash.buy)]) state.buy = Number(hash.buy);
-  if (hash.sell !== undefined && DATA.split.sell_legs[Number(hash.sell)]) state.sell = Number(hash.sell);
-  document.getElementById('metric').value = state.metric;
-  document.getElementById('buy-leg').value = String(state.buy);
-  document.getElementById('sell-leg').value = String(state.sell);
 
+  splitTable();
   summaryTable();
   render();
-
-  document.getElementById('metric').addEventListener('change', (ev) => { state.metric = ev.target.value; renderHeatmap(tokens()); });
-  document.getElementById('cell-entry').addEventListener('change', (ev) => selectCell(Number(ev.target.value), state.exit));
-  document.getElementById('cell-exit').addEventListener('change', (ev) => selectCell(state.entry, Number(ev.target.value)));
-  document.getElementById('buy-leg').addEventListener('change', (ev) => { state.buy = Number(ev.target.value); renderSplit(tokens()); });
-  document.getElementById('sell-leg').addEventListener('change', (ev) => { state.sell = Number(ev.target.value); renderSplit(tokens()); });
-  document.getElementById('heatmap').on('plotly_click', (ev) => {
-    const point = ev.points && ev.points[0];
-    if (point) selectCell(Number(point.y), Number(point.x));
-  });
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
 })();
 </script>

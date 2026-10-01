@@ -1,4 +1,4 @@
-"""반감기_사이클 3단계 혼합 분할 — 4년 순위 · 신고가 창 · 회차 체결일 · 포지션 성적의 정의를 고정한다.
+"""반감기_사이클 3단계 혼합 분할 · 달력 매달 분할 — 4년 순위 · 신고가 창 · 회차 체결일 · 포지션 성적의 정의를 고정한다.
 
 **정의가 곧 결론을 만든다.** 회차가 하루 밀리거나 평균 단가를 다른 식으로 내도 표는 그럴듯하게 나오고 예외는 나지 않는다.
 
@@ -15,19 +15,36 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_LOW
-from verify_lab.measure.constants import COL_EXCLUDED_REASON, REASON_NONE
+from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HOLD_DAYS, REASON_NONE
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_MIN, COL_POSITIVE_COUNT
 from verify_lab.studies.halving_cycle.constants import (
     COL_AVG_BUY_PRICE,
+    COL_AVG_SELL_PRICE,
+    COL_BUY_CALENDAR_COUNT,
+    COL_BUY_FIRST_DEADLINE,
+    COL_BUY_LAST_DEADLINE,
+    COL_CALENDAR_SPLIT,
     COL_CYCLE_RETURN_TEMPLATE,
     COL_CYCLE_WORST_TEMPLATE,
     COL_FINISHED_COUNT,
+    COL_FIRST_BUY_DATE,
     COL_HALVING,
+    COL_LAST_SELL_DATE,
+    COL_MONTHS_SINCE_HALVING,
     COL_POSITION_RETURN,
+    COL_SELL_CALENDAR_COUNT,
+    COL_SELL_FIRST_DEADLINE,
+    COL_SELL_LAST_DEADLINE,
+    COL_SPLIT_ANCHOR_HALVING,
+    COL_SPLIT_DEADLINE,
+    COL_SPLIT_FILL_CLOSE,
     COL_SPLIT_FILL_DATE,
     COL_SPLIT_SIDE,
     COL_SPLIT_TOTAL,
+    COL_SPLIT_TRANCHE,
+    COL_SPLIT_TRANCHES,
     COL_SPLIT_TRIGGER,
+    COL_WORST_VS_COST,
     REASON_NO_NEXT_HALVING,
     REASON_POSITION_BUYING,
     REASON_POSITION_SELLING,
@@ -41,12 +58,15 @@ from verify_lab.studies.halving_cycle.constants import (
     SPLIT_THRESHOLD_RANK,
     SPLIT_TRIGGER_CALENDAR,
     SPLIT_TRIGGER_ONCHAIN,
+    CalendarSplit,
     Halving,
 )
 from verify_lab.studies.halving_cycle.split_rule import (
+    CalendarSplitGrid,
     SplitGrid,
     SplitLeg,
     TrancheFill,
+    calendar_split_grid,
     leg_fills,
     new_high_flags,
     position_result,
@@ -1011,3 +1031,274 @@ class TestSplitGrid:
         # When / Then
         with pytest.raises(RuntimeError, match="내부 불변조건"):
             self._grid(halvings)
+
+
+class TestCalendarSplitGrid:
+    """달력 매달 분할 — 폭마다 반감기 뒤 매달 사고 다음 반감기 뒤 매달 판다 (결정 51 · 52)
+
+    **픽스처 폭은 실제(6 · 12 · 24회 · 1개월 간격)와 다르다** — 2 · 3회 · 2개월 간격이다. 함수가 상수를 안에서
+    읽으면 회차 날짜와 행 수가 어긋나 걸린다.
+    """
+
+    HALVINGS = (_halving("2019-01-20"), _halving("2020-03-20"), _halving("2021-05-20"))
+    DAYS = _days("2018-01-01", "2021-12-31")
+    # 「가」 — 반감기 뒤 5 · 7개월에 사고 다음 반감기 뒤 2 · 4개월에 판다.
+    # 「나」 — 반감기 뒤 5 · 7 · 9개월에 사고 다음 반감기 뒤 1 · 3 · 5개월에 판다
+    SPLITS = (
+        CalendarSplit(name="가", tranches=2, buy_last_deadline=7, sell_last_deadline=4),
+        CalendarSplit(name="나", tranches=3, buy_last_deadline=9, sell_last_deadline=5),
+    )
+    STEP = 2
+    # 첫 반감기 「가」 포지션 — 매수 2019-06-20(80) · 2019-08-20(120), 매도 2020-05-20(150) · 2020-07-20(210).
+    # 저가: 첫 매수일 50(그날 산 회차는 그날 장중을 겪지 않는다) · 07-10 60 · 09-01 84 · 마지막 매도 다음날 10
+    FRAME = _frame(
+        DAYS,
+        closes={"2019-06-20": 80.0, "2019-08-20": 120.0, "2020-05-20": 150.0, "2020-07-20": 210.0},
+        lows={"2019-06-20": 50.0, "2019-07-10": 60.0, "2019-09-01": 84.0, "2020-07-21": 10.0},
+    )
+
+    def _grid(
+        self,
+        frame: pd.DataFrame | None = None,
+        halvings: tuple[Halving, ...] | None = None,
+        splits: tuple[CalendarSplit, ...] | None = None,
+    ) -> CalendarSplitGrid:
+        return calendar_split_grid(
+            self.FRAME if frame is None else frame,
+            self.HALVINGS if halvings is None else halvings,
+            self.SPLITS if splits is None else splits,
+            step_months=self.STEP,
+        )
+
+    def _position(self, grid: CalendarSplitGrid, name: str, halving: Halving) -> pd.Series:
+        rows = grid.positions[
+            (grid.positions[COL_CALENDAR_SPLIT] == name) & (grid.positions[COL_HALVING] == halving.label)
+        ]
+        assert len(rows) == 1
+
+        return rows.iloc[0]
+
+    def test_회차_포지션_행_수가_폭_반감기_회차와_같다(self) -> None:
+        """
+        목적: 표본 보존 — 체결 전 회차 · 다음 반감기가 없는 매도 회차 · 끝나지 않은 포지션도 행이 있다.
+
+        Given: 반감기 셋 · 폭 둘(2회 · 3회)
+        When: 격자를 낸다
+        Then: 회차 = 반감기 × Σ(매수 + 매도 회차) · 포지션 = 폭 × 반감기
+        """
+        # When
+        grid = self._grid()
+
+        # Then
+        halvings = len(self.HALVINGS)
+        assert len(grid.fills) == halvings * sum(2 * split.tranches for split in self.SPLITS)
+        assert len(grid.positions) == len(self.SPLITS) * halvings
+
+    def test_회차는_반감기일_더하기_N개월_종가에_사고_매도는_다음_반감기에서_센다(self) -> None:
+        """
+        목적: 회차 날짜는 달력 산술 하나로 정해진다 — 매수는 그 반감기, 매도는 다음 반감기가 기준이다.
+
+        Given: 「나」 · 첫 반감기(2019-01-20) — 다음 반감기 2020-03-20
+        When: 회차 표를 본다
+        Then: 매수 2019-06-20 · 08-20 · 10-20(5 · 7 · 9개월) · 매도 2020-04-20 · 06-20 · 08-20(1 · 3 · 5개월),
+            종가는 그날 종가이고 기준 반감기는 매수가 첫 반감기 · 매도가 둘째 반감기다
+        """
+        # When
+        grid = self._grid()
+
+        # Then
+        rows = grid.fills[(grid.fills[COL_CALENDAR_SPLIT] == "나") & (grid.fills[COL_HALVING] == self.HALVINGS[0].label)]
+        close = self.FRAME.set_index(COL_DATE)[COL_CLOSE]
+        expected = {
+            SPLIT_SIDE_BUY: (["2019-06-20", "2019-08-20", "2019-10-20"], [5, 7, 9], self.HALVINGS[0].label),
+            SPLIT_SIDE_SELL: (["2020-04-20", "2020-06-20", "2020-08-20"], [1, 3, 5], self.HALVINGS[1].label),
+        }
+        for side, (days, months, anchor) in expected.items():
+            part = rows[rows[COL_SPLIT_SIDE] == side]
+            assert part[COL_SPLIT_TRANCHE].tolist() == [1, 2, 3]
+            assert part[COL_SPLIT_FILL_DATE].tolist() == [pd.Timestamp(day) for day in days]
+            assert part[COL_SPLIT_DEADLINE].tolist() == [pd.Timestamp(day) for day in days]
+            assert part[COL_MONTHS_SINCE_HALVING].tolist() == months
+            assert part[COL_SPLIT_FILL_CLOSE].tolist() == [close[pd.Timestamp(day)] for day in days]
+            assert (part[COL_SPLIT_ANCHOR_HALVING] == anchor).all()
+            assert (part[COL_EXCLUDED_REASON] == REASON_NONE).all()
+
+    def test_포지션_성적은_손으로_센_값과_같다(self) -> None:
+        """
+        목적: 산식 고정 — 같은 금액으로 사고(조화평균) 같은 양씩 팔며(산술평균), 최악은 그날 «전»에 산 회차의 단가로 센다.
+
+        Given: 「가」 · 첫 반감기 — 매수 80 · 120, 매도 150 · 210. 저가 07-10 60(첫 회차만 보유, 단가 80) ·
+            09-01 84(두 회차, 단가 96) · 첫 매수일 50 · 마지막 매도 다음날 10
+        When: 포지션 표를 본다
+        Then: 평균 매수가 2 ÷ (1/80 + 1/120) = 96 · 평균 매도가 180 · 수익률 180 ÷ 96 − 1 = +87.5% ·
+            최악 60 ÷ 80 − 1 = −25% (첫 매수일 · 마지막 매도 뒤의 저가는 세지 않는다) · 보유 396일 · 매수 2회 · 매도 2회
+        """
+        # When
+        position = self._position(self._grid(), "가", self.HALVINGS[0])
+
+        # Then
+        assert position[COL_AVG_BUY_PRICE] == pytest.approx(96.0, abs=1e-9)
+        assert position[COL_AVG_SELL_PRICE] == pytest.approx(180.0, abs=1e-9)
+        assert position[COL_POSITION_RETURN] == pytest.approx(0.875, abs=1e-12)
+        assert position[COL_WORST_VS_COST] == pytest.approx(-0.25, abs=1e-12)
+        assert (position[COL_FIRST_BUY_DATE], position[COL_LAST_SELL_DATE], position[COL_HOLD_DAYS]) == (
+            pd.Timestamp("2019-06-20"),
+            pd.Timestamp("2020-07-20"),
+            396,
+        )
+        assert (position[COL_BUY_CALENDAR_COUNT], position[COL_SELL_CALENDAR_COUNT]) == (2, 2)
+        assert position[COL_EXCLUDED_REASON] == REASON_NONE
+
+    def test_식별_칸이_폭과_회차_수와_첫_마지막_기한을_싣는다(self) -> None:
+        """
+        목적: 표만 보고 어느 폭인지 · 언제부터 언제까지 사고팔았는지 안다 — 첫 기한은 마지막 기한과 간격에서 나온다.
+
+        Given: 「나」(3회 · 매수 마지막 9 · 매도 마지막 5 · 간격 2개월)
+        When: 포지션 표와 회차 표를 본다
+        Then: 회차 수 3 · 매수 5 ~ 9 · 매도 1 ~ 5 · 칸 순서가 계약대로다
+        """
+        # When
+        grid = self._grid()
+
+        # Then
+        position = self._position(grid, "나", self.HALVINGS[0])
+        assert (
+            position[COL_SPLIT_TRANCHES],
+            position[COL_BUY_FIRST_DEADLINE],
+            position[COL_BUY_LAST_DEADLINE],
+            position[COL_SELL_FIRST_DEADLINE],
+            position[COL_SELL_LAST_DEADLINE],
+        ) == (3, 5, 9, 1, 5)
+        assert list(grid.fills.columns) == [
+            COL_CALENDAR_SPLIT,
+            COL_SPLIT_SIDE,
+            COL_HALVING,
+            COL_SPLIT_ANCHOR_HALVING,
+            COL_SPLIT_TRANCHE,
+            COL_SPLIT_DEADLINE,
+            COL_SPLIT_FILL_DATE,
+            COL_MONTHS_SINCE_HALVING,
+            COL_SPLIT_FILL_CLOSE,
+            COL_EXCLUDED_REASON,
+        ]
+        assert list(grid.positions.columns) == [
+            COL_CALENDAR_SPLIT,
+            COL_SPLIT_TRANCHES,
+            COL_BUY_FIRST_DEADLINE,
+            COL_BUY_LAST_DEADLINE,
+            COL_SELL_FIRST_DEADLINE,
+            COL_SELL_LAST_DEADLINE,
+            COL_HALVING,
+            COL_AVG_BUY_PRICE,
+            COL_AVG_SELL_PRICE,
+            COL_POSITION_RETURN,
+            COL_WORST_VS_COST,
+            COL_FIRST_BUY_DATE,
+            COL_LAST_SELL_DATE,
+            COL_HOLD_DAYS,
+            COL_BUY_CALENDAR_COUNT,
+            COL_SELL_CALENDAR_COUNT,
+            COL_EXCLUDED_REASON,
+        ]
+
+    def test_마지막_반감기는_매도_회차가_없고_매수가_남으면_그_사유가_먼저다(self) -> None:
+        """
+        목적: 끝나지 않은 포지션을 0 으로 채우지 않고 사유를 단다 — 매수가 남음 → 다음 반감기 없음 순이다.
+
+        Given: 마지막 반감기(2021-05-20) · 데이터 끝 2021-12-31 — 「가」는 두 회차를 다 샀고(10-20 · 12-20),
+            「나」의 셋째 회차(2022-02-20)는 데이터 뒤다
+        When: 마지막 반감기의 행을 본다
+        Then: 매도 회차는 전부 「다음 반감기 없음」 · 「가」 포지션도 그 사유 · 「나」 포지션은 「매수 회차가 남음」이고
+            셋째 매수 회차는 「체결 전」이다. 수익률은 비었다
+        """
+        # When
+        grid = self._grid()
+
+        # Then
+        last = self.HALVINGS[-1]
+        fills = grid.fills[grid.fills[COL_HALVING] == last.label]
+        sells = fills[fills[COL_SPLIT_SIDE] == SPLIT_SIDE_SELL]
+        assert (sells[COL_EXCLUDED_REASON] == REASON_NO_NEXT_HALVING).all()
+        assert sells[COL_SPLIT_FILL_DATE].isna().all()
+        pending = fills[(fills[COL_CALENDAR_SPLIT] == "나") & (fills[COL_SPLIT_SIDE] == SPLIT_SIDE_BUY)]
+        assert pending[COL_EXCLUDED_REASON].tolist() == [REASON_NONE, REASON_NONE, REASON_SPLIT_PENDING]
+        assert self._position(grid, "가", last)[COL_EXCLUDED_REASON] == REASON_NO_NEXT_HALVING
+        assert self._position(grid, "나", last)[COL_EXCLUDED_REASON] == REASON_POSITION_BUYING
+        assert grid.positions[grid.positions[COL_HALVING] == last.label][COL_POSITION_RETURN].isna().all()
+
+    def test_뒤를_잘라도_그_전에_체결한_회차와_끝난_포지션이_같다(self) -> None:
+        """
+        목적: 미래 참조 감시 — 회차와 성적은 그날까지의 시세로만 정해진다.
+
+        Given: 같은 시세를 2021-08-31 에서 자른 입력 — 둘째 반감기 「가」 포지션의 둘째 매도(2021-09-20)가 데이터 뒤다
+        When: 두 입력으로 격자를 낸다
+        Then: 자른 입력에서 체결한 회차의 날짜 · 종가와 끝난 포지션의 성적이 전체 입력과 같고,
+            매도가 남은 포지션은 「매도 회차가 남음」이다
+        """
+        # Given
+        cut = pd.Timestamp("2021-08-31")
+        short = self.FRAME[self.FRAME[COL_DATE] <= cut].reset_index(drop=True)
+
+        # When
+        full, part = self._grid(), self._grid(frame=short)
+
+        # Then
+        filled = part.fills[COL_SPLIT_FILL_DATE].notna()
+        assert filled.any()
+        for column in (COL_SPLIT_FILL_DATE, COL_SPLIT_FILL_CLOSE):
+            assert part.fills.loc[filled, column].tolist() == full.fills.loc[filled, column].tolist()
+        finished = part.positions[COL_EXCLUDED_REASON] == REASON_NONE
+        assert finished.any()
+        for column in (COL_AVG_BUY_PRICE, COL_AVG_SELL_PRICE, COL_POSITION_RETURN, COL_WORST_VS_COST):
+            np.testing.assert_allclose(
+                part.positions.loc[finished, column].to_numpy(dtype=float),
+                full.positions.loc[finished, column].to_numpy(dtype=float),
+                rtol=0.0,
+                atol=1e-12,
+            )
+        assert self._position(part, "가", self.HALVINGS[1])[COL_EXCLUDED_REASON] == REASON_POSITION_SELLING
+
+    def test_매수_마지막_회차가_다음_반감기와_같거나_뒤면_멈춘다(self) -> None:
+        """
+        목적: 매도는 매수가 끝난 뒤에만 온다 — 폭과 반감기 간격이 어긋나면 입력이 틀린 것이다.
+
+        Given: 간격 5개월짜리 반감기 둘 (「가」의 매수 마지막 7개월보다 짧다)
+        When: 격자를 낸다
+        Then: ValueError
+        """
+        # Given
+        halvings = (_halving("2019-01-20"), _halving("2019-06-20"))
+
+        # When / Then
+        with pytest.raises(ValueError, match="다음 반감기"):
+            self._grid(halvings=halvings)
+
+    @pytest.mark.parametrize(
+        ("splits", "message"),
+        [
+            ((), "폭"),
+            (
+                (
+                    CalendarSplit(name="가", tranches=2, buy_last_deadline=7, sell_last_deadline=4),
+                    CalendarSplit(name="가", tranches=3, buy_last_deadline=9, sell_last_deadline=5),
+                ),
+                "이름",
+            ),
+            ((CalendarSplit(name="다", tranches=5, buy_last_deadline=3, sell_last_deadline=9),), "기준 반감기 앞"),
+            ((CalendarSplit(name="라", tranches=3, buy_last_deadline=9, sell_last_deadline=3),), "기준 반감기 앞"),
+            ((CalendarSplit(name="마", tranches=0, buy_last_deadline=7, sell_last_deadline=4),), "회차 수"),
+        ],
+    )
+    def test_폭이_없거나_이름이_겹치거나_첫_회차가_반감기_앞이거나_회차가_없으면_멈춘다(self, splits: tuple[CalendarSplit, ...], message: str) -> None:
+        """
+        목적: 폭 목록의 입력 검사 — 이름은 식별 칸이라 겹치면 두 폭의 행이 섞인다. 첫 회차가 기준 반감기 앞이면
+            반감기 «전»에 사거나 다음 반감기 «전»에 팔게 되고, 회차가 0 이면 사지도 팔지도 않는 포지션이 된다.
+
+        Given: 빈 목록 · 이름이 겹치는 둘 · 첫 매수 회차가 반감기 앞인 폭(5회 · 마지막 3개월 · 간격 2개월) ·
+            첫 매도 회차가 다음 반감기 앞인 폭(3회 · 마지막 3개월 · 간격 2개월) · 회차 0 인 폭
+        When: 격자를 낸다
+        Then: ValueError
+        """
+        # When / Then
+        with pytest.raises(ValueError, match=message):
+            self._grid(splits=splits)

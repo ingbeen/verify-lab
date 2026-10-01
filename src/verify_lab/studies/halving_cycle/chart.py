@@ -1,13 +1,12 @@
-"""반감기_사이클 판단용 차트 — 측정 · 체결 산출물과 시세를 HTML 한 장의 차트 데이터로 옮긴다
+"""반감기_사이클 판단용 차트 — 시세와 달력 매달 분할 측정 표를 HTML 한 장의 차트 데이터로 옮긴다
 
-**3단계에서 고를 것(매매 방식 → 칸 · 창 → 손절)을 사람이 보고 고르게 하는 보기다** (설계 결정 ㊾ · ㊿).
-칸을 고르지 않고 판정하지 않는다 — **`1차 판정` 은 싣지 않는다.** ③ 이 기준선 대비 차이를 색으로 보이므로 같은
-화면에 판정을 두면 기준선이 탈락 근거로 읽힌다(루트 `CLAUDE.md` 「기준선을 넘지 못하는 것은 탈락 사유가 아닙니다」).
+**사고파는 기간(②)을 사람이 보고 고르게 하는 보기다** (설계 결정 ㊾ · ㊿ · 53). 매매 방식은 달력형 매달 분할이고(결정 51),
+차트는 폭 하나(`CHART_SPLIT_NAME`)의 매수 · 매도 회차를 세 보기 — 반감기 기준 겹치기 · 바닥 기준 겹치기 · 전 기간
+시간축 — 에 찍는다. **고르지 않고 판정하지 않는다.**
 
-**③ ④ ⑤ 는 산출물의 표시용 프레임을 옮기기만 한다** — `run_halving_cycle.py` 가 CSV 로 쓰는 바로 그 프레임이라
-같은 시세면 차트 값이 CSV 와 같다. 산출물에 없는 값은 ③ 의 중앙값 하나다 — 다음 사이클 칸은 어느 표에도
-중앙값이 없어, 256칸을 한 정의로 내려고 전부 거래내역 무손절 수익률에서 낸다.
-① ② 는 시세를 그리는 보기라 배수 · 경과 개월 · 고점 · 바닥을 여기서 낸다.
+**회차 점과 숫자표의 값은 산출물의 표시용 프레임을 옮기기만 한다** — `run_halving_cycle.py` 가 CSV 로 쓰는 바로 그
+프레임이라 같은 시세면 차트 값이 CSV 와 같다. 시세를 그리는 보기의 배수 · 경과 개월 · 고점 · 바닥과, 점이 선 위에 앉을
+자리(그 선의 기준 종가 대비 배수 · 기준일에서 센 개월)는 여기서 낸다.
 
 **plotly 를 가져오지 않는다** — plotly.js 는 CLI 가 받아 넘긴다(개발 의존성이라 패키지가 기대지 않는다).
 """
@@ -24,104 +23,35 @@ import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import CHARTS_DIR, COL_CLOSE, COL_DATE, KST, PRICE_DECIMALS
-from verify_lab.execution.constants import (
-    DISPLAY_ENTRY_DATE,
-    DISPLAY_ENTRY_PRICE,
-    DISPLAY_EXIT_DATE,
-    DISPLAY_EXIT_PRICE,
-    DISPLAY_GAP_STOP_COUNT,
-    DISPLAY_INTRADAY_STOP_COUNT,
-    DISPLAY_LOSING_COUNT,
-    DISPLAY_RETURN,
-    DISPLAY_STOP_LEVEL,
-    DISPLAY_TICKER,
-    DISPLAY_TOTAL,
-    DISPLAY_WIN_RATE,
-    DISPLAY_WORST_HOLD,
-    NO_STOP_LABEL,
-    PERIOD_ALL,
-    stop_level_value,
-)
-from verify_lab.measure.statistics import COL_LOSS_RATE, COL_MEAN, COL_WIN_RATE, mean_rate_conflict
-from verify_lab.report.constants import (
-    DATE_FORMAT,
-    DISPLAY_EXCLUDED,
-    DISPLAY_EXCLUDED_REASON,
-    DISPLAY_MEAN,
-    DISPLAY_MEAN_DIFF,
-    DISPLAY_MEDIAN,
-    DISPLAY_MEDIAN_DIFF,
-    DISPLAY_MIN,
-    DISPLAY_NON_OVERLAPPING,
-    DISPLAY_PERIOD,
-    DISPLAY_SAMPLE_COUNT,
-    DISPLAY_SIGNAL_COUNT,
-    DISPLAY_UP_RATE,
-    DISPLAY_UP_RATE_DIFF,
-    PERCENT_DECIMALS,
-)
-from verify_lab.report.run_summary import (
-    KEY_DATASET_FILE,
-    KEY_DATASET_PERIOD,
-    KEY_DATASET_ROWS,
-    dataset_record,
-    format_period,
-)
+from verify_lab.execution.constants import DISPLAY_RETURN, DISPLAY_TICKER
+from verify_lab.report.constants import DATE_FORMAT, DISPLAY_EXCLUDED_REASON, PERCENT_DECIMALS
+from verify_lab.report.run_summary import KEY_DATASET_FILE, KEY_DATASET_PERIOD, KEY_DATASET_ROWS, dataset_record
 from verify_lab.studies.halving_cycle.constants import (
-    BASELINE_PREFIX,
-    COL_MVRV,
+    CALENDAR_SPLIT_STEP_MONTHS,
+    CALENDAR_SPLITS,
     DISPLAY_AVG_BUY_PRICE,
     DISPLAY_AVG_SELL_PRICE,
-    DISPLAY_BUY_LAST_DEADLINE,
-    DISPLAY_BUY_START_ANCHOR,
-    DISPLAY_BUY_START_MONTHS,
-    DISPLAY_BUY_THRESHOLD,
-    DISPLAY_ENTRY_MONTHS,
-    DISPLAY_EXIT_MONTHS,
-    DISPLAY_FIRST_BUY_DATE,
-    DISPLAY_FORK_SHARE,
+    DISPLAY_BUY_CALENDAR_COUNT,
+    DISPLAY_CALENDAR_SPLIT,
     DISPLAY_HALVING,
-    DISPLAY_HOLD_MONTHS,
-    DISPLAY_LAST_SELL_DATE,
-    DISPLAY_SELL_LAST_DEADLINE,
-    DISPLAY_SELL_START_MONTHS,
-    DISPLAY_SELL_THRESHOLD,
-    DISPLAY_SPLIT_DEADLINE,
+    DISPLAY_SELL_CALENDAR_COUNT,
+    DISPLAY_SPLIT_ANCHOR_HALVING,
     DISPLAY_SPLIT_FILL_CLOSE,
     DISPLAY_SPLIT_FILL_DATE,
-    DISPLAY_SPLIT_LAST_DEADLINE,
-    DISPLAY_SPLIT_PRIOR_MVRV,
-    DISPLAY_SPLIT_PRIOR_RANK,
     DISPLAY_SPLIT_SIDE,
-    DISPLAY_SPLIT_START_ANCHOR,
-    DISPLAY_SPLIT_START_MONTHS,
-    DISPLAY_SPLIT_THRESHOLD,
     DISPLAY_SPLIT_TRANCHE,
-    DISPLAY_SPLIT_TRIGGER,
+    DISPLAY_SPLIT_TRANCHES,
     DISPLAY_WORST_VS_COST,
-    ENTRY_MONTHS,
-    EXIT_MONTHS,
-    FIELD_GRID_BASELINE,
-    FIELD_SPLIT_FILLS,
-    FIELD_SPLIT_POSITIONS,
+    FIELD_CALENDAR_SPLIT_FILLS,
+    FIELD_CALENDAR_SPLIT_POSITIONS,
     HALVINGS,
-    INDICATOR_DECIMALS,
-    SPLIT_BUY_BOOK_LEVELS,
-    SPLIT_BUY_RANK_LEVELS,
-    SPLIT_RANK_MIN_DAYS,
-    SPLIT_RANK_YEARS,
-    SPLIT_SELL_BOOK_LEVELS,
-    SPLIT_SELL_RANK_LEVELS,
     SPLIT_SIDE_BUY,
     SPLIT_SIDE_SELL,
-    SPLIT_THRESHOLD_NONE,
-    STOP_LEVELS,
     TRACK_NAME,
+    CalendarSplit,
     Dataset,
 )
-from verify_lab.studies.halving_cycle.runner import display_tables, load_dataset, load_onchain, run_study
-from verify_lab.studies.halving_cycle.split_rule import trailing_rank
-from verify_lab.studies.halving_cycle.trading import run_halving_cycle_trading
+from verify_lab.studies.halving_cycle.runner import display_tables, load_dataset, run_study
 from verify_lab.tracks import track_of
 
 CHART_FILENAME: Final = "판단차트.html"
@@ -138,100 +68,41 @@ DAYS_PER_MONTH: Final = 30.4375
 # (2024-03-13)을 고점으로 물어, 시장 사이클의 고점(2021-11-08)과 어긋난다(`설계.md` §4.14)
 PEAK_WINDOW_MONTHS: Final = 24
 
-# 시간축에 칠하는 해 — 반감기 뒤 2년차 · 4년차(0 이 첫 해)
-BAND_YEARS: Final = (1, 3)
+# 차트가 그리는 달력 분할의 폭 — **측정은 폭 전부를 내고 차트는 이 하나를 그린다** (2026-10-01 사용자 답 · 결정 53)
+CHART_SPLIT_NAME: Final = "좁게"
+
+# 바닥 기준 선이 바닥 몇 개월 앞에서 시작하나 (2026-10-01 사용자 답). 매수 기간이 바닥 앞뒤에 걸쳐 있어 앞부분이
+# 있어야 매수가 바닥보다 일렀는지 늦었는지 보인다
+BOTTOM_LEAD_MONTHS: Final = 12
 
 # 차트 데이터의 자릿수. 그리는 데만 쓰는 값이라 산출물 반올림표에 없다
 MONTHS_DECIMALS: Final = 3
 MULTIPLE_DECIMALS: Final = 5
 
 # 표시용 프레임에서 읽는 컬럼
-_PERFORMANCE_COLUMNS: Final = (
-    DISPLAY_TICKER,
-    DISPLAY_ENTRY_MONTHS,
-    DISPLAY_EXIT_MONTHS,
-    DISPLAY_STOP_LEVEL,
-    DISPLAY_PERIOD,
-    DISPLAY_SIGNAL_COUNT,
-    DISPLAY_TOTAL,
-    DISPLAY_MEAN,
-    DISPLAY_WIN_RATE,
-    DISPLAY_MIN,
-    DISPLAY_WORST_HOLD,
-    DISPLAY_GAP_STOP_COUNT,
-    DISPLAY_INTRADAY_STOP_COUNT,
-    DISPLAY_LOSING_COUNT,
-)
-_TRADE_COLUMNS: Final = (
-    DISPLAY_TICKER,
-    DISPLAY_ENTRY_MONTHS,
-    DISPLAY_EXIT_MONTHS,
-    DISPLAY_HALVING,
-    DISPLAY_STOP_LEVEL,
-    DISPLAY_ENTRY_DATE,
-    DISPLAY_ENTRY_PRICE,
-    DISPLAY_EXIT_DATE,
-    DISPLAY_EXIT_PRICE,
-    DISPLAY_RETURN,
-    DISPLAY_WORST_HOLD,
-    DISPLAY_FORK_SHARE,
-)
-_BASELINE_SAMPLE: Final = f"{BASELINE_PREFIX}{DISPLAY_SAMPLE_COUNT}"
-_BASELINE_MEAN: Final = f"{BASELINE_PREFIX}{DISPLAY_MEAN}"
-_BASELINE_MEDIAN: Final = f"{BASELINE_PREFIX}{DISPLAY_MEDIAN}"
-_BASELINE_UP_RATE: Final = f"{BASELINE_PREFIX}{DISPLAY_UP_RATE}"
-_BASELINE_NON_OVERLAPPING: Final = f"{BASELINE_PREFIX}{DISPLAY_NON_OVERLAPPING}"
-_GRID_BASELINE_COLUMNS: Final = (
-    DISPLAY_TICKER,
-    DISPLAY_ENTRY_MONTHS,
-    DISPLAY_EXIT_MONTHS,
-    DISPLAY_HOLD_MONTHS,
-    DISPLAY_SIGNAL_COUNT,
-    DISPLAY_EXCLUDED,
-    _BASELINE_SAMPLE,
-    _BASELINE_NON_OVERLAPPING,
-    _BASELINE_MEAN,
-    _BASELINE_MEDIAN,
-    _BASELINE_UP_RATE,
-    DISPLAY_MEAN_DIFF,
-    DISPLAY_MEDIAN_DIFF,
-    DISPLAY_UP_RATE_DIFF,
-)
 _FILL_COLUMNS: Final = (
+    DISPLAY_TICKER,
+    DISPLAY_CALENDAR_SPLIT,
     DISPLAY_SPLIT_SIDE,
-    DISPLAY_SPLIT_THRESHOLD,
-    DISPLAY_SPLIT_START_ANCHOR,
-    DISPLAY_SPLIT_START_MONTHS,
-    DISPLAY_SPLIT_LAST_DEADLINE,
     DISPLAY_HALVING,
+    DISPLAY_SPLIT_ANCHOR_HALVING,
     DISPLAY_SPLIT_TRANCHE,
-    DISPLAY_SPLIT_DEADLINE,
     DISPLAY_SPLIT_FILL_DATE,
     DISPLAY_SPLIT_FILL_CLOSE,
-    DISPLAY_SPLIT_TRIGGER,
-    DISPLAY_SPLIT_PRIOR_MVRV,
-    DISPLAY_SPLIT_PRIOR_RANK,
-    DISPLAY_EXCLUDED_REASON,
 )
 _POSITION_COLUMNS: Final = (
-    DISPLAY_BUY_THRESHOLD,
-    DISPLAY_BUY_START_ANCHOR,
-    DISPLAY_BUY_START_MONTHS,
-    DISPLAY_BUY_LAST_DEADLINE,
-    DISPLAY_SELL_THRESHOLD,
-    DISPLAY_SELL_START_MONTHS,
-    DISPLAY_SELL_LAST_DEADLINE,
+    DISPLAY_TICKER,
+    DISPLAY_CALENDAR_SPLIT,
     DISPLAY_HALVING,
+    DISPLAY_SPLIT_TRANCHES,
     DISPLAY_AVG_BUY_PRICE,
     DISPLAY_AVG_SELL_PRICE,
     DISPLAY_RETURN,
     DISPLAY_WORST_VS_COST,
-    DISPLAY_FIRST_BUY_DATE,
-    DISPLAY_LAST_SELL_DATE,
+    DISPLAY_BUY_CALENDAR_COUNT,
+    DISPLAY_SELL_CALENDAR_COUNT,
     DISPLAY_EXCLUDED_REASON,
 )
-
-Cell = tuple[int, int]
 
 
 # ============================================================
@@ -265,7 +136,7 @@ def _count(value: object) -> int | None:
 
 
 def _day(value: object) -> str | None:
-    """날짜를 `YYYY-MM-DD` 로. 거래내역은 문자열, 분할 표는 `Timestamp` 로 들어온다"""
+    """날짜를 `YYYY-MM-DD` 로. 표시용 프레임은 `Timestamp`, 반감기 표지는 문자열로 들어온다"""
     if _is_missing(value):
         return None
     if isinstance(value, pd.Timestamp):
@@ -298,7 +169,7 @@ def _records(frame: pd.DataFrame) -> list[dict[str, Any]]:
 
 
 # ============================================================
-# ① ② — 사이클 겹치기 · 전 기간 시간축
+# 시세 — 반감기 기준 · 바닥 기준 · 시간축 · 사이클 요약
 # ============================================================
 
 
@@ -311,8 +182,7 @@ def _cycle_segments(
 ) -> list[tuple[pd.Timestamp, pd.Series, bool]]:
     """반감기마다 (반감기일, 그날 ~ 다음 반감기 전날의 종가, 진행 중인가).
 
-    Raises:
-        **데이터 끝 뒤의 반감기는 아직 오지 않은 것이라 건너뛴다** — 측정이 그 진입을 「아직 오지 않음」으로 넘기는 것과
+    **데이터 끝 뒤의 반감기는 아직 오지 않은 것이라 건너뛴다** — 측정이 그 진입을 「아직 오지 않음」으로 넘기는 것과
     같다. 반감기 목록에 한 줄을 더한 날 종가가 아직 없어도 차트가 멈추지 않고, 앞 사이클이 데이터 끝까지 이어진다.
 
     Raises:
@@ -344,15 +214,22 @@ def _cycle_segments(
     return segments
 
 
-def cycle_series(
-    close: pd.Series, mvrv: pd.Series, rank: pd.Series, halving_days: Sequence[pd.Timestamp]
-) -> list[dict[str, Any]]:
-    """사이클 겹치기 — 반감기마다 경과 개월 · 반감기일 종가 대비 배수 · MVRV · 4년 순위(%).
+def _peak_and_bottom(segment: pd.Series, start: pd.Timestamp) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """사이클의 고점과 바닥 — 고점은 반감기 뒤 `PEAK_WINDOW_MONTHS` 개월 안의 최고 종가, 바닥은 고점 뒤 사이클 끝까지의
+    최저 종가. **사이클 요약과 바닥 기준 선이 이 하나를 쓴다** — 두 보기의 바닥이 갈리면 선과 표가 다른 날을 가리킨다.
+    """
+    days = pd.DatetimeIndex(segment.index)
+    window = segment[days < start + pd.DateOffset(months=PEAK_WINDOW_MONTHS)]
+    peak = pd.Timestamp(window.idxmax())
+
+    return peak, pd.Timestamp(segment[days >= peak].idxmin())
+
+
+def cycle_series(close: pd.Series, halving_days: Sequence[pd.Timestamp]) -> list[dict[str, Any]]:
+    """반감기 기준 사이클 겹치기 — 반감기마다 경과 개월 · 반감기일 종가 대비 배수.
 
     Args:
         close: 측정 계열 종가 (날짜 인덱스)
-        mvrv: MVRV (날짜 인덱스). 종가의 날짜로 맞춘다 — 없는 날은 빈값이다
-        rank: 4년 순위 (비율 0 ~ 1 · 날짜 인덱스). 백분율로 옮긴다
         halving_days: 반감기일 (오름차순)
 
     Returns:
@@ -371,43 +248,28 @@ def cycle_series(
                 "months": [round(_months_after(day, start), MONTHS_DECIMALS) for day in days],
                 "multiple": [_number(value / base, MULTIPLE_DECIMALS) for value in segment.to_numpy(dtype=float)],
                 "close": [_number(value, PRICE_DECIMALS) for value in segment.to_numpy(dtype=float)],
-                "mvrv": [_number(value, INDICATOR_DECIMALS) for value in mvrv.reindex(days).to_numpy(dtype=float)],
-                "rank": [_number(value * 100, PERCENT_DECIMALS) for value in rank.reindex(days).to_numpy(dtype=float)],
             }
         )
 
     return cycles
 
 
-def cycle_summary(
-    close: pd.Series, mvrv: pd.Series, halving_days: Sequence[pd.Timestamp], *, buy_level: float
-) -> list[dict[str, Any]]:
-    """사이클 요약 — 고점 · 바닥과 그날의 MVRV, 고점 뒤 MVRV 가 처음 매수 문턱 이하인 날.
+def cycle_summary(close: pd.Series, halving_days: Sequence[pd.Timestamp]) -> list[dict[str, Any]]:
+    """사이클 요약 — 반감기일 종가 · 사이클 범위 · 고점 · 바닥.
 
     **고점 · 바닥은 지나고 나서야 정해지는 값이라 매매 신호가 아니다** — 차트를 읽는 기준점이다.
-    고점은 반감기 뒤 `PEAK_WINDOW_MONTHS` 개월 안의 최고 종가, 바닥은 고점 뒤 사이클 끝까지의 최저 종가다.
 
     Args:
         close: 측정 계열 종가 (날짜 인덱스)
-        mvrv: MVRV (날짜 인덱스)
         halving_days: 반감기일 (오름차순)
-        buy_level: 고점 뒤 처음 닿은 날을 찾는 MVRV 문턱 (이하)
 
     Returns:
-        사이클마다 한 사전. 문턱 이하에 닿지 않은 사이클은 그 날을 비운다
+        사이클마다 한 사전. 진행 중인 사이클의 고점 · 바닥은 데이터가 늘면 바뀐다
     """
     rows: list[dict[str, Any]] = []
     for start, segment, ongoing in _cycle_segments(close, halving_days):
         days = pd.DatetimeIndex(segment.index)
-        cycle_mvrv = mvrv.reindex(days)
-        window = segment[days < start + pd.DateOffset(months=PEAK_WINDOW_MONTHS)]
-        peak = pd.Timestamp(window.idxmax())
-        after_peak = segment[days >= peak]
-        bottom = pd.Timestamp(after_peak.idxmin())
-        mvrv_after_peak = cycle_mvrv[days >= peak]
-        below = mvrv_after_peak[mvrv_after_peak <= buy_level]
-        known = cycle_mvrv.dropna()
-        max_day = pd.Timestamp(known.idxmax()) if len(known) else None
+        peak, bottom = _peak_and_bottom(segment, start)
         rows.append(
             {
                 "halving": start.strftime(DATE_FORMAT),
@@ -418,44 +280,27 @@ def cycle_summary(
                 "peak": peak.strftime(DATE_FORMAT),
                 "peak_months": round(_months_after(peak, start), MONTHS_DECIMALS),
                 "peak_close": _number(segment.loc[peak], PRICE_DECIMALS),
-                "peak_mvrv": _number(cycle_mvrv.loc[peak], INDICATOR_DECIMALS),
-                "first_below": _day(pd.Timestamp(below.index[0])) if len(below) else None,
-                "first_below_months": round(_months_after(pd.Timestamp(below.index[0]), start), MONTHS_DECIMALS)
-                if len(below)
-                else None,
                 "bottom": bottom.strftime(DATE_FORMAT),
                 "bottom_months": round(_months_after(bottom, start), MONTHS_DECIMALS),
                 "bottom_close": _number(segment.loc[bottom], PRICE_DECIMALS),
-                "bottom_mvrv": _number(cycle_mvrv.loc[bottom], INDICATOR_DECIMALS),
-                "max_mvrv": _number(known.max(), INDICATOR_DECIMALS) if len(known) else None,
-                "max_mvrv_day": _day(max_day),
-                "max_mvrv_months": round(_months_after(max_day, start), MONTHS_DECIMALS)
-                if max_day is not None
-                else None,
-                "min_mvrv": _number(known.min(), INDICATOR_DECIMALS) if len(known) else None,
             }
         )
 
     return rows
 
 
-def timeline_series(
-    close: pd.Series, mvrv: pd.Series, rank: pd.Series, halving_days: Sequence[pd.Timestamp]
-) -> dict[str, Any]:
-    """전 기간 시간축 — 날마다 종가 · MVRV · 4년 순위(%)와 「어느 반감기 뒤 몇 개월」, 2 · 4년차 띠.
+def timeline_series(close: pd.Series, halving_days: Sequence[pd.Timestamp]) -> dict[str, Any]:
+    """전 기간 시간축 — 날마다 종가와 「어느 반감기 뒤 몇 개월」.
 
     Args:
         close: 측정 계열 종가 (날짜 인덱스)
-        mvrv: MVRV (날짜 인덱스). 종가의 날짜로 맞춘다
-        rank: 4년 순위 (비율 0 ~ 1 · 날짜 인덱스)
         halving_days: 반감기일 (오름차순)
 
     Returns:
-        날짜 · 값 목록과 띠 목록. 띠는 다음 반감기(마지막 사이클은 데이터 끝)에서 자른다
+        날짜 · 종가 · 호버 글자
     """
-    segments = _cycle_segments(close, halving_days)
+    starts = [start for start, _, _ in _cycle_segments(close, halving_days)]
     days = pd.DatetimeIndex(close.index)
-    starts = [start for start, _, _ in segments]
     positions = np.searchsorted(np.array(starts, dtype="datetime64[ns]"), days.to_numpy(), side="right") - 1
     anchors = [
         "첫 반감기 전"
@@ -464,420 +309,254 @@ def timeline_series(
         for day, position in zip(days, positions, strict=True)
     ]
 
-    bands: list[dict[str, str]] = []
-    for position, start in enumerate(starts):
-        stop = starts[position + 1] if position + 1 < len(starts) else days[-1]
-        for year in BAND_YEARS:
-            begin = start + pd.DateOffset(months=12 * year)
-            if begin < stop:
-                end = min(start + pd.DateOffset(months=12 * (year + 1)), stop)
-                bands.append({"x0": begin.strftime(DATE_FORMAT), "x1": end.strftime(DATE_FORMAT)})
-
     return {
         "dates": [day.strftime(DATE_FORMAT) for day in days],
         "close": [_number(value, PRICE_DECIMALS) for value in close.to_numpy(dtype=float)],
-        "mvrv": [_number(value, INDICATOR_DECIMALS) for value in mvrv.reindex(days).to_numpy(dtype=float)],
-        "rank": [_number(value * 100, PERCENT_DECIMALS) for value in rank.reindex(days).to_numpy(dtype=float)],
         "anchor": anchors,
-        "bands": bands,
     }
+
+
+def bottom_series(close: pd.Series, halving_days: Sequence[pd.Timestamp], *, lead_months: int) -> list[dict[str, Any]]:
+    """바닥 기준 사이클 겹치기 — 바닥마다 한 선, 바닥 `lead_months` 개월 앞부터 다음 바닥 전날까지(마지막은 데이터 끝).
+
+    가로축은 바닥에서 센 경과 개월(앞은 음수), 세로축은 바닥 종가 = 1배. 바닥의 정의는 사이클 요약과 같다.
+    **진행 중인 사이클의 바닥은 잠정이다** — 데이터가 늘면 그 선의 정렬이 옮겨 간다.
+
+    Args:
+        close: 측정 계열 종가 (날짜 인덱스)
+        halving_days: 반감기일 (오름차순)
+        lead_months: 바닥 앞 개월. 그날이 데이터 앞이면 데이터 첫 날부터다
+
+    Returns:
+        바닥마다 한 사전 — 그 바닥이 속한 사이클(반감기 표지)과 잠정 여부를 함께 싣는다
+
+    Raises:
+        ValueError: 바닥 앞 개월이 음수인 경우
+    """
+    if lead_months < 0:
+        raise ValueError(f"바닥 앞 개월은 0 이상이어야 합니다: {lead_months}")
+
+    bottoms = [
+        (start, _peak_and_bottom(segment, start)[1], ongoing)
+        for start, segment, ongoing in _cycle_segments(close, halving_days)
+    ]
+    index = pd.DatetimeIndex(close.index)
+    lines: list[dict[str, Any]] = []
+    for position, (start, bottom, provisional) in enumerate(bottoms):
+        begin = max(bottom - pd.DateOffset(months=lead_months), index[0])
+        in_line = index >= begin
+        if position + 1 < len(bottoms):
+            in_line &= index < bottoms[position + 1][1]
+        segment = close[in_line]
+        base = float(close.loc[bottom])
+        days = pd.DatetimeIndex(segment.index)
+        label = bottom.strftime(DATE_FORMAT)
+        lines.append(
+            {
+                "label": f"{label} 바닥" + (" (잠정)" if provisional else ""),
+                "halving": start.strftime(DATE_FORMAT),
+                "bottom": label,
+                "provisional": provisional,
+                "dates": [day.strftime(DATE_FORMAT) for day in days],
+                "months": [round(_months_after(day, bottom), MONTHS_DECIMALS) for day in days],
+                "multiple": [_number(value / base, MULTIPLE_DECIMALS) for value in segment.to_numpy(dtype=float)],
+                "close": [_number(value, PRICE_DECIMALS) for value in segment.to_numpy(dtype=float)],
+            }
+        )
+
+    return lines
 
 
 # ============================================================
-# ③ — 격자 히트맵
+# 달력 분할 — 폭 · 기간 띠 · 회차 점 · 숫자표
 # ============================================================
 
 
-def _grid(entry_months: Sequence[int], exit_months: Sequence[int]) -> list[Cell]:
-    return [(entry, exit_) for entry in entry_months for exit_ in exit_months]
+def chart_split(splits: Sequence[CalendarSplit], name: str) -> CalendarSplit:
+    """폭 목록에서 이름으로 차트가 그릴 폭을 찾는다.
+
+    Raises:
+        ValueError: 그 이름의 폭이 없는 경우 — 측정 표에 없는 폭을 그리면 점이 하나도 없는 차트가 된다
+    """
+    for split in splits:
+        if split.name == name:
+            return split
+    raise ValueError(f"차트가 그릴 달력 분할 폭 「{name}」이 측정 목록에 없습니다: {[split.name for split in splits]}")
 
 
-def _cell_of(row: Mapping[str, Any]) -> Cell:
-    return int(row[DISPLAY_ENTRY_MONTHS]), int(row[DISPLAY_EXIT_MONTHS])
+def split_info(split: CalendarSplit, *, step_months: int) -> dict[str, Any]:
+    """차트 머리 · 띠에 쓰는 폭의 정보 — 매수(반감기 뒤) · 매도(다음 반감기 뒤)의 첫 · 마지막 회차 개월."""
+    buy_first, sell_first = split.first_deadlines(step_months)
 
-
-def _no_stop(frame: pd.DataFrame) -> pd.DataFrame:
-    return frame[frame[DISPLAY_STOP_LEVEL] == NO_STOP_LABEL]
-
-
-def _whole_period(frame: pd.DataFrame) -> pd.DataFrame:
-    return frame[frame[DISPLAY_PERIOD] == PERIOD_ALL]
-
-
-def _trade(row: Mapping[str, Any]) -> dict[str, Any]:
     return {
-        "halving": _text(row[DISPLAY_HALVING]),
-        "entry_date": _day(row[DISPLAY_ENTRY_DATE]),
-        "entry_price": _number(row[DISPLAY_ENTRY_PRICE], PRICE_DECIMALS),
-        "exit_date": _day(row[DISPLAY_EXIT_DATE]),
-        "exit_price": _number(row[DISPLAY_EXIT_PRICE], PRICE_DECIMALS),
-        "return": _number(row[DISPLAY_RETURN], PERCENT_DECIMALS),
-        "worst_hold": _number(row[DISPLAY_WORST_HOLD], PERCENT_DECIMALS),
-        "fork_share": _number(row[DISPLAY_FORK_SHARE], PERCENT_DECIMALS),
+        "name": split.name,
+        "tranches": split.tranches,
+        "buy": [buy_first, split.buy_last_deadline],
+        "sell": [sell_first, split.sell_last_deadline],
     }
 
 
-def _baseline(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "hold": _count(row[DISPLAY_HOLD_MONTHS]),
-        "cell_signals": _count(row[DISPLAY_SIGNAL_COUNT]),
-        "cell_excluded": _count(row[DISPLAY_EXCLUDED]),
-        "sample": _count(row[_BASELINE_SAMPLE]),
-        # **롤링 전수 표본만 두지 않는다** — 이웃 진입끼리 심하게 겹쳐 실제보다 단단해 보인다(`src/verify_lab/CLAUDE.md` 「비중첩 표본 계약」)
-        "non_overlapping": _count(row[_BASELINE_NON_OVERLAPPING]),
-        "mean": _number(row[_BASELINE_MEAN], PERCENT_DECIMALS),
-        "median": _number(row[_BASELINE_MEDIAN], PERCENT_DECIMALS),
-        "up_rate": _number(row[_BASELINE_UP_RATE], PERCENT_DECIMALS),
-        "mean_diff": _number(row[DISPLAY_MEAN_DIFF], PERCENT_DECIMALS),
-        "median_diff": _number(row[DISPLAY_MEDIAN_DIFF], PERCENT_DECIMALS),
-        "up_rate_diff": _number(row[DISPLAY_UP_RATE_DIFF], PERCENT_DECIMALS),
-    }
+def window_bands(
+    halving_days: Sequence[pd.Timestamp], last_day: pd.Timestamp, split: CalendarSplit, *, step_months: int
+) -> list[dict[str, str]]:
+    """전 기간 시간축의 기간 띠 — 반감기마다 매도 띠(앞 반감기 포지션을 판다)와 매수 띠(그 반감기 포지션을 산다).
 
+    **첫 반감기에는 매도 띠가 없다** — 그 앞 반감기가 목록에 없어 팔 포지션이 없다. 띠는 첫 회차부터 마지막 회차까지이고,
+    데이터 끝에서 자르며 데이터 뒤에서 시작하는 띠는 그리지 않는다(아직 오지 않은 기간이다).
 
-def _median(trades: Sequence[Mapping[str, Any]]) -> float | None:
-    """거래내역 수익률(표에 실린 값)의 중앙값 — 체결이 없으면 비운다.
+    Args:
+        halving_days: 반감기일 (오름차순). 데이터 끝 뒤의 반감기는 건너뛴다
+        last_day: 데이터 끝
+        split: 폭
+        step_months: 회차 간격(개월)
 
-    **산출물에 없는 값이라 정의를 여기 하나만 둔다** — ③ 칸과 ④ 손절선이 같은 함수를 쓴다.
-    반올림된 값의 중앙값이라 짝수 표본에서 격자기준선의 중앙값과 0.005 안쪽으로 다를 수 있다.
+    Returns:
+        띠 목록 — 쪽 · 포지션의 반감기 · 시작 · 끝
     """
-    returns = [float(row[DISPLAY_RETURN]) for row in trades]
-    if not returns:
-        return None
-    return _number(float(np.median(returns)), PERCENT_DECIMALS)
+    buy_first, sell_first = split.first_deadlines(step_months)
+    days = [day for day in halving_days if day <= last_day]
+    bands: list[dict[str, str]] = []
+
+    def add(side: str, cycle: pd.Timestamp, anchor: pd.Timestamp, first: int, last: int) -> None:
+        begin = anchor + pd.DateOffset(months=first)
+        if begin > last_day:
+            return
+        end = min(anchor + pd.DateOffset(months=last), last_day)
+        bands.append(
+            {
+                "side": side,
+                "cycle": cycle.strftime(DATE_FORMAT),
+                "x0": begin.strftime(DATE_FORMAT),
+                "x1": end.strftime(DATE_FORMAT),
+            }
+        )
+
+    for position, day in enumerate(days):
+        if position > 0:
+            add(SPLIT_SIDE_SELL, days[position - 1], day, sell_first, split.sell_last_deadline)
+        add(SPLIT_SIDE_BUY, day, day, buy_first, split.buy_last_deadline)
+
+    return bands
 
 
-def _mean_rate_conflicts(rows: Sequence[Mapping[str, Any]]) -> list[bool]:
-    """평균의 부호와 방향 비율이 어긋나는 행인가 (측정의 원칙 13).
+def _base_close(close: pd.Series, day: pd.Timestamp, name: str) -> float:
+    if day not in close.index:
+        raise ValueError(f"{name}({day.strftime(DATE_FORMAT)})의 종가가 시세에 없습니다 — 점을 그 선 위에 앉힐 수 없습니다")
+    return float(close.loc[day])
 
-    **판정은 `measure.statistics.mean_rate_conflict` 하나가 한다** — 여기서 다시 쓰면 같은 원칙이 두 답을 낸다.
-    성적표에는 내린 비율이 없어 `질 때 표본 ÷ 신호`(손실로 끝난 체결의 비율)로 옮긴다. 표본이 없는 행은 어긋나지 않는다.
+
+def split_points(
+    fills: pd.DataFrame, split_name: str, close: pd.Series, bottoms: Mapping[str, pd.Timestamp]
+) -> list[dict[str, Any]]:
+    """회차 점 — 그 폭의 체결한 회차를 세 보기의 자리로 옮긴다.
+
+    **점은 그 선 위에 앉는다.** 반감기 기준에서는 기준 반감기(매수는 그 반감기, 매도는 다음 반감기)에서 센 개월과 그날
+    종가 대비 배수, 바닥 기준에서는 **포지션 사이클의 바닥**에서 센 개월과 그 바닥 종가 대비 배수다 — 한 포지션의 회차가
+    바닥 선 하나에 모인다. 체결 전 회차는 점으로 싣지 않는다(아직 오지 않은 날에 산 것처럼 보인다).
+
+    Args:
+        fills: 달력분할회차 (표시용 프레임)
+        split_name: 폭 이름
+        close: 측정 계열 종가 (날짜 인덱스) — 선의 기준 종가를 찾는다
+        bottoms: 사이클(반감기 표지) → 바닥일. 없는 사이클은 바닥 축 값을 비운다
+
+    Returns:
+        체결한 회차마다 한 사전 — 표의 순서 그대로
+
+    Raises:
+        ValueError: 컬럼이 없거나 종목이 여럿인 경우, 그 폭의 행이 없는 경우, 기준일의 종가가 시세에 없는 경우
     """
-    means: list[float] = []
-    up_rates: list[float] = []
-    down_rates: list[float] = []
-    for row in rows:
-        sample = _count(row[DISPLAY_SIGNAL_COUNT])
-        losing = _count(row[DISPLAY_LOSING_COUNT])
-        mean = _number(row[DISPLAY_MEAN], PERCENT_DECIMALS)
-        up_rate = _number(row[DISPLAY_WIN_RATE], PERCENT_DECIMALS)
-        if sample and losing is not None and mean is not None and up_rate is not None:
-            means.append(mean)
-            up_rates.append(up_rate / 100)
-            down_rates.append(losing / sample)
-        else:
-            means.append(math.nan)
-            up_rates.append(math.nan)
-            down_rates.append(math.nan)
-    frame = pd.DataFrame({COL_MEAN: means, COL_WIN_RATE: up_rates, COL_LOSS_RATE: down_rates})
+    _require_columns(fills, _FILL_COLUMNS, "달력분할회차")
+    _require_single_ticker(fills, "달력분할회차")
+    rows = fills[fills[DISPLAY_CALENDAR_SPLIT] == split_name]
+    if rows.empty:
+        raise ValueError(f"달력분할회차에 폭 「{split_name}」의 행이 없습니다")
 
-    return [bool(flag) for flag in mean_rate_conflict(frame)]
+    points: list[dict[str, Any]] = []
+    for row in _records(rows):
+        if _is_missing(row[DISPLAY_SPLIT_FILL_DATE]):
+            continue
+        day = pd.Timestamp(row[DISPLAY_SPLIT_FILL_DATE])
+        price = float(row[DISPLAY_SPLIT_FILL_CLOSE])
+        cycle = str(row[DISPLAY_HALVING])
+        anchor = pd.Timestamp(str(row[DISPLAY_SPLIT_ANCHOR_HALVING]))
+        bottom = bottoms.get(cycle)
+        points.append(
+            {
+                "side": str(row[DISPLAY_SPLIT_SIDE]),
+                "cycle": cycle,
+                "anchor": anchor.strftime(DATE_FORMAT),
+                "tranche": _count(row[DISPLAY_SPLIT_TRANCHE]),
+                "date": day.strftime(DATE_FORMAT),
+                "close": _number(price, PRICE_DECIMALS),
+                "halving_months": round(_months_after(day, anchor), MONTHS_DECIMALS),
+                "halving_multiple": _number(price / _base_close(close, anchor, "기준 반감기일"), MULTIPLE_DECIMALS),
+                "bottom_months": None if bottom is None else round(_months_after(day, bottom), MONTHS_DECIMALS),
+                "bottom_multiple": None
+                if bottom is None
+                else _number(price / _base_close(close, bottom, "바닥일"), MULTIPLE_DECIMALS),
+            }
+        )
+
+    return points
 
 
-def _unique_by_cell(frame: pd.DataFrame, name: str) -> dict[Cell, dict[str, Any]]:
-    rows: dict[Cell, dict[str, Any]] = {}
-    for row in _records(frame):
-        cell = _cell_of(row)
-        if cell in rows:
-            raise ValueError(f"{name}에 칸 {cell} 의 행이 둘 이상입니다")
-        rows[cell] = row
+def split_table(fills: pd.DataFrame, positions: pd.DataFrame, split_name: str) -> list[dict[str, Any]]:
+    """숫자표 — 그 폭의 사이클마다 한 행. 성적은 포지션 표 그대로, 산 기간 · 판 기간은 체결한 회차의 첫 날 · 마지막 날이다.
+
+    Args:
+        fills: 달력분할회차 (표시용 프레임)
+        positions: 달력분할포지션 (표시용 프레임)
+        split_name: 폭 이름
+
+    Returns:
+        포지션 표의 순서 그대로의 행. 끝나지 않은 포지션은 비운 값과 사유를 싣는다
+
+    Raises:
+        ValueError: 컬럼이 없거나 종목이 여럿인 경우, 그 폭의 포지션이 없는 경우
+    """
+    _require_columns(fills, _FILL_COLUMNS, "달력분할회차")
+    _require_columns(positions, _POSITION_COLUMNS, "달력분할포지션")
+    for frame, name in ((fills, "달력분할회차"), (positions, "달력분할포지션")):
+        _require_single_ticker(frame, name)
+    mine = positions[positions[DISPLAY_CALENDAR_SPLIT] == split_name]
+    if mine.empty:
+        raise ValueError(f"달력분할포지션에 폭 「{split_name}」의 행이 없습니다")
+    filled = fills[(fills[DISPLAY_CALENDAR_SPLIT] == split_name) & fills[DISPLAY_SPLIT_FILL_DATE].notna()]
+
+    def span(cycle: str, side: str) -> tuple[str | None, str | None]:
+        days = filled.loc[
+            (filled[DISPLAY_HALVING] == cycle) & (filled[DISPLAY_SPLIT_SIDE] == side), DISPLAY_SPLIT_FILL_DATE
+        ]
+        if days.empty:
+            return None, None
+        return _day(pd.Timestamp(days.min())), _day(pd.Timestamp(days.max()))
+
+    rows: list[dict[str, Any]] = []
+    for row in _records(mine):
+        cycle = str(row[DISPLAY_HALVING])
+        first_buy, last_buy = span(cycle, SPLIT_SIDE_BUY)
+        first_sell, last_sell = span(cycle, SPLIT_SIDE_SELL)
+        rows.append(
+            {
+                "halving": cycle,
+                "tranches": _count(row[DISPLAY_SPLIT_TRANCHES]),
+                "buys": _count(row[DISPLAY_BUY_CALENDAR_COUNT]),
+                "sells": _count(row[DISPLAY_SELL_CALENDAR_COUNT]),
+                "first_buy": first_buy,
+                "last_buy": last_buy,
+                "first_sell": first_sell,
+                "last_sell": last_sell,
+                "avg_buy": _number(row[DISPLAY_AVG_BUY_PRICE], PRICE_DECIMALS),
+                "avg_sell": _number(row[DISPLAY_AVG_SELL_PRICE], PRICE_DECIMALS),
+                "return": _number(row[DISPLAY_RETURN], PERCENT_DECIMALS),
+                "worst": _number(row[DISPLAY_WORST_VS_COST], PERCENT_DECIMALS),
+                # 끝난 포지션의 사유는 빈 문자열이다 — 표에서 「끝남」으로 읽히게 비운다
+                "reason": _text(row[DISPLAY_EXCLUDED_REASON]) or None,
+            }
+        )
 
     return rows
-
-
-def grid_cells(
-    performance: pd.DataFrame,
-    trades: pd.DataFrame,
-    grid_baseline: pd.DataFrame,
-    *,
-    entry_months: Sequence[int],
-    exit_months: Sequence[int],
-) -> list[dict[str, Any]]:
-    """격자 히트맵의 칸 — 진입 × 청산마다 성적표 무손절 · 전체 행, 중앙값, 기준선, 사이클별 체결.
-
-    **무손절 행만 옮긴다** — 기준선(격자기준선)이 손절 없이 잰 값이라 손절 행과 견주면 뜻이 섞인다. 손절은 ④ 가 맡는다.
-
-    Args:
-        performance: 성적표 (표시용 프레임)
-        trades: 거래내역 (표시용 프레임)
-        grid_baseline: 격자기준선 (표시용 프레임) — 같은 사이클에 파는 칸(청산 > 진입)만 행이 있다
-        entry_months: 진입 축
-        exit_months: 청산 축
-
-    Returns:
-        진입 오름차순 · 청산 오름차순의 칸 목록. 표본이 없는 칸은 값을 비운다(0 이 아니다)
-
-    Raises:
-        ValueError: 컬럼이 없거나 종목이 여럿인 경우, 칸의 무손절 · 전체 행이 없거나 둘 이상인 경우,
-            같은 사이클 칸의 기준선 행이 없는 경우 — 칸이 조용히 빈칸이 되면 히트맵에 구멍이 난다
-    """
-    _require_columns(performance, _PERFORMANCE_COLUMNS, "성적표")
-    _require_columns(trades, _TRADE_COLUMNS, "거래내역")
-    _require_columns(grid_baseline, _GRID_BASELINE_COLUMNS, "격자기준선")
-    for frame, name in ((performance, "성적표"), (trades, "거래내역"), (grid_baseline, "격자기준선")):
-        _require_single_ticker(frame, name)
-
-    summaries = _unique_by_cell(_whole_period(_no_stop(performance)), "성적표 무손절 · 전체")
-    baselines = _unique_by_cell(grid_baseline, "격자기준선")
-    cell_trades: dict[Cell, list[dict[str, Any]]] = {}
-    for row in _records(_no_stop(trades)):
-        cell_trades.setdefault(_cell_of(row), []).append(row)
-
-    grid = _grid(entry_months, exit_months)
-    missing = [cell for cell in grid if cell not in summaries]
-    if missing:
-        raise ValueError(f"성적표에 칸의 무손절 · 전체 행이 없습니다: {missing}")
-    conflicts = dict(zip(grid, _mean_rate_conflicts([summaries[cell] for cell in grid]), strict=True))
-
-    cells: list[dict[str, Any]] = []
-    for entry, exit_ in grid:
-        summary = summaries[(entry, exit_)]
-        same_cycle = exit_ > entry
-        baseline = baselines.get((entry, exit_))
-        if same_cycle and baseline is None:
-            raise ValueError(f"격자기준선에 같은 사이클 칸 ({entry}, {exit_}) 의 기준선 행이 없습니다")
-        rows = cell_trades.get((entry, exit_), [])
-        cells.append(
-            {
-                "entry": entry,
-                "exit": exit_,
-                "next_cycle": not same_cycle,
-                "sample": _count(summary[DISPLAY_SIGNAL_COUNT]),
-                "total": _number(summary[DISPLAY_TOTAL], PERCENT_DECIMALS),
-                "mean": _number(summary[DISPLAY_MEAN], PERCENT_DECIMALS),
-                "median": _median(rows),
-                "up_rate": _number(summary[DISPLAY_WIN_RATE], PERCENT_DECIMALS),
-                "worst": _number(summary[DISPLAY_MIN], PERCENT_DECIMALS),
-                "worst_hold": _number(summary[DISPLAY_WORST_HOLD], PERCENT_DECIMALS),
-                "conflict": conflicts[(entry, exit_)],
-                "baseline": _baseline(baseline) if same_cycle and baseline is not None else None,
-                "trades": [_trade(row) for row in rows],
-            }
-        )
-
-    return cells
-
-
-# ============================================================
-# ④ — 칸별 손절선
-# ============================================================
-
-
-def stop_rows(
-    performance: pd.DataFrame,
-    trades: pd.DataFrame,
-    *,
-    entry_months: Sequence[int],
-    exit_months: Sequence[int],
-    stop_levels: Sequence[float | None],
-) -> list[dict[str, Any]]:
-    """칸마다 손절선 목록 순서로 성적표 전체 행을 옮기고, 손절선마다 거래내역의 중앙값을 붙인다.
-
-    **평균만 두지 않는다** — 측정의 원칙 4(평균과 중앙값 병기). 성적표에 중앙값이 없어 ③ 과 같은 정의(`_median`)로 낸다.
-
-    **발동 수는 장중손절과 갭손절의 합이다.** 둘 중 하나라도 비면(표본이 없는 칸) 비운다 — 0 이면 「한 번도 안 걸렸다」로 읽힌다.
-
-    Args:
-        performance: 성적표 (표시용 프레임)
-        trades: 거래내역 (표시용 프레임) — 손절선마다 중앙값을 낸다
-        entry_months: 진입 축
-        exit_months: 청산 축
-        stop_levels: 손절선 (비율, `None` 이 무손절). 이 순서로 싣는다
-
-    Returns:
-        칸마다 한 사전 — 손절선 목록
-
-    Raises:
-        ValueError: 컬럼이 없거나 종목이 여럿인 경우, 칸 · 손절선의 전체 행이 없거나 둘 이상인 경우 — 빠진 손절선이
-            평평한 구간처럼 보인다
-    """
-    _require_columns(performance, _PERFORMANCE_COLUMNS, "성적표")
-    _require_columns(trades, _TRADE_COLUMNS, "거래내역")
-    for frame, name in ((performance, "성적표"), (trades, "거래내역")):
-        _require_single_ticker(frame, name)
-
-    labels = [stop_level_value(level, measurable=True) for level in stop_levels]
-    stop_trades: dict[tuple[int, int, float | str], list[dict[str, Any]]] = {}
-    for row in _records(trades):
-        stop_trades.setdefault((*_cell_of(row), row[DISPLAY_STOP_LEVEL]), []).append(row)
-    rows: dict[tuple[int, int, float | str], dict[str, Any]] = {}
-    for row in _records(_whole_period(performance)):
-        key = (*_cell_of(row), row[DISPLAY_STOP_LEVEL])
-        if key in rows:
-            raise ValueError(f"성적표에 칸 · 손절선 {key} 의 전체 행이 둘 이상입니다")
-        rows[key] = row
-
-    cells: list[dict[str, Any]] = []
-    for entry, exit_ in _grid(entry_months, exit_months):
-        found = [rows.get((entry, exit_, label)) for label in labels]
-        missing = [label for label, row in zip(labels, found, strict=True) if row is None]
-        if missing:
-            raise ValueError(f"성적표에 칸 ({entry}, {exit_}) · 손절선 {missing} 의 전체 행이 없습니다")
-        cell_rows = [row for row in found if row is not None]
-        stops: list[dict[str, Any]] = []
-        for label, row, conflict in zip(labels, cell_rows, _mean_rate_conflicts(cell_rows), strict=True):
-            gap = _count(row[DISPLAY_GAP_STOP_COUNT])
-            intraday = _count(row[DISPLAY_INTRADAY_STOP_COUNT])
-            stops.append(
-                {
-                    "stop": label,
-                    "sample": _count(row[DISPLAY_SIGNAL_COUNT]),
-                    "total": _number(row[DISPLAY_TOTAL], PERCENT_DECIMALS),
-                    "mean": _number(row[DISPLAY_MEAN], PERCENT_DECIMALS),
-                    "median": _median(stop_trades.get((entry, exit_, label), [])),
-                    "up_rate": _number(row[DISPLAY_WIN_RATE], PERCENT_DECIMALS),
-                    "worst": _number(row[DISPLAY_MIN], PERCENT_DECIMALS),
-                    "worst_hold": _number(row[DISPLAY_WORST_HOLD], PERCENT_DECIMALS),
-                    "triggered": None if gap is None or intraday is None else gap + intraday,
-                    "conflict": conflict,
-                }
-            )
-        cells.append({"entry": entry, "exit": exit_, "stops": stops})
-
-    return cells
-
-
-# ============================================================
-# ⑤ — 혼합 분할
-# ============================================================
-
-
-def _leg_key(side: str, threshold: str, anchor: str | None, start: int | None, deadline: int) -> str:
-    return "|".join((side, threshold, anchor or "", "" if start is None else str(start), str(deadline)))
-
-
-def _leg_label(side: str, threshold: str, anchor: str | None, start: int | None, deadline: int) -> str:
-    """목록에서 조합을 고를 때 이름만 보고 문턱 · 시작 · 기한을 안다"""
-    if threshold == SPLIT_THRESHOLD_NONE:
-        return f"{threshold} · 기한 {deadline}개월"
-    if side == SPLIT_SIDE_SELL:
-        return f"{threshold} · 다음 반감기 뒤 {start}개월부터 · 기한 {deadline}개월"
-    if anchor is None or start is None:
-        raise ValueError(f"온체인 매수 조합에 시작 기준이나 시작 개월이 없습니다: {threshold} · 기한 {deadline}")
-
-    return f"{threshold} · {anchor} 뒤 {start}개월부터 · 기한 {deadline}개월"
-
-
-def _leg(side: str, threshold: str, anchor: str | None, start: int | None, deadline: int) -> dict[str, Any]:
-    return {
-        "key": _leg_key(side, threshold, anchor, start, deadline),
-        "label": _leg_label(side, threshold, anchor, start, deadline),
-        "threshold": threshold,
-        "anchor": anchor,
-        "start": start,
-        "deadline": deadline,
-    }
-
-
-def _with_calendar_keys(legs: list[dict[str, Any]], side: str) -> list[dict[str, Any]]:
-    """조합마다 마지막 기한이 같은 달력만 조합을 짝으로 단다 — ⑤ 가 「같은 기한의 달력만」과 견준다"""
-    calendar = {leg["deadline"]: leg["key"] for leg in legs if leg["threshold"] == SPLIT_THRESHOLD_NONE}
-    paired: list[dict[str, Any]] = []
-    for leg in legs:
-        key = calendar.get(leg["deadline"])
-        if key is None:
-            raise ValueError(f"기한 {leg['deadline']}개월의 달력만 {side} 조합이 없어 견줄 대조군이 없습니다: {leg['label']}")
-        paired.append({**leg, "calendar_key": key})
-
-    return paired
-
-
-def split_view(fills: pd.DataFrame, positions: pd.DataFrame) -> dict[str, Any]:
-    """혼합 분할 — 조합 목록 · 조합 × 사이클의 회차 · 매수 × 매도 × 사이클의 포지션.
-
-    **체결 전 회차는 점으로 싣지 않고 건수로 남긴다** — 그리면 아직 오지 않은 날에 산 것처럼 보인다.
-
-    Args:
-        fills: 분할회차 (표시용 프레임)
-        positions: 분할포지션 (표시용 프레임)
-
-    Returns:
-        `buy_legs` · `sell_legs`(회차 표에 나온 순서 · 같은 기한의 달력만 짝) · `cycles` · `fills` · `positions`
-
-    Raises:
-        ValueError: 컬럼이 없거나 종목이 여럿인 경우, 같은 기한의 달력만 조합이 없는 경우, 포지션이 회차 표에 없는
-            조합을 가리키는 경우
-    """
-    _require_columns(fills, _FILL_COLUMNS, "분할회차")
-    _require_columns(positions, _POSITION_COLUMNS, "분할포지션")
-    for frame, name in ((fills, "분할회차"), (positions, "분할포지션")):
-        _require_single_ticker(frame, name)
-
-    legs: dict[str, dict[str, dict[str, Any]]] = {SPLIT_SIDE_BUY: {}, SPLIT_SIDE_SELL: {}}
-    fill_view: dict[str, dict[str, dict[str, Any]]] = {}
-    for row in _records(fills):
-        side = str(row[DISPLAY_SPLIT_SIDE])
-        if side not in legs:
-            raise ValueError(f"분할회차의 매수 · 매도 값이 아닙니다: {side!r}")
-        anchor = _text(row[DISPLAY_SPLIT_START_ANCHOR]) if side == SPLIT_SIDE_BUY else None
-        leg = _leg(
-            side,
-            str(row[DISPLAY_SPLIT_THRESHOLD]),
-            anchor,
-            _count(row[DISPLAY_SPLIT_START_MONTHS]),
-            int(row[DISPLAY_SPLIT_LAST_DEADLINE]),
-        )
-        legs[side].setdefault(leg["key"], leg)
-        cycle = fill_view.setdefault(leg["key"], {}).setdefault(
-            str(row[DISPLAY_HALVING]), {"points": [], "pending": 0, "reasons": []}
-        )
-        fill_date = _day(row[DISPLAY_SPLIT_FILL_DATE])
-        if fill_date is None:
-            cycle["pending"] += 1
-            reason = _text(row[DISPLAY_EXCLUDED_REASON])
-            if reason and reason not in cycle["reasons"]:
-                cycle["reasons"].append(reason)
-            continue
-        cycle["points"].append(
-            {
-                "tranche": int(row[DISPLAY_SPLIT_TRANCHE]),
-                "deadline": _day(row[DISPLAY_SPLIT_DEADLINE]),
-                "date": fill_date,
-                "close": _number(row[DISPLAY_SPLIT_FILL_CLOSE], PRICE_DECIMALS),
-                "trigger": _text(row[DISPLAY_SPLIT_TRIGGER]),
-                "prior_mvrv": _number(row[DISPLAY_SPLIT_PRIOR_MVRV], INDICATOR_DECIMALS),
-                "prior_rank": _number(row[DISPLAY_SPLIT_PRIOR_RANK], PERCENT_DECIMALS),
-            }
-        )
-
-    cycles: list[str] = []
-    position_view: dict[str, dict[str, dict[str, Any]]] = {}
-    for row in _records(positions):
-        buy_key = _leg_key(
-            SPLIT_SIDE_BUY,
-            str(row[DISPLAY_BUY_THRESHOLD]),
-            _text(row[DISPLAY_BUY_START_ANCHOR]),
-            _count(row[DISPLAY_BUY_START_MONTHS]),
-            int(row[DISPLAY_BUY_LAST_DEADLINE]),
-        )
-        sell_key = _leg_key(
-            SPLIT_SIDE_SELL,
-            str(row[DISPLAY_SELL_THRESHOLD]),
-            None,
-            _count(row[DISPLAY_SELL_START_MONTHS]),
-            int(row[DISPLAY_SELL_LAST_DEADLINE]),
-        )
-        if buy_key not in legs[SPLIT_SIDE_BUY] or sell_key not in legs[SPLIT_SIDE_SELL]:
-            raise ValueError(f"분할포지션이 분할회차에 없는 조합을 가리킵니다: {buy_key} × {sell_key}")
-        cycle = str(row[DISPLAY_HALVING])
-        if cycle not in cycles:
-            cycles.append(cycle)
-        position_view.setdefault(buy_key, {}).setdefault(sell_key, {})[cycle] = {
-            "avg_buy": _number(row[DISPLAY_AVG_BUY_PRICE], PRICE_DECIMALS),
-            "avg_sell": _number(row[DISPLAY_AVG_SELL_PRICE], PRICE_DECIMALS),
-            "return": _number(row[DISPLAY_RETURN], PERCENT_DECIMALS),
-            "worst": _number(row[DISPLAY_WORST_VS_COST], PERCENT_DECIMALS),
-            "first_buy": _day(row[DISPLAY_FIRST_BUY_DATE]),
-            "last_sell": _day(row[DISPLAY_LAST_SELL_DATE]),
-            "reason": _text(row[DISPLAY_EXCLUDED_REASON]) or None,
-        }
-
-    return {
-        "buy_legs": _with_calendar_keys(list(legs[SPLIT_SIDE_BUY].values()), SPLIT_SIDE_BUY),
-        "sell_legs": _with_calendar_keys(list(legs[SPLIT_SIDE_SELL].values()), SPLIT_SIDE_SELL),
-        "cycles": cycles,
-        "fills": fill_view,
-        "positions": position_view,
-    }
 
 
 # ============================================================
@@ -927,9 +606,10 @@ def chart_path() -> Path:
 
 
 def build_chart_html(datasets: Sequence[Dataset], *, plotly_js: str, created_at: datetime) -> str:
-    """측정 · 체결을 돌려 판단용 차트 HTML 을 만든다 — **약 45초**(손절 체결이 대부분).
+    """측정을 돌려 판단용 차트 HTML 을 만든다.
 
-    **산출물 폴더를 쓰지 않는다** — 측정 · 체결 함수를 부르기만 하고 결과는 메모리에서 옮긴다.
+    **산출물 폴더를 쓰지 않는다** — 측정 함수를 부르기만 하고 결과는 메모리에서 옮긴다. 체결(성적표 · 거래내역)은 돌리지
+    않는다 — 차트가 그 표를 읽지 않는다.
 
     Args:
         datasets: 검증 대상. **하나여야 한다** — 차트는 대상 하나를 그린다
@@ -949,16 +629,18 @@ def build_chart_html(datasets: Sequence[Dataset], *, plotly_js: str, created_at:
     dataset = datasets[0]
 
     prices = load_dataset(dataset).frame
-    onchain = load_onchain(dataset).frame
     close = prices.set_index(COL_DATE)[COL_CLOSE].astype(float)
-    mvrv = onchain.set_index(COL_DATE)[COL_MVRV].astype(float)
-    rank = trailing_rank(mvrv, years=SPLIT_RANK_YEARS, min_days=SPLIT_RANK_MIN_DAYS)
     halving_days = [halving.day for halving in HALVINGS]
 
     tables = display_tables(run_study(tuple(datasets)))
-    trading = run_halving_cycle_trading(tuple(datasets))
-    performance = trading.performance[trading.performance[DISPLAY_TICKER] == dataset.label]
-    trades = trading.trades[trading.trades[DISPLAY_TICKER] == dataset.label]
+    fills = tables[FIELD_CALENDAR_SPLIT_FILLS]
+    positions = tables[FIELD_CALENDAR_SPLIT_POSITIONS]
+    fills = fills[fills[DISPLAY_TICKER] == dataset.label]
+    positions = positions[positions[DISPLAY_TICKER] == dataset.label]
+
+    split = chart_split(CALENDAR_SPLITS, CHART_SPLIT_NAME)
+    summary = cycle_summary(close, halving_days)
+    bottoms = {row["halving"]: pd.Timestamp(row["bottom"]) for row in summary}
 
     price_record = dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.path.name, frame=prices)
     payload: dict[str, Any] = {
@@ -972,38 +654,21 @@ def build_chart_html(datasets: Sequence[Dataset], *, plotly_js: str, created_at:
                     "period": price_record[KEY_DATASET_PERIOD],
                     "rows": price_record[KEY_DATASET_ROWS],
                 },
-                {
-                    "name": "MVRV",
-                    "file": dataset.mvrv_path.name,
-                    "period": format_period(onchain[COL_DATE].iloc[0], onchain[COL_DATE].iloc[-1]),
-                    "rows": len(onchain),
-                },
             ],
         },
         # 데이터 끝 뒤의 반감기는 아직 오지 않은 것이라 세로선을 긋지 않는다 (`_cycle_segments` 와 같다)
         "halvings": [halving.label for halving in HALVINGS if halving.day <= close.index[-1]],
-        "rank_years": SPLIT_RANK_YEARS,
-        "rank_min_days": SPLIT_RANK_MIN_DAYS,
-        "thresholds": {
-            "mvrv_buy": list(SPLIT_BUY_BOOK_LEVELS),
-            "mvrv_sell": list(SPLIT_SELL_BOOK_LEVELS),
-            "rank_buy": [round(level * 100, PERCENT_DECIMALS) for level in SPLIT_BUY_RANK_LEVELS],
-            "rank_sell": [round(level * 100, PERCENT_DECIMALS) for level in SPLIT_SELL_RANK_LEVELS],
-        },
-        "cycles": cycle_series(close, mvrv, rank, halving_days),
-        "summary": cycle_summary(close, mvrv, halving_days, buy_level=max(SPLIT_BUY_BOOK_LEVELS)),
-        "time": timeline_series(close, mvrv, rank, halving_days),
-        "grid": {
-            "entry_months": list(ENTRY_MONTHS),
-            "exit_months": list(EXIT_MONTHS),
-            "cells": grid_cells(
-                performance, trades, tables[FIELD_GRID_BASELINE], entry_months=ENTRY_MONTHS, exit_months=EXIT_MONTHS
-            ),
-        },
-        "stops": stop_rows(
-            performance, trades, entry_months=ENTRY_MONTHS, exit_months=EXIT_MONTHS, stop_levels=STOP_LEVELS
-        ),
-        "split": split_view(tables[FIELD_SPLIT_FILLS], tables[FIELD_SPLIT_POSITIONS]),
+        "split": split_info(split, step_months=CALENDAR_SPLIT_STEP_MONTHS),
+        # 점 · 띠의 `side` 값 — JS 가 글자를 다시 적지 않게 넘긴다
+        "sides": {"buy": SPLIT_SIDE_BUY, "sell": SPLIT_SIDE_SELL},
+        "bottom_lead_months": BOTTOM_LEAD_MONTHS,
+        "cycles": cycle_series(close, halving_days),
+        "bottoms": bottom_series(close, halving_days, lead_months=BOTTOM_LEAD_MONTHS),
+        "summary": summary,
+        "time": timeline_series(close, halving_days),
+        "bands": window_bands(halving_days, close.index[-1], split, step_months=CALENDAR_SPLIT_STEP_MONTHS),
+        "points": split_points(fills, split.name, close, bottoms),
+        "table": split_table(fills, positions, split.name),
     }
 
     return render_html(TEMPLATE_PATH.read_text(encoding="utf-8"), payload, plotly_js)

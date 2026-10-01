@@ -45,13 +45,13 @@
 
 ### 반감기_사이클 판단용 차트
 
-줄 번호 기준: PLAN_halving_decision_chart 완료 시점의 작업 트리 (2026-10-01 확인).
+줄 번호 기준: PLAN_halving_calendar_chart 완료 시점의 작업 트리 (2026-10-01 확인 — 그 계획서가 차트를 다시 짜며 자리를 옮겼다).
 
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
-| `src/verify_lab/studies/halving_cycle/chart.py:929` `build_chart_html` | 조립 함수에 테스트가 없다 — payload 의 매수 · 매도 문턱 배치, `buy_level=max(SPLIT_BUY_BOOK_LEVELS)`, 세로선 반감기 목록의 데이터 끝 거르기, 종목 거르기를 뒤집어도 차트 테스트가 전부 통과한다. `run_study` · `run_halving_cycle_trading` 을 monkeypatch 하면 합성 프레임으로 검사할 수 있다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `tests/test_studies_halving_cycle_chart.py:568` `TestTimelineSeries.test_2년차_4년차_띠는_다음_반감기와_데이터_끝에서_잘린다` | 이름과 달리 픽스처에서 데이터 끝으로 잘리는 띠가 없다 — 진행 중 사이클의 띠가 제 길이대로 끝나 `min(…, 데이터 끝)` 경로를 밟지 않는다. 그 `min` 을 빼도 통과한다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `tests/test_studies_halving_cycle_chart.py:869` `TestStopRows.test_손절선마다_그_손절선_체결의_중앙값을_싣는다` | −21% 행은 성적표 표본 3 인데 거래내역에 체결이 없는 상태에서 중앙값 None 을 기대값으로 고정한다 — 아래 「코드」의 체결 수 대조 가드가 없는 상태를 정답처럼 굳힌다 | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:608` `build_chart_html` | 조립 함수에 테스트가 없다 — 표시용 프레임의 종목 거르기, 데이터 끝 뒤 반감기의 세로선 거르기, 그릴 폭(`CHART_SPLIT_NAME`) · 바닥 앞 개월을 payload 로 넘기는 배선을 뒤집어도 차트 테스트가 전부 통과한다. `run_study` 를 monkeypatch 하면 합성 프레임으로 검사할 수 있다(2026-10-01 PLAN_halving_calendar_chart 의 재구성 뒤 다시 확인 — 그 전의 문턱 배치 · `buy_level` 은 코드와 함께 사라졌다) | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `tests/test_studies_halving_cycle_chart.py` `TestSplitPoints` · `TestSplitTable` | 종목이 둘인 프레임 · 컬럼이 빠진 프레임에서 멈추는 가드(`chart._require_single_ticker` · `_require_columns`)를 보는 테스트가 없다 — `split_points` 에서 종목 가드를 빼도 차트 테스트가 전부 통과하고, 두 종목의 점이 한 차트에 섞인다. 재구성 전에는 `TestGridCells.test_종목이_둘이면_멈춘다` 가 같은 가드를 봤다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:276` `monthExtent` | ① 의 띠를 실제 회차 점까지 넓히는 계산이 테스트가 없는 JS 에만 있다 — 다른 축의 점 값(`bottom_months`)을 읽거나 쪽을 바꾸거나 기간 값과의 병합을 빼도 차트 테스트가 전부 통과하고 헤드리스 캡처로만 드러난다. 띠 범위를 Python 이 점과 같은 `_months_after` 로 내고 `TestWindowBands` 처럼 고정하면 막힌다 | 그 외 | 코드 리뷰 2회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
 
 ## 코드
 
@@ -106,24 +106,29 @@
 
 ### 반감기_사이클 판단용 차트 (chart · chart_template)
 
-줄 번호 기준: PLAN_halving_decision_chart 완료 시점의 작업 트리 (2026-10-01 확인).
+줄 번호 기준: PLAN_halving_calendar_chart 완료 시점의 작업 트리 (2026-10-01 확인 — 그 계획서가 차트를 다시 짜며 자리를 옮겼다).
 
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
-| `src/verify_lab/studies/halving_cycle/chart_template.html:696` `splitFigure` | 다음 반감기를 `DATA.halvings.indexOf(cycle) + 1` 로 찾는데, `DATA.halvings` 는 데이터 끝 뒤의 반감기를 빼고 ⑤ 의 사이클 목록(분할포지션)은 빼지 않는다 — 반감기 목록에 2028 반감기를 더한 날(종가가 아직 없음) −1 이 되어 첫 반감기를 다음 반감기로 물고, ⑤ 에 날짜축이 뒤집힌 빈 패널이 생긴다. 1회차 수정(데이터 뒤 반감기 건너뛰기)이 만든 자리라 사용자가 미루기로 정했다(2026-10-01). 고친다면 Python 이 사이클마다 다음 반감기를 싣고 JS 는 찾지 않게 한다. 실제 산출물에는 안 나온다 | 가벼운 버그 | 코드 리뷰 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:976` `build_chart_html` 의 MVRV 출처 | 파일 이름은 `dataset.mvrv_path.name` 인데 기간 · 행 수는 MVRV ∩ 시가총액 교집합(`load_onchain(...).frame`)에서 센다 — 두 온체인 파일의 끝이 공개 지연만큼 어긋나면 차트 머리가 파일과도 `summary.json` 과도 다른 기간을 보인다. 실제 산출물에서 끝 어긋남 0 이라 안 나온다 | 가벼운 버그 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:906` `render_html` | plotly.js 에서 `</script` 만 막는다 — `<!--` 뒤에 `<script` 가 이어지면 HTML 토크나이저가 double-escaped 상태가 되어 뒤의 스크립트가 삼켜진다. 데이터 JSON 도 `</` 만 바꾼다(`<` 를 `\u003c` 로 바꾸지 않음). 지금 번들 · 데이터에 그 글자는 0건 | 가벼운 버그 | 코드 리뷰 1회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:753` `_leg_label` | 매수 쪽은 시작 기준 · 시작 개월이 None 이면 멈추지만 매도 쪽은 검사 없이 「다음 반감기 뒤 None개월부터」를 낸다. 실제 매도 조합은 전부 시작 개월이 있어 안 나온다 | 가벼운 버그 | 코드 리뷰 1회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:647` `grid_cells` · `:726` `stop_rows` | (칸[, 손절선])의 체결 수를 성적표 `신호` 와 대조하지 않는다 — 거래내역의 열쇠 형식이 한쪽만 바뀌면(예: CSV 에서 다시 읽어 `-5.0` 이 문자열) 표본은 있는데 중앙값 · 호버 체결이 조용히 빈다. 실데이터 2,816쌍에서 체결 수와 신호가 전부 같다 | 가벼운 버그 | 코드 리뷰 1회차 · 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart_template.html:353` · `:370` · `:377` · `:697` | Python 상수가 가진 값을 JS 에 다시 적었다 — ① 띠 연차 `[1, 3]`(`chart.BAND_YEARS`) · 가로 범위와 1배 선 `[0, 48]` · ⑤ 패널 끝 「다음 반감기 + 24개월」(`SPLIT_SELL_LAST_DEADLINES` 에 24 보다 큰 값이 생기면 매도 회차가 패널 밖). 사이클이 48개월을 넘으면 ① 의 선 끝이 첫 화면에서 잘린다(2024 → 2028 은 약 47.9개월). 지금은 안 나온다 | 가벼운 버그 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:951` `build_chart_html` | 차트는 격자기준선과 분할 두 표만 쓰는데 `run_study` 전체(1 · 2단계 집계 · 무작위 뽑기 대조)를 돌리고, 시세를 세 번 · 온체인을 두 번 읽는다 — 약 3초. `grid_baseline_table` · `split_grid` 를 직접 부르면 준다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:314` `_cycle_segments` docstring | `Raises:` 가 둘이고 첫째 아래에 동작 설명(데이터 뒤 반감기 건너뛰기)이 들어 있다 — 1회차 수정에서 문단을 `Raises:` 아래에 넣었다 | 그 외 | 코드 리뷰 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:8` 모듈 docstring | 「③ ④ ⑤ … 산출물에 없는 값은 ③ 의 중앙값 하나다」— ④ 도 손절선마다 중앙값을 내게 된 뒤로 낡았다(`설계.md` 결정 ㊿ 은 고쳤다) | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:541` `_median` docstring · `chart_template.html:195` ③ 주의 | 「격자기준선의 중앙값과 0.005 안쪽」— 반올림 값의 중앙값을 다시 반올림해 실제로는 0.01 까지 벌어진다(예: 1.004 · 1.014 → 1.0 대 1.01). `설계.md` 결정 ㊿ 은 0.01 로 고쳤다 | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart.py:930` · `scripts/chart_halving_cycle.py:8` · `:40` · `docs/COMMANDS.md:118` | 실행 시간 「약 45초」를 네 곳에 적었다 — 격자 · 손절선 · 데이터 길이가 바뀌면 조용히 낡는다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart_template.html:164` · `:146` · `:170` · `:193` | 가이드에 데이터 · 상수에서 나오는 값을 적었다 — 「거래가 없던 33일」(재수집하면 바뀐다) · 「30.4375」 · 「24개월」 · 「칸당 10건」(`DAYS_PER_MONTH` · `PEAK_WINDOW_MONTHS` · `MIN_SAMPLE_PER_CELL`) | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart_template.html:636` ④ 둘째 패널 | 패널 제목과 전용 범례(legend2)가 같은 띠에 앉아 760px 폭에서 약 70px 만 남는다 — 더 좁으면 겹칠 수 있다(미실측) | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
-| `src/verify_lab/studies/halving_cycle/chart_template.html:600` 계단선 · `:295` 선택 칸 테두리 | 보유 중 최악 보기에서 가장 깊은 칸과의 대비가 낮다(테두리 밝은 1.65 · 어두운 1.32, 계단선 1.51 · 1.35). 값이 빈 칸은 바탕색이라 「가장 얕다」로 읽힐 수 있다(지금 0칸) | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:567` `render_html` | plotly.js 에서 `</script` 만 막는다 — `<!--` 뒤에 `<script` 가 이어지면 HTML 토크나이저가 double-escaped 상태가 되어 뒤의 스크립트가 삼켜진다. 데이터 JSON 도 `</` 만 바꾼다(`<` 를 `\u003c` 로 바꾸지 않음). 지금 번들 · 데이터에 그 글자는 0건 | 가벼운 버그 | 코드 리뷰 1회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:635` `build_chart_html` | 차트는 달력 분할 두 표만 쓰는데 `run_study` 전체(1 · 2단계 집계 · 무작위 뽑기 대조 · 혼합 분할 · 격자기준선)를 돌리고 시세를 두 번 읽는다 — 차트 실행 4.5초(2026-10-01). `split_rule.calendar_split_grid` 를 직접 부르면 준다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:179` 사이클 요약 설명 | 가이드에 상수에서 나오는 값 「24개월」(`chart.PEAK_WINDOW_MONTHS`)을 적었다 — 상수가 바뀌면 조용히 낡는다(2026-10-01 재구성 뒤 다시 확인 — 「33일」 · 「30.4375」 · 「칸당 10건」은 그 문장과 함께 사라졌다) | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:319` `bottom_series` | 선 n 을 다음 사이클의 바닥 전날에서 끊는데, 다음 사이클이 진행 중이면 그 바닥은 잠정이다 — 다음 반감기가 목록에 들고 그 사이클의 잠정 바닥이 앞 포지션의 매도 기간 안에 오면 매도 점이 선 끝 밖에 놓이고, ② 의 가로축 범위가 선 길이로만 잡혀 그 점이 화면 밖으로 잘린다. 끊긴 선 끝이 잠정이라는 표시도 없다(점선은 마지막 선만). 지금 산출물은 2020 포지션 매도(2025-07-20 ~ 2025-12-20)가 그 선 끝(2026-06-29) 앞이라 안 나온다 | 가벼운 버그 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:387` `split_info` · `runner.py` `_calendar_split_rule` | 폭 한 줄(이름 · 회차 수 · 매수 · 매도 첫 · 마지막 개월)을 두 곳이 따로 조립한다 — 한쪽만 바뀌면 차트 머리와 `summary.json` 이 같은 폭을 예외 없이 다르게 말한다 | 그 외 | 코드 리뷰 2회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:504` `split_table` | 첫 매수일 · 마지막 매도일까지 회차 표에서 다시 세는데 포지션 표에 같은 값(`첫 매수일` · `마지막 매도일`)이 있다 — 회차 표가 필요한 것은 마지막 매수일 · 첫 매도일뿐이다. 두 계산이 갈리면 숫자표의 기간이 `달력분할포지션.csv` 와 예외 없이 어긋난다 | 그 외 | 코드 리뷰 2회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:138` `_day` | 호출처가 `split_table` 하나이고 늘 빈값 아닌 `Timestamp` 를 넘긴다 — 빈값 · 문자열 분기가 쓰이지 않고, docstring 의 「반감기 표지는 문자열로 들어온다」는 없는 호출처를 말한다 | 그 외 | 코드 리뷰 2회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:109` · `:126` · `:129` · `:158` 가이드 | 데이터와 반감기 목록에서 나오는 사실을 글자로 적었다 — 「3 ~ 4개뿐」 · 「네 사이클」 · 「2024 사이클은 진행 중」 · 「2024 사이클은 사는 중」. 시세를 다시 받아 좁게의 2024 매수가 끝나거나(2026-12-20 뒤) 2028 반감기가 목록에 들면 낡는다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+
+### 반감기_사이클 3단계 달력 매달 분할 (split_rule · constants)
+
+줄 번호 기준: PLAN_halving_calendar_chart 완료 시점의 작업 트리 (2026-10-01 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:931` `calendar_split_grid` | 매도 쪽 회차 기한(첫 매도 회차가 다음 반감기 앞인지)은 다음 반감기가 있을 때만 `tranche_deadlines` 가 검사한다 — 반감기가 하나뿐인 입력에 `CalendarSplit(tranches=3, sell_last_deadline=1)`(간격 1개월)을 주면 예외 없이 첫 매도 기한 −1 이 포지션 표 · 요약에 실린다. `CalendarSplit` 자체에는 검사가 없다. 실제 폭의 첫 매도 회차는 15 · 12 · 6 이라 안 나온다 | 가벼운 버그 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/constants.py:386` `CalendarSplit.first_deadlines` · `split_rule.py:318` `tranche_deadlines` | 「첫 회차 = 마지막 − 간격 × (회차 수 − 1)」이 두 벌이다 — 회차 날짜는 `tranche_deadlines` 가, 표 · 요약 · 차트의 첫 기한 칸은 `first_deadlines` 가 낸다. 한쪽만 규칙을 바꾸면 CSV 의 첫 기한 칸이 같은 표의 회차 날짜와 예외 없이 어긋난다. `constants` 가 `split_rule` 을 가져오면 순환이라 하나로 모으려면 자리부터 정해야 한다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:602` `_fill_rows` | `mvrv` · `ranks` 를 따로 선택 인자로 받고 둘 다 있을 때만 MVRV 칸을 싣는다 — 하나만 넘기면 두 칸이 예외 없이 사라진다. 달력 분할 경로는 혼합 분할의 식별 칸(문턱 · 시작 · 마지막 기한 · 계기)을 만든 뒤 `reindex` 로 버린다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:965` `calendar_split_grid` 의 `new_high_flags` | 달력만 조합은 신고가를 읽지 않는데 `leg_fills` 가 받는 인자라 전 기간을 계산한다 — `trigger_values` 가 없을 때 `new_highs` 를 선택으로 두면 준다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
 
 ## 문서
 
@@ -144,11 +149,3 @@
 | `docs/검증/반감기_사이클/결과.md:1045` §16.2 평균 행렬 · `:1147` · `:1171` §16.4 차이 행렬 둘 | 새로 넣은 행렬 셋에 **칸별 표본**이 없다(칸마다 1 ~ 4건 · 같은 사이클 칸은 2 ~ 4건) — `.claude/rules/research.md` 「표본 수를 모든 표에 넣는다」. 평균 행렬에는 **합산**도 없다 — 루트 `CLAUDE.md` 측정의 원칙 16. 칸별 표본은 §16.1 의 분모에 있다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
 | `docs/검증/반감기_사이클/결과.md:1068` §16.2 평균-부호 어긋남 표 | 헤더가 `승률(%)` 이다 — `.claude/rules/docs.md` 는 결과 문서에서 「오른 비율」을 쓰고 `승률` 은 `규칙.md` · 체결 산출물에만 둔다. 14칸 중 같은 사이클 칸 11칸은 기준선이 있는데 기준선 비율 · 차이 열이 없다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 2회차 |
 | `docs/검증/반감기_사이클/설계.md:464` 결정 ㊽ · `격자기준선.csv` 의 `신호` | 「앞 넷은 성적표와 같은 헤더라 그대로 이어 본다」는데 **같은 이름 `신호` 의 뜻이 다르다** — 격자기준선은 측정 표 관용대로 표본 + 제외(1단계 `통계.csv` 와 같다), `성적표.csv` 는 체결된 건수(= 표본)다. 실제 산출물을 이어 보면 120칸 중 65칸에서 `신호` 가 다르다(예: (0, 30) 은 4 대 3). 측정 표와 체결 표의 이 차이는 기존 관용이다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1회차 |
-
-### 반감기_사이클 판단용 차트 (설계 문서)
-
-줄 번호 기준: PLAN_halving_decision_chart 완료 시점의 작업 트리 (2026-10-01 확인).
-
-| 자리 | 무엇 | 종류 | 출처 |
-| --- | --- | --- | --- |
-| `docs/검증/반감기_사이클/설계.md:42` §1.1 「3단계에서 고른 뒤 추가로 재야 하는 것」 | 결정 목록 글머리의 맺음말 「§2 의 나머지는 데이터와 1단계의 결정이다」가 앞 세션 편집에서 떨어져 ④ 항목 끝에 마침표 없이 붙었다 — ④ 의 일부처럼 읽힌다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |

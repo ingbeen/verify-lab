@@ -17,6 +17,8 @@
 
 **3단계 혼합 분할(달력 + MVRV)은 측정 표로만 낸다** — 격자 전부를 내고 고르지 않는다(결정 ㊹ ~ ㊼). 달력 쪽 값에는
 결과를 본 뒤 정한 것이 섞여 있다 — 그 절의 주석이 어느 값인지 말한다.
+
+**3단계 달력 매달 분할도 측정 표로만 낸다** — 폭 전부를 내고 고르지 않는다(결정 51 · 52). 폭도 결과를 본 뒤 정한 값이다.
 """
 
 from dataclasses import dataclass
@@ -361,6 +363,57 @@ SPLIT_RANK_MIN_DAYS: Final = MVRV_Z_MIN_DAYS
 
 
 # ============================================================
+# 3단계 — 달력 매달 분할 (결정 51 · 52)
+# ============================================================
+
+
+@dataclass(frozen=True)
+class CalendarSplit:
+    """달력 매달 분할의 폭 하나 — 반감기 뒤 매달 같은 금액으로 사고, 다음 반감기 뒤 매달 같은 양씩 판다
+
+    Attributes:
+        name: 폭의 이름. **산출물의 식별 칸이라 겹치면 안 된다**
+        tranches: 회차 수 — 매수 · 매도가 같다
+        buy_last_deadline: 마지막 매수 회차 (반감기 뒤 개월)
+        sell_last_deadline: 마지막 매도 회차 (다음 반감기 뒤 개월)
+    """
+
+    name: str
+    tranches: int
+    buy_last_deadline: int
+    sell_last_deadline: int
+
+    def first_deadlines(self, step_months: int) -> tuple[int, int]:
+        """첫 매수 회차 · 첫 매도 회차 — 마지막 회차에서 간격만큼 앞으로 센다(`split_rule.tranche_deadlines` 와 같은 산술).
+
+        **측정 표 · 요약 · 차트가 이 하나를 쓴다** — 각자 세면 한쪽만 간격을 바꿔도 예외 없이 다른 기간을 싣는다.
+
+        Args:
+            step_months: 회차 간격(개월)
+
+        Returns:
+            (첫 매수 회차 — 반감기 뒤 개월, 첫 매도 회차 — 다음 반감기 뒤 개월)
+        """
+        span = step_months * (self.tranches - 1)
+
+        return self.buy_last_deadline - span, self.sell_last_deadline - span
+
+
+# 회차 간격(개월) — 매달 한 번이다(결정 51). 혼합 분할의 기한 간격과 다른 값이라 이름을 가른다
+CALENDAR_SPLIT_STEP_MONTHS: Final = 1
+
+# **측정은 폭을 전부 내고, 판단용 차트는 그중 하나를 그린다**(결정 52).
+#
+# [중요] **결과를 본 뒤 정한 값이다** — 세 폭 모두 가운데를 과거 바닥(반감기 뒤 25.5 ~ 30.4개월)과 고점(다음 반감기
+# 뒤 17.2 ~ 17.9개월)에 두었다. 좁을수록 과거에 더 맞춰져 있고, 넓은 폭은 시점이 옮겨 가는 사이클에 대한 보험이다
+CALENDAR_SPLITS: Final = (
+    CalendarSplit(name="좁게", tranches=6, buy_last_deadline=32, sell_last_deadline=20),
+    CalendarSplit(name="보통", tranches=12, buy_last_deadline=35, sell_last_deadline=23),
+    CalendarSplit(name="넓게", tranches=24, buy_last_deadline=41, sell_last_deadline=29),
+)
+
+
+# ============================================================
 # 2단계 — 책 신호 (결정 ㉖ 첫 표)
 # ============================================================
 
@@ -552,6 +605,12 @@ COL_SPLIT_TOTAL: Final = "split_total"
 COL_CYCLE_RETURN_TEMPLATE: Final = "return_{halving}"
 COL_CYCLE_WORST_TEMPLATE: Final = "worst_vs_cost_{halving}"
 
+# 3단계 달력 매달 분할 — 회차 · 포지션 표의 식별 칸. 나머지 칸은 혼합 분할과 뜻이 같아 같은 토큰을 쓴다
+COL_CALENDAR_SPLIT: Final = "calendar_split"
+COL_SPLIT_TRANCHES: Final = "split_tranches"
+COL_BUY_FIRST_DEADLINE: Final = "buy_first_deadline"
+COL_SELL_FIRST_DEADLINE: Final = "sell_first_deadline"
+
 
 # 책이 문턱을 적은 신호 전부 — **결정 ㉖ 첫 표의 순서 그대로다.** 책의 「마지막」 · 「바닥 뒤」 처럼 지나고 나서야
 # 정해지는 조건은 빼고 돌파를 전부 잰다. 변형(다른 문턱 · 다른 창)을 더하지 않는다 — 고를 여지가 생긴다
@@ -698,6 +757,12 @@ DISPLAY_FINISHED_COUNT: Final = "끝난 포지션"
 CYCLE_RETURN_LABEL_TEMPLATE: Final = "{halving} " + DISPLAY_RETURN
 CYCLE_WORST_LABEL_TEMPLATE: Final = "{halving} " + DISPLAY_WORST_VS_COST
 
+# 3단계 달력 매달 분할 — 식별 칸. 나머지 머리는 혼합 분할의 것을 그대로 쓴다 (같은 뜻에 이름이 두 벌이 되지 않게)
+DISPLAY_CALENDAR_SPLIT: Final = "분할 폭"
+DISPLAY_SPLIT_TRANCHES: Final = "회차 수"
+DISPLAY_BUY_FIRST_DEADLINE: Final = "매수 첫 기한(개월)"
+DISPLAY_SELL_FIRST_DEADLINE: Final = "매도 첫 기한(개월)"
+
 
 # ============================================================
 # 저장 직전 컬럼 헤더 (`COL_* → DISPLAY_*`)
@@ -821,6 +886,11 @@ COLUMN_LABELS: Final = {
     COL_SELL_CALENDAR_COUNT: DISPLAY_SELL_CALENDAR_COUNT,
     COL_FINISHED_COUNT: DISPLAY_FINISHED_COUNT,
     COL_SPLIT_TOTAL: DISPLAY_TOTAL,
+    # 3단계 달력 매달 분할 — 식별 칸 (나머지 칸은 위의 혼합 분할 이름을 쓴다)
+    COL_CALENDAR_SPLIT: DISPLAY_CALENDAR_SPLIT,
+    COL_SPLIT_TRANCHES: DISPLAY_SPLIT_TRANCHES,
+    COL_BUY_FIRST_DEADLINE: DISPLAY_BUY_FIRST_DEADLINE,
+    COL_SELL_FIRST_DEADLINE: DISPLAY_SELL_FIRST_DEADLINE,
 }
 
 # 비율(0~1)로 들어와 백분율로 내보낼 컬럼. **기준선과 차이 컬럼도 빠짐없이 넣는다** —
@@ -906,6 +976,11 @@ SPLIT_COMBINATIONS_FILENAME: Final = "분할조합.csv"
 # 성적표 옆에 두지 않는다(루트 `CLAUDE.md` 「기준선을 넘지 못하는 것은 탈락 사유가 아닙니다」). 지표통계처럼 한 장이다
 GRID_BASELINE_FILENAME: Final = "격자기준선.csv"
 
+# 3단계 달력 매달 분할 둘(결정 52). **측정 표다** — 1차 판정 · 손절 · 기준선이 없고 혼합 분할 표와 다른 파일이다.
+# 혼합 분할 표에 행을 더하지 않는다 — 회차 수 · 간격이 식별 칸에 없어 3개월 간격 달력만 조합과 구별되지 않는다
+CALENDAR_SPLIT_FILLS_FILENAME: Final = "달력분할회차.csv"
+CALENDAR_SPLIT_POSITIONS_FILENAME: Final = "달력분할포지션.csv"
+
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 # **키는 문자열 리터럴이다** — 계약 검사가 이 사전을 AST 로 읽으므로 상수를 키에 쓰면 선언이 없는 것으로 보인다
 OUTPUT_FILES: Final[dict[str, str]] = {
@@ -924,6 +999,8 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     "split_positions": SPLIT_POSITIONS_FILENAME,
     "split_combinations": SPLIT_COMBINATIONS_FILENAME,
     "grid_baseline": GRID_BASELINE_FILENAME,
+    "calendar_split_fills": CALENDAR_SPLIT_FILLS_FILENAME,
+    "calendar_split_positions": CALENDAR_SPLIT_POSITIONS_FILENAME,
 }
 
 # 산출물 필드 이름. **사전에서 꺼낸다** — 같은 리터럴을 두 번 적으면 한쪽만 바뀌었을 때
@@ -944,6 +1021,8 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     FIELD_SPLIT_POSITIONS,
     FIELD_SPLIT_COMBINATIONS,
     FIELD_GRID_BASELINE,
+    FIELD_CALENDAR_SPLIT_FILLS,
+    FIELD_CALENDAR_SPLIT_POSITIONS,
 ) = OUTPUT_FILES
 
 

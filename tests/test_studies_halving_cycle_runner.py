@@ -48,6 +48,8 @@ from verify_lab.report.run_summary import KEY_TRACK
 from verify_lab.studies.halving_cycle import runner as runner_module
 from verify_lab.studies.halving_cycle.constants import (
     BASELINE_SUFFIX,
+    CALENDAR_SPLIT_STEP_MONTHS,
+    CALENDAR_SPLITS,
     COL_BASELINE_NON_OVERLAPPING,
     COL_CALENDAR_YEAR,
     COL_CYCLE_COUNT,
@@ -61,6 +63,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_NON_OVERLAPPING,
     COL_POSITION_RETURN,
     COL_SIGNAL_MEANING,
+    COL_TICKER,
     COL_VALUE_DAY,
     DATASETS,
     ENTRY_MONTHS,
@@ -70,6 +73,7 @@ from verify_lab.studies.halving_cycle.constants import (
     HALVINGS,
     HOLD_MONTHS,
     INDICATOR_SIGNALS,
+    KEY_NAME,
     OUTPUT_FILES,
     SPLIT_BUY_LAST_DEADLINES,
     SPLIT_BUY_START_MONTHS_HALVING,
@@ -82,6 +86,12 @@ from verify_lab.studies.halving_cycle.constants import (
     Halving,
 )
 from verify_lab.studies.halving_cycle.runner import (
+    KEY_CALENDAR_SPLIT,
+    KEY_CALENDAR_SPLIT_BUY_MONTHS,
+    KEY_CALENDAR_SPLIT_RULE,
+    KEY_CALENDAR_SPLIT_SELL_MONTHS,
+    KEY_CALENDAR_SPLIT_SPLITS,
+    KEY_CALENDAR_SPLIT_STEP,
     KEY_DROPPED_TAIL_DAYS,
     KEY_GRID_BASELINE_HOLD_MONTHS,
     KEY_MISSING_PRICE_DAYS,
@@ -93,6 +103,7 @@ from verify_lab.studies.halving_cycle.runner import (
     KEY_SPLIT_POSITION_COUNT,
     KEY_SPLIT_RULE,
     KEY_SPLIT_SELL,
+    KEY_SPLIT_TRANCHES,
     KEY_SPLIT_UNFILLED,
     KEY_SPLIT_UNFINISHED,
     StudyOutputs,
@@ -102,6 +113,7 @@ from verify_lab.studies.halving_cycle.runner import (
     load_onchain,
     run_study,
 )
+from verify_lab.studies.halving_cycle.split_rule import calendar_split_grid
 
 # 합성 시세 구간. **첫 반감기(2012-11-28) 앞에서 시작해야** 네 반감기가 모두 시세 안에 든다
 SYNTHETIC_START = "2012-01-01"
@@ -951,6 +963,103 @@ class TestSplitTables:
         np.testing.assert_allclose(prices, np.round(prices, PRICE_DECIMALS), atol=0.0)
         expected = (outputs.split_positions[COL_POSITION_RETURN] * 100.0).round(2)
         pd.testing.assert_series_equal(table["수익률(%)"], expected, check_names=False)
+
+
+class TestCalendarSplitTables:
+    """3단계 달력 매달 분할 측정 표 (결정 51 · 52) — 폭 전부 · 표본 보존 · `split_rule` 과 같은 값"""
+
+    def test_회차_포지션_행_수가_폭과_반감기에서_나온다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 표본 보존 — 체결 전 회차 · 끝나지 않은 포지션도 행이 있다.
+
+        Given: 합성 입력 한 대상 · 반감기 넷 · 실제 폭 목록
+        When: 두 표의 행 수를 본다
+        Then: 회차 = 반감기 × Σ(매수 + 매도 회차) · 포지션 = 폭 × 반감기
+        """
+        # Then
+        assert len(outputs.calendar_split_fills) == len(HALVINGS) * sum(2 * split.tranches for split in CALENDAR_SPLITS)
+        assert len(outputs.calendar_split_positions) == len(CALENDAR_SPLITS) * len(HALVINGS)
+
+    def test_측정_시세로_split_rule_을_부른_값과_같다(self, synthetic_dataset: Dataset, outputs: StudyOutputs) -> None:
+        """
+        목적: 조립이 계산하지 않는다 — 측정 계열(종가 대체 뒤) · 반감기 목록 · 폭 목록 · 간격을 그대로 넘긴다.
+
+        Given: 같은 합성 입력을 읽은 측정 계열
+        When: `split_rule.calendar_split_grid` 를 직접 부른 표와 견준다
+        Then: 종목 칸을 뺀 두 표가 같다
+        """
+        # Given
+        frame = load_dataset(synthetic_dataset).frame
+
+        # When
+        expected = calendar_split_grid(frame, HALVINGS, CALENDAR_SPLITS, step_months=CALENDAR_SPLIT_STEP_MONTHS)
+
+        # Then
+        pd.testing.assert_frame_equal(outputs.calendar_split_fills.drop(columns=[COL_TICKER]), expected.fills)
+        pd.testing.assert_frame_equal(outputs.calendar_split_positions.drop(columns=[COL_TICKER]), expected.positions)
+
+    def test_요약이_폭_목록과_빠진_건수를_싣는다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 무엇을 어떤 폭으로 쟀는지와 몇 건이 왜 빠졌는지가 요약에 남는다 (절대 원칙 「표본 보존」).
+
+        Given: 합성 입력
+        When: 요약의 측정 칸과 대상별 건수를 본다
+        Then: 폭마다 이름 · 회차 수 · 매수 · 매도 개월(첫 · 마지막)이 실리고, 사유별 건수의 합이 사유가 붙은 행의 수와 같다
+        """
+        # When
+        rule = outputs.summary[KEY_CALENDAR_SPLIT_RULE]
+        counts = outputs.summary[KEY_DATASETS][0][KEY_CALENDAR_SPLIT]
+
+        # Then
+        assert rule[KEY_CALENDAR_SPLIT_STEP] == CALENDAR_SPLIT_STEP_MONTHS
+        assert [entry[KEY_NAME] for entry in rule[KEY_CALENDAR_SPLIT_SPLITS]] == [
+            split.name for split in CALENDAR_SPLITS
+        ]
+        for entry, split in zip(rule[KEY_CALENDAR_SPLIT_SPLITS], CALENDAR_SPLITS, strict=True):
+            span = CALENDAR_SPLIT_STEP_MONTHS * (split.tranches - 1)
+            assert entry[KEY_SPLIT_TRANCHES] == split.tranches
+            assert entry[KEY_CALENDAR_SPLIT_BUY_MONTHS] == [split.buy_last_deadline - span, split.buy_last_deadline]
+            assert entry[KEY_CALENDAR_SPLIT_SELL_MONTHS] == [split.sell_last_deadline - span, split.sell_last_deadline]
+        fills, positions = outputs.calendar_split_fills, outputs.calendar_split_positions
+        assert counts[KEY_SPLIT_FILL_COUNT] == len(fills)
+        assert counts[KEY_SPLIT_POSITION_COUNT] == len(positions)
+        assert sum(counts[KEY_SPLIT_UNFILLED].values()) == int((fills[COL_EXCLUDED_REASON] != REASON_NONE).sum())
+        assert sum(counts[KEY_SPLIT_UNFINISHED].values()) == int((positions[COL_EXCLUDED_REASON] != REASON_NONE).sum())
+
+    def test_두_파일이_산출물_목록과_요약_행_수에_있다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: CLI 가 `OUTPUT_FILES` 를 돌며 저장하므로 목록에 없으면 파일이 나가지 않는다.
+
+        Given: 산출물 목록과 요약
+        When: 두 파일 이름을 찾는다
+        Then: 목록에 있고 요약의 행 수가 표의 행 수와 같다
+        """
+        # Then
+        row_counts = outputs.summary[KEY_ROW_COUNTS]
+        assert OUTPUT_FILES["calendar_split_fills"] == "달력분할회차.csv"
+        assert OUTPUT_FILES["calendar_split_positions"] == "달력분할포지션.csv"
+        assert row_counts["달력분할회차.csv"] == len(outputs.calendar_split_fills)
+        assert row_counts["달력분할포지션.csv"] == len(outputs.calendar_split_positions)
+
+    def test_표시용_표는_한글_헤더이고_평균_단가는_가격_자릿수_수익률은_백분율이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 영문 토큰이 CSV 로 나가지 않고, 계산값인 평균 단가의 잡음 자리를 자르고, 비율을 백분율로 바꾼다.
+
+        Given: 표시용 두 표
+        When: 헤더와 값을 본다
+        Then: 식별 칸이 한글이고, 평균 매수가는 소수 4자리를 넘지 않고, 수익률은 원래 값 × 100 을 2자리로 반올림한 것이다
+        """
+        # When
+        tables = display_tables(outputs)
+
+        # Then
+        assert {"분할 폭", "매수 · 매도", "회차", "회차 기한", "회차 체결일", "회차 종가"} <= set(tables["calendar_split_fills"].columns)
+        positions = tables["calendar_split_positions"]
+        assert {"분할 폭", "회차 수", "매수 첫 기한(개월)", "매도 첫 기한(개월)", "평균 매수가"} <= set(positions.columns)
+        prices = positions["평균 매수가"].dropna().to_numpy(dtype=float)
+        np.testing.assert_allclose(prices, np.round(prices, PRICE_DECIMALS), atol=0.0)
+        expected = (outputs.calendar_split_positions[COL_POSITION_RETURN] * 100.0).round(2)
+        pd.testing.assert_series_equal(positions["수익률(%)"], expected, check_names=False)
 
 
 class TestGridBaseline:
