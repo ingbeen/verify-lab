@@ -1,12 +1,13 @@
 """반감기_사이클 판단용 차트 — 시세와 달력 매달 분할 측정 표를 HTML 한 장의 차트 데이터로 옮긴다
 
-**사고파는 기간(②)을 사람이 보고 고르게 하는 보기다** (설계 결정 ㊾ · ㊿ · 53). 매매 방식은 달력형 매달 분할이고(결정 51),
+**사고파는 기간(②)을 사람이 보고 고르게 하는 보기다** (설계 결정 ㊾ · ㊿ · 53 · 54). 매매 방식은 달력형 매달 분할이고(결정 51),
 차트는 폭 하나(`CHART_SPLIT_NAME`)의 매수 · 매도 회차를 세 보기 — 반감기 기준 겹치기 · 바닥 기준 겹치기 · 전 기간
 시간축 — 에 찍는다. **고르지 않고 판정하지 않는다.**
 
-**회차 점과 숫자표의 값은 산출물의 표시용 프레임을 옮기기만 한다** — `run_halving_cycle.py` 가 CSV 로 쓰는 바로 그
-프레임이라 같은 시세면 차트 값이 CSV 와 같다. 시세를 그리는 보기의 배수 · 경과 개월 · 고점 · 바닥과, 점이 선 위에 앉을
-자리(그 선의 기준 종가 대비 배수 · 기준일에서 센 개월)는 여기서 낸다.
+**회차 점 · 기간 띠 · 숫자표의 값은 산출물의 표시용 프레임을 옮기기만 한다** — `run_halving_cycle.py` 가 CSV 로 쓰는 바로
+그 프레임이라 같은 시세면 차트 값이 CSV 와 같고, 회차 날짜의 정의(그 달의 말일)는 `split_rule` 하나가 갖는다. 시세를
+그리는 보기의 배수 · 경과 개월 · 고점 · 바닥과, 점이 선 위에 앉을 자리(그 선의 기준 종가 대비 배수 · 기준일에서 센 개월)는
+여기서 낸다.
 
 **plotly 를 가져오지 않는다** — plotly.js 는 CLI 가 받아 넘긴다(개발 의존성이라 패키지가 기대지 않는다).
 """
@@ -32,15 +33,17 @@ from verify_lab.studies.halving_cycle.constants import (
     DISPLAY_AVG_BUY_PRICE,
     DISPLAY_AVG_SELL_PRICE,
     DISPLAY_BUY_CALENDAR_COUNT,
+    DISPLAY_BUY_TRANCHES,
     DISPLAY_CALENDAR_SPLIT,
     DISPLAY_HALVING,
     DISPLAY_SELL_CALENDAR_COUNT,
+    DISPLAY_SELL_TRANCHES,
     DISPLAY_SPLIT_ANCHOR_HALVING,
+    DISPLAY_SPLIT_DEADLINE,
     DISPLAY_SPLIT_FILL_CLOSE,
     DISPLAY_SPLIT_FILL_DATE,
     DISPLAY_SPLIT_SIDE,
     DISPLAY_SPLIT_TRANCHE,
-    DISPLAY_SPLIT_TRANCHES,
     DISPLAY_WORST_VS_COST,
     FIELD_CALENDAR_SPLIT_FILLS,
     FIELD_CALENDAR_SPLIT_POSITIONS,
@@ -61,15 +64,15 @@ TEMPLATE_PATH: Final = Path(__file__).with_name("chart_template.html")
 DATA_MARKER: Final = "__CHART_DATA__"
 PLOTLY_MARKER: Final = "__PLOTLY_JS__"
 
-# 반감기 뒤 경과 개월의 환산 — `설계.md` §4.12 와 같다. 격자의 달력월(반감기일 + N개월)과 이틀 안쪽으로 다르다
+# 반감기 뒤 경과 개월의 환산(`설계.md` §4.12). 격자 날짜와 이틀 안쪽 · 말일 회차와 최대 한 달 가까이 다르다
 DAYS_PER_MONTH: Final = 30.4375
 
 # 사이클 고점을 찾는 창(개월). **반감기 ~ 다음 반감기 전체로 잡지 않는다** — 2020 사이클이 다음 반감기 직전
 # (2024-03-13)을 고점으로 물어, 시장 사이클의 고점(2021-11-08)과 어긋난다(`설계.md` §4.14)
 PEAK_WINDOW_MONTHS: Final = 24
 
-# 차트가 그리는 달력 분할의 폭 — **측정은 폭 전부를 내고 차트는 이 하나를 그린다** (2026-10-01 사용자 답 · 결정 53)
-CHART_SPLIT_NAME: Final = "좁게"
+# 차트가 그리는 달력 분할의 폭 — 측정한 폭 목록에서 이름으로 고른다 (결정 53 · 54)
+CHART_SPLIT_NAME: Final = "월말 분할"
 
 # 바닥 기준 선이 바닥 몇 개월 앞에서 시작하나 (2026-10-01 사용자 답). 매수 기간이 바닥 앞뒤에 걸쳐 있어 앞부분이
 # 있어야 매수가 바닥보다 일렀는지 늦었는지 보인다
@@ -87,6 +90,7 @@ _FILL_COLUMNS: Final = (
     DISPLAY_HALVING,
     DISPLAY_SPLIT_ANCHOR_HALVING,
     DISPLAY_SPLIT_TRANCHE,
+    DISPLAY_SPLIT_DEADLINE,
     DISPLAY_SPLIT_FILL_DATE,
     DISPLAY_SPLIT_FILL_CLOSE,
 )
@@ -94,7 +98,8 @@ _POSITION_COLUMNS: Final = (
     DISPLAY_TICKER,
     DISPLAY_CALENDAR_SPLIT,
     DISPLAY_HALVING,
-    DISPLAY_SPLIT_TRANCHES,
+    DISPLAY_BUY_TRANCHES,
+    DISPLAY_SELL_TRANCHES,
     DISPLAY_AVG_BUY_PRICE,
     DISPLAY_AVG_SELL_PRICE,
     DISPLAY_RETURN,
@@ -385,58 +390,55 @@ def chart_split(splits: Sequence[CalendarSplit], name: str) -> CalendarSplit:
 
 
 def split_info(split: CalendarSplit, *, step_months: int) -> dict[str, Any]:
-    """차트 머리 · 띠에 쓰는 폭의 정보 — 매수(반감기 뒤) · 매도(다음 반감기 뒤)의 첫 · 마지막 회차 개월."""
+    """차트 머리 · 띠에 쓰는 폭의 정보 — 쪽마다 회차 수와 매수(반감기 뒤) · 매도(다음 반감기 뒤)의 첫 · 마지막 회차 개월."""
     buy_first, sell_first = split.first_deadlines(step_months)
 
     return {
         "name": split.name,
-        "tranches": split.tranches,
+        "buy_tranches": split.buy_tranches,
+        "sell_tranches": split.sell_tranches,
         "buy": [buy_first, split.buy_last_deadline],
         "sell": [sell_first, split.sell_last_deadline],
     }
 
 
-def window_bands(
-    halving_days: Sequence[pd.Timestamp], last_day: pd.Timestamp, split: CalendarSplit, *, step_months: int
-) -> list[dict[str, str]]:
-    """전 기간 시간축의 기간 띠 — 반감기마다 매도 띠(앞 반감기 포지션을 판다)와 매수 띠(그 반감기 포지션을 산다).
+def window_bands(fills: pd.DataFrame, split_name: str, last_day: pd.Timestamp) -> list[dict[str, str]]:
+    """전 기간 시간축의 기간 띠 — 그 폭의 포지션마다 매수 띠와 매도 띠, 회차 표의 첫 기한부터 마지막 기한까지.
 
-    **첫 반감기에는 매도 띠가 없다** — 그 앞 반감기가 목록에 없어 팔 포지션이 없다. 띠는 첫 회차부터 마지막 회차까지이고,
-    데이터 끝에서 자르며 데이터 뒤에서 시작하는 띠는 그리지 않는다(아직 오지 않은 기간이다).
+    **날짜를 다시 세지 않고 회차 표의 기한을 옮긴다** — 회차 날짜의 정의(그 달의 말일 · 결정 54)는 `split_rule` 하나가
+    갖는다. 체결 전 회차도 기한이 있어 띠에 들고, 기준 반감기가 없는 매도(다음 반감기가 목록에 없다)는 기한이 없어
+    띠가 없다. 데이터 끝에서 자르며 데이터 뒤에서 시작하는 띠는 그리지 않는다(아직 오지 않은 기간이다).
 
     Args:
-        halving_days: 반감기일 (오름차순). 데이터 끝 뒤의 반감기는 건너뛴다
+        fills: 달력분할회차 (표시용 프레임)
+        split_name: 폭 이름
         last_day: 데이터 끝
-        split: 폭
-        step_months: 회차 간격(개월)
 
     Returns:
-        띠 목록 — 쪽 · 포지션의 반감기 · 시작 · 끝
+        시작일 순의 띠 목록 — 쪽 · 포지션의 반감기 · 시작 · 끝
+
+    Raises:
+        ValueError: 컬럼이 없거나 종목이 여럿인 경우, 그 폭의 행이 없는 경우
     """
-    buy_first, sell_first = split.first_deadlines(step_months)
-    days = [day for day in halving_days if day <= last_day]
+    _require_columns(fills, _FILL_COLUMNS, "달력분할회차")
+    _require_single_ticker(fills, "달력분할회차")
+    rows = fills[fills[DISPLAY_CALENDAR_SPLIT] == split_name]
+    if rows.empty:
+        raise ValueError(f"달력분할회차에 폭 「{split_name}」의 행이 없습니다")
+    dated = rows[rows[DISPLAY_SPLIT_DEADLINE].notna()]
+    cycles = dated[DISPLAY_HALVING].astype(str)
+    sides = dated[DISPLAY_SPLIT_SIDE].astype(str)
+
     bands: list[dict[str, str]] = []
-
-    def add(side: str, cycle: pd.Timestamp, anchor: pd.Timestamp, first: int, last: int) -> None:
-        begin = anchor + pd.DateOffset(months=first)
+    for cycle, side in dict.fromkeys(zip(cycles, sides, strict=True)):
+        deadlines = pd.DatetimeIndex(dated.loc[(cycles == cycle) & (sides == side), DISPLAY_SPLIT_DEADLINE])
+        begin = pd.Timestamp(deadlines.min())
         if begin > last_day:
-            return
-        end = min(anchor + pd.DateOffset(months=last), last_day)
-        bands.append(
-            {
-                "side": side,
-                "cycle": cycle.strftime(DATE_FORMAT),
-                "x0": begin.strftime(DATE_FORMAT),
-                "x1": end.strftime(DATE_FORMAT),
-            }
-        )
+            continue
+        end = min(pd.Timestamp(deadlines.max()), last_day)
+        bands.append({"side": side, "cycle": cycle, "x0": begin.strftime(DATE_FORMAT), "x1": end.strftime(DATE_FORMAT)})
 
-    for position, day in enumerate(days):
-        if position > 0:
-            add(SPLIT_SIDE_SELL, days[position - 1], day, sell_first, split.sell_last_deadline)
-        add(SPLIT_SIDE_BUY, day, day, buy_first, split.buy_last_deadline)
-
-    return bands
+    return sorted(bands, key=lambda band: band["x0"])
 
 
 def _base_close(close: pd.Series, day: pd.Timestamp, name: str) -> float:
@@ -540,7 +542,8 @@ def split_table(fills: pd.DataFrame, positions: pd.DataFrame, split_name: str) -
         rows.append(
             {
                 "halving": cycle,
-                "tranches": _count(row[DISPLAY_SPLIT_TRANCHES]),
+                "buy_tranches": _count(row[DISPLAY_BUY_TRANCHES]),
+                "sell_tranches": _count(row[DISPLAY_SELL_TRANCHES]),
                 "buys": _count(row[DISPLAY_BUY_CALENDAR_COUNT]),
                 "sells": _count(row[DISPLAY_SELL_CALENDAR_COUNT]),
                 "first_buy": first_buy,
@@ -666,7 +669,7 @@ def build_chart_html(datasets: Sequence[Dataset], *, plotly_js: str, created_at:
         "bottoms": bottom_series(close, halving_days, lead_months=BOTTOM_LEAD_MONTHS),
         "summary": summary,
         "time": timeline_series(close, halving_days),
-        "bands": window_bands(halving_days, close.index[-1], split, step_months=CALENDAR_SPLIT_STEP_MONTHS),
+        "bands": window_bands(fills, split.name, close.index[-1]),
         "points": split_points(fills, split.name, close, bottoms),
         "table": split_table(fills, positions, split.name),
     }

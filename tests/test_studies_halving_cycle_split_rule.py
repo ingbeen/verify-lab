@@ -23,6 +23,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_BUY_CALENDAR_COUNT,
     COL_BUY_FIRST_DEADLINE,
     COL_BUY_LAST_DEADLINE,
+    COL_BUY_TRANCHES,
     COL_CALENDAR_SPLIT,
     COL_CYCLE_RETURN_TEMPLATE,
     COL_CYCLE_WORST_TEMPLATE,
@@ -35,6 +36,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SELL_CALENDAR_COUNT,
     COL_SELL_FIRST_DEADLINE,
     COL_SELL_LAST_DEADLINE,
+    COL_SELL_TRANCHES,
     COL_SPLIT_ANCHOR_HALVING,
     COL_SPLIT_DEADLINE,
     COL_SPLIT_FILL_CLOSE,
@@ -42,7 +44,6 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SPLIT_SIDE,
     COL_SPLIT_TOTAL,
     COL_SPLIT_TRANCHE,
-    COL_SPLIT_TRANCHES,
     COL_SPLIT_TRIGGER,
     COL_WORST_VS_COST,
     REASON_NO_NEXT_HALVING,
@@ -376,10 +377,37 @@ class TestTrancheDeadlines:
         Then: 3 · 5 · 7개월 → 04-30 · 06-30 · 08-31
         """
         # When
-        deadlines = tranche_deadlines(pd.Timestamp("2020-01-31"), 7, tranches=TRANCHES, step_months=STEP)
+        deadlines = tranche_deadlines(
+            pd.Timestamp("2020-01-31"), 7, tranches=TRANCHES, step_months=STEP, month_end=False
+        )
 
         # Then
         assert deadlines == [pd.Timestamp("2020-04-30"), pd.Timestamp("2020-06-30"), pd.Timestamp("2020-08-31")]
+
+    def test_월말이면_기준일_더하기_N개월이_속한_달의_말일이다(self) -> None:
+        """
+        목적: 달력 매달 분할의 체결일 정의(결정 54) — 같은 날짜가 아니라 그 달의 말일이다. 연말 · 윤년 2월 · 30일 달을 밟고,
+            기준일 31일(달력 산술이 이미 말일로 당긴 날)도 그 달 말일에 머물러 한 달 더 밀리지 않는다.
+
+        Given: (가) 기준일 2019-10-10 · 마지막 6 · 3회 · 2개월 간격 (2 · 4 · 6개월)
+            (나) 기준일 2020-01-31 · 마지막 3 · 3회 · 1개월 간격 (1 · 2 · 3개월)
+        When: 월말 · 같은 날짜로 각각 기한을 낸다
+        Then: (가) 월말은 2019-12-31 · 2020-02-29 · 2020-04-30, 같은 날짜는 2019-12-10 · 2020-02-10 · 2020-04-10
+            (나) 월말은 2020-02-29 · 2020-03-31 · 2020-04-30
+        """
+        # Given
+        anchor = pd.Timestamp("2019-10-10")
+        end_of_month_anchor = pd.Timestamp("2020-01-31")
+
+        # When
+        month_end = tranche_deadlines(anchor, 6, tranches=TRANCHES, step_months=STEP, month_end=True)
+        same_day = tranche_deadlines(anchor, 6, tranches=TRANCHES, step_months=STEP, month_end=False)
+        from_31st = tranche_deadlines(end_of_month_anchor, 3, tranches=TRANCHES, step_months=1, month_end=True)
+
+        # Then
+        assert month_end == [pd.Timestamp("2019-12-31"), pd.Timestamp("2020-02-29"), pd.Timestamp("2020-04-30")]
+        assert same_day == [pd.Timestamp("2019-12-10"), pd.Timestamp("2020-02-10"), pd.Timestamp("2020-04-10")]
+        assert from_31st == [pd.Timestamp("2020-02-29"), pd.Timestamp("2020-03-31"), pd.Timestamp("2020-04-30")]
 
     def test_첫_기한이_기준일_앞이면_멈춘다(self) -> None:
         """
@@ -391,7 +419,7 @@ class TestTrancheDeadlines:
         """
         # When / Then
         with pytest.raises(ValueError, match="기한"):
-            tranche_deadlines(pd.Timestamp("2020-01-31"), 3, tranches=TRANCHES, step_months=STEP)
+            tranche_deadlines(pd.Timestamp("2020-01-31"), 3, tranches=TRANCHES, step_months=STEP, month_end=False)
 
 
 class TestLegFills:
@@ -415,6 +443,7 @@ class TestLegFills:
             new_highs=pd.Series(False, index=trading_days),
             tranches=TRANCHES,
             step_months=STEP,
+            month_end=False,
         )
 
     def test_온체인이_먼저면_판정일_다음날_달력이_먼저면_기한일(self) -> None:
@@ -528,6 +557,7 @@ class TestLegFills:
             new_highs=pd.Series(False, index=self.DAYS),
             tranches=TRANCHES,
             step_months=STEP,
+            month_end=False,
         )
 
         # Then
@@ -535,6 +565,32 @@ class TestLegFills:
             (pd.Timestamp("2020-07-15"), SPLIT_TRIGGER_CALENDAR),
             (pd.Timestamp("2020-09-15"), SPLIT_TRIGGER_CALENDAR),
             (pd.Timestamp("2020-11-15"), SPLIT_TRIGGER_CALENDAR),
+        ]
+
+    def test_월말이면_달력만_회차가_그_달의_말일_종가에_체결한다(self) -> None:
+        """
+        목적: 월말 정의가 회차 기한을 거쳐 체결일까지 간다 — 기한과 체결일이 같은 말일이다.
+
+        Given: 달력만 · 마지막 10 · 기준일 2020-01-15 (6 · 8 · 10개월) · 월말
+        When: 회차를 낸다
+        Then: 07-31 · 09-30 · 11-30 전부 달력이고 기한도 그날이다
+        """
+        # When
+        fills = leg_fills(
+            self.DAYS,
+            _calendar_leg(SPLIT_SIDE_BUY, 10),
+            self.ANCHOR,
+            trigger_values=None,
+            new_highs=pd.Series(False, index=self.DAYS),
+            tranches=TRANCHES,
+            step_months=STEP,
+            month_end=True,
+        )
+
+        # Then
+        expected = [pd.Timestamp("2020-07-31"), pd.Timestamp("2020-09-30"), pd.Timestamp("2020-11-30")]
+        assert [(fill.deadline, fill.fill_day, fill.trigger) for fill in fills] == [
+            (day, day, SPLIT_TRIGGER_CALENDAR) for day in expected
         ]
 
     def test_빈_값은_문턱에_닿지_않는다(self) -> None:
@@ -611,6 +667,7 @@ class TestLegFills:
                 new_highs=new_high_flags(close.loc[trading_days]),
                 tranches=2,
                 step_months=1,
+                month_end=False,
             )
 
         # When
@@ -648,6 +705,7 @@ class TestLegFills:
                 new_highs=pd.Series(False, index=days),
                 tranches=TRANCHES,
                 step_months=STEP,
+                month_end=False,
             )
 
     @pytest.mark.parametrize(
@@ -678,6 +736,7 @@ class TestLegFills:
                 new_highs=pd.Series(False, index=self.DAYS),
                 tranches=TRANCHES,
                 step_months=STEP,
+                month_end=False,
             )
 
 
@@ -1034,27 +1093,35 @@ class TestSplitGrid:
 
 
 class TestCalendarSplitGrid:
-    """달력 매달 분할 — 폭마다 반감기 뒤 매달 사고 다음 반감기 뒤 매달 판다 (결정 51 · 52)
+    """달력 매달 분할 — 폭마다 반감기 뒤 매달 사고 다음 반감기 뒤 매달 판다. 회차는 그 달의 말일이다 (결정 51 · 52 · 54)
 
-    **픽스처 폭은 실제(6 · 12 · 24회 · 1개월 간격)와 다르다** — 2 · 3회 · 2개월 간격이다. 함수가 상수를 안에서
-    읽으면 회차 날짜와 행 수가 어긋나 걸린다.
+    **픽스처 폭은 실제(매수 6 · 매도 10회 · 1개월 간격)와 다르다** — 쪽마다 2 · 3회 · 2개월 간격이고, 한 폭 안에서도
+    매수와 매도의 회차 수가 다르다. 함수가 상수를 안에서 읽거나 한쪽 회차 수를 다른 쪽에 쓰면 회차 날짜와 행 수가
+    어긋나 걸린다. 반감기일은 20일이라 같은 날짜와 말일이 언제나 갈린다.
     """
 
     HALVINGS = (_halving("2019-01-20"), _halving("2020-03-20"), _halving("2021-05-20"))
     DAYS = _days("2018-01-01", "2021-12-31")
-    # 「가」 — 반감기 뒤 5 · 7개월에 사고 다음 반감기 뒤 2 · 4개월에 판다.
-    # 「나」 — 반감기 뒤 5 · 7 · 9개월에 사고 다음 반감기 뒤 1 · 3 · 5개월에 판다
+    # 「가」 — 반감기 뒤 5 · 7개월에 사고(2회) 다음 반감기 뒤 2 · 4 · 6개월에 판다(3회).
+    # 「나」 — 반감기 뒤 5 · 7 · 9개월에 사고(3회) 다음 반감기 뒤 3 · 5개월에 판다(2회)
     SPLITS = (
-        CalendarSplit(name="가", tranches=2, buy_last_deadline=7, sell_last_deadline=4),
-        CalendarSplit(name="나", tranches=3, buy_last_deadline=9, sell_last_deadline=5),
+        CalendarSplit(name="가", buy_tranches=2, buy_last_deadline=7, sell_tranches=3, sell_last_deadline=6),
+        CalendarSplit(name="나", buy_tranches=3, buy_last_deadline=9, sell_tranches=2, sell_last_deadline=5),
     )
     STEP = 2
-    # 첫 반감기 「가」 포지션 — 매수 2019-06-20(80) · 2019-08-20(120), 매도 2020-05-20(150) · 2020-07-20(210).
+    # 첫 반감기 「가」 포지션 — 매수 2019-06-30(80) · 2019-08-31(120), 매도 2020-05-31(150) · 2020-07-31(210) ·
+    # 2020-09-30(240). 같은 날짜(06-20 · 08-20 · …)는 기본 가격 100 이라 말일을 놓치면 값이 달라진다.
     # 저가: 첫 매수일 50(그날 산 회차는 그날 장중을 겪지 않는다) · 07-10 60 · 09-01 84 · 마지막 매도 다음날 10
     FRAME = _frame(
         DAYS,
-        closes={"2019-06-20": 80.0, "2019-08-20": 120.0, "2020-05-20": 150.0, "2020-07-20": 210.0},
-        lows={"2019-06-20": 50.0, "2019-07-10": 60.0, "2019-09-01": 84.0, "2020-07-21": 10.0},
+        closes={
+            "2019-06-30": 80.0,
+            "2019-08-31": 120.0,
+            "2020-05-31": 150.0,
+            "2020-07-31": 210.0,
+            "2020-09-30": 240.0,
+        },
+        lows={"2019-06-30": 50.0, "2019-07-10": 60.0, "2019-09-01": 84.0, "2020-10-01": 10.0},
     )
 
     def _grid(
@@ -1078,30 +1145,35 @@ class TestCalendarSplitGrid:
 
         return rows.iloc[0]
 
-    def test_회차_포지션_행_수가_폭_반감기_회차와_같다(self) -> None:
+    def test_회차_포지션_행_수가_폭_반감기_쪽마다_회차와_같다(self) -> None:
         """
         목적: 표본 보존 — 체결 전 회차 · 다음 반감기가 없는 매도 회차 · 끝나지 않은 포지션도 행이 있다.
+            매수 · 매도의 회차 수가 달라도 쪽마다 제 회차 수만큼 행이 있다.
 
-        Given: 반감기 셋 · 폭 둘(2회 · 3회)
+        Given: 반감기 셋 · 폭 둘(「가」 매수 2 · 매도 3, 「나」 매수 3 · 매도 2)
         When: 격자를 낸다
-        Then: 회차 = 반감기 × Σ(매수 + 매도 회차) · 포지션 = 폭 × 반감기
+        Then: 회차 = 반감기 × Σ(매수 회차 + 매도 회차) = 3 × (5 + 5) · 포지션 = 폭 × 반감기 · 쪽마다 행 수가 제 회차 수다
         """
         # When
         grid = self._grid()
 
         # Then
         halvings = len(self.HALVINGS)
-        assert len(grid.fills) == halvings * sum(2 * split.tranches for split in self.SPLITS)
+        assert len(grid.fills) == halvings * sum(split.buy_tranches + split.sell_tranches for split in self.SPLITS)
         assert len(grid.positions) == len(self.SPLITS) * halvings
+        for split in self.SPLITS:
+            rows = grid.fills[grid.fills[COL_CALENDAR_SPLIT] == split.name]
+            assert int((rows[COL_SPLIT_SIDE] == SPLIT_SIDE_BUY).sum()) == halvings * split.buy_tranches
+            assert int((rows[COL_SPLIT_SIDE] == SPLIT_SIDE_SELL).sum()) == halvings * split.sell_tranches
 
-    def test_회차는_반감기일_더하기_N개월_종가에_사고_매도는_다음_반감기에서_센다(self) -> None:
+    def test_회차는_반감기일_더하기_N개월이_속한_달의_말일_종가이고_매도는_다음_반감기에서_센다(self) -> None:
         """
-        목적: 회차 날짜는 달력 산술 하나로 정해진다 — 매수는 그 반감기, 매도는 다음 반감기가 기준이다.
+        목적: 회차 날짜는 달력 산술 하나로 정해진다 — 그 달의 말일이고(결정 54), 매수는 그 반감기 · 매도는 다음 반감기가 기준이다.
 
         Given: 「나」 · 첫 반감기(2019-01-20) — 다음 반감기 2020-03-20
         When: 회차 표를 본다
-        Then: 매수 2019-06-20 · 08-20 · 10-20(5 · 7 · 9개월) · 매도 2020-04-20 · 06-20 · 08-20(1 · 3 · 5개월),
-            종가는 그날 종가이고 기준 반감기는 매수가 첫 반감기 · 매도가 둘째 반감기다
+        Then: 매수 2019-06-30 · 08-31 · 10-31(5 · 7 · 9개월) · 매도 2020-06-30 · 08-31(3 · 5개월). 기한과 체결일이 같고,
+            종가는 그날 종가이고 기준 반감기는 매수가 첫 반감기 · 매도가 둘째 반감기다. 체결한 회차는 전부 말일이다
         """
         # When
         grid = self._grid()
@@ -1110,52 +1182,57 @@ class TestCalendarSplitGrid:
         rows = grid.fills[(grid.fills[COL_CALENDAR_SPLIT] == "나") & (grid.fills[COL_HALVING] == self.HALVINGS[0].label)]
         close = self.FRAME.set_index(COL_DATE)[COL_CLOSE]
         expected = {
-            SPLIT_SIDE_BUY: (["2019-06-20", "2019-08-20", "2019-10-20"], [5, 7, 9], self.HALVINGS[0].label),
-            SPLIT_SIDE_SELL: (["2020-04-20", "2020-06-20", "2020-08-20"], [1, 3, 5], self.HALVINGS[1].label),
+            SPLIT_SIDE_BUY: (["2019-06-30", "2019-08-31", "2019-10-31"], [5, 7, 9], self.HALVINGS[0].label),
+            SPLIT_SIDE_SELL: (["2020-06-30", "2020-08-31"], [3, 5], self.HALVINGS[1].label),
         }
         for side, (days, months, anchor) in expected.items():
             part = rows[rows[COL_SPLIT_SIDE] == side]
-            assert part[COL_SPLIT_TRANCHE].tolist() == [1, 2, 3]
+            assert part[COL_SPLIT_TRANCHE].tolist() == list(range(1, len(days) + 1))
             assert part[COL_SPLIT_FILL_DATE].tolist() == [pd.Timestamp(day) for day in days]
             assert part[COL_SPLIT_DEADLINE].tolist() == [pd.Timestamp(day) for day in days]
             assert part[COL_MONTHS_SINCE_HALVING].tolist() == months
             assert part[COL_SPLIT_FILL_CLOSE].tolist() == [close[pd.Timestamp(day)] for day in days]
             assert (part[COL_SPLIT_ANCHOR_HALVING] == anchor).all()
             assert (part[COL_EXCLUDED_REASON] == REASON_NONE).all()
+        filled = pd.DatetimeIndex(grid.fills[COL_SPLIT_FILL_DATE].dropna())
+        assert len(filled) > 0
+        assert bool(filled.is_month_end.all())
 
     def test_포지션_성적은_손으로_센_값과_같다(self) -> None:
         """
         목적: 산식 고정 — 같은 금액으로 사고(조화평균) 같은 양씩 팔며(산술평균), 최악은 그날 «전»에 산 회차의 단가로 센다.
+            매도 회차 수가 매수와 달라도 평균 매도가는 매도 회차만으로 낸다.
 
-        Given: 「가」 · 첫 반감기 — 매수 80 · 120, 매도 150 · 210. 저가 07-10 60(첫 회차만 보유, 단가 80) ·
+        Given: 「가」 · 첫 반감기 — 매수 80 · 120(2회), 매도 150 · 210 · 240(3회). 저가 07-10 60(첫 회차만 보유, 단가 80) ·
             09-01 84(두 회차, 단가 96) · 첫 매수일 50 · 마지막 매도 다음날 10
         When: 포지션 표를 본다
-        Then: 평균 매수가 2 ÷ (1/80 + 1/120) = 96 · 평균 매도가 180 · 수익률 180 ÷ 96 − 1 = +87.5% ·
-            최악 60 ÷ 80 − 1 = −25% (첫 매수일 · 마지막 매도 뒤의 저가는 세지 않는다) · 보유 396일 · 매수 2회 · 매도 2회
+        Then: 평균 매수가 2 ÷ (1/80 + 1/120) = 96 · 평균 매도가 200 · 수익률 200 ÷ 96 − 1 · 최악 60 ÷ 80 − 1 = −25%
+            (첫 매수일 · 마지막 매도 뒤의 저가는 세지 않는다) · 보유 2019-06-30 ~ 2020-09-30 = 458일 · 매수 2회 · 매도 3회
         """
         # When
         position = self._position(self._grid(), "가", self.HALVINGS[0])
 
         # Then
         assert position[COL_AVG_BUY_PRICE] == pytest.approx(96.0, abs=1e-9)
-        assert position[COL_AVG_SELL_PRICE] == pytest.approx(180.0, abs=1e-9)
-        assert position[COL_POSITION_RETURN] == pytest.approx(0.875, abs=1e-12)
+        assert position[COL_AVG_SELL_PRICE] == pytest.approx(200.0, abs=1e-9)
+        assert position[COL_POSITION_RETURN] == pytest.approx(200.0 / 96.0 - 1.0, abs=1e-12)
         assert position[COL_WORST_VS_COST] == pytest.approx(-0.25, abs=1e-12)
         assert (position[COL_FIRST_BUY_DATE], position[COL_LAST_SELL_DATE], position[COL_HOLD_DAYS]) == (
-            pd.Timestamp("2019-06-20"),
-            pd.Timestamp("2020-07-20"),
-            396,
+            pd.Timestamp("2019-06-30"),
+            pd.Timestamp("2020-09-30"),
+            458,
         )
-        assert (position[COL_BUY_CALENDAR_COUNT], position[COL_SELL_CALENDAR_COUNT]) == (2, 2)
+        assert (position[COL_BUY_CALENDAR_COUNT], position[COL_SELL_CALENDAR_COUNT]) == (2, 3)
         assert position[COL_EXCLUDED_REASON] == REASON_NONE
 
-    def test_식별_칸이_폭과_회차_수와_첫_마지막_기한을_싣는다(self) -> None:
+    def test_식별_칸이_폭과_쪽마다_회차_수와_첫_마지막_기한을_싣는다(self) -> None:
         """
-        목적: 표만 보고 어느 폭인지 · 언제부터 언제까지 사고팔았는지 안다 — 첫 기한은 마지막 기한과 간격에서 나온다.
+        목적: 표만 보고 어느 폭인지 · 언제부터 언제까지 몇 번 사고팔았는지 안다 — 첫 기한은 그쪽의 마지막 기한 · 회차 수 ·
+            간격에서 나온다.
 
-        Given: 「나」(3회 · 매수 마지막 9 · 매도 마지막 5 · 간격 2개월)
+        Given: 「나」(매수 3회 · 마지막 9, 매도 2회 · 마지막 5, 간격 2개월)
         When: 포지션 표와 회차 표를 본다
-        Then: 회차 수 3 · 매수 5 ~ 9 · 매도 1 ~ 5 · 칸 순서가 계약대로다
+        Then: 매수 3회 · 5 ~ 9 · 매도 2회 · 3 ~ 5 · 칸 순서가 계약대로다
         """
         # When
         grid = self._grid()
@@ -1163,12 +1240,13 @@ class TestCalendarSplitGrid:
         # Then
         position = self._position(grid, "나", self.HALVINGS[0])
         assert (
-            position[COL_SPLIT_TRANCHES],
+            position[COL_BUY_TRANCHES],
             position[COL_BUY_FIRST_DEADLINE],
             position[COL_BUY_LAST_DEADLINE],
+            position[COL_SELL_TRANCHES],
             position[COL_SELL_FIRST_DEADLINE],
             position[COL_SELL_LAST_DEADLINE],
-        ) == (3, 5, 9, 1, 5)
+        ) == (3, 5, 9, 2, 3, 5)
         assert list(grid.fills.columns) == [
             COL_CALENDAR_SPLIT,
             COL_SPLIT_SIDE,
@@ -1183,9 +1261,10 @@ class TestCalendarSplitGrid:
         ]
         assert list(grid.positions.columns) == [
             COL_CALENDAR_SPLIT,
-            COL_SPLIT_TRANCHES,
+            COL_BUY_TRANCHES,
             COL_BUY_FIRST_DEADLINE,
             COL_BUY_LAST_DEADLINE,
+            COL_SELL_TRANCHES,
             COL_SELL_FIRST_DEADLINE,
             COL_SELL_LAST_DEADLINE,
             COL_HALVING,
@@ -1205,11 +1284,11 @@ class TestCalendarSplitGrid:
         """
         목적: 끝나지 않은 포지션을 0 으로 채우지 않고 사유를 단다 — 매수가 남음 → 다음 반감기 없음 순이다.
 
-        Given: 마지막 반감기(2021-05-20) · 데이터 끝 2021-12-31 — 「가」는 두 회차를 다 샀고(10-20 · 12-20),
-            「나」의 셋째 회차(2022-02-20)는 데이터 뒤다
+        Given: 마지막 반감기(2021-05-20) · 데이터 끝 2021-12-31 — 「가」는 두 회차를 다 샀고(10-31 · 12-31),
+            「나」의 셋째 회차(2022-02-28)는 데이터 뒤다
         When: 마지막 반감기의 행을 본다
-        Then: 매도 회차는 전부 「다음 반감기 없음」 · 「가」 포지션도 그 사유 · 「나」 포지션은 「매수 회차가 남음」이고
-            셋째 매수 회차는 「체결 전」이다. 수익률은 비었다
+        Then: 매도 회차는 전부 「다음 반감기 없음」이고 쪽마다 제 회차 수만큼이다 · 「가」 포지션도 그 사유 ·
+            「나」 포지션은 「매수 회차가 남음」이고 셋째 매수 회차는 「체결 전」이다. 수익률은 비었다
         """
         # When
         grid = self._grid()
@@ -1220,8 +1299,10 @@ class TestCalendarSplitGrid:
         sells = fills[fills[COL_SPLIT_SIDE] == SPLIT_SIDE_SELL]
         assert (sells[COL_EXCLUDED_REASON] == REASON_NO_NEXT_HALVING).all()
         assert sells[COL_SPLIT_FILL_DATE].isna().all()
+        assert sells.groupby(COL_CALENDAR_SPLIT).size().to_dict() == {"가": 3, "나": 2}
         pending = fills[(fills[COL_CALENDAR_SPLIT] == "나") & (fills[COL_SPLIT_SIDE] == SPLIT_SIDE_BUY)]
         assert pending[COL_EXCLUDED_REASON].tolist() == [REASON_NONE, REASON_NONE, REASON_SPLIT_PENDING]
+        assert pending[COL_SPLIT_DEADLINE].tolist()[-1] == pd.Timestamp("2022-02-28")
         assert self._position(grid, "가", last)[COL_EXCLUDED_REASON] == REASON_NO_NEXT_HALVING
         assert self._position(grid, "나", last)[COL_EXCLUDED_REASON] == REASON_POSITION_BUYING
         assert grid.positions[grid.positions[COL_HALVING] == last.label][COL_POSITION_RETURN].isna().all()
@@ -1230,7 +1311,7 @@ class TestCalendarSplitGrid:
         """
         목적: 미래 참조 감시 — 회차와 성적은 그날까지의 시세로만 정해진다.
 
-        Given: 같은 시세를 2021-08-31 에서 자른 입력 — 둘째 반감기 「가」 포지션의 둘째 매도(2021-09-20)가 데이터 뒤다
+        Given: 같은 시세를 2021-08-31 에서 자른 입력 — 둘째 반감기 「가」 포지션의 둘째 매도(2021-09-30)가 데이터 뒤다
         When: 두 입력으로 격자를 낸다
         Then: 자른 입력에서 체결한 회차의 날짜 · 종가와 끝난 포지션의 성적이 전체 입력과 같고,
             매도가 남은 포지션은 「매도 회차가 남음」이다
@@ -1279,23 +1360,38 @@ class TestCalendarSplitGrid:
             ((), "폭"),
             (
                 (
-                    CalendarSplit(name="가", tranches=2, buy_last_deadline=7, sell_last_deadline=4),
-                    CalendarSplit(name="가", tranches=3, buy_last_deadline=9, sell_last_deadline=5),
+                    CalendarSplit(name="가", buy_tranches=2, buy_last_deadline=7, sell_tranches=3, sell_last_deadline=6),
+                    CalendarSplit(name="가", buy_tranches=3, buy_last_deadline=9, sell_tranches=2, sell_last_deadline=5),
                 ),
                 "이름",
             ),
-            ((CalendarSplit(name="다", tranches=5, buy_last_deadline=3, sell_last_deadline=9),), "기준 반감기 앞"),
-            ((CalendarSplit(name="라", tranches=3, buy_last_deadline=9, sell_last_deadline=3),), "기준 반감기 앞"),
-            ((CalendarSplit(name="마", tranches=0, buy_last_deadline=7, sell_last_deadline=4),), "회차 수"),
+            (
+                (CalendarSplit(name="다", buy_tranches=5, buy_last_deadline=3, sell_tranches=2, sell_last_deadline=5),),
+                "기준 반감기 앞",
+            ),
+            (
+                (CalendarSplit(name="라", buy_tranches=3, buy_last_deadline=9, sell_tranches=3, sell_last_deadline=3),),
+                "기준 반감기 앞",
+            ),
+            (
+                (CalendarSplit(name="마", buy_tranches=0, buy_last_deadline=7, sell_tranches=3, sell_last_deadline=6),),
+                "회차 수",
+            ),
+            (
+                (CalendarSplit(name="바", buy_tranches=2, buy_last_deadline=7, sell_tranches=0, sell_last_deadline=6),),
+                "회차 수",
+            ),
         ],
     )
-    def test_폭이_없거나_이름이_겹치거나_첫_회차가_반감기_앞이거나_회차가_없으면_멈춘다(self, splits: tuple[CalendarSplit, ...], message: str) -> None:
+    def test_폭이_없거나_이름이_겹치거나_첫_회차가_반감기_앞이거나_한쪽_회차가_없으면_멈춘다(
+        self, splits: tuple[CalendarSplit, ...], message: str
+    ) -> None:
         """
         목적: 폭 목록의 입력 검사 — 이름은 식별 칸이라 겹치면 두 폭의 행이 섞인다. 첫 회차가 기준 반감기 앞이면
-            반감기 «전»에 사거나 다음 반감기 «전»에 팔게 되고, 회차가 0 이면 사지도 팔지도 않는 포지션이 된다.
+            반감기 «전»에 사거나 다음 반감기 «전»에 팔게 되고, 한쪽 회차가 0 이면 사지 않거나 팔지 않는 포지션이 된다.
 
         Given: 빈 목록 · 이름이 겹치는 둘 · 첫 매수 회차가 반감기 앞인 폭(5회 · 마지막 3개월 · 간격 2개월) ·
-            첫 매도 회차가 다음 반감기 앞인 폭(3회 · 마지막 3개월 · 간격 2개월) · 회차 0 인 폭
+            첫 매도 회차가 다음 반감기 앞인 폭(3회 · 마지막 3개월 · 간격 2개월) · 매수 회차 0 · 매도 회차 0 인 폭
         When: 격자를 낸다
         Then: ValueError
         """

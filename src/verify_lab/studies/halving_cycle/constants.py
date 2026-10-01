@@ -18,7 +18,7 @@
 **3단계 혼합 분할(달력 + MVRV)은 측정 표로만 낸다** — 격자 전부를 내고 고르지 않는다(결정 ㊹ ~ ㊼). 달력 쪽 값에는
 결과를 본 뒤 정한 것이 섞여 있다 — 그 절의 주석이 어느 값인지 말한다.
 
-**3단계 달력 매달 분할도 측정 표로만 낸다** — 폭 전부를 내고 고르지 않는다(결정 51 · 52). 폭도 결과를 본 뒤 정한 값이다.
+**3단계 달력 매달 분할도 측정 표로만 낸다**(결정 51 · 52 · 54) — 폭은 사용자가 정한 하나이고, 결과를 본 뒤 정한 값이다.
 """
 
 from dataclasses import dataclass
@@ -363,7 +363,7 @@ SPLIT_RANK_MIN_DAYS: Final = MVRV_Z_MIN_DAYS
 
 
 # ============================================================
-# 3단계 — 달력 매달 분할 (결정 51 · 52)
+# 3단계 — 달력 매달 분할 (결정 51 · 52 · 54)
 # ============================================================
 
 
@@ -373,14 +373,16 @@ class CalendarSplit:
 
     Attributes:
         name: 폭의 이름. **산출물의 식별 칸이라 겹치면 안 된다**
-        tranches: 회차 수 — 매수 · 매도가 같다
+        buy_tranches: 매수 회차 수
         buy_last_deadline: 마지막 매수 회차 (반감기 뒤 개월)
+        sell_tranches: 매도 회차 수
         sell_last_deadline: 마지막 매도 회차 (다음 반감기 뒤 개월)
     """
 
     name: str
-    tranches: int
+    buy_tranches: int
     buy_last_deadline: int
+    sell_tranches: int
     sell_last_deadline: int
 
     def first_deadlines(self, step_months: int) -> tuple[int, int]:
@@ -394,22 +396,22 @@ class CalendarSplit:
         Returns:
             (첫 매수 회차 — 반감기 뒤 개월, 첫 매도 회차 — 다음 반감기 뒤 개월)
         """
-        span = step_months * (self.tranches - 1)
-
-        return self.buy_last_deadline - span, self.sell_last_deadline - span
+        return (
+            self.buy_last_deadline - step_months * (self.buy_tranches - 1),
+            self.sell_last_deadline - step_months * (self.sell_tranches - 1),
+        )
 
 
 # 회차 간격(개월) — 매달 한 번이다(결정 51). 혼합 분할의 기한 간격과 다른 값이라 이름을 가른다
 CALENDAR_SPLIT_STEP_MONTHS: Final = 1
 
-# **측정은 폭을 전부 내고, 판단용 차트는 그중 하나를 그린다**(결정 52).
+# 측정하는 폭 — **사용자가 정한 하나다**(결정 54). 차트가 그리는 후보이고 사고파는 기간(②)의 확정은 아니다.
 #
-# [중요] **결과를 본 뒤 정한 값이다** — 세 폭 모두 가운데를 과거 바닥(반감기 뒤 25.5 ~ 30.4개월)과 고점(다음 반감기
-# 뒤 17.2 ~ 17.9개월)에 두었다. 좁을수록 과거에 더 맞춰져 있고, 넓은 폭은 시점이 옮겨 가는 사이클에 대한 보험이다
+# [중요] **결과를 본 뒤 정한 값이다** — 매수 기간의 가운데는 과거 바닥(반감기 뒤 25.5 ~ 30.4개월)에 두었고, 매도
+# 기간은 최근 두 사이클의 쌍봉(고점의 85% 에 마지막 고점보다 260 · 294일 먼저 닿았다)을 덮게 했다. 쌍봉이 없던
+# 처음 두 사이클처럼 한 번에 치솟으면 대부분의 매도 회차가 고점보다 훨씬 아래다
 CALENDAR_SPLITS: Final = (
-    CalendarSplit(name="좁게", tranches=6, buy_last_deadline=32, sell_last_deadline=20),
-    CalendarSplit(name="보통", tranches=12, buy_last_deadline=35, sell_last_deadline=23),
-    CalendarSplit(name="넓게", tranches=24, buy_last_deadline=41, sell_last_deadline=29),
+    CalendarSplit(name="월말 분할", buy_tranches=6, buy_last_deadline=32, sell_tranches=10, sell_last_deadline=18),
 )
 
 
@@ -607,7 +609,8 @@ COL_CYCLE_WORST_TEMPLATE: Final = "worst_vs_cost_{halving}"
 
 # 3단계 달력 매달 분할 — 회차 · 포지션 표의 식별 칸. 나머지 칸은 혼합 분할과 뜻이 같아 같은 토큰을 쓴다
 COL_CALENDAR_SPLIT: Final = "calendar_split"
-COL_SPLIT_TRANCHES: Final = "split_tranches"
+COL_BUY_TRANCHES: Final = "buy_tranches"
+COL_SELL_TRANCHES: Final = "sell_tranches"
 COL_BUY_FIRST_DEADLINE: Final = "buy_first_deadline"
 COL_SELL_FIRST_DEADLINE: Final = "sell_first_deadline"
 
@@ -759,7 +762,8 @@ CYCLE_WORST_LABEL_TEMPLATE: Final = "{halving} " + DISPLAY_WORST_VS_COST
 
 # 3단계 달력 매달 분할 — 식별 칸. 나머지 머리는 혼합 분할의 것을 그대로 쓴다 (같은 뜻에 이름이 두 벌이 되지 않게)
 DISPLAY_CALENDAR_SPLIT: Final = "분할 폭"
-DISPLAY_SPLIT_TRANCHES: Final = "회차 수"
+DISPLAY_BUY_TRANCHES: Final = "매수 회차 수"
+DISPLAY_SELL_TRANCHES: Final = "매도 회차 수"
 DISPLAY_BUY_FIRST_DEADLINE: Final = "매수 첫 기한(개월)"
 DISPLAY_SELL_FIRST_DEADLINE: Final = "매도 첫 기한(개월)"
 
@@ -888,7 +892,8 @@ COLUMN_LABELS: Final = {
     COL_SPLIT_TOTAL: DISPLAY_TOTAL,
     # 3단계 달력 매달 분할 — 식별 칸 (나머지 칸은 위의 혼합 분할 이름을 쓴다)
     COL_CALENDAR_SPLIT: DISPLAY_CALENDAR_SPLIT,
-    COL_SPLIT_TRANCHES: DISPLAY_SPLIT_TRANCHES,
+    COL_BUY_TRANCHES: DISPLAY_BUY_TRANCHES,
+    COL_SELL_TRANCHES: DISPLAY_SELL_TRANCHES,
     COL_BUY_FIRST_DEADLINE: DISPLAY_BUY_FIRST_DEADLINE,
     COL_SELL_FIRST_DEADLINE: DISPLAY_SELL_FIRST_DEADLINE,
 }

@@ -107,8 +107,10 @@ code { font-size: 12px; }
     <h2>먼저 읽을 것</h2>
     <ul class="notes">
       <li><b>성적은 과거 재구성이지 예측이 아닙니다.</b> 반감기 사이클이 3 ~ 4개뿐이라 어떤 기간도 통계적 증명이 아닙니다.</li>
-      <li><b>이 폭은 과거를 보고 정했습니다.</b> 매수 · 매도 기간의 가운데를 과거 바닥 · 고점에 두었습니다 — 과거에 맞춰져 있고,
-        다음 사이클에 시점이 옮겨 가면 빗나갑니다. 다른 폭의 성적은 산출물 <code>달력분할포지션.csv</code> 에 함께 있습니다.</li>
+      <li><b>이 기간은 과거를 보고 정했습니다.</b> 매수 기간의 가운데를 과거 바닥에 두고, 매도 기간은 최근 두 사이클의 쌍봉(고점에
+        가까운 가격이 몇 달 간격으로 두 번 온 구간)을 덮게 했습니다. 처음 두 사이클처럼 한 번에 치솟으면 매도 회차 대부분이 고점보다
+        훨씬 아래입니다. 다른 기간과의 비교는 설계 문서(결정 54)와 결과 문서에 있습니다.</li>
+      <li><b>회차는 그 달의 말일 종가입니다</b> — 반감기 뒤 N개월이 속한 달의 마지막 날에 사고팝니다.</li>
       <li><b>맨몸 성적입니다</b> — 손절 · 수수료 · 세금이 없고, 하드포크로 받은 코인(BCH · BTG)의 몫도 없습니다.</li>
       <li><b>데이터</b>: <span id="sources"></span> · 만든 시각 <span id="created"></span>. 다시 만드는 명령은 <code>docs/COMMANDS.md</code> 「반감기_사이클」에 있습니다 —
         시세를 다시 받고 <code>run_halving_cycle.py</code> 를 돌리지 않았다면 이 차트(새 시세)와 커밋된 CSV(옛 시세)가 어긋납니다.</li>
@@ -127,7 +129,8 @@ code { font-size: 12px; }
         한 사이클만 띠에서 벗어나면 그 사이클에서는 이 달력이 빗나간 것입니다.</p></div>
       <div><h3>주의</h3>
         <ul><li>2024 사이클은 진행 중입니다 — 끝나지 않은 선을 앞 사이클과 같은 무게로 읽지 않습니다.</li>
-        <li>가로축 개월은 날 수를 한 달 평균 길이로 나눈 값이라, 달력월로 정한 회차 날짜와 하루 이틀 다릅니다.</li></ul></div>
+        <li>가로축 개월은 날 수를 한 달 평균 길이로 나눈 값이고 회차는 그 달의 말일이라, 점이 정한 개월보다 최대 한 달 가까이
+        오른쪽에 찍힙니다 — 띠는 점이 앉은 자리까지 덮습니다.</li></ul></div>
     </div>
   </section>
 
@@ -271,8 +274,8 @@ code { font-size: 12px; }
     });
   }
 
-  // ① 의 띠 — 회차 점이 실제로 앉은 자리까지 덮는다. 회차 날짜는 달력월이고 가로축은 날 수를 한 달 평균 길이로 나눈
-  // 값이라, 개월 수 그대로 그리면 끝 회차가 띠 밖에 찍혀 「기간 밖에서 샀다」로 읽힌다
+  // ① 의 띠 — 회차 점이 실제로 앉은 자리까지 덮는다. 회차는 그 달의 말일이고(결정 54) 가로축은 날 수를 한 달 평균 길이로
+  // 나눈 값이라, 명목 개월 그대로 그리면 회차 점이 최대 한 달 가까이 띠 밖(오른쪽)에 찍혀 「기간 밖에서 샀다」로 읽힌다
   function monthExtent(side, nominal) {
     const xs = DATA.points.filter((p) => p.side === side).map((p) => p.halving_months);
     return [Math.min(nominal[0], ...xs), Math.max(nominal[1], ...xs)];
@@ -382,8 +385,8 @@ code { font-size: 12px; }
 
   function splitTable() {
     const rows = DATA.table.map((r) => [
-      r.halving + ' 사이클', span(r.first_buy, r.last_buy), r.buys + '/' + r.tranches, price(r.avg_buy),
-      span(r.first_sell, r.last_sell), r.sells + '/' + r.tranches, price(r.avg_sell), pct(r.return), pct(r.worst),
+      r.halving + ' 사이클', span(r.first_buy, r.last_buy), r.buys + '/' + r.buy_tranches, price(r.avg_buy),
+      span(r.first_sell, r.last_sell), r.sells + '/' + r.sell_tranches, price(r.avg_sell), pct(r.return), pct(r.worst),
       r.reason === null ? '끝남' : r.reason,
     ]);
     fillTable(document.getElementById('split-table'),
@@ -415,8 +418,8 @@ code { font-size: 12px; }
   document.getElementById('sources').textContent = DATA.meta.sources
     .map((s) => s.name + ' ' + s.file + ' ' + s.period + ' (' + s.rows.toLocaleString('en-US') + '행)').join(' · ');
   document.getElementById('created').textContent = DATA.meta.created_at;
-  const rule = '반감기 뒤 ' + SPLIT.buy[0] + ' ~ ' + SPLIT.buy[1] + '개월에 매달 사고, 다음 반감기 뒤 '
-    + SPLIT.sell[0] + ' ~ ' + SPLIT.sell[1] + '개월에 매달 판다 (' + SPLIT.tranches + '번씩)';
+  const rule = '반감기 뒤 ' + SPLIT.buy[0] + ' ~ ' + SPLIT.buy[1] + '개월에 매달 말일 종가로 ' + SPLIT.buy_tranches
+    + '번 사고, 다음 반감기 뒤 ' + SPLIT.sell[0] + ' ~ ' + SPLIT.sell[1] + '개월에 매달 말일 종가로 ' + SPLIT.sell_tranches + '번 판다';
   document.querySelectorAll('.fill-split-name').forEach((el) => { el.textContent = SPLIT.name; });
   document.querySelectorAll('.fill-split-rule').forEach((el) => { el.textContent = rule; });
   document.querySelectorAll('.fill-lead').forEach((el) => { el.textContent = String(DATA.bottom_lead_months); });

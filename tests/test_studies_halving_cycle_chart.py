@@ -41,6 +41,7 @@ from verify_lab.studies.halving_cycle.constants import (
     DISPLAY_BUY_CALENDAR_COUNT,
     DISPLAY_BUY_FIRST_DEADLINE,
     DISPLAY_BUY_LAST_DEADLINE,
+    DISPLAY_BUY_TRANCHES,
     DISPLAY_CALENDAR_SPLIT,
     DISPLAY_FIRST_BUY_DATE,
     DISPLAY_HALVING,
@@ -49,13 +50,13 @@ from verify_lab.studies.halving_cycle.constants import (
     DISPLAY_SELL_CALENDAR_COUNT,
     DISPLAY_SELL_FIRST_DEADLINE,
     DISPLAY_SELL_LAST_DEADLINE,
+    DISPLAY_SELL_TRANCHES,
     DISPLAY_SPLIT_ANCHOR_HALVING,
     DISPLAY_SPLIT_DEADLINE,
     DISPLAY_SPLIT_FILL_CLOSE,
     DISPLAY_SPLIT_FILL_DATE,
     DISPLAY_SPLIT_SIDE,
     DISPLAY_SPLIT_TRANCHE,
-    DISPLAY_SPLIT_TRANCHES,
     DISPLAY_WORST_VS_COST,
     REASON_NO_NEXT_HALVING,
     REASON_POSITION_BUYING,
@@ -74,10 +75,11 @@ HALVING_DAYS = (pd.Timestamp("2001-01-10"), pd.Timestamp("2004-02-20"))
 DATA_START = pd.Timestamp("2000-06-01")
 DATA_END = pd.Timestamp("2006-03-31")
 
-# 폭 — 실제(6 · 12 · 24회 · 1개월 간격)와 다르다. 매수 5 · 7 · 9개월, 매도 다음 반감기 뒤 1 · 3 · 5개월
+# 폭 — 실제(매수 6 · 매도 10회 · 1개월 간격)와 다르다. 「가」는 매수 5 · 7 · 9개월, 매도 다음 반감기 뒤 1 · 3 · 5개월.
+# 「나」는 한 폭 안에서 매수(6 · 8개월, 2회)와 매도(1 · 3 · 5 · 7개월, 4회)의 회차 수가 다르다
 STEP = 2
-SPLIT = CalendarSplit(name="가", tranches=3, buy_last_deadline=9, sell_last_deadline=5)
-OTHER = CalendarSplit(name="나", tranches=2, buy_last_deadline=8, sell_last_deadline=6)
+SPLIT = CalendarSplit(name="가", buy_tranches=3, buy_last_deadline=9, sell_tranches=3, sell_last_deadline=5)
+OTHER = CalendarSplit(name="나", buy_tranches=2, buy_last_deadline=8, sell_tranches=4, sell_last_deadline=7)
 
 # 바닥 앞 개월 — 실제(12)와 다르다
 LEAD = 3
@@ -114,9 +116,16 @@ def _close(overrides: dict[str, float] | None = None) -> pd.Series:
 
 
 def _fill_row(
-    split: str, side: str, cycle: str, anchor: str | None, tranche: int, day: str | None, close: float | None
+    split: str,
+    side: str,
+    cycle: str,
+    anchor: str | None,
+    tranche: int,
+    deadline: str | None,
+    day: str | None,
+    close: float | None,
 ) -> dict[str, Any]:
-    """달력분할회차 표시용 프레임의 한 행 — `day` 가 없으면 체결 전이다"""
+    """달력분할회차 표시용 프레임의 한 행 — `day` 가 없으면 체결 전이고, `deadline` 이 없으면 기준 반감기가 없다"""
     pending = day is None
     return {
         DISPLAY_TICKER: TICKER,
@@ -125,7 +134,7 @@ def _fill_row(
         DISPLAY_HALVING: cycle,
         DISPLAY_SPLIT_ANCHOR_HALVING: anchor,
         DISPLAY_SPLIT_TRANCHE: tranche,
-        DISPLAY_SPLIT_DEADLINE: pd.NaT if anchor is None else pd.Timestamp("2099-01-01"),
+        DISPLAY_SPLIT_DEADLINE: pd.NaT if deadline is None else pd.Timestamp(deadline),
         DISPLAY_SPLIT_FILL_DATE: pd.NaT if pending else pd.Timestamp(day),
         DISPLAY_MONTHS_SINCE_HALVING: pd.NA if pending else 1,
         DISPLAY_SPLIT_FILL_CLOSE: np.nan if pending else close,
@@ -134,21 +143,25 @@ def _fill_row(
 
 
 def _fills() -> pd.DataFrame:
-    """「가」 — 첫 사이클은 매수 셋 · 매도 셋을 다 했고, 둘째 사이클은 매수 둘만 했다(셋째는 체결 전 · 매도는 다음 반감기 없음).
-    「나」 — 다른 폭의 행이 섞여 있어도 걸러야 한다"""
+    """「가」 — 첫 사이클은 매수 셋 · 매도 셋을 다 했고, 둘째 사이클은 매수 둘만 했다(셋째는 기한 2004-11-20 이 아직
+    체결 전 · 매도는 다음 반감기 없음). 「나」 — 다른 폭의 행이 섞여 있어도 걸러야 한다"""
     first, second = (day.strftime("%Y-%m-%d") for day in HALVING_DAYS)
+
+    def filled(split: str, side: str, cycle: str, anchor: str, tranche: int, day: str, close: float) -> dict[str, Any]:
+        return _fill_row(split, side, cycle, anchor, tranche, day, day, close)
+
     rows = [
-        _fill_row("가", SPLIT_SIDE_BUY, first, first, 1, "2001-06-10", 30.0),
-        _fill_row("가", SPLIT_SIDE_BUY, first, first, 2, "2001-08-10", 100.0),
-        _fill_row("가", SPLIT_SIDE_BUY, first, first, 3, "2001-10-10", 100.0),
-        _fill_row("가", SPLIT_SIDE_SELL, first, second, 1, "2004-03-20", 160.0),
-        _fill_row("가", SPLIT_SIDE_SELL, first, second, 2, "2004-05-20", 100.0),
-        _fill_row("가", SPLIT_SIDE_SELL, first, second, 3, "2004-07-20", 100.0),
-        _fill_row("가", SPLIT_SIDE_BUY, second, second, 1, "2004-07-20", 100.0),
-        _fill_row("가", SPLIT_SIDE_BUY, second, second, 2, "2004-09-20", 100.0),
-        _fill_row("가", SPLIT_SIDE_BUY, second, second, 3, None, None),
-        *(_fill_row("가", SPLIT_SIDE_SELL, second, None, tranche, None, None) for tranche in (1, 2, 3)),
-        _fill_row("나", SPLIT_SIDE_BUY, first, first, 1, "2001-07-10", 100.0),
+        filled("가", SPLIT_SIDE_BUY, first, first, 1, "2001-06-10", 30.0),
+        filled("가", SPLIT_SIDE_BUY, first, first, 2, "2001-08-10", 100.0),
+        filled("가", SPLIT_SIDE_BUY, first, first, 3, "2001-10-10", 100.0),
+        filled("가", SPLIT_SIDE_SELL, first, second, 1, "2004-03-20", 160.0),
+        filled("가", SPLIT_SIDE_SELL, first, second, 2, "2004-05-20", 100.0),
+        filled("가", SPLIT_SIDE_SELL, first, second, 3, "2004-07-20", 100.0),
+        filled("가", SPLIT_SIDE_BUY, second, second, 1, "2004-07-20", 100.0),
+        filled("가", SPLIT_SIDE_BUY, second, second, 2, "2004-09-20", 100.0),
+        _fill_row("가", SPLIT_SIDE_BUY, second, second, 3, "2004-11-20", None, None),
+        *(_fill_row("가", SPLIT_SIDE_SELL, second, None, tranche, None, None, None) for tranche in (1, 2, 3)),
+        filled("나", SPLIT_SIDE_BUY, first, first, 1, "2001-07-10", 100.0),
     ]
     frame = pd.DataFrame(rows)
     frame.loc[
@@ -158,14 +171,19 @@ def _fills() -> pd.DataFrame:
 
 
 def _positions() -> pd.DataFrame:
-    """「가」 두 사이클(끝난 것 · 매수 중) · 「나」 한 사이클"""
+    """「가」 두 사이클(끝난 것 · 매수 중) · 「나」 한 사이클.
+
+    매수 · 매도 회차 수를 다르게(3 · 4) 둔다 — 같으면 숫자표가 두 칸을 뒤바꿔 옮겨도 걸리지 않는다. 숫자표는 이 표의 칸을
+    옮길 뿐이라 회차 표의 행 수와 맞추지 않는다.
+    """
     first, second = (day.strftime("%Y-%m-%d") for day in HALVING_DAYS)
 
     def row(split: str, cycle: str, values: dict[str, Any]) -> dict[str, Any]:
         return {
             DISPLAY_TICKER: TICKER,
             DISPLAY_CALENDAR_SPLIT: split,
-            DISPLAY_SPLIT_TRANCHES: 3,
+            DISPLAY_BUY_TRANCHES: 3,
+            DISPLAY_SELL_TRANCHES: 4,
             DISPLAY_BUY_FIRST_DEADLINE: 5,
             DISPLAY_BUY_LAST_DEADLINE: 9,
             DISPLAY_SELL_FIRST_DEADLINE: 1,
@@ -472,21 +490,35 @@ class TestBottomSeries:
 
 
 class TestChartSplit:
-    """차트가 그릴 폭 — 이름으로 찾고, 매수 · 매도 개월을 회차 수와 간격에서 낸다"""
+    """차트가 그릴 폭 — 이름으로 찾고, 매수 · 매도 개월을 쪽마다의 회차 수와 간격에서 낸다"""
 
     def test_이름으로_폭을_찾고_첫_마지막_개월을_낸다(self) -> None:
         """
-        목적: 첫 회차 개월은 마지막 회차와 간격에서 나온다 — 측정과 같은 산술이다.
+        목적: 첫 회차 개월은 그쪽의 마지막 회차 · 회차 수 · 간격에서 나온다 — 측정과 같은 산술이다.
 
         Given: 폭 둘 · 간격 2개월
         When: 「가」를 찾아 정보를 만든다
-        Then: 매수 5 ~ 9 · 매도 1 ~ 5 · 회차 3
+        Then: 매수 3회 · 5 ~ 9 · 매도 3회 · 1 ~ 5
         """
         # When
         info = split_info(chart_split((OTHER, SPLIT), "가"), step_months=STEP)
 
         # Then
-        assert info == {"name": "가", "tranches": 3, "buy": [5, 9], "sell": [1, 5]}
+        assert info == {"name": "가", "buy_tranches": 3, "sell_tranches": 3, "buy": [5, 9], "sell": [1, 5]}
+
+    def test_매수_매도_회차_수가_다르면_쪽마다_제_회차_수로_첫_개월을_센다(self) -> None:
+        """
+        목적: 한쪽의 회차 수를 다른 쪽에 쓰면 띠의 시작이 틀린다 — 쪽마다 따로 센다.
+
+        Given: 「나」(매수 2회 · 마지막 8, 매도 4회 · 마지막 7, 간격 2개월)
+        When: 정보를 만든다
+        Then: 매수 2회 · 6 ~ 8 · 매도 4회 · 1 ~ 7
+        """
+        # When
+        info = split_info(chart_split((OTHER, SPLIT), "나"), step_months=STEP)
+
+        # Then
+        assert info == {"name": "나", "buy_tranches": 2, "sell_tranches": 4, "buy": [6, 8], "sell": [1, 7]}
 
     def test_없는_이름이면_멈춘다(self) -> None:
         """
@@ -502,18 +534,20 @@ class TestChartSplit:
 
 
 class TestWindowBands:
-    """전 기간 시간축의 기간 띠 — 반감기마다 매도 띠(앞 사이클 포지션)와 매수 띠"""
+    """전 기간 시간축의 기간 띠 — 회차 표의 기한에서 낸다. 포지션마다 매수 띠와 매도 띠(다음 반감기 뒤)"""
 
-    def test_반감기마다_매도_띠와_매수_띠이고_첫_반감기에는_매도_띠가_없다(self) -> None:
+    def test_띠는_그_폭의_포지션마다_쪽별_첫_기한부터_마지막_기한까지다(self) -> None:
         """
-        목적: 띠가 어느 포지션의 것인지 고정한다 — 반감기 뒤의 매도는 앞 반감기 포지션을 판다.
+        목적: 띠가 측정이 정한 회차 날짜와 같다 — 차트는 날짜를 다시 세지 않고 회차 표의 기한을 옮긴다(결정 ㊿ · 54).
+            체결 전 회차도 기한이 있어 띠에 들고, 기준 반감기가 없는 매도(기한 없음)는 띠가 없다.
 
-        Given: 반감기 둘 · 「가」(매수 5 ~ 9 · 매도 1 ~ 5개월) · 데이터 끝 2006-03-31
-        When: 띠를 만든다
-        Then: 첫 반감기는 매수 띠만, 둘째는 매도 띠(첫 사이클 포지션)와 매수 띠
+        Given: 「가」 회차 표(첫 사이클 매수 06-10 ~ 10-10 · 매도 2004-03-20 ~ 07-20, 둘째 사이클 매수 07-20 · 09-20 ·
+            체결 전 11-20, 매도는 다음 반감기 없음) · 「나」 행 · 데이터 끝 2006-03-31
+        When: 「가」의 띠를 만든다
+        Then: 시작일 순으로 첫 사이클 매수 · 첫 사이클 매도 · 둘째 사이클 매수 셋이다
         """
         # When
-        bands = window_bands(HALVING_DAYS, DATA_END, SPLIT, step_months=STEP)
+        bands = window_bands(_fills(), "가", DATA_END)
 
         # Then
         assert bands == [
@@ -526,16 +560,28 @@ class TestWindowBands:
         """
         목적: 아직 오지 않은 기간을 그리지 않는다.
 
-        Given: 데이터 끝 2004-07-01 — 둘째 반감기의 매도 띠 중간, 매수 띠 앞
+        Given: 데이터 끝 2004-07-01 — 첫 사이클 매도 띠 중간, 둘째 사이클 매수 띠 앞
         When: 띠를 만든다
         Then: 매도 띠는 2004-07-01 에서 끝나고 둘째 매수 띠는 없다
         """
         # When
-        bands = window_bands(HALVING_DAYS, pd.Timestamp("2004-07-01"), SPLIT, step_months=STEP)
+        bands = window_bands(_fills(), "가", pd.Timestamp("2004-07-01"))
 
         # Then
         assert bands[-1] == {"side": SPLIT_SIDE_SELL, "cycle": "2001-01-10", "x0": "2004-03-20", "x1": "2004-07-01"}
         assert len(bands) == 2
+
+    def test_없는_폭이면_멈춘다(self) -> None:
+        """
+        목적: 이름이 어긋나 띠가 하나도 없는 차트를 조용히 그리지 않는다.
+
+        Given: 「다」 행이 없는 회차 표
+        When: 「다」의 띠를 만든다
+        Then: ValueError
+        """
+        # When / Then
+        with pytest.raises(ValueError, match="다"):
+            window_bands(_fills(), "다", DATA_END)
 
 
 class TestSplitPoints:
@@ -622,7 +668,7 @@ class TestSplitTable:
 
         Given: 「가」 두 사이클 · 「나」 한 사이클
         When: 「가」의 표를 만든다
-        Then: 두 행이고 평균 매수가 · 평균 매도가 · 수익률 · 최악 · 회차 수가 포지션 표 그대로다
+        Then: 두 행이고 평균 매수가 · 평균 매도가 · 수익률 · 최악 · 쪽마다 회차 수가 포지션 표 그대로다
         """
         # When
         rows = split_table(_fills(), _positions(), "가")
@@ -630,7 +676,7 @@ class TestSplitTable:
         # Then
         assert [row["halving"] for row in rows] == ["2001-01-10", "2004-02-20"]
         first = rows[0]
-        assert (first["tranches"], first["buys"], first["sells"]) == (3, 3, 3)
+        assert (first["buy_tranches"], first["sell_tranches"], first["buys"], first["sells"]) == (3, 4, 3, 3)
         assert first["avg_buy"] == pytest.approx(61.1111, abs=1e-9)
         assert first["avg_sell"] == pytest.approx(120.0, abs=1e-9)
         assert first["return"] == pytest.approx(96.36, abs=1e-9)

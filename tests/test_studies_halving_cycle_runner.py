@@ -63,6 +63,8 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_NON_OVERLAPPING,
     COL_POSITION_RETURN,
     COL_SIGNAL_MEANING,
+    COL_SPLIT_DEADLINE,
+    COL_SPLIT_FILL_DATE,
     COL_TICKER,
     COL_VALUE_DAY,
     DATASETS,
@@ -88,8 +90,10 @@ from verify_lab.studies.halving_cycle.constants import (
 from verify_lab.studies.halving_cycle.runner import (
     KEY_CALENDAR_SPLIT,
     KEY_CALENDAR_SPLIT_BUY_MONTHS,
+    KEY_CALENDAR_SPLIT_BUY_TRANCHES,
     KEY_CALENDAR_SPLIT_RULE,
     KEY_CALENDAR_SPLIT_SELL_MONTHS,
+    KEY_CALENDAR_SPLIT_SELL_TRANCHES,
     KEY_CALENDAR_SPLIT_SPLITS,
     KEY_CALENDAR_SPLIT_STEP,
     KEY_DROPPED_TAIL_DAYS,
@@ -103,7 +107,6 @@ from verify_lab.studies.halving_cycle.runner import (
     KEY_SPLIT_POSITION_COUNT,
     KEY_SPLIT_RULE,
     KEY_SPLIT_SELL,
-    KEY_SPLIT_TRANCHES,
     KEY_SPLIT_UNFILLED,
     KEY_SPLIT_UNFINISHED,
     StudyOutputs,
@@ -966,7 +969,7 @@ class TestSplitTables:
 
 
 class TestCalendarSplitTables:
-    """3단계 달력 매달 분할 측정 표 (결정 51 · 52) — 폭 전부 · 표본 보존 · `split_rule` 과 같은 값"""
+    """3단계 달력 매달 분할 측정 표 (결정 51 · 52 · 54) — 폭 전부 · 표본 보존 · `split_rule` 과 같은 값 · 월말 체결"""
 
     def test_회차_포지션_행_수가_폭과_반감기에서_나온다(self, outputs: StudyOutputs) -> None:
         """
@@ -974,11 +977,31 @@ class TestCalendarSplitTables:
 
         Given: 합성 입력 한 대상 · 반감기 넷 · 실제 폭 목록
         When: 두 표의 행 수를 본다
-        Then: 회차 = 반감기 × Σ(매수 + 매도 회차) · 포지션 = 폭 × 반감기
+        Then: 회차 = 반감기 × Σ(매수 회차 + 매도 회차) · 포지션 = 폭 × 반감기
         """
         # Then
-        assert len(outputs.calendar_split_fills) == len(HALVINGS) * sum(2 * split.tranches for split in CALENDAR_SPLITS)
+        tranches = sum(split.buy_tranches + split.sell_tranches for split in CALENDAR_SPLITS)
+        assert len(outputs.calendar_split_fills) == len(HALVINGS) * tranches
         assert len(outputs.calendar_split_positions) == len(CALENDAR_SPLITS) * len(HALVINGS)
+
+    def test_실제_폭의_회차는_전부_그_달의_말일에_체결한다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 측정이 사용자가 실제로 할 수 있는 체결일(월말 종가)을 잰다 (결정 54). **「전부」를 본다** — 같은 날짜
+            정의로도 우연히 말일인 회차가 있어(2012-11-28 + 27개월 = 2015-02-28) 하나만 보면 같은 날짜로 돌아가도 통과한다.
+
+        Given: 합성 입력 · 실제 반감기 넷 · 실제 폭
+        When: 체결한 회차의 체결일 · 기한을 본다
+        Then: 체결일이 있고 전부 말일이며, 기한도 날짜가 있는 것은 전부 말일이다
+        """
+        # When
+        fills = outputs.calendar_split_fills
+        filled = pd.DatetimeIndex(fills[COL_SPLIT_FILL_DATE].dropna())
+        deadlines = pd.DatetimeIndex(fills[COL_SPLIT_DEADLINE].dropna())
+
+        # Then
+        assert len(filled) > 0
+        assert bool(filled.is_month_end.all())
+        assert bool(deadlines.is_month_end.all())
 
     def test_측정_시세로_split_rule_을_부른_값과_같다(self, synthetic_dataset: Dataset, outputs: StudyOutputs) -> None:
         """
@@ -1004,22 +1027,28 @@ class TestCalendarSplitTables:
 
         Given: 합성 입력
         When: 요약의 측정 칸과 대상별 건수를 본다
-        Then: 폭마다 이름 · 회차 수 · 매수 · 매도 개월(첫 · 마지막)이 실리고, 사유별 건수의 합이 사유가 붙은 행의 수와 같다
+        Then: 폭마다 이름 · 쪽마다 회차 수 · 매수 · 매도 개월(첫 · 마지막)이 실리고, 사유별 건수의 합이 사유가 붙은 행의
+            수와 같다
         """
         # When
         rule = outputs.summary[KEY_CALENDAR_SPLIT_RULE]
         counts = outputs.summary[KEY_DATASETS][0][KEY_CALENDAR_SPLIT]
 
         # Then
-        assert rule[KEY_CALENDAR_SPLIT_STEP] == CALENDAR_SPLIT_STEP_MONTHS
+        step = CALENDAR_SPLIT_STEP_MONTHS
+        assert rule[KEY_CALENDAR_SPLIT_STEP] == step
         assert [entry[KEY_NAME] for entry in rule[KEY_CALENDAR_SPLIT_SPLITS]] == [
             split.name for split in CALENDAR_SPLITS
         ]
         for entry, split in zip(rule[KEY_CALENDAR_SPLIT_SPLITS], CALENDAR_SPLITS, strict=True):
-            span = CALENDAR_SPLIT_STEP_MONTHS * (split.tranches - 1)
-            assert entry[KEY_SPLIT_TRANCHES] == split.tranches
-            assert entry[KEY_CALENDAR_SPLIT_BUY_MONTHS] == [split.buy_last_deadline - span, split.buy_last_deadline]
-            assert entry[KEY_CALENDAR_SPLIT_SELL_MONTHS] == [split.sell_last_deadline - span, split.sell_last_deadline]
+            buy_first = split.buy_last_deadline - step * (split.buy_tranches - 1)
+            sell_first = split.sell_last_deadline - step * (split.sell_tranches - 1)
+            assert (entry[KEY_CALENDAR_SPLIT_BUY_TRANCHES], entry[KEY_CALENDAR_SPLIT_SELL_TRANCHES]) == (
+                split.buy_tranches,
+                split.sell_tranches,
+            )
+            assert entry[KEY_CALENDAR_SPLIT_BUY_MONTHS] == [buy_first, split.buy_last_deadline]
+            assert entry[KEY_CALENDAR_SPLIT_SELL_MONTHS] == [sell_first, split.sell_last_deadline]
         fills, positions = outputs.calendar_split_fills, outputs.calendar_split_positions
         assert counts[KEY_SPLIT_FILL_COUNT] == len(fills)
         assert counts[KEY_SPLIT_POSITION_COUNT] == len(positions)
@@ -1055,7 +1084,7 @@ class TestCalendarSplitTables:
         # Then
         assert {"분할 폭", "매수 · 매도", "회차", "회차 기한", "회차 체결일", "회차 종가"} <= set(tables["calendar_split_fills"].columns)
         positions = tables["calendar_split_positions"]
-        assert {"분할 폭", "회차 수", "매수 첫 기한(개월)", "매도 첫 기한(개월)", "평균 매수가"} <= set(positions.columns)
+        assert {"분할 폭", "매수 회차 수", "매도 회차 수", "매수 첫 기한(개월)", "매도 첫 기한(개월)", "평균 매수가"} <= set(positions.columns)
         prices = positions["평균 매수가"].dropna().to_numpy(dtype=float)
         np.testing.assert_allclose(prices, np.round(prices, PRICE_DECIMALS), atol=0.0)
         expected = (outputs.calendar_split_positions[COL_POSITION_RETURN] * 100.0).round(2)

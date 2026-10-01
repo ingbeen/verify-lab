@@ -17,8 +17,9 @@
 
 **모든 함수가 격자 값을 인자로 받는다** — 상수를 안에서 읽지 않는다. 테스트가 실제와 다른 값을 넣어 하드코딩을 잡는다.
 
-**달력 매달 분할(결정 51 · 52)도 여기서 잰다** — 「달력만」 조합을 폭마다 회차 수 · 간격만 바꿔 같은 두 함수
-(`leg_fills` · `position_result`)로 잰다. 회차 날짜와 평균 단가 · 최악의 정의가 두 벌이 되지 않는다(절대 원칙 5).
+**달력 매달 분할(결정 51 · 52 · 54)도 여기서 잰다** — 「달력만」 조합을 폭마다 쪽별 회차 수 · 간격만 바꾸고 기한을
+그 달의 말일로 옮겨 같은 두 함수(`leg_fills` · `position_result`)로 잰다. 회차 날짜와 평균 단가 · 최악의 정의가 두 벌이
+되지 않는다(절대 원칙 5).
 """
 
 from collections.abc import Sequence
@@ -41,6 +42,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_BUY_START_ANCHOR,
     COL_BUY_START_MONTHS,
     COL_BUY_THRESHOLD,
+    COL_BUY_TRANCHES,
     COL_CALENDAR_SPLIT,
     COL_CYCLE_RETURN_TEMPLATE,
     COL_CYCLE_WORST_TEMPLATE,
@@ -56,6 +58,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SELL_ONCHAIN_COUNT,
     COL_SELL_START_MONTHS,
     COL_SELL_THRESHOLD,
+    COL_SELL_TRANCHES,
     COL_SPLIT_ANCHOR_HALVING,
     COL_SPLIT_DEADLINE,
     COL_SPLIT_FILL_CLOSE,
@@ -69,7 +72,6 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SPLIT_THRESHOLD,
     COL_SPLIT_TOTAL,
     COL_SPLIT_TRANCHE,
-    COL_SPLIT_TRANCHES,
     COL_SPLIT_TRIGGER,
     COL_WORST_VS_COST,
     REASON_NO_NEXT_HALVING,
@@ -316,15 +318,19 @@ def window_open(
 
 
 def tranche_deadlines(
-    anchor_day: pd.Timestamp, last_deadline: int, *, tranches: int, step_months: int
+    anchor_day: pd.Timestamp, last_deadline: int, *, tranches: int, step_months: int, month_end: bool
 ) -> list[pd.Timestamp]:
-    """회차 기한 — 마지막 기한에서 `step_months` 씩 앞으로. 없는 날짜는 그 달 말일로 당긴다.
+    """회차 기한 — 마지막 기한에서 `step_months` 씩 앞으로.
+
+    기한이 m개월인 회차의 날은 기준일 + m개월이다(m 은 첫 기한부터 간격씩 는다). `month_end` 면 그날이 속한 달의
+    말일이고(결정 54 — 실제로 체결할 수 있는 날), 아니면 같은 날짜이며 없는 날짜는 그 달 말일로 당긴다.
 
     Args:
         anchor_day: 기준 반감기일
         last_deadline: 마지막 회차 기한 (기준 반감기 뒤 개월)
         tranches: 회차 수
         step_months: 기한 간격(개월)
+        month_end: 그 달의 말일로 옮기는가
 
     Returns:
         회차 순서의 기한
@@ -338,7 +344,11 @@ def tranche_deadlines(
     if first < 0:
         raise ValueError(f"첫 회차 기한이 기준 반감기 앞입니다: 마지막 {last_deadline}개월 · {tranches}회 · {step_months}개월 간격")
 
-    return [anchor_day + pd.DateOffset(months=first + step_months * tranche) for tranche in range(tranches)]
+    days = [anchor_day + pd.DateOffset(months=first + step_months * tranche) for tranche in range(tranches)]
+    if month_end:
+        return [day + pd.offsets.MonthEnd(0) for day in days]
+
+    return days
 
 
 def _validate_leg(leg: SplitLeg, tranches: int, trigger_values: pd.Series | None) -> None:
@@ -383,6 +393,7 @@ def leg_fills(
     new_highs: pd.Series,
     tranches: int,
     step_months: int,
+    month_end: bool,
 ) -> list[TrancheFill]:
     """한쪽의 회차 체결일을 낸다 — 회차 k 는 min(문턱 k 에 처음 닿은 날의 다음 거래일, 기한 k) 이다.
 
@@ -397,6 +408,7 @@ def leg_fills(
         new_highs: `new_high_flags` 의 결과
         tranches: 회차 수
         step_months: 기한 간격(개월)
+        month_end: 기한을 그 달의 말일로 옮기는가 (`tranche_deadlines`)
 
     Returns:
         회차 순서의 체결. 기한이 데이터 뒤이고 온체인으로도 체결하지 못한 회차는 체결 전이다
@@ -407,7 +419,9 @@ def leg_fills(
         RuntimeError: 회차 체결일이 회차 순서대로 오르지 않는 경우 (내부 불변조건)
     """
     _validate_leg(leg, tranches, trigger_values)
-    deadlines = tranche_deadlines(anchor_day, leg.last_deadline, tranches=tranches, step_months=step_months)
+    deadlines = tranche_deadlines(
+        anchor_day, leg.last_deadline, tranches=tranches, step_months=step_months, month_end=month_end
+    )
     last_day = trading_days[-1]
     trading_positions(trading_days, pd.DatetimeIndex([day for day in deadlines if day <= last_day]), label="회차 기한")
 
@@ -813,6 +827,7 @@ def split_grid(
     ranks = trailing_rank(mvrv, years=rank_years, min_days=rank_min_days)
     trigger_values = {SPLIT_THRESHOLD_BOOK: mvrv, SPLIT_THRESHOLD_RANK: ranks}
 
+    # 혼합 분할의 달력 기한은 반감기와 같은 날짜다 — 측정 기록(결정 ㊻)이라 달력 분할의 월말(결정 54)을 따르지 않는다
     def fills_for(leg: SplitLeg, anchor: Halving) -> list[TrancheFill]:
         return leg_fills(
             trading_days,
@@ -822,6 +837,7 @@ def split_grid(
             new_highs=new_highs,
             tranches=tranches,
             step_months=step_months,
+            month_end=False,
         )
 
     buy_fills: dict[tuple[int, int], list[TrancheFill]] = {}
@@ -909,9 +925,10 @@ _CALENDAR_FILL_COLUMNS = [
 
 _CALENDAR_POSITION_COLUMNS = [
     COL_CALENDAR_SPLIT,
-    COL_SPLIT_TRANCHES,
+    COL_BUY_TRANCHES,
     COL_BUY_FIRST_DEADLINE,
     COL_BUY_LAST_DEADLINE,
+    COL_SELL_TRANCHES,
     COL_SELL_FIRST_DEADLINE,
     COL_SELL_LAST_DEADLINE,
     COL_HALVING,
@@ -935,9 +952,10 @@ def calendar_split_grid(
     *,
     step_months: int,
 ) -> CalendarSplitGrid:
-    """달력 매달 분할 전부를 낸다 — 폭마다, 반감기 뒤에 사고 다음 반감기 뒤에 판다 (결정 51 · 52).
+    """달력 매달 분할 전부를 낸다 — 폭마다, 반감기 뒤에 사고 다음 반감기 뒤에 판다 (결정 51 · 52 · 54).
 
-    폭 하나는 「달력만」 매수 조합과 「달력만」 매도 조합의 짝이다 — 회차 k 는 기한 k 의 종가에 체결한다.
+    폭 하나는 「달력만」 매수 조합과 「달력만」 매도 조합의 짝이고 쪽마다 회차 수가 따로다. **기한이 m개월인 회차는
+    (기준 반감기일 + m개월)이 속한 달의 말일 종가에 체결한다** — 실제로 체결할 수 있는 날이다(결정 54).
     **마지막 반감기의 포지션은 다음 반감기가 목록에 없어 매도 회차가 정의되지 않는다** — 행은 남고 사유가 붙는다.
 
     Args:
@@ -950,8 +968,8 @@ def calendar_split_grid(
         표 둘. 회차 표는 폭 → 반감기 → 매수 · 매도 → 회차 순이다
 
     Raises:
-        ValueError: 반감기나 폭이 없거나, 폭 이름이 겹치거나, 첫 매수 · 매도 회차가 기준 반감기 앞이거나,
-            매수 마지막 회차가 다음 반감기와 같거나 뒤인 경우 — 매도는 매수가 끝난 뒤에만 온다
+        ValueError: 반감기나 폭이 없거나, 폭 이름이 겹치거나, 한쪽 회차 수가 1 보다 작거나, 첫 매수 · 매도 회차가 기준
+            반감기 앞이거나, 매수 마지막 회차가 다음 반감기와 같거나 뒤인 경우 — 매도는 매수가 끝난 뒤에만 온다
     """
     if not halvings or not splits:
         raise ValueError("반감기와 달력 분할의 폭이 하나 이상 있어야 합니다")
@@ -973,6 +991,7 @@ def calendar_split_grid(
             new_highs=new_highs,
             tranches=tranches,
             step_months=step_months,
+            month_end=True,
         )
 
     fill_rows: list[dict[str, Any]] = []
@@ -983,27 +1002,29 @@ def calendar_split_grid(
         buy_first, sell_first = split.first_deadlines(step_months)
         for cycle, halving in enumerate(halvings):
             following = halvings[cycle + 1] if cycle + 1 < len(halvings) else None
-            buy_fills = fills_for(buy, halving, split.tranches)
+            buy_fills = fills_for(buy, halving, split.buy_tranches)
             if following is not None and buy_fills[-1].deadline >= following.day:
                 raise ValueError(
                     f"달력 분할 「{split.name}」의 매수 마지막 회차({buy_fills[-1].deadline.date()})가 다음 반감기"
                     f"({following.label})와 같거나 뒤입니다 — 매도는 매수가 끝난 뒤에만 와야 합니다"
                 )
-            sell_fills = fills_for(sell, following, split.tranches) if following is not None else None
+            sell_fills = fills_for(sell, following, split.sell_tranches) if following is not None else None
 
-            for leg, anchor, fills in ((buy, halving, buy_fills), (sell, following, sell_fills)):
-                rows = _fill_rows(
-                    leg, halving, anchor, fills, tranches=split.tranches, closes=closes, mvrv=None, ranks=None
-                )
+            for leg, anchor, fills, tranches in (
+                (buy, halving, buy_fills, split.buy_tranches),
+                (sell, following, sell_fills, split.sell_tranches),
+            ):
+                rows = _fill_rows(leg, halving, anchor, fills, tranches=tranches, closes=closes, mvrv=None, ranks=None)
                 fill_rows.extend({COL_CALENDAR_SPLIT: split.name, **row} for row in rows)
 
             result = position_result(frame, buy_fills, sell_fills)
             position_rows.append(
                 {
                     COL_CALENDAR_SPLIT: split.name,
-                    COL_SPLIT_TRANCHES: split.tranches,
+                    COL_BUY_TRANCHES: split.buy_tranches,
                     COL_BUY_FIRST_DEADLINE: buy_first,
                     COL_BUY_LAST_DEADLINE: split.buy_last_deadline,
+                    COL_SELL_TRANCHES: split.sell_tranches,
                     COL_SELL_FIRST_DEADLINE: sell_first,
                     COL_SELL_LAST_DEADLINE: split.sell_last_deadline,
                     COL_HALVING: halving.label,

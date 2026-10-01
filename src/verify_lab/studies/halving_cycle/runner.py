@@ -23,7 +23,8 @@
 **3단계 체결 격자 중 같은 사이클에 파는 칸의 기준선도 측정 표로 낸다** (결정 ㊶) — 칸 값은 체결과 같은 일정을
 측정 쪽에서 종가로 잰 것이고, 기준선은 1단계와 같은 모집단에 보유(청산 − 진입)를 준 것이다. 판정에 쓰지 않는다.
 
-**3단계 달력 매달 분할도 측정 표로 낸다** (결정 51 · 52) — 회차와 포지션 성적은 혼합 분할과 같은 `split_rule` 함수가 낸다.
+**3단계 달력 매달 분할도 측정 표로 낸다** (결정 51 · 52 · 54) — 회차는 그 달의 말일 종가에 체결하고, 회차와 포지션
+성적은 혼합 분할과 같은 `split_rule` 함수가 낸다.
 1차 판정 · 손절 · 하드포크 몫 · 기준선이 없다.
 """
 
@@ -283,10 +284,12 @@ KEY_SPLIT_UNFINISHED = "unfinished_by_reason"
 # `summary.json` 의 측정 칸 — 3단계 같은 사이클 칸의 기준선 보유 (결정 ㊶ · ㊽)
 KEY_GRID_BASELINE_HOLD_MONTHS = "grid_baseline_hold_months"
 
-# `summary.json` 의 측정 칸 — 3단계 달력 매달 분할의 폭과 대상별 건수 (결정 52). 건수 칸은 혼합 분할과 같은 키를 쓴다
+# `summary.json` 의 측정 칸 — 3단계 달력 매달 분할의 폭과 대상별 건수 (결정 52 · 54). 건수 칸은 혼합 분할과 같은 키를 쓴다
 KEY_CALENDAR_SPLIT_RULE = "calendar_split_rule"
 KEY_CALENDAR_SPLIT_STEP = "step_months"
 KEY_CALENDAR_SPLIT_SPLITS = "splits"
+KEY_CALENDAR_SPLIT_BUY_TRANCHES = "buy_tranches"
+KEY_CALENDAR_SPLIT_SELL_TRANCHES = "sell_tranches"
 KEY_CALENDAR_SPLIT_BUY_MONTHS = "buy_months_after_halving"
 KEY_CALENDAR_SPLIT_SELL_MONTHS = "sell_months_after_next_halving"
 KEY_CALENDAR_SPLIT = "calendar_split"
@@ -300,11 +303,17 @@ NOTE_SPLIT_HINDSIGHT = (
 )
 SPLIT_NOTES = (NOTE_SPLIT_MEASURE_ONLY, NOTE_SPLIT_FORK, NOTE_SPLIT_HINDSIGHT)
 
-# 3단계 달력 매달 분할 표만 보고는 알 수 없는 조건 (결정 52). **폭의 값을 글자로 박지 않는다** — 값은 같은 칸의 목록이 말한다
-NOTE_CALENDAR_SPLIT_MEASURE_ONLY = "달력 분할 표 둘은 측정 표다 — 1차 판정 · 손절 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다. 폭을 고르지 않는다"
+# 3단계 달력 매달 분할 표만 보고는 알 수 없는 조건 (결정 52 · 54). **폭의 값을 글자로 박지 않는다** — 값은 같은 칸의 목록이 말한다
+NOTE_CALENDAR_SPLIT_MEASURE_ONLY = "달력 분할 표 둘은 측정 표다 — 1차 판정 · 손절 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다"
+NOTE_CALENDAR_SPLIT_MONTH_END = "회차는 (기준 반감기일 + N개월)이 속한 달의 말일 종가에 체결한다 — 혼합 분할 · 체결 격자는 반감기와 같은 날짜다"
 NOTE_CALENDAR_SPLIT_FORK = "달력 분할 포지션에는 하드포크 몫이 없다 — 포크일에 코인을 들고 있던 포지션은 그만큼 과소평가된다"
-NOTE_CALENDAR_SPLIT_HINDSIGHT = "폭의 가운데는 과거 바닥 · 고점 시점을 본 뒤 정했다 — 좁은 폭일수록 과거에 더 맞춰져 있다"
-CALENDAR_SPLIT_NOTES = (NOTE_CALENDAR_SPLIT_MEASURE_ONLY, NOTE_CALENDAR_SPLIT_FORK, NOTE_CALENDAR_SPLIT_HINDSIGHT)
+NOTE_CALENDAR_SPLIT_HINDSIGHT = "매수 · 매도 기간은 과거 바닥 · 고점 시점과 최근 두 사이클의 쌍봉을 본 뒤 정했다 — 과거에 맞춰져 있다"
+CALENDAR_SPLIT_NOTES = (
+    NOTE_CALENDAR_SPLIT_MEASURE_ONLY,
+    NOTE_CALENDAR_SPLIT_MONTH_END,
+    NOTE_CALENDAR_SPLIT_FORK,
+    NOTE_CALENDAR_SPLIT_HINDSIGHT,
+)
 
 # 3단계 혼합 분할의 조합 — **격자 전부**다. 값의 출처와 「결과를 본 뒤 정한 값」 표시는 `constants.py` 의 그 절이 갖는다
 _SPLIT_BUY_LEGS = split_legs(
@@ -1208,7 +1217,7 @@ def _split_rule() -> dict[str, Any]:
 
 
 def _calendar_split_rule(splits: Sequence[CalendarSplit], step_months: int) -> dict[str, Any]:
-    """요약에 싣는 3단계 달력 매달 분할의 규칙 — 폭마다 회차 수와 매수 · 매도 개월(첫 · 마지막).
+    """요약에 싣는 3단계 달력 매달 분할의 규칙 — 폭마다 쪽별 회차 수와 매수 · 매도 개월(첫 · 마지막).
 
     Args:
         splits: 폭 목록
@@ -1223,7 +1232,8 @@ def _calendar_split_rule(splits: Sequence[CalendarSplit], step_months: int) -> d
         entries.append(
             {
                 KEY_NAME: split.name,
-                KEY_SPLIT_TRANCHES: split.tranches,
+                KEY_CALENDAR_SPLIT_BUY_TRANCHES: split.buy_tranches,
+                KEY_CALENDAR_SPLIT_SELL_TRANCHES: split.sell_tranches,
                 KEY_CALENDAR_SPLIT_BUY_MONTHS: [buy_first, split.buy_last_deadline],
                 KEY_CALENDAR_SPLIT_SELL_MONTHS: [sell_first, split.sell_last_deadline],
             }
