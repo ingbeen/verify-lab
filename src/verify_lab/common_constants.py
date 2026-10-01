@@ -39,6 +39,10 @@ RESULTS_DIR: Final = STORAGE_DIR / "results"
 # 실행 이력. 최근 N개만 순환 저장한다 (개수는 `utils/meta_manager.py` 가 소유)
 META_JSON_PATH: Final = RESULTS_DIR / "meta.json"
 
+# 판단용 차트. **git 제외다** — 산출물을 다시 그린 보기라 재현은 명령이 하고, plotly.js 를 내장해 한 장이 수 MB 다.
+# `RESULTS_DIR` 밖에 두는 것은 재실행이 그 폴더를 비우기 때문이다
+CHARTS_DIR: Final = STORAGE_DIR / "charts"
+
 # ============================================================
 # 시세 스키마 컬럼 상수 (내부 계산용 영문 토큰)
 # ============================================================

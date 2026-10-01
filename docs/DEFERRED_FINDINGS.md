@@ -43,6 +43,16 @@
 | `tests/test_studies_halving_cycle_runner.py:956` `TestGridBaseline` | 「칸 값 = 무손절 체결」을 고정하는 테스트가 없다 — 체결 쪽 가격 규칙(예: 다음날 시가 진입)이 바뀌어도 격자기준선은 종가 ÷ 종가로 재 두 표가 같은 칸에서 어긋나고 전 테스트가 통과한다. 같은 합성 입력으로 `grid_baseline_table` 과 `run_halving_cycle_trading` 의 무손절 · 전체 행을 대조하면 잡힌다. 실제 실행 대조는 차이 0(`설계.md` §4.13) | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 2회차 |
 | `tests/test_studies_halving_cycle_runner.py:1120` · `:1137` 보유 전제 가드 테스트 둘 | 멈추는 날(7월 31일) 하나와 멈추지 않는 날(7월 30일) 하나만 고정한다 — 다른 대리 조건(예: 「어떤 진입이 말일로 당겨지는가」)으로 바꿔도 둘 다 통과할 수 있다. 등식과 같다는 것은 수정분 검증의 전수 대조로만 확인했다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 수정분 검증 |
 
+### 반감기_사이클 판단용 차트
+
+줄 번호 기준: PLAN_halving_decision_chart 완료 시점의 작업 트리 (2026-10-01 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/chart.py:929` `build_chart_html` | 조립 함수에 테스트가 없다 — payload 의 매수 · 매도 문턱 배치, `buy_level=max(SPLIT_BUY_BOOK_LEVELS)`, 세로선 반감기 목록의 데이터 끝 거르기, 종목 거르기를 뒤집어도 차트 테스트가 전부 통과한다. `run_study` · `run_halving_cycle_trading` 을 monkeypatch 하면 합성 프레임으로 검사할 수 있다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `tests/test_studies_halving_cycle_chart.py:568` `TestTimelineSeries.test_2년차_4년차_띠는_다음_반감기와_데이터_끝에서_잘린다` | 이름과 달리 픽스처에서 데이터 끝으로 잘리는 띠가 없다 — 진행 중 사이클의 띠가 제 길이대로 끝나 `min(…, 데이터 끝)` 경로를 밟지 않는다. 그 `min` 을 빼도 통과한다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `tests/test_studies_halving_cycle_chart.py:869` `TestStopRows.test_손절선마다_그_손절선_체결의_중앙값을_싣는다` | −21% 행은 성적표 표본 3 인데 거래내역에 체결이 없는 상태에서 중앙값 None 을 기대값으로 고정한다 — 아래 「코드」의 체결 수 대조 가드가 없는 상태를 정답처럼 굳힌다 | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+
 ## 코드
 
 줄 번호 기준: PLAN_deferred_tests_midterm_notes 완료 시점의 작업 트리 (2026-09-29 확인).
@@ -94,6 +104,27 @@
 | `src/verify_lab/studies/halving_cycle/runner.py:979` ~ `:998` 보유 전제 가드 | 등식을 「격자 120쌍 × 모든 반감기」로 본다 — 다음 반감기 뒤라 재지 않는 쌍 · 데이터 뒤의 쌍까지 본다. 수정분 검증의 전수 대조(가상 반감기일 2012-01-01 ~ 2019-12-31)에서는 판정이 바뀌는 날 0 이고 틀리는 방향은 안전한 쪽(미리 멈춤)이다. 예외 문구가 어긋남 5건 이하일 때 「외 0건」을 찍는다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 수정분 검증 |
 
 
+### 반감기_사이클 판단용 차트 (chart · chart_template)
+
+줄 번호 기준: PLAN_halving_decision_chart 완료 시점의 작업 트리 (2026-10-01 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:696` `splitFigure` | 다음 반감기를 `DATA.halvings.indexOf(cycle) + 1` 로 찾는데, `DATA.halvings` 는 데이터 끝 뒤의 반감기를 빼고 ⑤ 의 사이클 목록(분할포지션)은 빼지 않는다 — 반감기 목록에 2028 반감기를 더한 날(종가가 아직 없음) −1 이 되어 첫 반감기를 다음 반감기로 물고, ⑤ 에 날짜축이 뒤집힌 빈 패널이 생긴다. 1회차 수정(데이터 뒤 반감기 건너뛰기)이 만든 자리라 사용자가 미루기로 정했다(2026-10-01). 고친다면 Python 이 사이클마다 다음 반감기를 싣고 JS 는 찾지 않게 한다. 실제 산출물에는 안 나온다 | 가벼운 버그 | 코드 리뷰 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:976` `build_chart_html` 의 MVRV 출처 | 파일 이름은 `dataset.mvrv_path.name` 인데 기간 · 행 수는 MVRV ∩ 시가총액 교집합(`load_onchain(...).frame`)에서 센다 — 두 온체인 파일의 끝이 공개 지연만큼 어긋나면 차트 머리가 파일과도 `summary.json` 과도 다른 기간을 보인다. 실제 산출물에서 끝 어긋남 0 이라 안 나온다 | 가벼운 버그 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:906` `render_html` | plotly.js 에서 `</script` 만 막는다 — `<!--` 뒤에 `<script` 가 이어지면 HTML 토크나이저가 double-escaped 상태가 되어 뒤의 스크립트가 삼켜진다. 데이터 JSON 도 `</` 만 바꾼다(`<` 를 `\u003c` 로 바꾸지 않음). 지금 번들 · 데이터에 그 글자는 0건 | 가벼운 버그 | 코드 리뷰 1회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:753` `_leg_label` | 매수 쪽은 시작 기준 · 시작 개월이 None 이면 멈추지만 매도 쪽은 검사 없이 「다음 반감기 뒤 None개월부터」를 낸다. 실제 매도 조합은 전부 시작 개월이 있어 안 나온다 | 가벼운 버그 | 코드 리뷰 1회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:647` `grid_cells` · `:726` `stop_rows` | (칸[, 손절선])의 체결 수를 성적표 `신호` 와 대조하지 않는다 — 거래내역의 열쇠 형식이 한쪽만 바뀌면(예: CSV 에서 다시 읽어 `-5.0` 이 문자열) 표본은 있는데 중앙값 · 호버 체결이 조용히 빈다. 실데이터 2,816쌍에서 체결 수와 신호가 전부 같다 | 가벼운 버그 | 코드 리뷰 1회차 · 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:353` · `:370` · `:377` · `:697` | Python 상수가 가진 값을 JS 에 다시 적었다 — ① 띠 연차 `[1, 3]`(`chart.BAND_YEARS`) · 가로 범위와 1배 선 `[0, 48]` · ⑤ 패널 끝 「다음 반감기 + 24개월」(`SPLIT_SELL_LAST_DEADLINES` 에 24 보다 큰 값이 생기면 매도 회차가 패널 밖). 사이클이 48개월을 넘으면 ① 의 선 끝이 첫 화면에서 잘린다(2024 → 2028 은 약 47.9개월). 지금은 안 나온다 | 가벼운 버그 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:951` `build_chart_html` | 차트는 격자기준선과 분할 두 표만 쓰는데 `run_study` 전체(1 · 2단계 집계 · 무작위 뽑기 대조)를 돌리고, 시세를 세 번 · 온체인을 두 번 읽는다 — 약 3초. `grid_baseline_table` · `split_grid` 를 직접 부르면 준다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:314` `_cycle_segments` docstring | `Raises:` 가 둘이고 첫째 아래에 동작 설명(데이터 뒤 반감기 건너뛰기)이 들어 있다 — 1회차 수정에서 문단을 `Raises:` 아래에 넣었다 | 그 외 | 코드 리뷰 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:8` 모듈 docstring | 「③ ④ ⑤ … 산출물에 없는 값은 ③ 의 중앙값 하나다」— ④ 도 손절선마다 중앙값을 내게 된 뒤로 낡았다(`설계.md` 결정 ㊿ 은 고쳤다) | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:541` `_median` docstring · `chart_template.html:195` ③ 주의 | 「격자기준선의 중앙값과 0.005 안쪽」— 반올림 값의 중앙값을 다시 반올림해 실제로는 0.01 까지 벌어진다(예: 1.004 · 1.014 → 1.0 대 1.01). `설계.md` 결정 ㊿ 은 0.01 로 고쳤다 | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart.py:930` · `scripts/chart_halving_cycle.py:8` · `:40` · `docs/COMMANDS.md:118` | 실행 시간 「약 45초」를 네 곳에 적었다 — 격자 · 손절선 · 데이터 길이가 바뀌면 조용히 낡는다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:164` · `:146` · `:170` · `:193` | 가이드에 데이터 · 상수에서 나오는 값을 적었다 — 「거래가 없던 33일」(재수집하면 바뀐다) · 「30.4375」 · 「24개월」 · 「칸당 10건」(`DAYS_PER_MONTH` · `PEAK_WINDOW_MONTHS` · `MIN_SAMPLE_PER_CELL`) | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:636` ④ 둘째 패널 | 패널 제목과 전용 범례(legend2)가 같은 띠에 앉아 760px 폭에서 약 70px 만 남는다 — 더 좁으면 겹칠 수 있다(미실측) | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+| `src/verify_lab/studies/halving_cycle/chart_template.html:600` 계단선 · `:295` 선택 칸 테두리 | 보유 중 최악 보기에서 가장 깊은 칸과의 대비가 낮다(테두리 밝은 1.65 · 어두운 1.32, 계단선 1.51 · 1.35). 값이 빈 칸은 바탕색이라 「가장 얕다」로 읽힐 수 있다(지금 0칸) | 그 외 | 수정분 검증 · 출처: PLAN_halving_decision_chart (2026-10-01) |
+
 ## 문서
 
 줄 번호 기준: PLAN_deferred_tests_midterm_notes 완료 시점의 작업 트리 (2026-09-29 확인).
@@ -113,3 +144,11 @@
 | `docs/검증/반감기_사이클/결과.md:1045` §16.2 평균 행렬 · `:1147` · `:1171` §16.4 차이 행렬 둘 | 새로 넣은 행렬 셋에 **칸별 표본**이 없다(칸마다 1 ~ 4건 · 같은 사이클 칸은 2 ~ 4건) — `.claude/rules/research.md` 「표본 수를 모든 표에 넣는다」. 평균 행렬에는 **합산**도 없다 — 루트 `CLAUDE.md` 측정의 원칙 16. 칸별 표본은 §16.1 의 분모에 있다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1 · 2회차 |
 | `docs/검증/반감기_사이클/결과.md:1068` §16.2 평균-부호 어긋남 표 | 헤더가 `승률(%)` 이다 — `.claude/rules/docs.md` 는 결과 문서에서 「오른 비율」을 쓰고 `승률` 은 `규칙.md` · 체결 산출물에만 둔다. 14칸 중 같은 사이클 칸 11칸은 기준선이 있는데 기준선 비율 · 차이 열이 없다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 2회차 |
 | `docs/검증/반감기_사이클/설계.md:464` 결정 ㊽ · `격자기준선.csv` 의 `신호` | 「앞 넷은 성적표와 같은 헤더라 그대로 이어 본다」는데 **같은 이름 `신호` 의 뜻이 다르다** — 격자기준선은 측정 표 관용대로 표본 + 제외(1단계 `통계.csv` 와 같다), `성적표.csv` 는 체결된 건수(= 표본)다. 실제 산출물을 이어 보면 120칸 중 65칸에서 `신호` 가 다르다(예: (0, 30) 은 4 대 3). 측정 표와 체결 표의 이 차이는 기존 관용이다 | 그 외 | PLAN_halving_grid_baseline (2026-09-30) 리뷰 1회차 |
+
+### 반감기_사이클 판단용 차트 (설계 문서)
+
+줄 번호 기준: PLAN_halving_decision_chart 완료 시점의 작업 트리 (2026-10-01 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `docs/검증/반감기_사이클/설계.md:42` §1.1 「3단계에서 고른 뒤 추가로 재야 하는 것」 | 결정 목록 글머리의 맺음말 「§2 의 나머지는 데이터와 1단계의 결정이다」가 앞 세션 편집에서 떨어져 ④ 항목 끝에 마침표 없이 붙었다 — ④ 의 일부처럼 읽힌다 | 그 외 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_decision_chart (2026-10-01) |

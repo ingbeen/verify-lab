@@ -322,7 +322,8 @@ verify-lab/
 │   └── utils/               # 공통 유틸리티 (로거, 포맷팅, CLI 헬퍼, 메타 관리)
 ├── scripts/                 # CLI 스크립트 (상세: scripts/CLAUDE.md)
 │   ├── data/                # 데이터 수집·실측 스크립트
-│   └── run_<매매법>.py       # 매매법당 하나. 측정과 체결을 한 번에 돈다
+│   ├── run_<매매법>.py       # 매매법당 하나. 측정과 체결을 한 번에 돈다
+│   └── chart_<매매법>.py     # 판단용 차트 (있는 매매법만). 산출물 폴더를 쓰지 않는다
 ├── tests/                   # 테스트 코드 (상세: tests/CLAUDE.md)
 ├── docs/
 │   ├── COMMANDS.md          # 실행 명령어 단일 관리
@@ -334,7 +335,8 @@ verify-lab/
 ├── reference/               # 참고용 원본 문서와 테스트 예시 (읽기 전용, 상세: reference/README.md)
 └── storage/
     ├── market/              # 수집한 원시 시세 (git 동기화)
-    └── results/<등급>/<한글 이름>/  # 실행 결과 (git 동기화, meta.json 만 제외)
+    ├── results/<등급>/<한글 이름>/  # 실행 결과 (git 동기화, meta.json 만 제외)
+    └── charts/<한글 이름>/   # 판단용 차트 HTML (git 제외 — 같은 명령으로 다시 만든다)
 ```
 
 > **등급(검증·매매·조사)은 「상태」이고 코드를 가르지 않습니다** — 매매는 규칙까지 확정한 것, 검증은
@@ -390,6 +392,7 @@ verify-lab/
 | --- | --- |
 | `scripts/data/` (데이터 수집·실측) | AI 모델이 직접 실행 가능 |
 | `scripts/run_<매매법>.py` (측정과 체결을 한 번에) | AI 모델이 직접 실행 가능 |
+| `scripts/chart_<매매법>.py` (판단용 차트 — 브라우저를 연다) | AI 모델이 직접 실행 가능 |
 | `validate_project.py` | AI 모델이 직접 실행 가능 |
 
 수집 스크립트는 yfinance·KRX·ECOS·FRED·Bitstamp·Coin Metrics 외부 서버에 **실제 요청**을 보냅니다. 실행은 자유롭되
