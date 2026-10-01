@@ -1,6 +1,6 @@
 """반감기_사이클 판단용 차트 — 시세와 달력 매달 분할 측정 표를 HTML 한 장의 차트 데이터로 옮긴다
 
-**사고파는 기간(②)을 사람이 보고 고르게 하는 보기다** (설계 결정 ㊾ · ㊿ · 53 · 54). 매매 방식은 달력형 매달 분할이고(결정 51),
+**사고파는 기간(②)을 사람이 보고 고르게 하는 보기다** (설계 결정 ㊾ · ㊿ · 53 · 54 · 55). 매매 방식은 달력형 매달 분할이고(결정 51),
 차트는 폭 하나(`CHART_SPLIT_NAME`)의 매수 · 매도 회차를 세 보기 — 반감기 기준 겹치기 · 바닥 기준 겹치기 · 전 기간
 시간축 — 에 찍는다. **고르지 않고 판정하지 않는다.**
 
@@ -390,7 +390,7 @@ def chart_split(splits: Sequence[CalendarSplit], name: str) -> CalendarSplit:
 
 
 def split_info(split: CalendarSplit, *, step_months: int) -> dict[str, Any]:
-    """차트 머리 · 띠에 쓰는 폭의 정보 — 쪽마다 회차 수와 매수(반감기 뒤) · 매도(다음 반감기 뒤)의 첫 · 마지막 회차 개월."""
+    """숫자표 제목 줄 · ① 의 띠에 쓰는 폭의 정보 — 쪽마다 회차 수와 매수(반감기 뒤) · 매도(다음 반감기 뒤)의 첫 · 마지막 회차 개월."""
     buy_first, sell_first = split.first_deadlines(step_months)
 
     return {
@@ -664,7 +664,6 @@ def build_chart_html(datasets: Sequence[Dataset], *, plotly_js: str, created_at:
         "split": split_info(split, step_months=CALENDAR_SPLIT_STEP_MONTHS),
         # 점 · 띠의 `side` 값 — JS 가 글자를 다시 적지 않게 넘긴다
         "sides": {"buy": SPLIT_SIDE_BUY, "sell": SPLIT_SIDE_SELL},
-        "bottom_lead_months": BOTTOM_LEAD_MONTHS,
         "cycles": cycle_series(close, halving_days),
         "bottoms": bottom_series(close, halving_days, lead_months=BOTTOM_LEAD_MONTHS),
         "summary": summary,

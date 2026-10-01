@@ -73,113 +73,45 @@ body { margin: 0; background: var(--page); color: var(--text-primary);
 main { max-width: 1320px; margin: 0 auto; padding: 24px 16px 56px; }
 h1 { font-size: 22px; margin: 0 0 8px; }
 h2 { font-size: 17px; margin: 0 0 6px; }
-h3 { font-size: 14px; margin: 0 0 4px; }
 .lede { color: var(--text-secondary); font-size: 14px; line-height: 1.65; margin: 0; }
 .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
   padding: 16px; margin-top: 20px; }
-.card > p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; margin: 0 0 8px; }
 .chart { width: 100%; }
-ul.notes { color: var(--text-secondary); font-size: 13px; line-height: 1.7; margin: 0; padding-left: 20px; }
 .table-wrap { overflow-x: auto; margin-top: 8px; }
 table { border-collapse: collapse; font-size: 13px; }
 th, td { padding: 6px 10px; border-bottom: 1px solid var(--grid); text-align: left; vertical-align: top; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nowrap { white-space: nowrap; }
 th { color: var(--text-secondary); font-weight: 600; }
-.guide { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 20px;
-  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid); }
-.guide p, .guide li { color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
-.guide p { margin: 0; }
-.guide ul { margin: 0; padding-left: 18px; }
-.buy { color: var(--buy); font-weight: 600; }
-.sell { color: var(--sell); font-weight: 600; }
-code { font-size: 12px; }
 </style>
 </head>
 <body>
 <main>
   <h1>반감기_사이클 판단 차트</h1>
-  <p class="lede">매매 방식은 <b>달력형 매달 분할</b>입니다(설계 결정 51). 이 차트는 그중 「<span class="fill-split-name"></span>」 폭 —
-  <b><span class="fill-split-rule"></span></b> — 이 사이클마다 언제 사고팔았는지를 세 가지 눈금으로 보입니다.
-  <b>차트는 고르지도 판정하지도 않습니다.</b> 드래그로 확대, 더블클릭으로 원래 크기입니다. 범례를 누르면 그 계열을 숨깁니다.</p>
-
-  <section class="card">
-    <h2>먼저 읽을 것</h2>
-    <ul class="notes">
-      <li><b>성적은 과거 재구성이지 예측이 아닙니다.</b> 반감기 사이클이 3 ~ 4개뿐이라 어떤 기간도 통계적 증명이 아닙니다.</li>
-      <li><b>이 기간은 과거를 보고 정했습니다.</b> 매수 기간의 가운데를 과거 바닥에 두고, 매도 기간은 최근 두 사이클의 쌍봉(고점에
-        가까운 가격이 몇 달 간격으로 두 번 온 구간)을 덮게 했습니다. 처음 두 사이클처럼 한 번에 치솟으면 매도 회차 대부분이 고점보다
-        훨씬 아래입니다. 다른 기간과의 비교는 설계 문서(결정 54)와 결과 문서에 있습니다.</li>
-      <li><b>회차는 그 달의 말일 종가입니다</b> — 반감기 뒤 N개월이 속한 달의 마지막 날에 사고팝니다.</li>
-      <li><b>맨몸 성적입니다</b> — 손절 · 수수료 · 세금이 없고, 하드포크로 받은 코인(BCH · BTG)의 몫도 없습니다.</li>
-      <li><b>데이터</b>: <span id="sources"></span> · 만든 시각 <span id="created"></span>. 다시 만드는 명령은 <code>docs/COMMANDS.md</code> 「반감기_사이클」에 있습니다 —
-        시세를 다시 받고 <code>run_halving_cycle.py</code> 를 돌리지 않았다면 이 차트(새 시세)와 커밋된 CSV(옛 시세)가 어긋납니다.</li>
-    </ul>
-  </section>
+  <p class="lede">데이터: <span id="sources"></span> · 만든 시각 <span id="created"></span></p>
 
   <section class="card">
     <h2>① 반감기 기준 사이클 겹치기</h2>
-    <p>가로축은 반감기 뒤 경과 개월, 세로축은 반감기일 종가를 1배로 맞춘 로그 눈금입니다. <span class="buy">빨간 띠는 매수 기간</span>,
-    <span class="sell">파란 띠는 매도 기간</span>이고 <span class="buy">▲</span> 는 산 회차, <span class="sell">▼</span> 는 판 회차입니다.
-    <b>파란 띠의 ▼ 는 그 선의 앞 사이클 포지션을 판 것입니다</b> — 매도는 다음 반감기 뒤에서 세기 때문입니다.</p>
     <div id="overlay" class="chart"></div>
-    <div class="guide">
-      <div><h3>무엇을 보나</h3>
-        <p>네 사이클이 반감기 뒤 같은 개월대에서 오르고 꺾였는지, 빨간 띠가 바닥 근처에 · 파란 띠가 고점 근처에 걸리는지 봅니다.
-        한 사이클만 띠에서 벗어나면 그 사이클에서는 이 달력이 빗나간 것입니다.</p></div>
-      <div><h3>주의</h3>
-        <ul><li>2024 사이클은 진행 중입니다 — 끝나지 않은 선을 앞 사이클과 같은 무게로 읽지 않습니다.</li>
-        <li>가로축 개월은 날 수를 한 달 평균 길이로 나눈 값이고 회차는 그 달의 말일이라, 점이 정한 개월보다 최대 한 달 가까이
-        오른쪽에 찍힙니다 — 띠는 점이 앉은 자리까지 덮습니다.</li></ul></div>
-    </div>
   </section>
 
   <section class="card">
     <h2>② 바닥 기준 사이클 겹치기</h2>
-    <p>사이클마다 바닥(고점 뒤 최저 종가)을 0개월 · 1배로 맞춘 그림입니다. 선은 바닥 <span class="fill-lead"></span>개월 앞부터 다음 바닥
-    전날까지입니다. <b>한 포지션의 <span class="buy">▲</span> · <span class="sell">▼</span> 가 그 사이클 바닥의 선 하나에 모입니다</b> — 산 회차가 바닥보다
-    얼마나 앞 · 뒤였는지, 판 회차가 바닥에서 몇 배 오른 자리였는지 봅니다.</p>
     <div id="bottom" class="chart"></div>
-    <div class="guide">
-      <div><h3>무엇을 보나</h3>
-        <p>▲ 가 0 근처에 모이면 매수 기간이 바닥을 잘 덮은 것이고, 한쪽으로 몰리면 바닥이 기간보다 일렀거나 늦었던 것입니다.
-        ▼ 는 다음 고점 근처(선의 가장 높은 곳)에 가까울수록 고점 무렵에 판 것입니다.</p></div>
-      <div><h3>주의</h3>
-        <ul><li>바닥은 지나고 나서야 정해지는 값입니다 — 매매 신호가 아니라 그림을 읽는 기준점입니다.</li>
-        <li>진행 중 사이클의 바닥은 <b>잠정</b>입니다(점선). 데이터가 늘면 바닥이 바뀌어 그 선이 통째로 옮겨 갑니다.</li></ul></div>
-    </div>
   </section>
 
   <section class="card">
     <h2>③ 전 기간 시간축</h2>
-    <p>세로선은 반감기, <span class="buy">빨간 띠</span> · <span class="sell">파란 띠</span>는 매수 · 매도 기간입니다. 마우스를 올리면 그날이 어느 반감기 뒤 몇 개월째인지 함께 나옵니다.</p>
     <div id="timeline" class="chart"></div>
-    <div class="guide">
-      <div><h3>무엇을 보나</h3>
-        <p>실제 날짜로 언제 사고팔았는지 봅니다. 띠가 큰 하락 · 상승의 어디에 걸렸는지, 띠 밖에서 더 싸거나 더 비쌌던 구간이 있었는지 확인합니다.</p></div>
-      <div><h3>주의</h3>
-        <ul><li>2024 사이클은 사는 중입니다. 팔 날은 다음 반감기가 반감기 목록에 들어와야 정해집니다.</li>
-        <li>2011 ~ 2013 은 Bitstamp 거래가 얇아 두 소스의 가격이 크게 갈렸습니다(설계 §4.3).</li></ul></div>
-    </div>
   </section>
 
   <section class="card">
-    <h2>사이클별 숫자표 — 「<span class="fill-split-name"></span>」</h2>
-    <p>값은 산출물 <code>달력분할포지션.csv</code> 그대로입니다. 포지션은 반감기 뒤에 사서 <b>다음</b> 반감기 뒤에 판 것이고, 매수는 회차마다 같은 금액 · 매도는 회차마다 같은 양입니다.</p>
+    <h2>사이클별 숫자표 — 「<span id="split-name"></span>」 <span id="split-rule"></span></h2>
     <div class="table-wrap"><table id="split-table"></table></div>
-    <div class="guide">
-      <div><h3>보는 법</h3>
-        <ul><li>평균 매수가는 같은 금액으로 산 회차들의 평균 단가, 평균 매도가는 회차 종가의 평균입니다.</li>
-        <li>평균 단가 대비 최악은 들고 있는 동안 그때까지의 평균 단가보다 가장 많이 내려갔던 폭입니다(장중 저가).</li></ul></div>
-      <div><h3>주의</h3>
-        <ul><li>사이클마다 크기가 줄고 있습니다 — 앞 사이클의 수천 % 를 앞으로의 기대로 옮기지 않습니다.</li>
-        <li>끝나지 않은 포지션은 수익률이 비어 있고 상태에 그 까닭이 나옵니다.</li></ul></div>
-    </div>
   </section>
 
   <section class="card">
-    <h2>사이클 요약 — 차트를 읽는 기준점</h2>
-    <p>고점 · 바닥은 <b>지나고 나서야 정해지는 값이라 매매 신호가 아닙니다.</b> 가격 고점은 반감기 뒤 24개월 안의 최고 종가(다음 반감기 직전의 더 높은 종가를 고점으로 물지 않게 — 설계 §4.14), 바닥은 고점 뒤 사이클 끝까지의 최저 종가입니다.</p>
+    <h2>사이클 요약</h2>
     <div class="table-wrap"><table id="summary-table"></table></div>
   </section>
 </main>
@@ -418,11 +350,10 @@ code { font-size: 12px; }
   document.getElementById('sources').textContent = DATA.meta.sources
     .map((s) => s.name + ' ' + s.file + ' ' + s.period + ' (' + s.rows.toLocaleString('en-US') + '행)').join(' · ');
   document.getElementById('created').textContent = DATA.meta.created_at;
-  const rule = '반감기 뒤 ' + SPLIT.buy[0] + ' ~ ' + SPLIT.buy[1] + '개월에 매달 말일 종가로 ' + SPLIT.buy_tranches
-    + '번 사고, 다음 반감기 뒤 ' + SPLIT.sell[0] + ' ~ ' + SPLIT.sell[1] + '개월에 매달 말일 종가로 ' + SPLIT.sell_tranches + '번 판다';
-  document.querySelectorAll('.fill-split-name').forEach((el) => { el.textContent = SPLIT.name; });
-  document.querySelectorAll('.fill-split-rule').forEach((el) => { el.textContent = rule; });
-  document.querySelectorAll('.fill-lead').forEach((el) => { el.textContent = String(DATA.bottom_lead_months); });
+  document.getElementById('split-name').textContent = SPLIT.name;
+  // 폭의 명목 기간 — ① 의 띠는 회차 점이 앉은 자리까지 넓혀 그려 이 값을 읽을 수 없다
+  document.getElementById('split-rule').textContent = '매수 반감기 뒤 ' + SPLIT.buy[0] + ' ~ ' + SPLIT.buy[1] + '개월 '
+    + SPLIT.buy_tranches + '회 · 매도 다음 반감기 뒤 ' + SPLIT.sell[0] + ' ~ ' + SPLIT.sell[1] + '개월 ' + SPLIT.sell_tranches + '회';
 
   // 캡처 점검용 주소 표지: #theme=dark
   const hash = Object.fromEntries(location.hash.slice(1).split('&').filter(Boolean).map((p) => p.split('=')));
