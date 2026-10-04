@@ -15,11 +15,13 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_LOW
+from verify_lab.execution.constants import NO_STOP_LABEL
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HOLD_DAYS, REASON_NONE
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_MIN, COL_POSITIVE_COUNT
 from verify_lab.studies.halving_cycle.constants import (
     COL_AVG_BUY_PRICE,
     COL_AVG_SELL_PRICE,
+    COL_BREAK_DATE,
     COL_BUY_CALENDAR_COUNT,
     COL_BUY_FIRST_DEADLINE,
     COL_BUY_LAST_DEADLINE,
@@ -29,6 +31,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_CYCLE_WORST_TEMPLATE,
     COL_FINISHED_COUNT,
     COL_FIRST_BUY_DATE,
+    COL_FORK_SHARE,
     COL_HALVING,
     COL_LAST_SELL_DATE,
     COL_MONTHS_SINCE_HALVING,
@@ -37,6 +40,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SELL_FIRST_DEADLINE,
     COL_SELL_LAST_DEADLINE,
     COL_SELL_TRANCHES,
+    COL_SOLD_BEFORE_STOP,
     COL_SPLIT_ANCHOR_HALVING,
     COL_SPLIT_DEADLINE,
     COL_SPLIT_FILL_CLOSE,
@@ -45,11 +49,18 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SPLIT_TOTAL,
     COL_SPLIT_TRANCHE,
     COL_SPLIT_TRIGGER,
+    COL_STOP_LINE_CLOSE,
+    COL_STOP_LINE_DATE,
+    COL_STOP_LINE_VS_COST,
+    COL_STOP_METHOD,
+    COL_STOP_SELL_CLOSE,
+    COL_STOP_SELL_DATE,
     COL_WORST_VS_COST,
     REASON_NO_NEXT_HALVING,
     REASON_POSITION_BUYING,
     REASON_POSITION_SELLING,
     REASON_SPLIT_PENDING,
+    REASON_STOP_SELL_PENDING,
     SPLIT_ANCHOR_HALVING,
     SPLIT_ANCHOR_HIGH,
     SPLIT_SIDE_BUY,
@@ -59,8 +70,10 @@ from verify_lab.studies.halving_cycle.constants import (
     SPLIT_THRESHOLD_RANK,
     SPLIT_TRIGGER_CALENDAR,
     SPLIT_TRIGGER_ONCHAIN,
+    STOP_METHOD_LOW_BREAK,
     CalendarSplit,
     Halving,
+    HardFork,
 )
 from verify_lab.studies.halving_cycle.split_rule import (
     CalendarSplitGrid,
@@ -1109,6 +1122,8 @@ class TestCalendarSplitGrid:
         CalendarSplit(name="나", buy_tranches=3, buy_last_deadline=9, sell_tranches=2, sell_last_deadline=5),
     )
     STEP = 2
+    # 고점 창 — 실제(24개월)와 다르다. 이 클래스는 손절 표를 보지 않고, 두 폭의 매수가 이 창보다 늦게 끝나기만 하면 된다
+    PEAK_WINDOW = 3
     # 첫 반감기 「가」 포지션 — 매수 2019-06-30(80) · 2019-08-31(120), 매도 2020-05-31(150) · 2020-07-31(210) ·
     # 2020-09-30(240). 같은 날짜(06-20 · 08-20 · …)는 기본 가격 100 이라 말일을 놓치면 값이 달라진다.
     # 저가: 첫 매수일 50(그날 산 회차는 그날 장중을 겪지 않는다) · 07-10 60 · 09-01 84 · 마지막 매도 다음날 10
@@ -1135,6 +1150,8 @@ class TestCalendarSplitGrid:
             self.HALVINGS if halvings is None else halvings,
             self.SPLITS if splits is None else splits,
             step_months=self.STEP,
+            peak_window_months=self.PEAK_WINDOW,
+            forks=(),
         )
 
     def _position(self, grid: CalendarSplitGrid, name: str, halving: Halving) -> pd.Series:
@@ -1398,3 +1415,389 @@ class TestCalendarSplitGrid:
         # When / Then
         with pytest.raises(ValueError, match=message):
             self._grid(splits=splits)
+
+
+class TestCalendarSplitStops:
+    """달력 매달 분할의 저점 이탈 손절 — 매수 기간에는 손절이 없고, 마지막 매수일에 고정한 손절선(사이클 고점 뒤 최저
+    종가)을 종가가 깨면 다음 거래일 종가에 남은 보유를 전부 판다 (설계 결정 58)
+
+    **픽스처는 실제와 다르다** — 고점 창 2개월(실제 24) · 매수 2회 · 매도 3회 · 2개월 간격. 고점 창을 상수에서 읽으면
+    손절선이 다른 날을 문다. 반감기일은 20일이라 회차가 말일로 간다.
+    """
+
+    HALVINGS = (_halving("2019-01-20"), _halving("2020-03-20"), _halving("2021-05-20"))
+    DAYS = _days("2018-01-01", "2022-06-30")
+    SPLITS = (CalendarSplit(name="가", buy_tranches=2, buy_last_deadline=7, sell_tranches=3, sell_last_deadline=6),)
+    STEP = 2
+    PEAK_WINDOW = 2
+    # 첫 반감기 포지션 — 사이클 고점 2019-02-10(300 · 고점 창 안) · 첫 매수 «앞»의 바닥 2019-05-15(40) · 매수 2019-06-30(80) ·
+    # 08-31(120) · 첫 매수 뒤 최저 2019-07-15(60) · 매수가 끝난 뒤 2019-10-10(50 — 첫 매수 뒤 최저보다 낮고 손절선보다 높다) ·
+    # 매도 2020-05-31(150) · 07-31(210) · 09-30(240).
+    # 둘째 반감기 사이클 — 고점 2020-04-10(500) · 그 뒤 2020-04-20(45) · 06-10(42). 둘째 사이클로 손절선을 다시 세면
+    # 06-10 의 42 가 이탈이 된다. 셋째 반감기 — 고점 2021-06-01(400) · 그 뒤 최저 2021-09-10(90) · 매수 10-31(110) · 12-31(130)
+    CLOSES = {
+        "2019-02-10": 300.0,
+        "2019-05-15": 40.0,
+        "2019-06-30": 80.0,
+        "2019-07-15": 60.0,
+        "2019-08-31": 120.0,
+        "2019-10-10": 50.0,
+        "2020-04-10": 500.0,
+        "2020-04-20": 45.0,
+        "2020-05-31": 150.0,
+        "2020-06-10": 42.0,
+        "2020-07-31": 210.0,
+        "2020-09-30": 240.0,
+        "2021-06-01": 400.0,
+        "2021-09-10": 90.0,
+        "2021-10-31": 110.0,
+        "2021-12-31": 130.0,
+    }
+    # 첫 반감기 포지션의 평균 매수가(같은 금액 — 조화평균)와 무손절 평균 매도가
+    AVG_BUY = 96.0
+    AVG_SELL = 200.0
+    # 셋째 반감기 포지션의 평균 매수가
+    THIRD_AVG_BUY = 2.0 / (1.0 / 110.0 + 1.0 / 130.0)
+    # 첫 반감기 포지션이 들고 있는 동안의 포크 — 비율 0.1
+    FORK = HardFork(
+        name="CCC",
+        height=7,
+        block_time=datetime(2020, 1, 15, 12, 0, tzinfo=UTC),
+        price_day=pd.Timestamp("2020-01-15"),
+        coin_price=10.0,
+        btc_price=100.0,
+    )
+
+    def _market(self, overrides: dict[str, float] | None = None, end: str | None = None) -> pd.DataFrame:
+        """픽스처 시세 — 몇 날을 바꾸거나 뒤를 자른다. 저가는 종가와 같다."""
+        frame = _frame(self.DAYS, closes={**self.CLOSES, **(overrides or {})}, lows={})
+        if end is None:
+            return frame
+
+        return frame[frame[COL_DATE] <= pd.Timestamp(end)].reset_index(drop=True)
+
+    def _grid(
+        self,
+        frame: pd.DataFrame,
+        *,
+        forks: tuple[HardFork, ...] = (),
+        splits: tuple[CalendarSplit, ...] | None = None,
+        peak_window: int | None = None,
+    ) -> CalendarSplitGrid:
+        return calendar_split_grid(
+            frame,
+            self.HALVINGS,
+            self.SPLITS if splits is None else splits,
+            step_months=self.STEP,
+            peak_window_months=self.PEAK_WINDOW if peak_window is None else peak_window,
+            forks=forks,
+        )
+
+    def _row(self, grid: CalendarSplitGrid, halving: Halving, method: str) -> pd.Series:
+        rows = grid.stops[(grid.stops[COL_HALVING] == halving.label) & (grid.stops[COL_STOP_METHOD] == method)]
+        assert len(rows) == 1
+
+        return rows.iloc[0]
+
+    def test_행은_폭_반감기마다_무손절과_저점_이탈_둘이고_칸_순서가_계약대로다(self) -> None:
+        """
+        목적: 표본 보존 — 끝나지 않은 포지션도 두 행이 다 있다. 무손절 행이 손절이 무엇을 막았는지의 대조축이다.
+
+        Given: 폭 하나 · 반감기 셋
+        When: 격자를 낸다
+        Then: 손절 표 행 = 폭 × 반감기 × 2 · 포지션마다 무손절 · 저점 이탈 순 · 칸 순서가 계약대로다
+        """
+        # When
+        grid = self._grid(self._market())
+
+        # Then
+        assert len(grid.stops) == len(self.SPLITS) * len(self.HALVINGS) * 2
+        for halving in self.HALVINGS:
+            methods = grid.stops[grid.stops[COL_HALVING] == halving.label][COL_STOP_METHOD].tolist()
+            assert methods == [NO_STOP_LABEL, STOP_METHOD_LOW_BREAK]
+        assert list(grid.stops.columns) == [
+            COL_CALENDAR_SPLIT,
+            COL_HALVING,
+            COL_STOP_METHOD,
+            COL_AVG_BUY_PRICE,
+            COL_AVG_SELL_PRICE,
+            COL_POSITION_RETURN,
+            COL_WORST_VS_COST,
+            COL_LAST_SELL_DATE,
+            COL_FORK_SHARE,
+            COL_STOP_LINE_DATE,
+            COL_STOP_LINE_CLOSE,
+            COL_STOP_LINE_VS_COST,
+            COL_BREAK_DATE,
+            COL_STOP_SELL_DATE,
+            COL_STOP_SELL_CLOSE,
+            COL_SOLD_BEFORE_STOP,
+            COL_EXCLUDED_REASON,
+        ]
+
+    def test_무손절_행은_포지션_표와_같다(self) -> None:
+        """
+        목적: 무손절 행은 새 계산이 아니라 포지션 표의 성적 그대로다 — 두 표가 같은 포지션을 다르게 말하지 않는다.
+
+        Given: 픽스처 시세
+        When: 격자를 낸다
+        Then: 반감기마다 무손절 행의 평균 매수가 · 평균 매도가 · 수익률 · 최악 · 마지막 매도일 · 사유가 포지션 표와 같다
+        """
+        # When
+        grid = self._grid(self._market())
+
+        # Then
+        for halving in self.HALVINGS:
+            stop = self._row(grid, halving, NO_STOP_LABEL)
+            position = grid.positions[grid.positions[COL_HALVING] == halving.label].iloc[0]
+            for column in (COL_AVG_BUY_PRICE, COL_AVG_SELL_PRICE, COL_POSITION_RETURN, COL_WORST_VS_COST):
+                np.testing.assert_allclose(float(stop[column]), float(position[column]), rtol=0.0, atol=1e-12)
+            assert pd.isna(stop[COL_LAST_SELL_DATE]) == pd.isna(position[COL_LAST_SELL_DATE])
+            if not pd.isna(position[COL_LAST_SELL_DATE]):
+                assert stop[COL_LAST_SELL_DATE] == position[COL_LAST_SELL_DATE]
+            assert stop[COL_EXCLUDED_REASON] == position[COL_EXCLUDED_REASON]
+
+    def test_손절선은_마지막_매수일까지의_사이클_고점_뒤_최저_종가다(self) -> None:
+        """
+        목적: 손절선은 첫 매수 뒤 최저(기준 B)가 아니라 사이클 고점 뒤 최저(기준 A)다 — 바닥이 첫 매수 «앞»이면 둘이 갈린다.
+
+        Given: 첫 반감기 — 바닥 2019-05-15(40)이 첫 매수(06-30) 앞이고, 매수가 끝난 뒤 2019-10-10 종가 50 은
+            첫 매수 뒤 최저(60)보다 낮고 손절선(40)보다 높다
+        When: 격자를 낸다
+        Then: 두 행 모두 손절선 2019-05-15 · 40 · 평균 매수가 대비 40 ÷ 96 − 1 · 이탈 없음 ·
+            저점 이탈 행의 수익률이 무손절과 같다(200 ÷ 96 − 1)
+        """
+        # When
+        grid = self._grid(self._market())
+
+        # Then
+        first = self.HALVINGS[0]
+        for method in (NO_STOP_LABEL, STOP_METHOD_LOW_BREAK):
+            row = self._row(grid, first, method)
+            assert row[COL_STOP_LINE_DATE] == pd.Timestamp("2019-05-15")
+            assert row[COL_STOP_LINE_CLOSE] == pytest.approx(40.0, abs=1e-12)
+            assert row[COL_STOP_LINE_VS_COST] == pytest.approx(40.0 / self.AVG_BUY - 1.0, abs=1e-12)
+            assert pd.isna(row[COL_BREAK_DATE])
+        stop = self._row(grid, first, STOP_METHOD_LOW_BREAK)
+        assert stop[COL_POSITION_RETURN] == pytest.approx(self.AVG_SELL / self.AVG_BUY - 1.0, abs=1e-12)
+        assert pd.isna(stop[COL_STOP_SELL_DATE]) and pd.isna(stop[COL_SOLD_BEFORE_STOP])
+
+    def test_매수_기간_중에_저점을_깨면_팔지_않고_그_값이_손절선이_된다(self) -> None:
+        """
+        목적: 매수 기간에는 손절이 없다 — 그 기간에 난 더 낮은 종가는 손절선이 된다(「이전에 형성된 최저점」).
+
+        Given: 매수 기간 중 2019-07-20 종가 30, 매수가 끝난 뒤 2019-10-10 종가 35 (40 보다 낮고 30 보다 높다)
+        When: 격자를 낸다
+        Then: 손절선 2019-07-20 · 30 · 이탈 없음 · 저점 이탈 행이 무손절과 같은 성적이다
+        """
+        # When
+        grid = self._grid(self._market({"2019-07-20": 30.0, "2019-10-10": 35.0}))
+
+        # Then
+        stop = self._row(grid, self.HALVINGS[0], STOP_METHOD_LOW_BREAK)
+        assert (stop[COL_STOP_LINE_DATE], stop[COL_STOP_LINE_CLOSE]) == (pd.Timestamp("2019-07-20"), 30.0)
+        assert pd.isna(stop[COL_BREAK_DATE]) and pd.isna(stop[COL_STOP_SELL_DATE])
+        assert stop[COL_POSITION_RETURN] == pytest.approx(self.AVG_SELL / self.AVG_BUY - 1.0, abs=1e-12)
+
+    def test_이탈하면_다음_거래일_종가에_남은_보유를_전부_판다(self) -> None:
+        """
+        목적: 산식 고정 — 이탈은 종가로 판정하고 다음 거래일 종가에 남은 보유를 «전부» 판다. 무손절 행은 들고 간다.
+
+        Given: 매수가 끝난 뒤 · 매도 전 2019-11-05 종가 35(< 40), 2019-11-06 종가 45
+        When: 격자를 낸다
+        Then: 저점 이탈 행 — 이탈 11-05 · 손절 매도 11-06 · 45 · 손절 전에 판 매도 회차 0 · 평균 매도가 45 ·
+            수익률 45 ÷ 96 − 1 · 마지막 매도일 11-06 · 끝남. 무손절 행 — 이탈일은 같고 손절 매도가 없고 수익률 200 ÷ 96 − 1
+        """
+        # When
+        grid = self._grid(self._market({"2019-11-05": 35.0, "2019-11-06": 45.0}))
+
+        # Then
+        first = self.HALVINGS[0]
+        stop = self._row(grid, first, STOP_METHOD_LOW_BREAK)
+        assert stop[COL_BREAK_DATE] == pd.Timestamp("2019-11-05")
+        assert (stop[COL_STOP_SELL_DATE], stop[COL_STOP_SELL_CLOSE]) == (pd.Timestamp("2019-11-06"), 45.0)
+        assert stop[COL_SOLD_BEFORE_STOP] == 0
+        assert stop[COL_AVG_SELL_PRICE] == pytest.approx(45.0, abs=1e-9)
+        assert stop[COL_POSITION_RETURN] == pytest.approx(45.0 / self.AVG_BUY - 1.0, abs=1e-12)
+        assert stop[COL_LAST_SELL_DATE] == pd.Timestamp("2019-11-06")
+        assert stop[COL_EXCLUDED_REASON] == REASON_NONE
+        plain = self._row(grid, first, NO_STOP_LABEL)
+        assert plain[COL_BREAK_DATE] == pd.Timestamp("2019-11-05")
+        assert pd.isna(plain[COL_STOP_SELL_DATE]) and pd.isna(plain[COL_SOLD_BEFORE_STOP])
+        assert plain[COL_POSITION_RETURN] == pytest.approx(self.AVG_SELL / self.AVG_BUY - 1.0, abs=1e-12)
+
+    def test_매도_기간_중에_이탈하면_그_전에_판_회차는_그대로고_다음_반감기가_지나도_손절선은_그대로다(self) -> None:
+        """
+        목적: 「매도 기간이든 아니든 전량」 — 이미 판 회차는 그 값 그대로, 남은 회차만 손절 매도로 간다. 손절선은 포지션을
+            산 반감기의 것이라 다음 반감기 사이클의 고점 · 저점으로 다시 세지 않는다.
+
+        Given: 둘째 반감기 사이클의 저점 뒤 2020-06-10 종가 42 (둘째 사이클로 다시 세면 이탈, 첫 손절선 40 보다는 높다),
+            첫 매도(05-31 · 150) 뒤 2020-06-15 종가 39(< 40), 06-16 종가 42.5
+        When: 격자를 낸다
+        Then: 이탈 06-15(06-10 이 아니다) · 손절 전에 판 매도 회차 1 · 손절 매도 06-16 · 42.5 ·
+            평균 매도가 (150 + 42.5 + 42.5) ÷ 3 · 손절선은 2019-05-15 · 40 그대로
+        """
+        # When
+        grid = self._grid(self._market({"2020-06-15": 39.0, "2020-06-16": 42.5}))
+
+        # Then
+        stop = self._row(grid, self.HALVINGS[0], STOP_METHOD_LOW_BREAK)
+        assert stop[COL_BREAK_DATE] == pd.Timestamp("2020-06-15")
+        assert stop[COL_SOLD_BEFORE_STOP] == 1
+        assert (stop[COL_STOP_SELL_DATE], stop[COL_STOP_SELL_CLOSE]) == (pd.Timestamp("2020-06-16"), 42.5)
+        average = (150.0 + 42.5 + 42.5) / 3.0
+        assert stop[COL_AVG_SELL_PRICE] == pytest.approx(average, abs=1e-9)
+        assert stop[COL_POSITION_RETURN] == pytest.approx(average / self.AVG_BUY - 1.0, abs=1e-12)
+        assert (stop[COL_STOP_LINE_DATE], stop[COL_STOP_LINE_CLOSE]) == (pd.Timestamp("2019-05-15"), 40.0)
+
+    def test_마지막_매도일에_이탈하면_팔_것이_남지_않아_무손절과_같다(self) -> None:
+        """
+        목적: 경계 — 이탈한 날 종가에 마지막 회차를 이미 판다. 다음 거래일에 팔 것이 없다.
+
+        Given: 마지막 매도일 2020-09-30 종가 38(< 40)
+        When: 격자를 낸다
+        Then: 저점 이탈 행 — 이탈 09-30 · 손절 매도 없음 · 수익률이 무손절과 같다((150 + 210 + 38) ÷ 3 ÷ 96 − 1)
+        """
+        # When
+        grid = self._grid(self._market({"2020-09-30": 38.0}))
+
+        # Then
+        first = self.HALVINGS[0]
+        stop = self._row(grid, first, STOP_METHOD_LOW_BREAK)
+        assert stop[COL_BREAK_DATE] == pd.Timestamp("2020-09-30")
+        assert pd.isna(stop[COL_STOP_SELL_DATE]) and pd.isna(stop[COL_SOLD_BEFORE_STOP])
+        expected = (150.0 + 210.0 + 38.0) / 3.0 / self.AVG_BUY - 1.0
+        assert stop[COL_POSITION_RETURN] == pytest.approx(expected, abs=1e-12)
+        assert self._row(grid, first, NO_STOP_LABEL)[COL_POSITION_RETURN] == pytest.approx(expected, abs=1e-12)
+
+    def test_다음_반감기가_없는_포지션도_매수가_끝난_뒤_이탈하면_손절로_끝난다(self) -> None:
+        """
+        목적: 매도 회차가 아직 정해지지 않은 포지션(다음 반감기가 반감기 목록에 없다)도 손절선은 산다 — 이탈하면 전량 팔고 끝난다.
+
+        Given: 셋째 반감기 — 손절선 2021-09-10(90), (가) 이탈 없음 (나) 2022-02-10 종가 85 · 02-11 종가 88
+        When: 격자를 낸다
+        Then: (가) 두 행 모두 「다음 반감기가 반감기 목록에 없음」 · 손절선 2021-09-10 · 90
+            (나) 저점 이탈 행 — 끝남 · 손절 매도 02-11 · 88 · 수익률 88 ÷ 평균 매수가 − 1. 무손절 행은 그 사유 그대로이고 이탈일만 있다
+        """
+        # When
+        quiet = self._grid(self._market())
+        broken = self._grid(self._market({"2022-02-10": 85.0, "2022-02-11": 88.0}))
+
+        # Then
+        third = self.HALVINGS[2]
+        for method in (NO_STOP_LABEL, STOP_METHOD_LOW_BREAK):
+            row = self._row(quiet, third, method)
+            assert row[COL_EXCLUDED_REASON] == REASON_NO_NEXT_HALVING
+            assert (row[COL_STOP_LINE_DATE], row[COL_STOP_LINE_CLOSE]) == (pd.Timestamp("2021-09-10"), 90.0)
+        stop = self._row(broken, third, STOP_METHOD_LOW_BREAK)
+        assert stop[COL_EXCLUDED_REASON] == REASON_NONE
+        assert (stop[COL_STOP_SELL_DATE], stop[COL_STOP_SELL_CLOSE]) == (pd.Timestamp("2022-02-11"), 88.0)
+        assert stop[COL_POSITION_RETURN] == pytest.approx(88.0 / self.THIRD_AVG_BUY - 1.0, abs=1e-12)
+        plain = self._row(broken, third, NO_STOP_LABEL)
+        assert plain[COL_EXCLUDED_REASON] == REASON_NO_NEXT_HALVING
+        assert plain[COL_BREAK_DATE] == pd.Timestamp("2022-02-10")
+        assert pd.isna(plain[COL_POSITION_RETURN])
+
+    def test_매수가_남은_포지션은_손절선이_없고_사유를_단다(self) -> None:
+        """
+        목적: 표본 보존 — 손절선은 매수가 끝나야 정해진다. 0 으로 채우지 않고 비운 채 사유를 단다.
+
+        Given: 2021-11-15 에서 자른 시세 — 셋째 반감기의 둘째 매수(12-31)가 데이터 뒤다
+        When: 격자를 낸다
+        Then: 셋째 반감기 두 행 모두 「매수 회차가 남음」 · 손절선 · 이탈일 · 수익률이 비었다
+        """
+        # When
+        grid = self._grid(self._market(end="2021-11-15"))
+
+        # Then
+        for method in (NO_STOP_LABEL, STOP_METHOD_LOW_BREAK):
+            row = self._row(grid, self.HALVINGS[2], method)
+            assert row[COL_EXCLUDED_REASON] == REASON_POSITION_BUYING
+            assert pd.isna(row[COL_STOP_LINE_DATE]) and pd.isna(row[COL_STOP_LINE_CLOSE])
+            assert pd.isna(row[COL_BREAK_DATE]) and pd.isna(row[COL_POSITION_RETURN])
+
+    def test_뒤를_잘라도_그날까지의_이탈_판정과_손절로_끝난_성적이_같다(self) -> None:
+        """
+        목적: 미래 참조 감시 — 이탈은 그날 종가까지로 판정하고, 판정한 날에는 팔지 않는다(다음 거래일).
+
+        Given: 2019-11-05 종가 35 · 11-06 종가 45 를 심은 시세와, 그것을 (가) 2019-12-31 (나) 2019-11-05 에서 자른 시세
+        When: 셋으로 격자를 낸다
+        Then: (가) 첫 반감기 저점 이탈 행이 전체 입력과 같다 — 이탈 11-05 · 손절 매도 11-06 · 수익률 · 끝남
+            (나) 이탈 11-05 는 같고, 다음 거래일이 데이터 뒤라 손절 매도가 비고 「이탈 다음 거래일이 데이터 뒤」다
+        """
+        # Given
+        overrides = {"2019-11-05": 35.0, "2019-11-06": 45.0}
+
+        # When
+        full = self._grid(self._market(overrides))
+        later = self._grid(self._market(overrides, end="2019-12-31"))
+        same_day = self._grid(self._market(overrides, end="2019-11-05"))
+
+        # Then
+        first = self.HALVINGS[0]
+        whole = self._row(full, first, STOP_METHOD_LOW_BREAK)
+        part = self._row(later, first, STOP_METHOD_LOW_BREAK)
+        for column in (COL_BREAK_DATE, COL_STOP_SELL_DATE, COL_STOP_LINE_DATE, COL_EXCLUDED_REASON):
+            assert part[column] == whole[column]
+        for column in (COL_POSITION_RETURN, COL_STOP_SELL_CLOSE, COL_STOP_LINE_CLOSE):
+            assert part[column] == pytest.approx(float(whole[column]), abs=1e-12)
+        edge = self._row(same_day, first, STOP_METHOD_LOW_BREAK)
+        assert edge[COL_BREAK_DATE] == pd.Timestamp("2019-11-05")
+        assert pd.isna(edge[COL_STOP_SELL_DATE]) and pd.isna(edge[COL_POSITION_RETURN])
+        assert edge[COL_EXCLUDED_REASON] == REASON_STOP_SELL_PENDING
+
+    def test_하드포크_몫은_칸_몫의_평균이고_포크_전에_다_팔면_0이다(self) -> None:
+        """
+        목적: 포지션의 하드포크 몫은 (매수 회차 × 매도 회차) 칸마다의 몫의 평균이다 — 칸마다 돈이 같다. 수익률에 더하지 않는다.
+
+        Given: 2020-01-15 포크(비율 0.1). (가) 이탈 없음 — 모든 칸이 포크일을 품는다 (나) 2019-11-05 이탈 · 11-06 전량 매도
+        When: 격자를 낸다
+        Then: (가) 두 행 모두 0.1 × (1 + 수익률) = 0.1 × 200 ÷ 96, 수익률은 포크가 없을 때와 같다
+            (나) 저점 이탈 행 0 · 무손절 행 0.1 × 200 ÷ 96
+        """
+        # When
+        quiet = self._grid(self._market(), forks=(self.FORK,))
+        broken = self._grid(self._market({"2019-11-05": 35.0, "2019-11-06": 45.0}), forks=(self.FORK,))
+
+        # Then
+        first = self.HALVINGS[0]
+        held = 0.1 * self.AVG_SELL / self.AVG_BUY
+        for method in (NO_STOP_LABEL, STOP_METHOD_LOW_BREAK):
+            row = self._row(quiet, first, method)
+            assert row[COL_FORK_SHARE] == pytest.approx(held, abs=1e-12)
+            assert row[COL_POSITION_RETURN] == pytest.approx(self.AVG_SELL / self.AVG_BUY - 1.0, abs=1e-12)
+        assert self._row(broken, first, STOP_METHOD_LOW_BREAK)[COL_FORK_SHARE] == pytest.approx(0.0, abs=1e-12)
+        assert self._row(broken, first, NO_STOP_LABEL)[COL_FORK_SHARE] == pytest.approx(held, abs=1e-12)
+        assert pd.isna(self._row(quiet, self.HALVINGS[2], NO_STOP_LABEL)[COL_FORK_SHARE])
+
+    @pytest.mark.parametrize("start", ["2019-03-01", "2019-04-01"])
+    def test_시세가_반감기일보다_늦게_시작하면_멈춘다(self, start: str) -> None:
+        """
+        목적: 시세가 반감기일 뒤에 시작하면 고점 창의 앞이 비어 사이클 고점이 정해지지 않는다 — 남은 날 중 하나를 고점으로
+            물거나 빈 창에서 판다스 오류로 죽지 않고, 무엇이 없는지 말하며 멈춘다.
+
+        Given: 첫 반감기(2019-01-20)보다 늦게 시작하는 시세 — (가) 고점 창 안 2019-03-01 (진짜 고점 2019-02-10 이 빠진다)
+            (나) 고점 창이 닫힌 뒤 2019-04-01. 둘 다 첫 반감기 포지션의 매수(06-30 · 08-31)는 시세 안이다
+        When: 격자를 낸다
+        Then: ValueError — 반감기일의 종가가 없다
+        """
+        # Given
+        market = self._market()
+        late = market[market[COL_DATE] >= pd.Timestamp(start)].reset_index(drop=True)
+
+        # When / Then
+        with pytest.raises(ValueError, match="반감기일"):
+            self._grid(late)
+
+    @pytest.mark.parametrize("peak_window", [0, 8])
+    def test_고점_창이_1개월보다_작거나_매수가_고점_창보다_먼저_끝나면_멈춘다(self, peak_window: int) -> None:
+        """
+        목적: 손절선은 고점 창이 닫힌 뒤(매수가 끝난 날)에 고정된다 — 매수가 고점 창 안에서 끝나는 폭에는 정의되지 않는다.
+
+        Given: (가) 고점 창 0개월 (나) 고점 창 8개월 — 폭의 마지막 매수(7개월)보다 길다
+        When: 격자를 낸다
+        Then: ValueError
+        """
+        # When / Then
+        with pytest.raises(ValueError, match="고점 창"):
+            self._grid(self._market(), peak_window=peak_window)

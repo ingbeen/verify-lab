@@ -80,7 +80,7 @@
 
 | 자리 | 무엇 | 종류 | 출처 |
 | --- | --- | --- | --- |
-| `src/verify_lab/studies/halving_cycle/split_rule.py:744` `split_grid` · `docs/검증/반감기_사이클/설계.md` 결정 ㊼ ④ | 포지션 수익률에 하드포크 몫이 없다. 리뷰가 잰 값(이 계획서가 다시 재지 않았다): 2012 사이클 포지션이 최대 +1,167%p · 중앙값 +72%p 과소평가되고, 매도 시점에 따라 고르지 않다 — 4년 순위 매도는 전부 2017-08-01 전이라 배수 1.000, 달력 기한 21 매도는 ×1.145. 그래서 `결과.md` §20 의 2012 사이클 비교에서 포크 뒤에 판 쪽이 덜 잡힌다(온체인 매도가 이미 낮아 방향은 같다). 결정 ㊼ ④ 의 근거(`trading` → `runner` 순환 import)는 순수 함수 `trading.hard_fork_share` 를 잎 모듈로 옮기면 사라진다. **계획서가 비목표로 받아들인 것 — 넣을지 사용자 결정** | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:744` `split_grid` · `docs/검증/반감기_사이클/설계.md` 결정 ㊼ ④ | 포지션 수익률에 하드포크 몫이 없다. 리뷰가 잰 값(이 계획서가 다시 재지 않았다): 2012 사이클 포지션이 최대 +1,167%p · 중앙값 +72%p 과소평가되고, 매도 시점에 따라 고르지 않다 — 4년 순위 매도는 전부 2017-08-01 전이라 배수 1.000, 달력 기한 21 매도는 ×1.145. 그래서 `결과.md` §20 의 2012 사이클 비교에서 포크 뒤에 판 쪽이 덜 잡힌다(온체인 매도가 이미 낮아 방향은 같다). 결정 ㊼ ④ 의 근거(`trading` → `runner` 순환 import)는 이제 없다 — `hard_fork_share` 가 잎 모듈 `studies/halving_cycle/hard_fork.py` 에 있고 달력 분할 손절 표가 이미 측정에서 쓴다(2026-10-04 옮김). **계획서가 비목표로 받아들인 것 — 넣을지 사용자 결정** | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
 | `src/verify_lab/studies/halving_cycle/split_rule.py:811` `split_grid` · `:466` `position_result` | 호출자 입력(반감기 목록 · 격자 값 · 손으로 만든 회차)으로 닿는 조건에 `RuntimeError`(「내부 불변조건 위반」)를 낸다 — 전역 `~/.claude/rules/python.md` 는 입력 검증을 `ValueError` 로 둔다. 재현: 간격 5개월짜리 반감기 둘로 `split_grid` → `RuntimeError`. 실제 산출물에서는 발동하지 않는다(매수 기한 최대 36개월 < 가장 짧은 간격 43.37개월) | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
 | `src/verify_lab/studies/halving_cycle/split_rule.py:183` `_require_increasing` | `measure.calendar_entry.validate_trading_days`(이 패키지에서 7곳이 부른다)를 다시 구현했고, `split_grid` · `position_result` 가 입력 시세를 `validate_market_frame` 으로 검사하지 않는다 — 저가 없는 시세는 맨 `KeyError`, 빈 시세는 `leg_fills` 의 `trading_days[-1]` 에서 `IndexError` 로 멈춘다(패키지의 분명한 `ValueError` 대신). 실제 경로는 로더를 지나 발동하지 않는다 | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
 | `src/verify_lab/studies/halving_cycle/split_rule.py:633` `_fill_rows` | 온체인 체결은 판정일의 «다음 거래일»인데 「체결 전날 MVRV · 4년 순위」는 «달력 전날»(체결일 − 1일)을 읽는다. 시세에 빠진 날이 있으면 d 판정 → d+2 체결 → d+1 의 값이 실리고 예외가 없다. 지금 시세는 수집기가 빠진 날 0 을 보장한다(`설계.md` 결정 ⑪) | 가벼운 버그 | PLAN_halving_cycle_split_hybrid (2026-09-30) 리뷰 1회차 |
@@ -131,6 +131,14 @@
 | `src/verify_lab/studies/halving_cycle/constants.py:388` `CalendarSplit.first_deadlines` · `split_rule.py:320` `tranche_deadlines` | 「첫 회차 = 마지막 − 간격 × (그쪽 회차 수 − 1)」이 두 벌이다 — 회차 날짜는 `tranche_deadlines` 가, 표 · 요약 · 차트 머리(① 의 띠)의 첫 기한 칸은 `first_deadlines` 가 낸다. 한쪽만 규칙을 바꾸면 CSV 의 첫 기한 칸이 같은 표의 회차 날짜와 예외 없이 어긋난다. `constants` 가 `split_rule` 을 가져오면 순환이라 하나로 모으려면 자리부터 정해야 한다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
 | `src/verify_lab/studies/halving_cycle/split_rule.py:616` `_fill_rows` | `mvrv` · `ranks` 를 따로 선택 인자로 받고 둘 다 있을 때만 MVRV 칸을 싣는다 — 하나만 넘기면 두 칸이 예외 없이 사라진다. 달력 분할 경로는 혼합 분할의 식별 칸(문턱 · 시작 · 마지막 기한 · 계기)을 만든 뒤 `reindex` 로 버린다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
 | `src/verify_lab/studies/halving_cycle/split_rule.py:983` `calendar_split_grid` 의 `new_high_flags` | 달력만 조합은 신고가를 읽지 않는데 `leg_fills` 가 받는 인자라 전 기간을 계산한다 — `trigger_values` 가 없을 때 `new_highs` 를 선택으로 두면 준다 | 그 외 | 코드 리뷰 1회차 · 출처: PLAN_halving_calendar_chart (2026-10-01) |
+
+### 반감기_사이클 달력 분할 손절 (split_rule)
+
+줄 번호 기준: PLAN_halving_split_stops 완료 시점의 작업 트리 (2026-10-04 확인).
+
+| 자리 | 무엇 | 종류 | 출처 |
+| --- | --- | --- | --- |
+| `src/verify_lab/studies/halving_cycle/split_rule.py:1224` `_stop_rows` 의 손절 매도 체결 | 저점 이탈로 옮긴 매도 회차의 `TrancheFill.trigger` 에 `STOP_METHOD_LOW_BREAK`(「저점 이탈」)를 넣는다 — 그 칸의 문서상 값은 `SPLIT_TRIGGER_*`(온체인 · 달력)뿐이고 `_trigger_counts` 가 그 회차를 어느 쪽으로도 세지 않는다. 열 매도 회차 중 아홉을 옮긴 포지션의 `position_result(...).sell_counts` 가 (0, 1) 이 된다. 지금 손절 표는 그 건수를 싣지 않아 산출물에는 0건이다 — 「매도 달력 회차」 같은 칸을 손절 표에 더하는 순간 손절로 판 회차가 예외 없이 빠진다 | 가벼운 버그 | 코드 리뷰 1 · 2회차 · 출처: PLAN_halving_split_stops (2026-10-04) |
 
 ## 문서
 

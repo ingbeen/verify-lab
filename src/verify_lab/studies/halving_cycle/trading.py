@@ -1,7 +1,7 @@
 """반감기_사이클 체결 조립 — 진입 시점 × 청산 시점 격자를 손절선 격자 전부로 체결해 성적표와 거래내역을 낸다
 
-**계산은 하드포크 몫 하나만 한다.** 판정식과 성적 산식이 이미 있으므로 그것들을 조합해 돌리고, 어느 행이 어떤 칸의
-결과인지를 붙여 쌓는다. 하드포크 몫은 공유 계층에 없는 이 매매법만의 값이라 여기 둔다.
+**계산하지 않는다.** 판정식과 성적 산식이 이미 있으므로 그것들을 조합해 돌리고, 어느 행이 어떤 칸의
+결과인지를 붙여 쌓는다.
 
 | 빌려 쓰는 것 | 어디서 |
 | --- | --- |
@@ -10,6 +10,7 @@
 | 체결 (무손절 · 손절선) | `execution/trade_fill.simulate_scheduled_trade` |
 | 거래내역의 공통 칸 | `execution/trade_rows.trade_columns` |
 | 구간별 성적 산식과 1차 판정 | `execution/periods.period_rows` |
+| 하드포크 몫 | `studies/halving_cycle/hard_fork.hard_fork_share` — 달력 분할 손절 표와 같은 산식 |
 
 **칸과 손절선을 고르지 않는다** (`docs/검증/반감기_사이클/설계.md` 결정 ㉞ · ㉟) — 격자 전부를 내고, 고르는 것은
 사용자가 `규칙.md` 에서 한다.
@@ -22,8 +23,6 @@
 **비용을 넣지 않는다.** 수수료·슬리피지·세금은 사용자가 별도로 요청할 때만 넣는다 (루트 `CLAUDE.md` 2026-09-06 확정).
 """
 
-import math
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final
 
@@ -73,9 +72,9 @@ from verify_lab.studies.halving_cycle.constants import (
     STOP_LEVELS,
     TRACK_NAME,
     Dataset,
-    HardFork,
 )
 from verify_lab.studies.halving_cycle.halving_calendar import position_schedule
+from verify_lab.studies.halving_cycle.hard_fork import hard_fork_share
 from verify_lab.studies.halving_cycle.runner import halving_records, load_dataset
 from verify_lab.utils.logger import get_logger
 
@@ -166,33 +165,6 @@ class _Accumulator:
 
     trades: list[dict[str, Any]] = field(default_factory=list)
     performance: list[dict[str, Any]] = field(default_factory=list)
-
-
-def hard_fork_share(
-    entry_day: pd.Timestamp, exit_day: pd.Timestamp, return_rate: float, forks: Sequence[HardFork]
-) -> float:
-    """체결 하나가 받은 하드포크 몫을 체결 수익률과 같은 단위(비율)로 낸다.
-
-    **포크 코인을 첫 시세일 종가에 팔아 BTC 를 더 샀다고 본다** (결정 ㊲) — 수정주가가 배당을 재투자한 것으로 보는
-    것과 같은 가정이다. 그래서 받은 몫도 청산까지 BTC 와 함께 움직이고, 포크가 둘이면 곱으로 쌓인다.
-    **「위」로 든 체결의 몫이다** — 이 매매법은 「위」 하나다(결정 ⑰).
-
-    **「품었다」는 진입일 < 포크일 ≤ 청산일이다.** 진입가는 진입일 종가(다음날 00:00 UTC)라 포크일에 들어가면
-    스냅샷 뒤이고, 청산은 청산일 종가라 포크일에 나가면 스냅샷 때 들고 있었다. 포크일 장중에 손절로 나간 체결은
-    받은 것으로 센다 — 날짜 단위로는 가를 수 없다.
-
-    Args:
-        entry_day: 진입일
-        exit_day: 실제 청산일 — 손절로 나갔으면 그날이다
-        return_rate: 체결 수익률 (비율). 받은 몫이 청산까지 BTC 와 함께 움직인 배수가 `1 + 이 값` 이다
-        forks: 하드포크 목록
-
-    Returns:
-        몫 (비율, 0.12 = 12%p). 품은 포크가 없으면 0
-    """
-    growth = math.prod(1.0 + fork.ratio for fork in forks if entry_day < fork.day <= exit_day)
-
-    return (growth - 1.0) * (1.0 + return_rate)
 
 
 def _hard_fork_records() -> list[dict[str, Any]]:
@@ -409,6 +381,5 @@ __all__ = [
     "KEY_OUTSIDE_CYCLE_COUNT",
     "KEY_TARGETS",
     "TradingOutputs",
-    "hard_fork_share",
     "run_halving_cycle_trading",
 ]

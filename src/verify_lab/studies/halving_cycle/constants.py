@@ -405,7 +405,7 @@ class CalendarSplit:
 # 회차 간격(개월) — 매달 한 번이다(결정 51). 혼합 분할의 기한 간격과 다른 값이라 이름을 가른다
 CALENDAR_SPLIT_STEP_MONTHS: Final = 1
 
-# 측정하는 폭 — **사용자가 정한 하나다**(결정 54). 차트가 그리는 후보이고 사고파는 기간(②)의 확정은 아니다.
+# 측정하는 폭 — **사용자가 정한 하나다**(결정 54). 사고파는 기간(②)으로 확정했다(결정 57).
 #
 # [중요] **결과를 본 뒤 정한 값이다** — 매수 기간의 가운데는 과거 바닥(반감기 뒤 25.5 ~ 30.4개월)에 두었고, 매도
 # 기간은 최근 두 사이클의 쌍봉(고점의 85% 에 마지막 고점보다 260 · 294일 먼저 닿았다)을 덮게 했다. 쌍봉이 없던
@@ -413,6 +413,11 @@ CALENDAR_SPLIT_STEP_MONTHS: Final = 1
 CALENDAR_SPLITS: Final = (
     CalendarSplit(name="월말 분할", buy_tranches=6, buy_last_deadline=32, sell_tranches=10, sell_last_deadline=18),
 )
+
+# 사이클 고점을 찾는 창(개월) — 차트의 사이클 요약과 달력 분할의 저점 이탈 손절선(결정 58)이 함께 쓴다.
+# **반감기 ~ 다음 반감기 전체로 잡지 않는다** — 2020 사이클이 다음 반감기 직전(2024-03-13)을 고점으로 물어, 시장 사이클의
+# 고점(2021-11-08)과 어긋난다(`docs/검증/반감기_사이클/설계.md` §4.14)
+PEAK_WINDOW_MONTHS: Final = 24
 
 
 # ============================================================
@@ -614,6 +619,17 @@ COL_SELL_TRANCHES: Final = "sell_tranches"
 COL_BUY_FIRST_DEADLINE: Final = "buy_first_deadline"
 COL_SELL_FIRST_DEADLINE: Final = "sell_first_deadline"
 
+# 3단계 달력 매달 분할 — 손절 표(결정 58). 나머지 칸은 포지션 표와 뜻이 같아 같은 토큰을 쓴다
+COL_STOP_METHOD: Final = "stop_method"
+COL_FORK_SHARE: Final = "fork_share"
+COL_STOP_LINE_DATE: Final = "stop_line_date"
+COL_STOP_LINE_CLOSE: Final = "stop_line_close"
+COL_STOP_LINE_VS_COST: Final = "stop_line_vs_cost"
+COL_BREAK_DATE: Final = "break_date"
+COL_STOP_SELL_DATE: Final = "stop_sell_date"
+COL_STOP_SELL_CLOSE: Final = "stop_sell_close"
+COL_SOLD_BEFORE_STOP: Final = "sold_before_stop"
+
 
 # 책이 문턱을 적은 신호 전부 — **결정 ㉖ 첫 표의 순서 그대로다.** 책의 「마지막」 · 「바닥 뒤」 처럼 지나고 나서야
 # 정해지는 조건은 빼고 돌파를 전부 잰다. 변형(다른 문턱 · 다른 창)을 더하지 않는다 — 고를 여지가 생긴다
@@ -676,6 +692,11 @@ REASON_SPLIT_PENDING: Final = "기한이 데이터 뒤라 아직 체결 전"
 REASON_NO_NEXT_HALVING: Final = "다음 반감기가 반감기 목록에 없음"
 REASON_POSITION_BUYING: Final = "매수 회차가 남음"
 REASON_POSITION_SELLING: Final = "매도 회차가 남음"
+
+# 3단계 달력 매달 분할의 손절 방식(결정 58). 무손절 행의 값은 공유 계층의 표기(`execution/constants.NO_STOP_LABEL`)를 쓴다
+STOP_METHOD_LOW_BREAK: Final = "저점 이탈"
+# 이탈은 났는데 그 다음 거래일(손절 매도일)이 데이터 뒤다. 행은 남고 성적은 비운다
+REASON_STOP_SELL_PENDING: Final = "이탈 다음 거래일이 데이터 뒤"
 
 
 # ============================================================
@@ -766,6 +787,16 @@ DISPLAY_BUY_TRANCHES: Final = "매수 회차 수"
 DISPLAY_SELL_TRANCHES: Final = "매도 회차 수"
 DISPLAY_BUY_FIRST_DEADLINE: Final = "매수 첫 기한(개월)"
 DISPLAY_SELL_FIRST_DEADLINE: Final = "매도 첫 기한(개월)"
+
+# 3단계 달력 매달 분할 — 손절 표. **「손절선(%)」을 쓰지 않는다** — 체결 산출물의 진입가 대비 손절선 칸이다
+DISPLAY_STOP_METHOD: Final = "손절 방식"
+DISPLAY_STOP_LINE_DATE: Final = "손절선일"
+DISPLAY_STOP_LINE_CLOSE: Final = "손절선 종가"
+DISPLAY_STOP_LINE_VS_COST: Final = "손절선의 평균 단가 대비(%)"
+DISPLAY_BREAK_DATE: Final = "이탈일"
+DISPLAY_STOP_SELL_DATE: Final = "손절 매도일"
+DISPLAY_STOP_SELL_CLOSE: Final = "손절 매도 종가"
+DISPLAY_SOLD_BEFORE_STOP: Final = "손절 전 매도 회차"
 
 
 # ============================================================
@@ -896,6 +927,16 @@ COLUMN_LABELS: Final = {
     COL_SELL_TRANCHES: DISPLAY_SELL_TRANCHES,
     COL_BUY_FIRST_DEADLINE: DISPLAY_BUY_FIRST_DEADLINE,
     COL_SELL_FIRST_DEADLINE: DISPLAY_SELL_FIRST_DEADLINE,
+    # 3단계 달력 매달 분할 — 손절 표 (나머지 칸은 위의 포지션 표 이름을 쓴다)
+    COL_STOP_METHOD: DISPLAY_STOP_METHOD,
+    COL_FORK_SHARE: DISPLAY_FORK_SHARE,
+    COL_STOP_LINE_DATE: DISPLAY_STOP_LINE_DATE,
+    COL_STOP_LINE_CLOSE: DISPLAY_STOP_LINE_CLOSE,
+    COL_STOP_LINE_VS_COST: DISPLAY_STOP_LINE_VS_COST,
+    COL_BREAK_DATE: DISPLAY_BREAK_DATE,
+    COL_STOP_SELL_DATE: DISPLAY_STOP_SELL_DATE,
+    COL_STOP_SELL_CLOSE: DISPLAY_STOP_SELL_CLOSE,
+    COL_SOLD_BEFORE_STOP: DISPLAY_SOLD_BEFORE_STOP,
 }
 
 # 비율(0~1)로 들어와 백분율로 내보낼 컬럼. **기준선과 차이 컬럼도 빠짐없이 넣는다** —
@@ -927,6 +968,8 @@ PERCENT_COLUMNS: Final = (
     COL_POSITION_RETURN,
     COL_WORST_VS_COST,
     COL_SPLIT_TOTAL,
+    COL_FORK_SHARE,
+    COL_STOP_LINE_VS_COST,
 )
 
 # 저장 직전에 자릿수만 맞출 지표 값. **돌파 판정은 반올림 «전» 값으로 이미 끝났다** — 여기서 자르는 것은
@@ -981,10 +1024,12 @@ SPLIT_COMBINATIONS_FILENAME: Final = "분할조합.csv"
 # 성적표 옆에 두지 않는다(루트 `CLAUDE.md` 「기준선을 넘지 못하는 것은 탈락 사유가 아닙니다」). 지표통계처럼 한 장이다
 GRID_BASELINE_FILENAME: Final = "격자기준선.csv"
 
-# 3단계 달력 매달 분할 둘(결정 52). **측정 표다** — 1차 판정 · 손절 · 기준선이 없고 혼합 분할 표와 다른 파일이다.
-# 혼합 분할 표에 행을 더하지 않는다 — 회차 수 · 간격이 식별 칸에 없어 3개월 간격 달력만 조합과 구별되지 않는다
+# 3단계 달력 매달 분할 셋(결정 52 · 58). **측정 표다** — 1차 판정 · 기준선이 없고 혼합 분할 표와 다른 파일이다.
+# 혼합 분할 표에 행을 더하지 않는다 — 회차 수 · 간격이 식별 칸에 없어 3개월 간격 달력만 조합과 구별되지 않는다.
+# 손절과 하드포크 몫은 손절 표 한 장이 무손절과 나란히 잰다 — 포지션 표에 칸을 더하지 않아 그 표가 그대로 남는다
 CALENDAR_SPLIT_FILLS_FILENAME: Final = "달력분할회차.csv"
 CALENDAR_SPLIT_POSITIONS_FILENAME: Final = "달력분할포지션.csv"
+CALENDAR_SPLIT_STOPS_FILENAME: Final = "달력분할손절.csv"
 
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 # **키는 문자열 리터럴이다** — 계약 검사가 이 사전을 AST 로 읽으므로 상수를 키에 쓰면 선언이 없는 것으로 보인다
@@ -1006,6 +1051,7 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     "grid_baseline": GRID_BASELINE_FILENAME,
     "calendar_split_fills": CALENDAR_SPLIT_FILLS_FILENAME,
     "calendar_split_positions": CALENDAR_SPLIT_POSITIONS_FILENAME,
+    "calendar_split_stops": CALENDAR_SPLIT_STOPS_FILENAME,
 }
 
 # 산출물 필드 이름. **사전에서 꺼낸다** — 같은 리터럴을 두 번 적으면 한쪽만 바뀌었을 때
@@ -1028,6 +1074,7 @@ OUTPUT_FILES: Final[dict[str, str]] = {
     FIELD_GRID_BASELINE,
     FIELD_CALENDAR_SPLIT_FILLS,
     FIELD_CALENDAR_SPLIT_POSITIONS,
+    FIELD_CALENDAR_SPLIT_STOPS,
 ) = OUTPUT_FILES
 
 

@@ -44,6 +44,7 @@ from verify_lab.studies.halving_cycle.constants import (
     HardFork,
 )
 from verify_lab.studies.halving_cycle.halving_calendar import PositionSchedule, position_schedule
+from verify_lab.studies.halving_cycle.hard_fork import hard_fork_share
 from verify_lab.studies.halving_cycle.runner import StudyOutputs, load_dataset, run_study
 from verify_lab.studies.halving_cycle.trading import (
     KEY_EXCLUDED_BY_REASON,
@@ -51,7 +52,6 @@ from verify_lab.studies.halving_cycle.trading import (
     KEY_OUTSIDE_CYCLE_COUNT,
     KEY_TARGETS,
     TradingOutputs,
-    hard_fork_share,
     run_halving_cycle_trading,
 )
 

@@ -46,6 +46,7 @@ from verify_lab.data.crosscheck import (
 )
 from verify_lab.data.crypto_common import load_crypto_market_csv
 from verify_lab.data.loader import load_series_csv
+from verify_lab.execution.constants import NO_STOP_LABEL
 from verify_lab.execution.run_summary import KEY_DATASETS, KEY_ROW_COUNTS
 from verify_lab.execution.trade_fill import resolve_positions
 from verify_lab.measure.constants import (
@@ -129,6 +130,8 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_PREVIOUS_VALUE,
     COL_SIGNAL_MEANING,
     COL_SPLIT_FILL_CLOSE,
+    COL_STOP_LINE_CLOSE,
+    COL_STOP_SELL_CLOSE,
     COL_TICKER,
     COL_ZERO_VOLUME,
     COLUMN_LABELS,
@@ -140,6 +143,7 @@ from verify_lab.studies.halving_cycle.constants import (
     EXIT_MONTHS,
     FIELD_CALENDAR_SPLIT_FILLS,
     FIELD_CALENDAR_SPLIT_POSITIONS,
+    FIELD_CALENDAR_SPLIT_STOPS,
     FIELD_CALENDAR_YEARS,
     FIELD_CROSSCHECK,
     FIELD_ENTRIES,
@@ -157,6 +161,7 @@ from verify_lab.studies.halving_cycle.constants import (
     FIELD_TEST,
     GRID_BASELINE_HOLD_MONTHS,
     HALVINGS,
+    HARD_FORKS,
     HOLD_MONTHS,
     INDICATOR_DECIMALS,
     INDICATOR_SIGNALS,
@@ -175,6 +180,7 @@ from verify_lab.studies.halving_cycle.constants import (
     MACD_SLOW_SPAN,
     MVRV_Z_MIN_DAYS,
     OUTPUT_FILES,
+    PEAK_WINDOW_MONTHS,
     PERCENT_COLUMNS,
     PI_CYCLE_LONG_MULTIPLIER,
     PI_CYCLE_LONG_WINDOW,
@@ -197,6 +203,7 @@ from verify_lab.studies.halving_cycle.constants import (
     SPLIT_SIDE_BUY,
     SPLIT_SIDE_SELL,
     SPLIT_TRANCHES,
+    STOP_METHOD_LOW_BREAK,
     TRACK_NAME,
     CalendarSplit,
     Dataset,
@@ -293,26 +300,42 @@ KEY_CALENDAR_SPLIT_SELL_TRANCHES = "sell_tranches"
 KEY_CALENDAR_SPLIT_BUY_MONTHS = "buy_months_after_halving"
 KEY_CALENDAR_SPLIT_SELL_MONTHS = "sell_months_after_next_halving"
 KEY_CALENDAR_SPLIT = "calendar_split"
+# 손절 표의 규칙 (결정 58) — 손절 방식 목록과 손절선의 사이클 고점 창
+KEY_CALENDAR_SPLIT_STOP_METHODS = "stop_methods"
+KEY_CALENDAR_SPLIT_PEAK_WINDOW = "peak_window_months"
 
 # 3단계 혼합 분할 표만 보고는 알 수 없는 조건 (결정 ㊺ · ㊼). **격자 값을 글자로 박지 않는다** — 값은 같은 칸의 목록이 말한다
 NOTE_SPLIT_MEASURE_ONLY = "혼합 분할 표 셋은 측정 표다 — 1차 판정 · 손절 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다. 조합을 고르지 않는다"
-NOTE_SPLIT_FORK = "혼합 분할 포지션에는 하드포크 몫이 없다 — 포크일에 코인을 들고 있던 포지션(2012 사이클)은 그만큼 과소평가된다. " "거래내역 끝 칸의 하드포크 몫은 체결 격자에만 있다"
+NOTE_SPLIT_FORK = (
+    "혼합 분할 포지션에는 하드포크 몫이 없다 — 포크일에 코인을 들고 있던 포지션(2012 사이클)은 그만큼 과소평가된다. 하드포크 몫은 체결 격자(거래내역 끝 칸)와 달력 매달 분할의 손절 표에 있다"
+)
 NOTE_SPLIT_HINDSIGHT = (
     "혼합 분할의 달력 쪽 값(반감기 기준 매수 창 · 매수 기한 · 매도 기한)은 과거 고점 · 바닥 시점을 본 뒤 정했다 — "
     "달력만 조합이 유리하게 짜여 있다. 온체인 문턱(책 범위 · 4년 순위)은 결과를 보기 전의 값이다"
 )
 SPLIT_NOTES = (NOTE_SPLIT_MEASURE_ONLY, NOTE_SPLIT_FORK, NOTE_SPLIT_HINDSIGHT)
 
-# 3단계 달력 매달 분할 표만 보고는 알 수 없는 조건 (결정 52 · 54). **폭의 값을 글자로 박지 않는다** — 값은 같은 칸의 목록이 말한다
-NOTE_CALENDAR_SPLIT_MEASURE_ONLY = "달력 분할 표 둘은 측정 표다 — 1차 판정 · 손절 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다"
+# 3단계 달력 매달 분할 표만 보고는 알 수 없는 조건 (결정 52 · 54 · 58). **폭의 값을 글자로 박지 않는다** — 값은 같은 칸의 목록이 말한다
+NOTE_CALENDAR_SPLIT_MEASURE_ONLY = (
+    "달력 분할 표 셋은 측정 표다 — 1차 판정 · 기준선이 없고 체결 성적표 · 거래내역과 다른 파일이다. " "손절은 손절 표가 포지션마다 무손절과 나란히 잰다"
+)
 NOTE_CALENDAR_SPLIT_MONTH_END = "회차는 (기준 반감기일 + N개월)이 속한 달의 말일 종가에 체결한다 — 혼합 분할 · 체결 격자는 반감기와 같은 날짜다"
-NOTE_CALENDAR_SPLIT_FORK = "달력 분할 포지션에는 하드포크 몫이 없다 — 포크일에 코인을 들고 있던 포지션은 그만큼 과소평가된다"
+NOTE_CALENDAR_SPLIT_FORK = (
+    "달력 분할 표 중 하드포크 몫은 손절 표에만 있다 — (매수 회차 × 매도 회차) 칸마다 포크 코인을 첫 시세일 종가에 팔아 BTC 를 더 샀다고 본 "
+    "몫의 평균이고 수익률에 더하지 않는다. 포지션 표의 수익률은 그만큼 과소평가된다"
+)
 NOTE_CALENDAR_SPLIT_HINDSIGHT = "매수 · 매도 기간은 과거 바닥 · 고점 시점과 최근 두 사이클의 쌍봉을 본 뒤 정했다 — 과거에 맞춰져 있다"
+NOTE_CALENDAR_SPLIT_STOP = (
+    "손절은 저점 이탈 하나다 — 매수 기간에는 팔지 않고, 손절선은 포지션을 산 반감기의 사이클 고점(반감기 뒤 고점 창 안의 "
+    "최고 종가) 다음 날부터 마지막 매수일까지의 최저 종가로 고정한다. 마지막 매수 다음 날부터 마지막 매도일까지(매도가 "
+    "끝나지 않았으면 데이터 끝까지) 종가가 손절선 아래면 다음 거래일 종가에 남은 보유를 전부 판다. 그 전에 판 매도 회차는 그대로다"
+)
 CALENDAR_SPLIT_NOTES = (
     NOTE_CALENDAR_SPLIT_MEASURE_ONLY,
     NOTE_CALENDAR_SPLIT_MONTH_END,
     NOTE_CALENDAR_SPLIT_FORK,
     NOTE_CALENDAR_SPLIT_HINDSIGHT,
+    NOTE_CALENDAR_SPLIT_STOP,
 )
 
 # 3단계 혼합 분할의 조합 — **격자 전부**다. 값의 출처와 「결과를 본 뒤 정한 값」 표시는 `constants.py` 의 그 절이 갖는다
@@ -335,7 +358,13 @@ _SPLIT_SELL_LEGS = split_legs(
 )
 
 # 3단계 혼합 분할 표에서 가격으로 내는 컬럼 — 평균 단가는 계산값이라 저장 직전에 가격 자릿수로 자른다
-_SPLIT_PRICE_COLUMNS = (COL_SPLIT_FILL_CLOSE, COL_AVG_BUY_PRICE, COL_AVG_SELL_PRICE)
+_SPLIT_PRICE_COLUMNS = (
+    COL_SPLIT_FILL_CLOSE,
+    COL_AVG_BUY_PRICE,
+    COL_AVG_SELL_PRICE,
+    COL_STOP_LINE_CLOSE,
+    COL_STOP_SELL_CLOSE,
+)
 
 # 조합 표의 사이클별 가로 칸 — 반감기 목록에서 이름을 만든다
 _CYCLE_LABELS = {
@@ -514,6 +543,8 @@ class StudyOutputs:
             차이 · 우연확률. **진입이 없던 칸도 행이 있다**
         calendar_split_fills: 3단계 달력 매달 분할의 회차 — 폭 × 사이클 × 쪽 × 회차. **체결 전 회차도 행이 있다**
         calendar_split_positions: 3단계 달력 매달 분할의 포지션 — 폭 × 사이클. **끝나지 않은 포지션도 행이 있다**
+        calendar_split_stops: 3단계 달력 매달 분할의 손절 — 폭 × 사이클 × 손절 방식(무손절 · 저점 이탈). **끝나지 않은
+            포지션도 행이 있다**
         summary: 실행 요약
     """
 
@@ -534,6 +565,7 @@ class StudyOutputs:
     grid_baseline: pd.DataFrame
     calendar_split_fills: pd.DataFrame
     calendar_split_positions: pd.DataFrame
+    calendar_split_stops: pd.DataFrame
     summary: dict[str, Any]
 
 
@@ -1216,12 +1248,13 @@ def _split_rule() -> dict[str, Any]:
     }
 
 
-def _calendar_split_rule(splits: Sequence[CalendarSplit], step_months: int) -> dict[str, Any]:
-    """요약에 싣는 3단계 달력 매달 분할의 규칙 — 폭마다 쪽별 회차 수와 매수 · 매도 개월(첫 · 마지막).
+def _calendar_split_rule(splits: Sequence[CalendarSplit], step_months: int, peak_window_months: int) -> dict[str, Any]:
+    """요약에 싣는 3단계 달력 매달 분할의 규칙 — 폭마다 쪽별 회차 수와 매수 · 매도 개월(첫 · 마지막), 손절 방식과 고점 창.
 
     Args:
         splits: 폭 목록
         step_months: 회차 간격(개월)
+        peak_window_months: 손절선의 사이클 고점을 찾는 창(개월)
 
     Returns:
         요약의 한 칸
@@ -1242,6 +1275,8 @@ def _calendar_split_rule(splits: Sequence[CalendarSplit], step_months: int) -> d
     return {
         KEY_CALENDAR_SPLIT_STEP: step_months,
         KEY_CALENDAR_SPLIT_SPLITS: entries,
+        KEY_CALENDAR_SPLIT_STOP_METHODS: [NO_STOP_LABEL, STOP_METHOD_LOW_BREAK],
+        KEY_CALENDAR_SPLIT_PEAK_WINDOW: peak_window_months,
         KEY_SPLIT_NOTES: list(CALENDAR_SPLIT_NOTES),
     }
 
@@ -1330,8 +1365,15 @@ def run_study(
             rank_years=SPLIT_RANK_YEARS,
             rank_min_days=SPLIT_RANK_MIN_DAYS,
         )
-        # 3단계 달력 매달 분할 — 같은 측정 시세로 폭 전부를 잰다
-        calendar_split = calendar_split_grid(frame, HALVINGS, CALENDAR_SPLITS, step_months=CALENDAR_SPLIT_STEP_MONTHS)
+        # 3단계 달력 매달 분할 — 같은 측정 시세로 폭 전부를 잰다. 손절 표의 하드포크 몫은 체결 격자와 같은 포크 목록이다
+        calendar_split = calendar_split_grid(
+            frame,
+            HALVINGS,
+            CALENDAR_SPLITS,
+            step_months=CALENDAR_SPLIT_STEP_MONTHS,
+            peak_window_months=PEAK_WINDOW_MONTHS,
+            forks=HARD_FORKS,
+        )
 
         direction = DIRECTION_DOWN if BET_DOWN else DIRECTION_UP
         tables = {
@@ -1359,6 +1401,7 @@ def run_study(
             FIELD_GRID_BASELINE: grid_baseline,
             FIELD_CALENDAR_SPLIT_FILLS: calendar_split.fills,
             FIELD_CALENDAR_SPLIT_POSITIONS: calendar_split.positions,
+            FIELD_CALENDAR_SPLIT_STOPS: calendar_split.stops,
         }
         for field, table in tables.items():
             labelled = table.copy()
@@ -1428,7 +1471,7 @@ def run_study(
         KEY_GRID_BASELINE_HOLD_MONTHS: list(GRID_BASELINE_HOLD_MONTHS),
         KEY_INDICATOR_RULE: _indicator_rule(INDICATOR_SIGNALS),
         KEY_SPLIT_RULE: _split_rule(),
-        KEY_CALENDAR_SPLIT_RULE: _calendar_split_rule(CALENDAR_SPLITS, CALENDAR_SPLIT_STEP_MONTHS),
+        KEY_CALENDAR_SPLIT_RULE: _calendar_split_rule(CALENDAR_SPLITS, CALENDAR_SPLIT_STEP_MONTHS, PEAK_WINDOW_MONTHS),
         KEY_DATASETS: dataset_summaries,
         KEY_ROW_COUNTS: {OUTPUT_FILES[field]: len(table) for field, table in combined.items()},
     }
@@ -1456,6 +1499,7 @@ def run_study(
         grid_baseline=combined[FIELD_GRID_BASELINE],
         calendar_split_fills=combined[FIELD_CALENDAR_SPLIT_FILLS],
         calendar_split_positions=combined[FIELD_CALENDAR_SPLIT_POSITIONS],
+        calendar_split_stops=combined[FIELD_CALENDAR_SPLIT_STOPS],
         summary=summary,
     )
 
@@ -1531,6 +1575,7 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
         FIELD_GRID_BASELINE: outputs.grid_baseline,
         FIELD_CALENDAR_SPLIT_FILLS: _rounded_prices(outputs.calendar_split_fills),
         FIELD_CALENDAR_SPLIT_POSITIONS: _rounded_prices(outputs.calendar_split_positions),
+        FIELD_CALENDAR_SPLIT_STOPS: _rounded_prices(outputs.calendar_split_stops),
     }
     # 조합 표의 사이클별 가로 칸은 반감기 목록에서 이름을 만든다 — 사전에 박아 두면 반감기가 늘 때 빠진다
     labels = {**COLUMN_LABELS, **_CYCLE_LABELS}

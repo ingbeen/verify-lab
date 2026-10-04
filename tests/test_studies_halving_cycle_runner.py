@@ -27,6 +27,7 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
 )
 from verify_lab.data.crosscheck import COL_PRIMARY, COL_SECONDARY
+from verify_lab.execution.constants import NO_STOP_LABEL
 from verify_lab.execution.run_summary import KEY_DATASETS, KEY_ROW_COUNTS
 from verify_lab.measure.constants import (
     COL_EXCLUDED_COUNT,
@@ -73,16 +74,19 @@ from verify_lab.studies.halving_cycle.constants import (
     GRID_BASELINE_FILENAME,
     GRID_BASELINE_HOLD_MONTHS,
     HALVINGS,
+    HARD_FORKS,
     HOLD_MONTHS,
     INDICATOR_SIGNALS,
     KEY_NAME,
     OUTPUT_FILES,
+    PEAK_WINDOW_MONTHS,
     SPLIT_BUY_LAST_DEADLINES,
     SPLIT_BUY_START_MONTHS_HALVING,
     SPLIT_BUY_START_MONTHS_HIGH,
     SPLIT_SELL_LAST_DEADLINES,
     SPLIT_SELL_START_MONTHS,
     SPLIT_TRANCHES,
+    STOP_METHOD_LOW_BREAK,
     TRACK_NAME,
     Dataset,
     Halving,
@@ -91,11 +95,13 @@ from verify_lab.studies.halving_cycle.runner import (
     KEY_CALENDAR_SPLIT,
     KEY_CALENDAR_SPLIT_BUY_MONTHS,
     KEY_CALENDAR_SPLIT_BUY_TRANCHES,
+    KEY_CALENDAR_SPLIT_PEAK_WINDOW,
     KEY_CALENDAR_SPLIT_RULE,
     KEY_CALENDAR_SPLIT_SELL_MONTHS,
     KEY_CALENDAR_SPLIT_SELL_TRANCHES,
     KEY_CALENDAR_SPLIT_SPLITS,
     KEY_CALENDAR_SPLIT_STEP,
+    KEY_CALENDAR_SPLIT_STOP_METHODS,
     KEY_DROPPED_TAIL_DAYS,
     KEY_GRID_BASELINE_HOLD_MONTHS,
     KEY_MISSING_PRICE_DAYS,
@@ -969,20 +975,21 @@ class TestSplitTables:
 
 
 class TestCalendarSplitTables:
-    """3단계 달력 매달 분할 측정 표 (결정 51 · 52 · 54) — 폭 전부 · 표본 보존 · `split_rule` 과 같은 값 · 월말 체결"""
+    """3단계 달력 매달 분할 측정 표 (결정 51 · 52 · 54 · 58) — 폭 전부 · 표본 보존 · `split_rule` 과 같은 값 · 월말 체결 · 손절 표"""
 
     def test_회차_포지션_행_수가_폭과_반감기에서_나온다(self, outputs: StudyOutputs) -> None:
         """
-        목적: 표본 보존 — 체결 전 회차 · 끝나지 않은 포지션도 행이 있다.
+        목적: 표본 보존 — 체결 전 회차 · 끝나지 않은 포지션도 행이 있다. 손절 표는 포지션마다 무손절 · 저점 이탈 두 행이다.
 
         Given: 합성 입력 한 대상 · 반감기 넷 · 실제 폭 목록
-        When: 두 표의 행 수를 본다
-        Then: 회차 = 반감기 × Σ(매수 회차 + 매도 회차) · 포지션 = 폭 × 반감기
+        When: 세 표의 행 수를 본다
+        Then: 회차 = 반감기 × Σ(매수 회차 + 매도 회차) · 포지션 = 폭 × 반감기 · 손절 = 포지션 × 2
         """
         # Then
         tranches = sum(split.buy_tranches + split.sell_tranches for split in CALENDAR_SPLITS)
         assert len(outputs.calendar_split_fills) == len(HALVINGS) * tranches
         assert len(outputs.calendar_split_positions) == len(CALENDAR_SPLITS) * len(HALVINGS)
+        assert len(outputs.calendar_split_stops) == len(CALENDAR_SPLITS) * len(HALVINGS) * 2
 
     def test_실제_폭의_회차는_전부_그_달의_말일에_체결한다(self, outputs: StudyOutputs) -> None:
         """
@@ -1005,21 +1012,30 @@ class TestCalendarSplitTables:
 
     def test_측정_시세로_split_rule_을_부른_값과_같다(self, synthetic_dataset: Dataset, outputs: StudyOutputs) -> None:
         """
-        목적: 조립이 계산하지 않는다 — 측정 계열(종가 대체 뒤) · 반감기 목록 · 폭 목록 · 간격을 그대로 넘긴다.
+        목적: 조립이 계산하지 않는다 — 측정 계열(종가 대체 뒤) · 반감기 목록 · 폭 목록 · 간격 · 고점 창 · 하드포크 목록을
+            그대로 넘긴다.
 
         Given: 같은 합성 입력을 읽은 측정 계열
         When: `split_rule.calendar_split_grid` 를 직접 부른 표와 견준다
-        Then: 종목 칸을 뺀 두 표가 같다
+        Then: 종목 칸을 뺀 세 표가 같다
         """
         # Given
         frame = load_dataset(synthetic_dataset).frame
 
         # When
-        expected = calendar_split_grid(frame, HALVINGS, CALENDAR_SPLITS, step_months=CALENDAR_SPLIT_STEP_MONTHS)
+        expected = calendar_split_grid(
+            frame,
+            HALVINGS,
+            CALENDAR_SPLITS,
+            step_months=CALENDAR_SPLIT_STEP_MONTHS,
+            peak_window_months=PEAK_WINDOW_MONTHS,
+            forks=HARD_FORKS,
+        )
 
         # Then
         pd.testing.assert_frame_equal(outputs.calendar_split_fills.drop(columns=[COL_TICKER]), expected.fills)
         pd.testing.assert_frame_equal(outputs.calendar_split_positions.drop(columns=[COL_TICKER]), expected.positions)
+        pd.testing.assert_frame_equal(outputs.calendar_split_stops.drop(columns=[COL_TICKER]), expected.stops)
 
     def test_요약이_폭_목록과_빠진_건수를_싣는다(self, outputs: StudyOutputs) -> None:
         """
@@ -1027,8 +1043,8 @@ class TestCalendarSplitTables:
 
         Given: 합성 입력
         When: 요약의 측정 칸과 대상별 건수를 본다
-        Then: 폭마다 이름 · 쪽마다 회차 수 · 매수 · 매도 개월(첫 · 마지막)이 실리고, 사유별 건수의 합이 사유가 붙은 행의
-            수와 같다
+        Then: 폭마다 이름 · 쪽마다 회차 수 · 매수 · 매도 개월(첫 · 마지막)과 손절 방식 · 고점 창이 실리고, 사유별 건수의
+            합이 사유가 붙은 행의 수와 같다
         """
         # When
         rule = outputs.summary[KEY_CALENDAR_SPLIT_RULE]
@@ -1037,6 +1053,8 @@ class TestCalendarSplitTables:
         # Then
         step = CALENDAR_SPLIT_STEP_MONTHS
         assert rule[KEY_CALENDAR_SPLIT_STEP] == step
+        assert rule[KEY_CALENDAR_SPLIT_STOP_METHODS] == [NO_STOP_LABEL, STOP_METHOD_LOW_BREAK]
+        assert rule[KEY_CALENDAR_SPLIT_PEAK_WINDOW] == PEAK_WINDOW_MONTHS
         assert [entry[KEY_NAME] for entry in rule[KEY_CALENDAR_SPLIT_SPLITS]] == [
             split.name for split in CALENDAR_SPLITS
         ]
@@ -1055,20 +1073,22 @@ class TestCalendarSplitTables:
         assert sum(counts[KEY_SPLIT_UNFILLED].values()) == int((fills[COL_EXCLUDED_REASON] != REASON_NONE).sum())
         assert sum(counts[KEY_SPLIT_UNFINISHED].values()) == int((positions[COL_EXCLUDED_REASON] != REASON_NONE).sum())
 
-    def test_두_파일이_산출물_목록과_요약_행_수에_있다(self, outputs: StudyOutputs) -> None:
+    def test_세_파일이_산출물_목록과_요약_행_수에_있다(self, outputs: StudyOutputs) -> None:
         """
         목적: CLI 가 `OUTPUT_FILES` 를 돌며 저장하므로 목록에 없으면 파일이 나가지 않는다.
 
         Given: 산출물 목록과 요약
-        When: 두 파일 이름을 찾는다
+        When: 세 파일 이름을 찾는다
         Then: 목록에 있고 요약의 행 수가 표의 행 수와 같다
         """
         # Then
         row_counts = outputs.summary[KEY_ROW_COUNTS]
         assert OUTPUT_FILES["calendar_split_fills"] == "달력분할회차.csv"
         assert OUTPUT_FILES["calendar_split_positions"] == "달력분할포지션.csv"
+        assert OUTPUT_FILES["calendar_split_stops"] == "달력분할손절.csv"
         assert row_counts["달력분할회차.csv"] == len(outputs.calendar_split_fills)
         assert row_counts["달력분할포지션.csv"] == len(outputs.calendar_split_positions)
+        assert row_counts["달력분할손절.csv"] == len(outputs.calendar_split_stops)
 
     def test_표시용_표는_한글_헤더이고_평균_단가는_가격_자릿수_수익률은_백분율이다(self, outputs: StudyOutputs) -> None:
         """

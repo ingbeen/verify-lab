@@ -48,6 +48,7 @@ from verify_lab.studies.halving_cycle.constants import (
     FIELD_CALENDAR_SPLIT_FILLS,
     FIELD_CALENDAR_SPLIT_POSITIONS,
     HALVINGS,
+    PEAK_WINDOW_MONTHS,
     SPLIT_SIDE_BUY,
     SPLIT_SIDE_SELL,
     TRACK_NAME,
@@ -66,10 +67,6 @@ PLOTLY_MARKER: Final = "__PLOTLY_JS__"
 
 # 반감기 뒤 경과 개월의 환산(`설계.md` §4.12). 격자 날짜와 이틀 안쪽 · 말일 회차와 최대 한 달 가까이 다르다
 DAYS_PER_MONTH: Final = 30.4375
-
-# 사이클 고점을 찾는 창(개월). **반감기 ~ 다음 반감기 전체로 잡지 않는다** — 2020 사이클이 다음 반감기 직전
-# (2024-03-13)을 고점으로 물어, 시장 사이클의 고점(2021-11-08)과 어긋난다(`설계.md` §4.14)
-PEAK_WINDOW_MONTHS: Final = 24
 
 # 차트가 그리는 달력 분할의 폭 — 측정한 폭 목록에서 이름으로 고른다 (결정 53 · 54)
 CHART_SPLIT_NAME: Final = "월말 분할"

@@ -113,7 +113,7 @@ poetry run python scripts/run_midterm_cycle.py --stop-grid                  # �
 ### 반감기_사이클
 
 ```bash
-poetry run python scripts/run_halving_cycle.py                              # 1단계 반감기 경과 격자 · 2단계 지표 신호 열넷 · 3단계 달력 + MVRV 혼합 분할 격자 · 달력 매달 분할 측정 + 3단계 진입 × 청산 격자 × 손절선 격자 체결 (기본값). 원시 파일만 읽는다
+poetry run python scripts/run_halving_cycle.py                              # 1단계 반감기 경과 격자 · 2단계 지표 신호 열넷 · 3단계 달력 + MVRV 혼합 분할 격자 · 달력 매달 분할 측정과 그 손절(무손절 · 저점 이탈) + 3단계 진입 × 청산 격자 × 손절선 격자 체결 (기본값). 원시 파일만 읽는다
 poetry run python scripts/run_halving_cycle.py --repeats 5000 --seed 42     # 무작위 뽑기 대조의 반복 수·시드 (표본이 하한 이상인 칸에만 검정이 붙는다 — 1단계 격자는 전 칸 미만)
 poetry run python scripts/chart_halving_cycle.py                            # 판단용 차트 HTML 한 장을 만들어 브라우저로 연다 — 측정을 다시 돌리고, 산출물 폴더는 쓰지 않는다
 BROWSER=true poetry run python scripts/chart_halving_cycle.py               # 같은 차트를 브라우저를 열지 않고 만든다 (헤드리스 캡처 확인용)
