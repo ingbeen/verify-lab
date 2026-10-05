@@ -152,7 +152,7 @@ def _load_script(script: Path) -> ModuleType:
 
     [주의] **모듈 본문이 실제로 실행된다.** 지금 여섯 스크립트는 최상단이 import 와 상수뿐이라
     안전하지만, 거기에 시세 로딩이나 외부 호출을 넣으면 **이 테스트가 실 storage 를 읽거나
-    네트워크를 탄다**(`tests/CLAUDE.md` 5·6절). 실행 스크립트의 최상단은 부작용이 없어야 한다.
+    네트워크를 탄다**(`tests/CLAUDE.md` 「파일 격리」 · 「외부 의존성 금지」 절). 실행 스크립트의 최상단은 부작용이 없어야 한다.
 
     Args:
         script: `scripts/run_*.py` 경로

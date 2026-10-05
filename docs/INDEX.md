@@ -18,7 +18,7 @@
 | [../.claude/rules/session-bootstrap.md](../.claude/rules/session-bootstrap.md) | 세션 진입 순서 | 항상 |
 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 분리 · 절대 원칙 · 계층 간 계약 · 산출물 계약 | `src/verify_lab/` 를 Read 할 때 |
 | [../scripts/CLAUDE.md](../scripts/CLAUDE.md) | CLI 계층 책임 · 인자 정책 | `scripts/` 를 Read 할 때 |
-| [../tests/CLAUDE.md](../tests/CLAUDE.md) | 필수 테스트 · 결정적 테스트 · 파일 격리 | `tests/` 를 Read 할 때 |
+| [../tests/CLAUDE.md](../tests/CLAUDE.md) | 필수 테스트 · 허용오차 · 파일 격리 | `tests/` 를 Read 할 때 |
 | [../.claude/rules/docs.md](../.claude/rules/docs.md) | 문서 종류와 수명 · 시제 · 게이트 값을 적지 않는 규약 · 계획서 승격 | `docs/**` 를 Read 할 때 |
 | [../.claude/rules/research.md](../.claude/rules/research.md) | 결과 문서 형식 | `docs/{검증,매매,조사}/**` 를 Read 할 때 |
 | [../.claude/rules/trading.md](../.claude/rules/trading.md) | 매매 규칙 계층의 예외와 제약 · 요청 시 넣는 비용 값 | `docs/{검증,매매,조사}/**` · `src/verify_lab/{execution,studies}/**` 를 Read 할 때 |

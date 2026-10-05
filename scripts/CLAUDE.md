@@ -144,10 +144,3 @@
 > 그려지는가 등(`tests/test_layer_contracts.py` · `tests/test_output_contract.py`).
 > **동작은 여전히 아무도 보지 않습니다** — 인자 배선을 뒤집어도 전 검사가 통과하고, 그 신호는
 > `storage/results/` 의 git diff 뿐입니다.
-
----
-
-## 실행 명령어 등록
-
-새 스크립트를 만들면 **[docs/COMMANDS.md](../docs/COMMANDS.md)에 반드시 추가**합니다.
-CLI 옵션이 바뀔 때도 함께 갱신합니다. 설치용 일회성 명령어는 기재하지 않습니다.
