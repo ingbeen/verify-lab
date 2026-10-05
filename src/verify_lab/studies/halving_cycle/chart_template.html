@@ -178,7 +178,7 @@ th { color: var(--text-secondary); font-weight: 600; }
       tickvals: ticks, ticktext: ticks.map(label), title: { text: title } };
   }
 
-  // 1배 기준선 — 로그 축에 도형을 두면 축 범위가 무너진다(docs/MEMORY.md). 선 trace 로 그린다
+  // 1배 기준선 — 로그 축에 도형을 두면 축 범위가 무너진다(.claude/rules/charts.md). 선 trace 로 그린다
   function oneLine(t, x0, x1) {
     return { type: 'scatter', mode: 'lines', x: [x0, x1], y: [1, 1], showlegend: false, hoverinfo: 'skip',
       line: { color: t.axis, width: 1 } };

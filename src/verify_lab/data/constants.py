@@ -47,6 +47,6 @@ KRX_RESPONSE_DATE_FORMAT: Final = "%Y/%m/%d"
 #
 # 두 `find_series` 를 한 함수로 합치지 않은 것은 의도다 — 반환 타입을 좁히려면
 # `Protocol` + `TypeVar` 기계가 필요한데, 그것이 없애는 중복(4줄짜리 루프 두 벌)보다 크다
-# (루트 `CLAUDE.md` 「자문 체크」). **조용히 갈라질 수 있는 것은 문장 형식 하나**라 그것만 모은다 —
+# (전역 `CLAUDE.md` 「개발 원칙」의 자문 체크). **조용히 갈라질 수 있는 것은 문장 형식 하나**라 그것만 모은다 —
 # 한쪽 메시지만 바뀌면 그 이름으로 잡는 테스트가 다른 수집기에서 통과해 버린다
 SERIES_NOT_FOUND_TEMPLATE: Final = "알 수 없는 시계열입니다: {key} (가능한 값: {available})"

@@ -475,7 +475,7 @@ def midterm_cycle_grid_outputs(tmp_path_factory: pytest.TempPathFactory) -> Midt
     그래서 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의 두 실패 방식이 이 결과로만 재현된다.
     판정이 「후보」·「제외」로 갈리는 행도 이 실행에 있다.
 
-    [주의] **공유 계약이 한 매매법의 실행을 빌려 쓴다** (`docs/MEMORY.md` 「공유 계층의 테스트는
+    [주의] **공유 계약이 한 매매법의 실행을 빌려 쓴다** (`tests/CLAUDE.md` 「공유 계층의 테스트는
     «자기 픽스처»를 갖는다」). 중간선거의 손절선 격자를 코드에서 지우는 날에는 이 픽스처를
     합성 성적표로 바꿔야 한다.
     """

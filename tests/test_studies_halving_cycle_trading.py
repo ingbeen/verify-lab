@@ -249,7 +249,7 @@ class TestSummary:
         assert record[KEY_NOT_YET_COUNT] == schedule.not_yet_count
 
 
-# 합성 하드포크 — **실제 값과 다르게 고른다** (`docs/MEMORY.md` 「픽스처는 실제 쓰이는 값과 «다르게» 고른다」).
+# 합성 하드포크 — **실제 값과 다르게 고른다** (`tests/CLAUDE.md` 「픽스처는 실제 쓰이는 값과 «다르게» 고른다」).
 # 둘째는 포크일과 첫 시세일이 다르다 — 실제 BTG 가 그렇다
 FORK_A = HardFork(
     name="AAA",

@@ -14,7 +14,7 @@
 | 문서 | 담당 | 로드 |
 | --- | --- | --- |
 | [../CLAUDE.md](../CLAUDE.md) | 측정의 원칙 · 후보 판정 기준 · 프로젝트 전반 규칙 | 항상 |
-| [MEMORY.md](MEMORY.md) | 모르면 틀리는 함정 · 작업 규율 · 환경 노하우 | 항상 (`CLAUDE.md` 가 `@import`) |
+| [MEMORY.md](MEMORY.md) | 모르면 틀리는 작업 방식 — 다른 문서에 자리가 없는 것만 | 항상 (`CLAUDE.md` 가 `@import`) |
 | [../.claude/rules/session-bootstrap.md](../.claude/rules/session-bootstrap.md) | 세션 진입 순서 | 항상 |
 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 분리 · 절대 원칙 · 계층 간 계약 · 산출물 계약 | `src/verify_lab/` 를 Read 할 때 |
 | [../scripts/CLAUDE.md](../scripts/CLAUDE.md) | CLI 계층 책임 · 인자 정책 | `scripts/` 를 Read 할 때 |
@@ -23,10 +23,12 @@
 | [../.claude/rules/research.md](../.claude/rules/research.md) | 결과 문서 형식 | `docs/{검증,매매,조사}/**` 를 Read 할 때 |
 | [../.claude/rules/trading.md](../.claude/rules/trading.md) | 매매 규칙 계층의 예외와 제약 · 요청 시 넣는 비용 값 | `docs/{검증,매매,조사}/**` · `src/verify_lab/{execution,studies}/**` 를 Read 할 때 |
 | [../.claude/rules/reference.md](../.claude/rules/reference.md) | reference 폴더 읽기 전용 | `reference/**` 를 Read 할 때 |
+| [../.claude/rules/charts.md](../.claude/rules/charts.md) | 판단용 차트 — 눈으로 보는 확인 · plotly 함정 · 설명 블록을 두지 않는다 | `scripts/chart_*.py` · `src/verify_lab/studies/**/chart*` 를 Read 할 때 |
 | `~/.claude/rules/python.md` (전역 — 저장소 밖이라 링크하지 않음) | 파이썬 코딩 표준 · 반올림 · 로깅 | `**/*.py` 를 Read 할 때 |
+| `~/.claude/rules/python-tests.md` (전역) | 테스트 공통 규칙 | 테스트 파일(`tests/**` · `test_*.py` · `conftest.py`)을 Read 할 때 |
 | `~/.claude/skills/impl-plan/SKILL.md` (전역) | 계획서 절차 | `/impl-plan` 호출 |
 
-경로 규칙은 **`Read` 도구로 열 때만** 주입됩니다 — 셸로 읽으면 따라오지 않습니다(session-bootstrap 「규칙 자동 로드는 `Read` 도구에만 걸린다」).
+경로 규칙은 **`Read` 도구로 열 때만** 주입됩니다 — 셸로 읽으면 따라오지 않습니다(전역 `CLAUDE.md` 「경로 한정 규칙과 하위 `CLAUDE.md` 는 «`Read` 도구»로 열 때만 실린다」). `paths:` 를 고치거나 문서를 다른 폴더로 옮기면 주입을 실측으로 다시 확인합니다 — 경로가 어긋나면 규칙이 조용히 안 걸립니다.
 
 ---
 

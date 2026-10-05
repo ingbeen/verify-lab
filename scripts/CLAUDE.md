@@ -20,6 +20,8 @@
 실행 규칙과 **재수집이 기존 결과를 바꾼다는 점**은 루트 [CLAUDE.md](../CLAUDE.md)
 "스크립트 실행 규칙"이 SoT입니다.
 
+판단용 차트를 만들거나 고칠 때의 규칙(눈으로 보는 확인 · plotly 함정 · 설명 블록을 두지 않는다)은 [.claude/rules/charts.md](../.claude/rules/charts.md) 다 — 차트 파일을 Read 할 때 실린다.
+
 ---
 
 ## 핵심 책임
