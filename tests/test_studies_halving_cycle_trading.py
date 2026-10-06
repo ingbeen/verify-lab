@@ -29,12 +29,17 @@ from verify_lab.common_constants import (
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
 )
-from verify_lab.execution.constants import NO_STOP_LABEL, PERIODS, stop_level_value
+from verify_lab.execution.constants import NO_STOP_LABEL, PERIOD_ALL, PERIODS, stop_level_value
 from verify_lab.execution.run_summary import KEY_RULE
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_EXIT_DATE, COL_FORWARD_RETURN, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_UP
+from verify_lab.measure.statistics import COL_MEAN, COL_SAMPLE_COUNT, COL_WIN_RATE
 from verify_lab.studies.halving_cycle.constants import (
+    COL_ENTRY_MONTHS,
+    COL_EXIT_MONTHS,
     COL_HALVING,
+    DISPLAY_ENTRY_MONTHS,
+    DISPLAY_EXIT_MONTHS,
     ENTRY_MONTHS,
     EXIT_MONTHS,
     HALVINGS,
@@ -224,6 +229,35 @@ class TestFillPrice:
         # Then
         assert not joined.empty, "1단계와 날짜가 같은 체결이 없어 계약을 검사하지 못했습니다"
         np.testing.assert_allclose(joined["수익률(%)"], (joined[COL_FORWARD_RETURN] * 100).round(2), atol=0.01)
+
+    def test_같은_사이클_칸의_격자기준선은_성적표의_무손절_전체_행과_같다(self, trading: TradingOutputs, study: StudyOutputs) -> None:
+        """
+        목적: 격자기준선의 칸 값이 곧 무손절 체결임을 고정한다 — 측정은 칸을 종가 ÷ 종가로 따로 재므로, 체결 쪽의 칸
+        선택이나 가격 규칙이 한쪽만 바뀌면 두 표가 같은 칸에서 어긋나는데 예외는 나지 않는다.
+
+        Given: 같은 합성 입력의 격자기준선(같은 사이클에 파는 칸)과 성적표의 무손절 · 전체 행
+        When: (진입 개월, 청산 개월)로 맞댄다
+        Then: 칸마다 표본 = 신호이고, 표본이 있는 칸은 평균 · 오른 비율이 평균(%) · 승률(%)과 같다 — 그런 칸이 하나 이상이다
+        """
+        # Given
+        performance = trading.performance
+        rows = performance[(performance["시기"] == PERIOD_ALL) & (performance["손절선(%)"] == NO_STOP_LABEL)]
+
+        # When
+        joined = study.grid_baseline.merge(
+            rows,
+            left_on=[COL_ENTRY_MONTHS, COL_EXIT_MONTHS],
+            right_on=[DISPLAY_ENTRY_MONTHS, DISPLAY_EXIT_MONTHS],
+            how="left",
+            validate="one_to_one",
+        )
+
+        # Then
+        np.testing.assert_array_equal(joined[COL_SAMPLE_COUNT].astype(int), joined["신호"].astype(int))
+        sampled = joined[joined[COL_SAMPLE_COUNT] > 0]
+        assert not sampled.empty, "표본이 있는 칸이 없어 값을 견주지 못했습니다"
+        np.testing.assert_allclose(sampled[COL_MEAN] * 100, sampled["평균(%)"], atol=0.01)
+        np.testing.assert_allclose(sampled[COL_WIN_RATE] * 100, sampled["승률(%)"], atol=0.01)
 
 
 class TestSummary:

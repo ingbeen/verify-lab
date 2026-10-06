@@ -16,6 +16,7 @@
 import pandas as pd
 import pytest
 
+from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.execution.constants import (
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
@@ -34,7 +35,15 @@ from verify_lab.measure.constants import (
     PERIOD_FIRST_HALF,
     PERIOD_SECOND_HALF,
 )
-from verify_lab.report.constants import DISPLAY_JUDGEABLE, DISPLAY_MIN, DISPLAY_PERIOD, DISPLAY_SIGNAL_COUNT
+from verify_lab.measure.screening import screen_verdict
+from verify_lab.report.constants import (
+    DISPLAY_JUDGEABLE,
+    DISPLAY_MEAN,
+    DISPLAY_MIN,
+    DISPLAY_PERIOD,
+    DISPLAY_SCREEN,
+    DISPLAY_SIGNAL_COUNT,
+)
 
 # 백분율 지표 비교 허용오차 (tests/CLAUDE.md)
 PERCENT_TOLERANCE = 0.1
@@ -62,6 +71,16 @@ def _returns(count: int) -> list[float]:
         수익률 목록 (비율)
     """
     return [0.01 if index % 3 else -0.02 for index in range(count)]
+
+
+def _balanced(mean: float) -> list[float]:
+    """평균이 `mean` 이고 이기고 지는 크기가 같은 여섯 체결."""
+    return [mean + 0.02, mean - 0.02] * 3
+
+
+def _one_big_win(mean: float) -> list[float]:
+    """평균이 `mean` 이고 크게 한 번 이기고 작게 다섯 번 지는 여섯 체결 — 평균이 ±5% 안이면 승률이 1/6 이다."""
+    return [mean + 0.25, *([mean - 0.05] * 5)]
 
 
 class TestPeriodSchema:
@@ -93,6 +112,47 @@ class TestPeriodSchema:
         Then: 최근 5년이 들어 있다
         """
         assert PERIOD_RECENT_5Y in PERIODS
+
+
+class TestVerdictFollowsGate:
+    """1차 판정은 게이트(`measure.screening.screen_verdict`) 하나를 따른다 — 행 조립이 판정을 덧붙이지 않는다"""
+
+    def test_전체_행의_판정은_그_행의_평균과_표본으로_부른_게이트와_같다(self) -> None:
+        """
+        목적: 판정식이 한 벌임을 «행동»으로 고정한다 (패키지 절대 원칙 5). 소스를 보는 검사
+        (`tests/test_measure_screening.py` 의 `TestSingleOwner`)는 동음이의어라 값 「제외」를 보지 않아, 게이트를 부르기
+        전에 하한을 하나 더 두고 「제외」를 내거나 승률로 거르는 변경을 잡지 못한다 — 적중률 하한을 다시 들이는 변경이
+        그 모양이다.
+
+        Given: 평균이 −6% ~ +6% 를 0.25%p 간격으로 걸치는 여섯 체결 묶음 — 묶음마다 이기고 지는 크기가 같은 것과
+            크게 한 번 이기고 작게 다섯 번 지는 것(승률 1/6) 둘
+        When: 구간별 성적 행을 만든다
+        Then: 「전체」 행의 1차 판정이 그 행의 평균 · 표본으로 부른 게이트의 답과 모두 같고, 답이 두 가지 다 나온다
+        """
+        # Given
+        means = [step / 400 for step in range(-24, 25)]
+        entry_dates = _dates(list(range(2010, 2016)))
+
+        # When
+        rows = [
+            row
+            for mean in means
+            for shape in (_balanced, _one_big_win)
+            for row in period_rows(entry_dates, shape(mean), last_day=pd.Timestamp("2026-08-25"), tradable=True)
+            if row[DISPLAY_PERIOD] == PERIOD_ALL
+        ]
+        expected = [
+            screen_verdict(
+                expected_value=row[DISPLAY_MEAN] / RATE_TO_PERCENT,
+                sample_count=row[DISPLAY_SIGNAL_COUNT],
+                tradable=True,
+            )
+            for row in rows
+        ]
+
+        # Then
+        assert [row[DISPLAY_SCREEN] for row in rows] == expected
+        assert len(set(expected)) == 2, f"게이트의 답이 한 가지뿐이라 경계를 지나지 못했습니다: {set(expected)}"
 
 
 class TestSampleConservation:

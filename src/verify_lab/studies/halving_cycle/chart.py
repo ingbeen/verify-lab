@@ -500,6 +500,44 @@ def split_points(
     return points
 
 
+def overlay_band(points: Sequence[Mapping[str, Any]], side: str, nominal: Sequence[float]) -> list[float]:
+    """① 의 기간 띠 — 그 쪽의 명목 첫 · 마지막 회차 개월을 그 쪽 회차 점이 실제로 앉은 자리까지 넓힌다 (결정 59).
+
+    회차는 그 달의 말일이고(결정 54) 가로축은 날 수를 한 달 평균 길이로 나눈 값이라, 명목 개월 그대로 그리면 회차 점이
+    최대 한 달 가까이 띠 밖(오른쪽)에 찍혀 「기간 밖에서 샀다」로 읽힌다.
+
+    Args:
+        points: `split_points` 의 결과
+        side: 매수 · 매도
+        nominal: 그 쪽의 명목 첫 · 마지막 회차 개월 (`split_info`)
+
+    Returns:
+        [시작, 끝] 개월. 그 쪽 점이 없으면 명목 기간이다
+    """
+    months = [float(point["halving_months"]) for point in points if point["side"] == side]
+
+    return [min([float(nominal[0]), *months]), max([float(nominal[1]), *months])]
+
+
+def bottom_axis_range(lines: Sequence[Mapping[str, Any]], points: Sequence[Mapping[str, Any]]) -> list[float]:
+    """② 의 가로축 범위 — 바닥 기준 선의 처음 · 끝 개월과 회차 점의 개월을 모두 덮는다 (결정 59).
+
+    선은 다음 사이클의 바닥 전날에서 끊기는데 다음 사이클이 진행 중이면 그 바닥은 잠정이라, 앞 포지션의 매도 회차가 선
+    끝 뒤에 올 수 있다 — 선 길이로만 범위를 잡으면 그 점이 화면 밖으로 잘린다.
+
+    Args:
+        lines: `bottom_series` 의 결과
+        points: `split_points` 의 결과. 바닥 축 값이 빈 점은 건너뛴다
+
+    Returns:
+        [시작, 끝] 개월. 눈금 단위로 맞추는 것은 템플릿이 한다
+    """
+    months = [float(month) for line in lines for month in (line["months"][0], line["months"][-1])]
+    months += [float(point["bottom_months"]) for point in points if point["bottom_months"] is not None]
+
+    return [min(months), max(months)]
+
+
 def split_table(fills: pd.DataFrame, positions: pd.DataFrame, split_name: str) -> list[dict[str, Any]]:
     """숫자표 — 그 폭의 사이클마다 한 행. 성적은 포지션 표 그대로, 산 기간 · 판 기간은 체결한 회차의 첫 날 · 마지막 날이다.
 
@@ -639,8 +677,11 @@ def build_chart_html(datasets: Sequence[Dataset], *, plotly_js: str, created_at:
     positions = positions[positions[DISPLAY_TICKER] == dataset.label]
 
     split = chart_split(CALENDAR_SPLITS, CHART_SPLIT_NAME)
+    info = split_info(split, step_months=CALENDAR_SPLIT_STEP_MONTHS)
     summary = cycle_summary(close, halving_days)
     bottoms = {row["halving"]: pd.Timestamp(row["bottom"]) for row in summary}
+    lines = bottom_series(close, halving_days, lead_months=BOTTOM_LEAD_MONTHS)
+    points = split_points(fills, split.name, close, bottoms)
 
     price_record = dataset_record(ticker=dataset.ticker, label=dataset.label, file=dataset.path.name, frame=prices)
     payload: dict[str, Any] = {
@@ -658,15 +699,20 @@ def build_chart_html(datasets: Sequence[Dataset], *, plotly_js: str, created_at:
         },
         # 데이터 끝 뒤의 반감기는 아직 오지 않은 것이라 세로선을 긋지 않는다 (`_cycle_segments` 와 같다)
         "halvings": [halving.label for halving in HALVINGS if halving.day <= close.index[-1]],
-        "split": split_info(split, step_months=CALENDAR_SPLIT_STEP_MONTHS),
+        "split": info,
         # 점 · 띠의 `side` 값 — JS 가 글자를 다시 적지 않게 넘긴다
         "sides": {"buy": SPLIT_SIDE_BUY, "sell": SPLIT_SIDE_SELL},
         "cycles": cycle_series(close, halving_days),
-        "bottoms": bottom_series(close, halving_days, lead_months=BOTTOM_LEAD_MONTHS),
+        "bottoms": lines,
+        "overlay_bands": {
+            "buy": overlay_band(points, SPLIT_SIDE_BUY, info["buy"]),
+            "sell": overlay_band(points, SPLIT_SIDE_SELL, info["sell"]),
+        },
+        "bottom_range": bottom_axis_range(lines, points),
         "summary": summary,
         "time": timeline_series(close, halving_days),
         "bands": window_bands(fills, split.name, close.index[-1]),
-        "points": split_points(fills, split.name, close, bottoms),
+        "points": points,
         "table": split_table(fills, positions, split.name),
     }
 

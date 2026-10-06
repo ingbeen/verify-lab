@@ -15,6 +15,10 @@ paths:
 (이 맥: `"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --window-size=1400,2400 --virtual-time-budget=10000 --screenshot=<png> "file://<html>"`).
 테마 · 호버 상태가 필요하면 페이지가 주소 끝 표지(예: `#theme=light` · `#hover=18`)를 읽게 만들어 둔다.
 
+- **캡처를 마치고도 헤드리스 크롬이 끝나지 않을 수 있다** — 스크린샷 파일을 쓴 뒤 프로세스가 5분 넘게 남아 셸이 묶였다 `[실측] 2026-10-06`
+  (크롬 154.0.8037.98 · 같은 PC 에서 이전 판 154.0.8037.58 이 실행 중이던 때). 파일이 생기고 크기가 멈추면 그 프로세스만 끝내고,
+  `--user-data-dir` 를 따로 주어 사용자의 크롬과 섞이지 않게 한다
+
 - **plotly.js 로그 축에 도형(shape)을 두지 않는다** — 1배 기준선을 도형으로 그리자 축이 10⁻⁴⁸ 까지 늘어 선이 한 줄로
   눌렸고 **예외는 없었다** `[실측] 2026-09-30` (plotly 7.1.0 번들). 기준선은 trace 로 그리고 로그 축 범위를 명시한다
 - **unified 호버는 가장 가까운 점을 문다** — 데이터가 먼저 끝난 계열의 마지막 값이 그 뒤 x 의 호버에 끼었다(같은 날).

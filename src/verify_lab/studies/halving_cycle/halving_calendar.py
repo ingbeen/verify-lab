@@ -256,6 +256,7 @@ def exit_schedule(trading_days: pd.DatetimeIndex, entries: pd.DataFrame, hold_mo
     entry_positions = trading_positions(trading_days, entry_dates, label="진입일")
 
     blocks: list[pd.DataFrame] = []
+    exit_dates: list[pd.DatetimeIndex] = []
     for months in hold_months:
         exits = entry_dates + pd.DateOffset(months=months)
         usable = np.asarray(exits <= last_day)
@@ -266,18 +267,22 @@ def exit_schedule(trading_days: pd.DatetimeIndex, entries: pd.DataFrame, hold_mo
         block = entries.copy()
         block[_ORDER] = np.arange(len(block))
         block[COL_HOLD_MONTHS] = months
-        block[COL_EXIT_DATE] = exits.where(usable)
         block[COL_HOLD_DAYS] = pd.array(
             np.where(usable, exit_positions - entry_positions, np.nan), dtype="Float64"
         ).astype("Int64")
         block[COL_EXCLUDED_REASON] = np.where(usable, REASON_NONE, REASON_OUT_OF_RANGE)
         blocks.append(block)
+        exit_dates.append(pd.DatetimeIndex(exits.where(usable)))
 
+    # **청산일은 블록을 이은 뒤에 붙인다.** 한 보유의 청산이 전부 데이터 뒤라 그 블록의 청산일이 전부 비면 `pd.concat` 이
+    # NumPy 폐기 예정 경고를 낸다(pandas 2.3 · NumPy 2.5 실측) — NumPy 가 그것을 오류로 바꾸면 짧은 입력에서 측정이 멈춘다.
+    # 자리는 보유 개월 바로 뒤 그대로다
+    combined = pd.concat(blocks, ignore_index=True)
+    combined.insert(
+        list(combined.columns).index(COL_HOLD_MONTHS) + 1, COL_EXIT_DATE, exit_dates[0].append(exit_dates[1:])
+    )
     schedule = (
-        pd.concat(blocks, ignore_index=True)
-        .sort_values([_ORDER, COL_HOLD_MONTHS], kind="stable")
-        .drop(columns=[_ORDER])
-        .reset_index(drop=True)
+        combined.sort_values([_ORDER, COL_HOLD_MONTHS], kind="stable").drop(columns=[_ORDER]).reset_index(drop=True)
     )
 
     excluded = int((schedule[COL_EXCLUDED_REASON] != REASON_NONE).sum())

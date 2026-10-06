@@ -218,10 +218,12 @@ NOTE_SPLIT = (
 NOTE_ENTRY_CONTEXT = (
     "`진입위치.csv` 의 지표는 진입일 종가까지로만 계산한다. 창(52주 = 252거래일 · 200일)이 차기 전인 " "진입은 그 칸을 비운다 — 0 으로 채우면 「그때 고점이었다」 같은 없는 사실이 된다"
 )
+# **확정 규칙의 대상 · 상품 · 절 번호를 적지 않는다** — 그 값은 `규칙.md` 에만 있어 규칙을 바꾸면 이 문구가 예외 없이
+# 엉뚱한 행을 규칙의 1배 기준으로 가리킨다
 NOTE_STOP_CONFIRMED = (
     "ETF 손절선은 확정 규칙의 무손절 한 종만 낸다 — 규칙이 기간 손절(가격 손절 없음)이라서다. "
-    "확정 규칙의 1배 측정 기준은 대상 QQQ 의 무손절 행이고, 규칙이 사는 2배 상품(QLD)의 성적은 "
-    "이 산출물에 없다(`docs/매매/중간선거_사이클/규칙.md` §2.5). "
+    "확정 규칙의 대상과 사는 상품은 `docs/매매/중간선거_사이클/규칙.md` §1 이 정한다 — 규칙이 레버리지 상품을 사면 "
+    "그 상품의 성적은 이 산출물에 없고(그 문서 §2) 1배 행이 그대로 옮겨지지 않는다. "
     "가격 손절선 격자(`constants.STOP_LEVELS_ETF`)는 스위치(CLI `--stop-grid`)를 켜야 나온다"
 )
 NOTE_DIVIDEND = "보유가 9개월이라 분기 배당 3회가 «매번» 구조적으로 들어온다. 원본가로 재므로 " "「위」 칸의 성적은 그만큼 과소평가돼 있으며, 그 크기는 측정 표의 배당락 세 컬럼이 낸다"
@@ -994,15 +996,18 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS, *, stop_
     stop_levels_run = list(dict.fromkeys(performance[DISPLAY_STOP_LEVEL]))
 
     notes = [NOTE_ENTRY, NOTE_AXIS, NOTE_QUARTER, NOTE_SPLIT, NOTE_ENTRY_CONTEXT]
-    # **손절선의 기준 설명은 가격 손절선을 돈 실행에만 싣는다** — 확정 칸만 낸 실행과 지수만 돈 실행에는
-    # 가격 손절이 없어 「갭 청산은 손절선보다 더 잃는다」가 없는 조건을 말하게 된다.
+    has_etf = any(not dataset.is_index for dataset in datasets)
+    # **손절선 문구는 스위치가 아니라 ETF 에 실제로 돈 손절선으로 가른다** — 스위치로 가르면 확정 규칙이 가격 손절로
+    # 바뀌었을 때 기본 실행이 그 손절을 걸고도 「무손절 한 종만 낸다」를 싣는다. 가격 손절이 없는 실행(무손절 확정 칸 ·
+    # 지수만)에 기준 설명을 실으면 「갭 청산은 손절선보다 더 잃는다」가 없는 조건을 말하게 된다.
     # 자리를 옮기지 않는다 — 격자 실행이 좁히기 전 산출물과 `summary.json` 까지 바이트 동일한 것이 이 순서에 달려 있다
-    if stop_grid and any(not dataset.is_index for dataset in datasets):
+    ran_price_stop = has_etf and any(level is not None for level in etf_levels)
+    if ran_price_stop:
         notes.append(NOTE_STOP_BASE)
     notes.append(NOTE_SAMPLE)
-    if any(not dataset.is_index for dataset in datasets):
+    if has_etf:
         notes.append(NOTE_DIVIDEND)
-        if not stop_grid:
+        if not ran_price_stop:
             notes.append(NOTE_STOP_CONFIRMED)
     if any(dataset.is_index for dataset in datasets):
         notes.append(NOTE_INDEX)

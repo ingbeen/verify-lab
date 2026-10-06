@@ -39,6 +39,7 @@ from verify_lab.execution.constants import (
 )
 from verify_lab.execution.run_summary import KEY_NOTES, KEY_ROW_COUNTS
 from verify_lab.report.constants import DISPLAY_MEAN, DISPLAY_MIN, DISPLAY_PERIOD, DISPLAY_SAMPLE_COUNT
+from verify_lab.studies.midterm_cycle import trading as trading_module
 from verify_lab.studies.midterm_cycle.constants import (
     DISPLAY_FALLBACK,
     DISPLAY_SPLIT_METHOD,
@@ -335,6 +336,28 @@ class TestStopNotes:
 
         # Then
         assert following == NOTE_SAMPLE, "가격 손절선 설명의 자리가 바뀌었습니다 — 격자 실행이 좁히기 전 산출물과 달라집니다"
+
+    def test_confirmed_price_stop_gets_the_price_stop_note(
+        self, datasets: tuple[Dataset, Dataset], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        목적: 손절선 설명 문구는 스위치(`stop_grid`)가 아니라 «실제로 돈» 손절선을 따른다 — 확정 규칙이 가격 손절로
+        바뀌면 기본 실행이 그 손절을 거므로, 가격 손절선 설명을 싣고 「무손절 한 종만 낸다」를 싣지 않는다.
+
+        Given: 확정 손절선을 −25% 로 바꾼 합성 ETF · 지수
+        When: 인자 없이 돈다
+        Then: `NOTE_STOP_BASE` 가 있고 바로 다음이 `NOTE_SAMPLE` 이며, `NOTE_STOP_CONFIRMED` 가 없다
+        """
+        # Given
+        monkeypatch.setattr(trading_module, "STOP_LEVELS_ETF_CONFIRMED", (0.25,))
+
+        # When
+        notes = run_midterm_cycle_trading(datasets).summary[KEY_NOTES]
+
+        # Then
+        assert NOTE_STOP_BASE in notes, "가격 손절을 돈 기본 실행에 가격 손절선 설명이 없습니다"
+        assert notes[notes.index(NOTE_STOP_BASE) + 1] == NOTE_SAMPLE
+        assert NOTE_STOP_CONFIRMED not in notes, "가격 손절을 돈 기본 실행에 「무손절 한 종만 낸다」가 실렸습니다"
 
     def test_index_only_grid_has_no_price_stop_note(self, datasets: tuple[Dataset, Dataset]) -> None:
         """

@@ -297,6 +297,29 @@ class TestExitSchedule:
         assert valid + excluded == 6
         assert excluded == 2
 
+    @pytest.mark.filterwarnings("error::DeprecationWarning")
+    def test_청산이_전부_데이터_뒤인_보유가_섞여도_경고_없이_같은_표를_낸다(self) -> None:
+        """
+        목적: 한 보유의 청산일이 «전부» 비어도 표를 경고 없이 만든다 — 그런 블록을 `pd.concat` 으로 이으면 pandas 가
+        NumPy 의 폐기 예정 경고를 내고, NumPy 가 그것을 오류로 바꾸면 데이터가 짧은 입력에서 측정이 멈춘다.
+
+        Given: 2020-12-31 까지의 거래일, 2020-06-10 진입, 보유 1 · 12개월 (12개월 청산은 데이터 뒤)
+        When: 경고를 오류로 바꾼 채 청산 일정을 만든다
+        Then: 1개월은 07-10 청산 · 12개월은 비고 사유가 붙으며, 컬럼 순서는 보유 1개월만 준 표와 같다
+        """
+        # Given
+        days = _days("2020-01-01", "2020-12-31")
+        entries = pd.DataFrame({COL_DATE: [pd.Timestamp("2020-06-10")]})
+
+        # When
+        schedule = exit_schedule(days, entries, (1, 12))
+
+        # Then
+        assert schedule[COL_EXIT_DATE].iloc[0] == pd.Timestamp("2020-07-10")
+        assert pd.isna(schedule[COL_EXIT_DATE].iloc[1])
+        assert schedule[COL_EXCLUDED_REASON].tolist() == [REASON_NONE, REASON_OUT_OF_RANGE]
+        assert list(schedule.columns) == list(exit_schedule(days, entries, (1,)).columns)
+
     def test_진입_표의_다른_컬럼을_그대로_싣는다(self) -> None:
         """
         목적: 반감기 표지와 진입 개월이 청산 일정까지 따라옴을 고정한다 — 집계가 그 축으로 묶인다.

@@ -3,8 +3,9 @@
 **정의가 곧 결론을 만든다.** 회차가 하루 밀리거나 평균 단가를 다른 식으로 내도 표는 그럴듯하게 나오고 예외는 나지 않는다.
 
 **픽스처 값은 실제 격자와 다르게 고른다** (`tests/CLAUDE.md` 「픽스처는 실제 쓰이는 값과 «다르게» 고른다」) —
-기한 간격 · 문턱 · 창 개월을 실제(3개월 · 1.7/1.35/1.0 등)와 다르게 두어, 함수가 상수를 안에서 읽으면 걸리게 한다.
-회차 수는 대부분 실제(3회)와 같고, 다른 회차 수(2회)는 신고가 창의 미래 참조 감시 테스트가 본다. 기준 반감기일도
+기한 간격 · 문턱 · 창 개월을 실제(3개월 · 1.7/1.35/1.0 등)와 다르게 두어, 함수가 상수를 안에서 읽으면 걸리게 한다 —
+신고가 기준 창(2개월)과 매도 창(1개월)도 실제 격자에 없는 값이다. 회차 수는 혼합 분할에서 대부분 실제(3회)와 같고,
+다른 회차 수는 달력 분할 폭(2 · 3회)과 신고가 창 · 순위의 미래 참조 감시 테스트(2회)가 본다. 기준 반감기일도
 31일을 두어 달력월의 말일 당김을 밟게 한다.
 """
 
@@ -46,6 +47,7 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SPLIT_FILL_CLOSE,
     COL_SPLIT_FILL_DATE,
     COL_SPLIT_SIDE,
+    COL_SPLIT_THRESHOLD,
     COL_SPLIT_TOTAL,
     COL_SPLIT_TRANCHE,
     COL_SPLIT_TRIGGER,
@@ -91,7 +93,7 @@ from verify_lab.studies.halving_cycle.split_rule import (
     window_open,
 )
 
-# 픽스처 격자 — 기한 간격은 실제(3개월)와 다르다. 회차 수는 실제와 같다 — 다른 회차 수는 신고가 창 미래 참조 테스트가 본다
+# 픽스처 격자 — 기한 간격은 실제(3개월)와 다르다. 회차 수는 실제와 같다 — 다른 회차 수는 달력 분할 폭과 미래 참조 테스트가 본다
 TRANCHES = 3
 STEP = 2
 
@@ -324,24 +326,24 @@ class TestWindowOpen:
         목적: 창은 그날까지의 종가로만 정한다 — 가장 최근 신고가에서 N개월이 지나야 열리고, 새 신고가가 나면 닫힌다.
         기준 반감기 앞의 신고가는 세지 않는다.
 
-        Given: 기준일 2020-02-15 앞에 신고가(01-10), 뒤에 신고가 둘(03-10 · 05-20) · 1개월
+        Given: 기준일 2020-02-15 앞에 신고가(01-10), 뒤에 신고가 둘(03-25 · 06-20) · 2개월
         When: 창을 낸다
-        Then: 04-10 ~ 05-19 열림 · 05-20 ~ 06-19 닫힘 · 06-20 부터 열림 · 03-01 닫힘(기준일 앞 신고가로 열리지 않음)
+        Then: 03-10 ~ 05-24 닫힘(기준일 앞 신고가로 열리지 않고 2개월이 차기 전) · 05-25 ~ 06-19 열림 ·
+            06-20 ~ 08-19 닫힘 · 08-20 부터 열림
         """
         # Given
         days = _days("2020-01-01", "2020-12-31")
-        close = _values(days, 100.0, {"2020-01-10": 200.0, "2020-03-10": 210.0, "2020-05-20": 220.0})
-        leg = _buy_leg(start_anchor=SPLIT_ANCHOR_HIGH, start_months=1)
+        close = _values(days, 100.0, {"2020-01-10": 200.0, "2020-03-25": 210.0, "2020-06-20": 220.0})
+        leg = _buy_leg(start_anchor=SPLIT_ANCHOR_HIGH, start_months=2)
 
         # When
         opened = pd.Series(window_open(days, leg, pd.Timestamp("2020-02-15"), new_high_flags(close)), index=days)
 
         # Then
-        assert not opened["2020-03-01"]
-        assert not opened["2020-04-09"]
-        assert opened["2020-04-10":"2020-05-19"].all()
-        assert not opened["2020-05-20":"2020-06-19"].any()
-        assert opened["2020-06-20":].all()
+        assert not opened["2020-03-10":"2020-05-24"].any()
+        assert opened["2020-05-25":"2020-06-19"].all()
+        assert not opened["2020-06-20":"2020-08-19"].any()
+        assert opened["2020-08-20":].all()
 
     def test_기준일_뒤_신고가가_없으면_열리지_않는다(self) -> None:
         """
@@ -354,7 +356,7 @@ class TestWindowOpen:
         # Given
         days = _days("2020-01-01", "2020-12-31")
         close = _values(days, 100.0, {"2020-01-10": 200.0})
-        leg = _buy_leg(start_anchor=SPLIT_ANCHOR_HIGH, start_months=1)
+        leg = _buy_leg(start_anchor=SPLIT_ANCHOR_HIGH, start_months=2)
 
         # When
         opened = window_open(days, leg, pd.Timestamp("2020-02-15"), new_high_flags(close))
@@ -646,30 +648,35 @@ class TestLegFills:
     def test_신고가_창과_순위_문턱도_뒤를_잘라도_그_전에_체결한_회차가_같다(self) -> None:
         """
         목적: 미래 참조 감시 — 신고가 창과 4년 순위 문턱도 그날까지의 값으로만 정한다. 신고가 · 순위를 자른 입력에서
-        «다시» 계산해 견주므로, 창이나 순위가 뒤의 종가 · 값을 보면 체결일이 달라진다. 회차 수(2)와 기준일(31일)도
-        실제와 다르게 둔다.
+        «다시» 계산해 견주고 체결일을 손으로 박는다 — 창이나 순위가 뒤의 종가 · 값을 보면 체결일이 달라진다.
+        **자른 끝 뒤의 값을 딥보다 낮게 둔다** — 그래야 뒤를 보는 순위에서 딥이 바닥에 남지 않는다. 순위를 하루 당겨
+        보면 자른 입력과 전체 입력이 똑같이 당겨지므로 박아 둔 체결일이 잡는다. 회차 수(2)와 기준일(31일)도 실제와 다르게 둔다.
 
-        Given: 기준일 2020-01-31 뒤 신고가 02-10 · 05-20(창은 03-10 ~ 05-19 에 열린다) · 날마다 오르는 값에
-            03-15 하루만 가장 낮은 값(순위가 바닥) · 신고가 뒤 1개월 창 · 순위 문턱 0.3 · 0.1 · 회차 2 · 기한 간격 1 ·
-            마지막 7개월(기한 07-31 · 08-31)
+        Given: 기준일 2020-01-31 뒤 신고가 02-10 · 05-20(창은 04-10 ~ 05-19 에 열린다) · 날마다 오르는 값에
+            04-20 하루만 −1(그날까지의 순위가 바닥) · 자른 끝 뒤는 전부 −10 · 신고가 뒤 2개월 창 · 순위 문턱 0.3 · 0.1 ·
+            회차 2 · 기한 간격 1 · 마지막 7개월(기한 07-31 · 08-31)
         When: 전체와 2020-06-15 에서 자른 입력으로 신고가 · 순위 · 회차를 각각 낸다
-        Then: 자른 끝 전에 체결한 회차(03-16 둘)는 같고 나머지는 체결 전이다 — 견준 체결 회차가 하나 이상이다
+        Then: 두 회차 모두 04-21 온체인이고, 자른 입력의 회차가 전체와 같다
         """
         # Given
         days = _days("2019-01-01", "2020-12-31")
         close = _values(days, 100.0, {"2020-02-10": 200.0, "2020-05-20": 210.0})
-        dip = pd.Timestamp("2020-03-15")
-        values = pd.Series([-1.0 if day == dip else float(step) for step, day in enumerate(days)], index=days)
+        dip = pd.Timestamp("2020-04-20")
+        cut_day = pd.Timestamp("2020-06-15")
+        values = pd.Series(
+            [-1.0 if day == dip else -10.0 if day > cut_day else float(step) for step, day in enumerate(days)],
+            index=days,
+        )
         leg = SplitLeg(
             side=SPLIT_SIDE_BUY,
             threshold=SPLIT_THRESHOLD_RANK,
             levels=(0.3, 0.1),
             start_anchor=SPLIT_ANCHOR_HIGH,
-            start_months=1,
+            start_months=2,
             last_deadline=7,
         )
         anchor = pd.Timestamp("2020-01-31")
-        cut = days[days <= pd.Timestamp("2020-06-15")]
+        cut = days[days <= cut_day]
 
         def fills_for(trading_days: pd.DatetimeIndex) -> list[TrancheFill]:
             return leg_fills(
@@ -688,14 +695,10 @@ class TestLegFills:
         truncated = fills_for(cut)
 
         # Then
-        compared = 0
-        for whole, part in zip(full, truncated, strict=True):
-            if whole.fill_day is not None and whole.fill_day <= cut[-1]:
-                assert part == whole
-                compared += 1
-            else:
-                assert part.reason == REASON_SPLIT_PENDING
-        assert compared >= 1
+        assert [(fill.fill_day, fill.trigger) for fill in full] == [
+            (pd.Timestamp("2020-04-21"), SPLIT_TRIGGER_ONCHAIN)
+        ] * 2
+        assert truncated == full
 
     def test_기한이_데이터_안인데_거래일에_없으면_멈춘다(self) -> None:
         """
@@ -940,7 +943,7 @@ class TestSplitGrid:
         return split_legs(
             SPLIT_SIDE_BUY,
             halving_starts=(2,),
-            high_starts=(1,),
+            high_starts=(2,),
             last_deadlines=(7, 9),
             book_levels=(1.2, 1.0, 0.8),
             rank_levels=(0.3, 0.2, 0.1),
@@ -951,7 +954,7 @@ class TestSplitGrid:
         """매도 조합 — 다음 반감기 창 하나 · 기한 하나."""
         return split_legs(
             SPLIT_SIDE_SELL,
-            halving_starts=(0,),
+            halving_starts=(1,),
             high_starts=(),
             last_deadlines=(5,),
             book_levels=(1.6, 1.8, 2.0),
@@ -1088,6 +1091,67 @@ class TestSplitGrid:
         filled = grid.fills[COL_SPLIT_FILL_DATE].notna()
         assert set(grid.fills.loc[filled, COL_SPLIT_TRIGGER]) <= {SPLIT_TRIGGER_ONCHAIN, SPLIT_TRIGGER_CALENDAR}
         assert grid.fills.loc[~filled, COL_SPLIT_TRIGGER].isna().all()
+
+    def test_온체인_회차는_판정일까지의_순위와_신고가로_정하고_다음날_체결한다(self) -> None:
+        """
+        목적: 미래 참조 감시 — 격자가 4년 순위와 신고가를 «그날까지의 값»으로 이어 받음을 체결일로 고정한다.
+        자르기 대조로는 하루 당긴 순위 · 신고가가 자른 끝 하루에서만 드러나므로 체결일을 손으로 박고, 판정을 하루
+        당김이 체결일을 바꾸는 자리에 둔다 — 순위는 창이 오래 열린 뒤 하루만 문턱에 닿고, 신고가 창은 값이 이미
+        문턱 아래인 채로 열린다.
+
+        Given: 반감기 2019-01-20 · 2021-01-20, 종가는 100 에 2019-02-15 하루만 200(반감기 뒤 신고가),
+            MVRV 는 날마다 조금씩 오르고 2019-04-10 하루만 가장 낮다(모든 날이 책 문턱 아래). 매수 조합 둘 —
+            (가) 4년 순위 · 반감기 뒤 1개월 창 · 문턱 0.3 · 0.2 · 0.1
+            (나) 책 고정 · 신고가 뒤 2개월 창(04-15 에 열린다) · 문턱 1.2 · 1.0 · 0.8
+            기한은 둘 다 마지막 9개월 · 간격 2 (06-20 · 08-20 · 10-20)
+        When: 격자를 낸다
+        Then: 첫 반감기의 매수 회차가 (가) 셋 다 04-11 온체인 · (나) 셋 다 04-16 온체인이다
+        """
+        # Given
+        days = _days("2018-01-01", "2021-12-31")
+        frame = _frame(days, closes={"2019-02-15": 200.0}, lows={})
+        mvrv = pd.Series(
+            np.where(days == pd.Timestamp("2019-04-10"), 0.1, 0.3 + np.arange(len(days)) * 1e-4), index=days
+        )
+        halvings = (_halving("2019-01-20"), _halving("2021-01-20"))
+        rank_leg = SplitLeg(
+            side=SPLIT_SIDE_BUY,
+            threshold=SPLIT_THRESHOLD_RANK,
+            levels=(0.3, 0.2, 0.1),
+            start_anchor=SPLIT_ANCHOR_HALVING,
+            start_months=1,
+            last_deadline=9,
+        )
+        book_leg = SplitLeg(
+            side=SPLIT_SIDE_BUY,
+            threshold=SPLIT_THRESHOLD_BOOK,
+            levels=(1.2, 1.0, 0.8),
+            start_anchor=SPLIT_ANCHOR_HIGH,
+            start_months=2,
+            last_deadline=9,
+        )
+
+        # When
+        grid = split_grid(
+            frame,
+            mvrv,
+            halvings,
+            (rank_leg, book_leg),
+            (_calendar_leg(SPLIT_SIDE_SELL, 5),),
+            tranches=TRANCHES,
+            step_months=STEP,
+            rank_years=1,
+            rank_min_days=30,
+        )
+
+        # Then
+        first_buys = grid.fills[
+            (grid.fills[COL_HALVING] == halvings[0].label) & (grid.fills[COL_SPLIT_SIDE] == SPLIT_SIDE_BUY)
+        ]
+        for threshold, day in ((SPLIT_THRESHOLD_RANK, "2019-04-11"), (SPLIT_THRESHOLD_BOOK, "2019-04-16")):
+            rows = first_buys[first_buys[COL_SPLIT_THRESHOLD] == threshold]
+            assert list(rows[COL_SPLIT_FILL_DATE]) == [pd.Timestamp(day)] * TRANCHES, threshold
+            assert set(rows[COL_SPLIT_TRIGGER]) == {SPLIT_TRIGGER_ONCHAIN}, threshold
 
     def test_매수_기한이_다음_반감기_뒤면_불변조건_위반이다(self) -> None:
         """

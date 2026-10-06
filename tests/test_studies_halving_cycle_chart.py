@@ -8,26 +8,45 @@
 반감기일 · 폭(3회 · 2개월 간격) · 바닥 앞 개월이 실제와 달라, 함수가 상수를 안에서 읽으면 걸린다.
 """
 
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from verify_lab.common_constants import CHARTS_DIR, RESULTS_DIR
+from verify_lab.common_constants import (
+    CHARTS_DIR,
+    COL_CLOSE,
+    COL_DATE,
+    COL_HIGH,
+    COL_LOW,
+    COL_OPEN,
+    COL_VALUE,
+    COL_VOLUME,
+    MARKET_FILE_TEMPLATE,
+    PRICE_DECIMALS,
+    RESULTS_DIR,
+)
 from verify_lab.execution.constants import DISPLAY_RETURN, DISPLAY_TICKER
 from verify_lab.measure.constants import REASON_NONE
 from verify_lab.report.constants import DISPLAY_EXCLUDED_REASON, DISPLAY_HOLD_DAYS_EXACT
+from verify_lab.studies.halving_cycle import chart as chart_module
 from verify_lab.studies.halving_cycle.chart import (
     CHART_FILENAME,
     DATA_MARKER,
     PLOTLY_MARKER,
     TEMPLATE_PATH,
+    bottom_axis_range,
     bottom_series,
+    build_chart_html,
     chart_path,
     chart_split,
     cycle_series,
     cycle_summary,
+    overlay_band,
     render_html,
     split_info,
     split_points,
@@ -58,6 +77,7 @@ from verify_lab.studies.halving_cycle.constants import (
     DISPLAY_SPLIT_SIDE,
     DISPLAY_SPLIT_TRANCHE,
     DISPLAY_WORST_VS_COST,
+    HALVINGS,
     REASON_NO_NEXT_HALVING,
     REASON_POSITION_BUYING,
     REASON_SPLIT_PENDING,
@@ -65,7 +85,10 @@ from verify_lab.studies.halving_cycle.constants import (
     SPLIT_SIDE_SELL,
     TRACK_NAME,
     CalendarSplit,
+    Dataset,
+    Halving,
 )
+from verify_lab.studies.halving_cycle.runner import run_study
 from verify_lab.tracks import track_of
 
 TICKER = "합성 BTC"
@@ -659,6 +682,101 @@ class TestSplitPoints:
             split_points(_fills(), "다", _close(), _bottoms())
 
 
+def _point(side: str, halving_months: float, bottom_months: float | None) -> dict[str, Any]:
+    """범위 테스트용 회차 점 — 두 축의 개월만 있다. 두 값을 다르게 두어 다른 축을 읽으면 걸린다"""
+    return {"side": side, "halving_months": halving_months, "bottom_months": bottom_months}
+
+
+class TestOverlayBand:
+    """① 의 기간 띠 — 명목 기간을 그 쪽 회차 점이 앉은 자리까지 넓힌다 (결정 59)"""
+
+    def test_띠는_명목_기간을_그_쪽_회차_점의_앞뒤까지_넓힌다(self) -> None:
+        """
+        목적: 말일 회차가 명목 개월 밖에 찍혀도 띠가 점을 덮는다 — 다른 쪽의 점이나 다른 축의 개월로 넓히지 않는다.
+
+        Given: 「가」 명목 매수 5 ~ 9 · 매도 1 ~ 5개월, 매수 점 4.5 · 9.7, 매도 점 0.2 · 3.0 (바닥 축 값은 전부 다르다)
+        When: 쪽마다 띠를 낸다
+        Then: 매수 4.5 ~ 9.7 · 매도 0.2 ~ 5
+        """
+        # Given
+        info = split_info(SPLIT, step_months=STEP)
+        points = [
+            _point(SPLIT_SIDE_BUY, 4.5, -20.0),
+            _point(SPLIT_SIDE_BUY, 9.7, 30.0),
+            _point(SPLIT_SIDE_SELL, 0.2, 40.0),
+            _point(SPLIT_SIDE_SELL, 3.0, None),
+        ]
+
+        # When
+        buy = overlay_band(points, SPLIT_SIDE_BUY, info["buy"])
+        sell = overlay_band(points, SPLIT_SIDE_SELL, info["sell"])
+
+        # Then
+        assert buy == pytest.approx([4.5, 9.7])
+        assert sell == pytest.approx([0.2, 5.0])
+
+    def test_점이_없는_쪽은_명목_기간_그대로다(self) -> None:
+        """
+        목적: 체결한 회차가 없는 쪽(경계 조건)도 띠를 낸다 — 명목 기간이다.
+
+        Given: 매수 점만 있다
+        When: 매도 띠를 낸다
+        Then: 명목 1 ~ 5개월
+        """
+        # Given
+        info = split_info(SPLIT, step_months=STEP)
+
+        # When
+        sell = overlay_band([_point(SPLIT_SIDE_BUY, 6.0, 0.0)], SPLIT_SIDE_SELL, info["sell"])
+
+        # Then
+        assert sell == pytest.approx([1.0, 5.0])
+
+
+class TestBottomAxisRange:
+    """② 의 가로축 범위 — 선의 처음 · 끝과 회차 점을 모두 덮는다 (결정 59)"""
+
+    def test_선_끝_뒤에_찍힌_회차도_범위_안이다(self) -> None:
+        """
+        목적: 잠정 바닥에서 끊긴 선 뒤에 매도 회차가 와도 화면 밖으로 잘리지 않는다 — 바닥 축 값이 빈 점은 건너뛴다.
+
+        Given: 바닥 둘의 선(바닥 3개월 앞부터 · 첫 선은 2002-03-01 ~ 2005-07-31, 바닥 2002-06-01) · 회차 점이 선보다
+            앞(−5)과 뒤(40)에 하나씩, 바닥 축 값이 빈 점 하나
+        When: 범위를 낸다
+        Then: −5 ~ 40 이다
+        """
+        # Given
+        lines = bottom_series(_close(), HALVING_DAYS, lead_months=LEAD)
+        points = [
+            _point(SPLIT_SIDE_BUY, 1.0, -5.0),
+            _point(SPLIT_SIDE_SELL, 2.0, 40.0),
+            _point(SPLIT_SIDE_SELL, 3.0, None),
+        ]
+
+        # When
+        axis = bottom_axis_range(lines, points)
+
+        # Then
+        assert axis == pytest.approx([-5.0, 40.0])
+
+    def test_점이_선_안에_있으면_선의_처음과_끝이다(self) -> None:
+        """
+        목적: 점이 선 안에 있으면 범위가 선의 처음 · 끝 그대로다 — 지금 산출물이 그렇다.
+
+        Given: 같은 선 둘과 선 안의 점 하나
+        When: 범위를 낸다
+        Then: 첫 선의 시작(−92일)과 끝(1,156일)을 30.4375 로 나눈 개월이다
+        """
+        # Given
+        lines = bottom_series(_close(), HALVING_DAYS, lead_months=LEAD)
+
+        # When
+        axis = bottom_axis_range(lines, [_point(SPLIT_SIDE_SELL, 2.0, 10.0)])
+
+        # Then
+        assert axis == pytest.approx([-92 / 30.4375, 1156 / 30.4375], abs=1e-3)
+
+
 class TestSplitTable:
     """숫자표 — 그 폭의 사이클마다 한 행, 값은 측정 표 그대로"""
 
@@ -715,6 +833,165 @@ class TestSplitTable:
             None,
             REASON_POSITION_BUYING,
         )
+
+
+# ============================================================
+# 조립 — 측정을 돌려 템플릿에 넘길 데이터를 만든다
+# ============================================================
+
+# 조립 테스트의 합성 시세 구간 — **2024 까지의 실제 반감기가 모두 든다.** 조립은 측정 전체(`run_study`)를 그대로 돌리고
+# 그 측정이 실제 반감기 목록을 읽으므로 이 테스트만은 반감기를 실제 값으로 둔다. 대신 데이터 끝 뒤 반감기를 하나 더해 거르기를 본다
+ASSEMBLY_START = "2012-01-01"
+ASSEMBLY_END = "2025-12-31"
+
+# 합성 시세 시드. **시드 없는 난수는 금지다**
+ASSEMBLY_SEED = 20261006
+
+# 무작위 뽑기 대조 반복 수 — 조립만 보므로 작게 둔다
+ASSEMBLY_REPEATS = 10
+
+# 데이터 끝 뒤의 반감기 — 세로선과 사이클에서 빠져야 한다. **실제 목록의 마지막 뒤에 둔다** — 실제 다음 반감기를 목록에
+# 더해도 날짜 순서가 깨지지 않는다
+FUTURE_HALVING = Halving(
+    height=HALVINGS[-1].height + 210_000, block_time=HALVINGS[-1].block_time + timedelta(days=4 * 365)
+)
+
+
+def _assembly_dataset(directory: Path) -> Dataset:
+    """매일 거래하는 합성 시세와 대조 · 온체인 계열을 파일로 쓰고 대상 하나를 만든다."""
+    days = pd.date_range(ASSEMBLY_START, ASSEMBLY_END, freq="D")
+    rng = np.random.default_rng(ASSEMBLY_SEED)
+    closes = np.round(100.0 * np.cumprod(np.concatenate([[1.0], 1.0 + rng.normal(0.001, 0.02, len(days) - 1)])), 4)
+    dates = days.strftime("%Y-%m-%d")
+
+    pd.DataFrame(
+        {
+            COL_DATE: dates,
+            COL_OPEN: np.round(closes * 0.999, 4),
+            COL_HIGH: np.round(closes * 1.01, 4),
+            COL_LOW: np.round(closes * 0.98, 4),
+            COL_CLOSE: closes,
+            COL_VOLUME: 1_000.0,
+        }
+    ).to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="SYNC"), index=False)
+    reference_path = directory / "SYNC_PriceUSD.csv"
+    pd.DataFrame({COL_DATE: dates, COL_VALUE: np.round(closes * 1.001, 4)}).to_csv(reference_path, index=False)
+    mvrv_path = directory / "SYNC_CapMVRVCur.csv"
+    pd.DataFrame({COL_DATE: dates, COL_VALUE: 2.0}).to_csv(mvrv_path, index=False)
+    market_cap_path = directory / "SYNC_CapMrktCurUSD.csv"
+    pd.DataFrame({COL_DATE: dates, COL_VALUE: np.round(closes * 1e6, 0)}).to_csv(market_cap_path, index=False)
+
+    return Dataset(
+        ticker="SYNC",
+        label=TICKER,
+        directory=directory,
+        file_template=MARKET_FILE_TEMPLATE,
+        reference_path=reference_path,
+        mvrv_path=mvrv_path,
+        market_cap_path=market_cap_path,
+        price_decimals=PRICE_DECIMALS,
+        is_judged=True,
+    )
+
+
+@pytest.fixture(scope="module")
+def assembled(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
+    """합성 대상으로 조립을 돌려 템플릿에 넘기는 데이터를 잡는다 — HTML 은 만들지 않는다."""
+    dataset = _assembly_dataset(tmp_path_factory.mktemp("halving_chart_assembly"))
+    captured: dict[str, Any] = {}
+
+    def capture(template: str, data: Mapping[str, Any], plotly_js: str) -> str:
+        captured.update(data)
+        return ""
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(chart_module, "run_study", lambda datasets: run_study(datasets, repeats=ASSEMBLY_REPEATS, seed=0))
+        patch.setattr(chart_module, "render_html", capture)
+        patch.setattr(chart_module, "HALVINGS", (*HALVINGS, FUTURE_HALVING))
+        build_chart_html((dataset,), plotly_js="", created_at=datetime(2026, 10, 6, tzinfo=UTC))
+
+    return captured
+
+
+class TestBuildChartHtml:
+    """조립 — 측정 표를 거른 뒤 세 보기의 자리로 옮기는 배선. 배선이 어긋나도 차트는 그럴듯하게 그려진다"""
+
+    def test_반감기_기준_점은_기준_반감기_선의_그날_값_위에_앉는다(self, assembled: dict[str, Any]) -> None:
+        """
+        목적: ① 의 점이 기준 반감기(매수는 그 반감기, 매도는 다음 반감기) 선의 같은 날 값에 앉는다.
+
+        Given: 합성 대상으로 조립한 차트 데이터
+        When: 점마다 기준 반감기 선에서 그날을 찾는다
+        Then: 개월과 배수가 선의 값과 같다 — 점이 하나 이상이다
+        """
+        # Given
+        cycles = {cycle["dates"][0]: cycle for cycle in assembled["cycles"]}
+
+        # When / Then
+        assert assembled["points"], "점이 없어 배선을 검사하지 못했습니다"
+        for point in assembled["points"]:
+            line = cycles[point["anchor"]]
+            index = line["dates"].index(point["date"])
+            assert line["months"][index] == point["halving_months"], point
+            assert line["multiple"][index] == pytest.approx(point["halving_multiple"], abs=1e-4), point
+
+    def test_바닥_기준_점은_포지션_사이클_바닥_선의_그날_값_위에_앉는다(self, assembled: dict[str, Any]) -> None:
+        """
+        목적: ② 의 점이 «포지션 사이클»의 바닥 선 위에 앉는다 — 바닥 자리에 다른 날(고점 등)을 넘기는 배선 실수도
+        점을 그럴듯한 자리에 찍고 예외는 나지 않는다.
+
+        Given: 합성 대상으로 조립한 차트 데이터
+        When: 점마다 그 사이클의 바닥 선에서 그날을 찾는다 (잠정 바닥에서 끊긴 선 뒤의 점은 건너뛴다)
+        Then: 개월과 배수가 선의 값과 같다 — 견준 점이 하나 이상이다
+        """
+        # Given
+        lines = {line["halving"]: line for line in assembled["bottoms"]}
+
+        # When / Then
+        compared = 0
+        for point in assembled["points"]:
+            line = lines[point["cycle"]]
+            if point["date"] not in line["dates"]:
+                continue
+            index = line["dates"].index(point["date"])
+            assert line["months"][index] == point["bottom_months"], point
+            assert line["multiple"][index] == pytest.approx(point["bottom_multiple"], abs=1e-4), point
+            compared += 1
+        assert compared > 0, "바닥 선 위의 점이 없어 배선을 검사하지 못했습니다"
+
+    def test_띠와_바닥_축_범위가_모든_점을_덮는다(self, assembled: dict[str, Any]) -> None:
+        """
+        목적: ① 의 띠와 ② 의 가로축이 그 축의 회차 점을 하나도 밖에 두지 않는다 (결정 59).
+
+        Given: 합성 대상으로 조립한 차트 데이터
+        When: 점마다 그 쪽 띠 · 바닥 축 범위와 견준다
+        Then: 전부 범위 안이다
+        """
+        # Given
+        bands = {assembled["sides"]["buy"]: assembled["overlay_bands"]["buy"]}
+        bands[assembled["sides"]["sell"]] = assembled["overlay_bands"]["sell"]
+        low, high = assembled["bottom_range"]
+
+        # When / Then
+        for point in assembled["points"]:
+            start, end = bands[point["side"]]
+            assert start <= point["halving_months"] <= end, point
+            assert low <= point["bottom_months"] <= high, point
+
+    def test_데이터_끝_뒤의_반감기는_세로선과_사이클에_없다(self, assembled: dict[str, Any]) -> None:
+        """
+        목적: 아직 오지 않은 반감기에 세로선을 긋거나 사이클을 만들지 않는다.
+
+        Given: 실제 반감기 목록과 그 마지막 뒤(데이터 끝 2025-12-31 뒤)의 반감기 하나로 조립한 차트 데이터
+        When: 세로선 · 사이클의 반감기를 본다
+        Then: 둘 다 데이터 안의 실제 반감기뿐이다
+        """
+        # When
+        inside = [halving.label for halving in HALVINGS if halving.day <= pd.Timestamp(ASSEMBLY_END)]
+
+        # Then
+        assert assembled["halvings"] == inside
+        assert [cycle["dates"][0] for cycle in assembled["cycles"]] == inside
 
 
 # ============================================================

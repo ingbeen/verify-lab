@@ -1275,17 +1275,21 @@ class TestGridBaseline:
         assert (longest[f"{COL_SAMPLE_COUNT}{BASELINE_SUFFIX}"] == 0).all()
         assert longest[f"{COL_MEAN}{BASELINE_SUFFIX}"].isna().all()
 
-    def test_진입일에_보유_개월을_더한_날이_청산일과_다르면_멈춘다(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.parametrize(("month", "day"), [(7, 31), (5, 30), (11, 29)])
+    def test_진입일에_보유_개월을_더한_날이_청산일과_다르면_멈춘다(self, monkeypatch: pytest.MonkeyPatch, month: int, day: int) -> None:
         """
         목적: 칸의 보유를 (청산 − 진입) 개월로 두는 전제가 깨지면 기준선을 다른 보유로 조용히 재지 않고 멈춤을 고정한다.
+        **31일만이 아니다** — 29 · 30일도 2월을 지나는 진입이 말일로 당겨져 깨진다. 날짜 하나만 두면 가드를 「31일인가」
+        같은 대리 조건으로 줄여도 통과한다.
 
-        Given: 두 번째 반감기를 7월 31일로 옮긴 반감기 목록 — 9개월 진입이 4월 30일로 당겨져, 보유 3개월을 더하면
-            7월 30일인데 청산일(반감기일 + 12개월)은 7월 31일이다
+        Given: 두 번째 반감기를 7월 31일 · 5월 30일 · 11월 29일로 옮긴 반감기 목록 — 예: 7월 31일이면 9개월 진입이
+            4월 30일로 당겨져 보유 3개월을 더하면 7월 30일인데 청산일(반감기일 + 12개월)은 7월 31일이고, 5월 30일이면
+            9개월 진입이 2월 28일로 당겨져 3개월을 더하면 5월 28일인데 청산일은 5월 30일이다
         When: 격자기준선을 낸다
         Then: 내부 불변조건 위반으로 멈춘다
         """
         # Given
-        moved = Halving(height=HALVINGS[1].height, block_time=datetime(2016, 7, 31, 16, 46, 13, tzinfo=UTC))
+        moved = Halving(height=HALVINGS[1].height, block_time=datetime(2016, month, day, 16, 46, 13, tzinfo=UTC))
         monkeypatch.setattr(runner_module, "HALVINGS", (HALVINGS[0], moved, *HALVINGS[2:]))
 
         # When / Then
