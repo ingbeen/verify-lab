@@ -24,56 +24,56 @@
         "ticker": "SPY",
         "label": "SPY",
         "file": "SPY_max.csv",
-        "period": "1993-01-29 ~ 2026-08-25",
-        "rows": 8450,
+        "period": "1993-01-29 ~ 2026-10-05",
+        "rows": 8478,
         "symbol": "SPY",
         "is_index": false,
-        "entry_count": 8,
-        "excluded_count": 0
+        "entry_count": 9,
+        "excluded_count": 1
       },
       {
         "ticker": "DIA",
         "label": "DIA",
         "file": "DIA_max.csv",
-        "period": "1998-01-20 ~ 2026-08-26",
-        "rows": 7195,
+        "period": "1998-01-20 ~ 2026-10-05",
+        "rows": 7222,
         "symbol": "DIA",
         "is_index": false,
-        "entry_count": 7,
-        "excluded_count": 0
+        "entry_count": 8,
+        "excluded_count": 1
       },
       {
         "ticker": "QQQ",
         "label": "QQQ",
         "file": "QQQ_max.csv",
-        "period": "1999-03-10 ~ 2026-09-24",
-        "rows": 6929,
+        "period": "1999-03-10 ~ 2026-10-05",
+        "rows": 6936,
         "symbol": "QQQ",
         "is_index": false,
-        "entry_count": 6,
-        "excluded_count": 0
+        "entry_count": 7,
+        "excluded_count": 1
       },
       {
         "ticker": "GSPC",
         "label": "S&P 500 지수",
         "file": "GSPC_index.csv",
-        "period": "1927-12-30 ~ 2026-09-18",
-        "rows": 24796,
+        "period": "1927-12-30 ~ 2026-10-05",
+        "rows": 24807,
         "symbol": "^GSPC",
         "is_index": true,
-        "entry_count": 24,
-        "excluded_count": 0
+        "entry_count": 25,
+        "excluded_count": 1
       },
       {
         "ticker": "IXIC",
         "label": "나스닥 종합 지수",
         "file": "IXIC_index.csv",
-        "period": "1971-02-05 ~ 2026-09-18",
-        "rows": 14022,
+        "period": "1971-02-05 ~ 2026-10-05",
+        "rows": 14033,
         "symbol": "^IXIC",
         "is_index": true,
-        "entry_count": 13,
-        "excluded_count": 0
+        "entry_count": 14,
+        "excluded_count": 1
       }
     ]
   },
@@ -83,36 +83,36 @@
         "ticker": "SPY",
         "label": "SPY",
         "file": "SPY_max.csv",
-        "period": "1993-01-29 ~ 2026-08-25",
-        "rows": 8450
+        "period": "1993-01-29 ~ 2026-10-05",
+        "rows": 8478
       },
       {
         "ticker": "DIA",
         "label": "DIA",
         "file": "DIA_max.csv",
-        "period": "1998-01-20 ~ 2026-08-26",
-        "rows": 7195
+        "period": "1998-01-20 ~ 2026-10-05",
+        "rows": 7222
       },
       {
         "ticker": "QQQ",
         "label": "QQQ",
         "file": "QQQ_max.csv",
-        "period": "1999-03-10 ~ 2026-09-24",
-        "rows": 6929
+        "period": "1999-03-10 ~ 2026-10-05",
+        "rows": 6936
       },
       {
         "ticker": "GSPC",
         "label": "S&P 500 지수",
         "file": "GSPC_index.csv",
-        "period": "1927-12-30 ~ 2026-09-18",
-        "rows": 24796
+        "period": "1927-12-30 ~ 2026-10-05",
+        "rows": 24807
       },
       {
         "ticker": "IXIC",
         "label": "나스닥 종합 지수",
         "file": "IXIC_index.csv",
-        "period": "1971-02-05 ~ 2026-09-18",
-        "rows": 14022
+        "period": "1971-02-05 ~ 2026-10-05",
+        "rows": 14033
       }
     ],
     "rule": {
@@ -126,28 +126,28 @@
       "targets": [
         {
           "label": "SPY",
-          "entry_count": 8,
-          "excluded_count": 0
+          "entry_count": 9,
+          "excluded_count": 1
         },
         {
           "label": "DIA",
-          "entry_count": 7,
-          "excluded_count": 0
+          "entry_count": 8,
+          "excluded_count": 1
         },
         {
           "label": "QQQ",
-          "entry_count": 6,
-          "excluded_count": 0
+          "entry_count": 7,
+          "excluded_count": 1
         },
         {
           "label": "S&P 500 지수",
-          "entry_count": 24,
-          "excluded_count": 0
+          "entry_count": 25,
+          "excluded_count": 1
         },
         {
           "label": "나스닥 종합 지수",
-          "entry_count": 13,
-          "excluded_count": 0
+          "entry_count": 14,
+          "excluded_count": 1
         }
       ],
       "split_methods": [
