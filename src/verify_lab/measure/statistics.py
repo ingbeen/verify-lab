@@ -161,7 +161,7 @@ NOTE_TOO_FEW_SAMPLES = "표본 부족으로 검정 불가"
 NOTE_POPULATION_NOT_LARGER = "모집단이 표본보다 크지 않아 검정 불가"
 
 # 유효 표본이 하한에 못 미치는 칸에는 검정을 붙이지 않는다
-# (docs/매매/역방향/설계.md §6). 백분위도 함께 비운다 —
+# (`docs/조사/역방향.md` 「통계 처리와 강건성」). 백분위도 함께 비운다 —
 # 백분위는 사실상 검정 통계량이라 남겨두면 유의성으로 읽힌다.
 # **하한은 `measure/constants.py` 가 소유한다** — 축을 쪼갤 때 쓰는 것과 같은 값이다
 
@@ -458,7 +458,7 @@ def summarize(frame: pd.DataFrame) -> pd.DataFrame:
     정상적인 결과다. 표본 1건의 표준편차도 마찬가지다 — 0으로 채우면 "변동이 없다"로 읽힌다.
 
     Args:
-        frame: `compute_forward_returns` 의 결과
+        frame: forward return long-form 표 (`measure/forward_return.py` 모듈 설명)
 
     Returns:
         `SUMMARY_COLUMNS` 순서의 요약표. 기준·구간 오름차순으로 정렬된다
@@ -606,8 +606,8 @@ def permutation_test(
     아니다"로 읽히지만 실제로는 반복 수의 한계일 뿐이다.
 
     Args:
-        signal_frame: 신호군의 `compute_forward_returns` 결과
-        population_frame: 베이스라인 모집단의 `compute_forward_returns` 결과
+        signal_frame: 신호군의 forward return long-form 표
+        population_frame: 베이스라인 모집단의 forward return long-form 표
         repeats: 귀무분포를 만들 반복 수 (1 이상)
         seed: 난수 시드. 결과 문서에 기록해야 재현된다
 

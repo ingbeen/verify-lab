@@ -7,8 +7,6 @@
 규칙을 따른다 — 수익률·비율 같은 백분율은 2자리, 우연확률 같은 확률은 4자리다.
 """
 
-from verify_lab.measure.forward_return import ReturnBasis
-
 # ============================================================
 # 표시용 레이블 (measure 의 COL_* 에 대응)
 # ============================================================
@@ -48,8 +46,6 @@ DISPLAY_NEGATIVE_MEAN = "내린 평균(%)"
 DISPLAY_POSITIVE_COUNT = "오른 건수"
 DISPLAY_NEGATIVE_COUNT = "내린 건수"
 
-DISPLAY_BASELINE = "베이스라인"
-DISPLAY_POPULATION = "모집단"
 DISPLAY_SIGNAL_SAMPLE = "신호 표본"
 DISPLAY_BASELINE_SAMPLE = "베이스라인 표본"
 
@@ -61,23 +57,11 @@ DISPLAY_MEDIAN_DIFF = "중앙값 차이(%p)"
 DISPLAY_UP_RATE_DIFF = "오른 비율 차이(%p)"
 DISPLAY_DOWN_RATE_DIFF = "내린 비율 차이(%p)"
 
-DISPLAY_OBSERVED_MEAN = "관측 평균(%)"
-DISPLAY_OBSERVED_MEDIAN = "관측 중앙값(%)"
-DISPLAY_NULL_P05 = "무작위 하위5%(%)"
-DISPLAY_NULL_P95 = "무작위 상위5%(%)"
-
 # **`p값` 대신 `우연확률` 로 적는다.** 뜻이 이름에 드러나야 한 줄 정의 없이 읽힌다
 # (루트 `CLAUDE.md` 결과 보고의 원칙 — 전문 용어보다 일상어)
-DISPLAY_MEAN_PERCENTILE = "평균 백분위"
 DISPLAY_MEAN_P_VALUE = "평균 우연확률"
-DISPLAY_MEDIAN_PERCENTILE = "중앙값 백분위"
 DISPLAY_MEDIAN_P_VALUE = "중앙값 우연확률"
-
-DISPLAY_OBSERVED_UP_RATE = "관측 오른 비율(%)"
-DISPLAY_UP_RATE_PERCENTILE = "오른 비율 백분위"
 DISPLAY_UP_RATE_P_VALUE = "오른 비율 우연확률"
-DISPLAY_OBSERVED_DOWN_RATE = "관측 내린 비율(%)"
-DISPLAY_DOWN_RATE_PERCENTILE = "내린 비율 백분위"
 DISPLAY_DOWN_RATE_P_VALUE = "내린 비율 우연확률"
 
 DISPLAY_TEST_NOTE = "비고"
@@ -112,26 +96,13 @@ DISPLAY_SCREEN = "1차 판정"
 # 값 번역표
 # ============================================================
 
-# 수익률 기준점의 표시 이름
-BASIS_LABELS = {
-    ReturnBasis.CLOSE.value: "종가",
-    ReturnBasis.NEXT_OPEN.value: "익일시가",
-}
-
-# 기준을 나란히 놓을 때의 순서. 종가 기준이 먼저이고, 두 값의 차이가 갭으로 새는 몫이다
-BASIS_ORDER = {basis.value: index for index, basis in enumerate(ReturnBasis)}
-
 # 측정 구간의 표시 이름. **재는 구간의 목록이 아니라 "거래일 → 이름" 사전이다** —
-# 무엇을 재는지는 각 검증의 격자가 정한다(`measure.forward_return.DEFAULT_HORIZONS` ·
-# `leverage_tracking.HORIZONS` · `futures_leverage.HOLDING_HORIZONS`).
+# 무엇을 재는지는 각 검증의 격자가 정한다(`leverage_tracking.HORIZONS` · `futures_leverage.HOLDING_HORIZONS`).
 #
 # **저장소가 쓰는 격자를 여기서 «전부» 덮는다.** 공통 계층이 자기 축을 다 덮지 못하면 검증이
 # 사본을 만들고, 사본은 반드시 갈라진다 — 같은 `(5,10,21,63,126,252,756)` 격자를 두고
 # 한 검증은 사본으로 `1주·3개월·3년` 을, 다른 검증은 라벨을 거치지 않아 `5·63·756` 을 냈다.
 # **두 산출물을 나란히 읽을 수 없고 예외는 나지 않는다.**
-#
-# 달력 이름이 없는 짧은 구간(`2`·`3`)은 등록하지 않는다 — `f"{days}일"` fallback 이
-# 내는 `2일`·`3일` 이 이미 그 값의 정확한 이름이다 (`tables.horizon_label`).
 HORIZON_LABELS = {
     1: "1일",
     5: "1주",
@@ -174,13 +145,12 @@ DATE_FORMAT = "%Y-%m-%d"
 # 이름이 뒤섞인다.
 #
 # | 한글 | 사용자가 **판정에 쓰는** 표 — 성적표 · 거래내역 · 통계 · 측정 |
-# | 영문 | **원자료와 검정** 표 — 신호일 목록 · 기준선 대비 · 무작위 대조 |
+# | 영문 | **원자료와 검정** 표 — 기준선 대비 · 무작위 대조 |
 #
 # 한글 이름은 **매매법을 가리지 않고 글자 그대로 같다.** 축을 이름에 넣지 않는 것이
 # 그 조건이다(`만기월별_통계` 가 아니라 `통계`) — 폴더가 매매법을 말하므로 이름에 또
 # 넣으면 중복이고, 넣는 순간 이름이 다시 갈린다.
 
-SIGNALS_FILENAME = "signals.csv"
 EXCESS_FILENAME = "excess.csv"
 TEST_FILENAME = "test.csv"
 
@@ -192,7 +162,7 @@ STATISTICS_FILENAME = "통계.csv"
 # 우연확률 · 배당락이며 **성적표에는 그중 어느 것도 없다.**
 #
 # [중요] **`통계.csv` 와 공존한다.** 측정 격자까지 확정 칸으로 좁힌 매매법(중간선거_사이클)이
-# 이 이름을 쓰고, **역방향은 `통계.csv` 를 낸다** — 그쪽은 측정 격자를 좁히지 않아 축별
+# 이 이름을 쓰고, **반감기_사이클은 `통계.csv` 를 낸다** — 그쪽은 측정 격자를 좁히지 않아 축별
 # 집계표가 그대로 필요하다. **두 이름이 같은 자리를 뜻한다고 읽으면 안 된다** — 담는 축이 다르다
 MEASURE_FILENAME = "측정.csv"
 

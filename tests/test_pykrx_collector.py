@@ -38,7 +38,7 @@ from verify_lab.data.pykrx_collector import collect_pykrx_history, collect_pykrx
 # 테스트에서 오늘로 고정하는 날짜. 최근 제외 기준일은 이 날짜에서 계산된다
 FROZEN_TODAY = "2026-08-12"
 
-# 역방향의 국내 대상과 그 상장일
+# 국내 대상 하나(KODEX 200)와 그 상장일
 TICKER = "069500"
 LISTING_DATE = "20021014"
 

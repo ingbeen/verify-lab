@@ -20,7 +20,7 @@ from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 인자 없이 실행했을 때 받는 종목. 역방향의 미국 측 대상이다
+# 인자 없이 실행했을 때 받는 종목
 DEFAULT_TICKER = "QQQ"
 
 # 실행 이력을 쌓는 meta.json 의 최상위 키

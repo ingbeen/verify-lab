@@ -93,14 +93,6 @@ poetry run python scripts/data/collect_btc.py   # Bitstamp 일봉 + Coin Metrics
 
 > **결과 문서에 쓸 수치는 인자 없이 돌린 것이어야 합니다** — 대상을 좁혀 돌리면 같은 산출물 폴더를 덮습니다.
 
-### 역방향
-
-```bash
-poetry run python scripts/run_reverse.py                            # 전 조합 (기본값)
-poetry run python scripts/run_reverse.py --dataset qqq              # 한 대상만
-poetry run python scripts/run_reverse.py --repeats 5000 --seed 42   # 무작위 뽑기 대조의 반복 수·시드를 바꿔 재현성 확인
-```
-
 ### 중간선거_사이클
 
 ```bash

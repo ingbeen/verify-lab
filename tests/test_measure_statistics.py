@@ -269,11 +269,11 @@ class TestSummarize:
         When: 집계한다
         Then: 칸이 4개이고 컬럼 구성이 선언과 같다
         """
-        # Given
-        frame = pd.concat(
-            [_cell([0.10, 0.20], basis=basis, horizon=horizon) for basis in ReturnBasis for horizon in (1, 5)],
-            ignore_index=True,
-        )
+        # Given — 실제로 쓰이는 기준은 종가 하나뿐이라 두 번째 기준 값은 픽스처가 만든다.
+        # 실제 값만 쓰면 기준 축을 무시하는 구현도 통과한다
+        close = pd.concat([_cell([0.10, 0.20], horizon=horizon) for horizon in (1, 5)], ignore_index=True)
+        other = close.assign(**{COL_BASIS: "other"})
+        frame = pd.concat([close, other], ignore_index=True)
 
         # When
         summary = summarize(frame)
@@ -438,7 +438,7 @@ class TestPermutationTest:
 
     def test_small_sample_is_not_tested(self) -> None:
         """
-        목적: **유효 표본이 한 자릿수면 검정하지 않는다** (스펙 §6).
+        목적: **유효 표본이 한 자릿수면 검정하지 않는다** (`docs/조사/역방향.md` 「통계 처리와 강건성」).
 
         Given: 신호 9건
         When: 검정한다

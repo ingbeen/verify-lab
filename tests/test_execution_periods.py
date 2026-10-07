@@ -13,11 +13,14 @@
 - **보유 중 최악은 그 구간의 최솟값**이고 결과 최악보다 나쁘거나 같다
 """
 
+import io
+
 import pandas as pd
 import pytest
 
 from verify_lab.common_constants import RATE_TO_PERCENT
 from verify_lab.execution.constants import (
+    DISPLAY_EVENT_COUNT,
     DISPLAY_GAP_STOP_COUNT,
     DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_WORST_HOLD,
@@ -27,7 +30,7 @@ from verify_lab.execution.constants import (
     PERIOD_RECENT_5Y,
     PERIODS,
 )
-from verify_lab.execution.periods import period_rows
+from verify_lab.execution.periods import COUNT_COLUMNS, period_rows, to_summary_frame
 from verify_lab.measure.constants import (
     JUDGEABLE_NO,
     JUDGEABLE_YES,
@@ -35,7 +38,7 @@ from verify_lab.measure.constants import (
     PERIOD_FIRST_HALF,
     PERIOD_SECOND_HALF,
 )
-from verify_lab.measure.screening import screen_verdict
+from verify_lab.measure.screening import SCREEN_NOT_JUDGED, screen_verdict
 from verify_lab.report.constants import (
     DISPLAY_JUDGEABLE,
     DISPLAY_MEAN,
@@ -253,6 +256,31 @@ class TestEmptyPeriod:
         # Then
         assert rows[PERIOD_RECENT_5Y][DISPLAY_JUDGEABLE] == JUDGEABLE_NO
 
+    def test_표본이_0건인_구간은_판정_안_함이다(self) -> None:
+        """
+        목적: 「재봤더니 아니었다」와 「재본 적이 없다」를 가른다.
+
+        0건 칸은 지표가 결측이라 비교가 전부 거짓이 되고, 가드가 없으면 「제외」로 찍힌다.
+
+        Given: 진입이 전부 2010년 이전인 시세 (최근 5년이 0건이 된다)
+        When: 구간별로 나누면
+        Then: 최근 5년 행의 판정이 「판정 안 함」이다
+        """
+        # Given
+        years = list(range(2000, 2011))
+
+        # When
+        rows = {
+            row[DISPLAY_PERIOD]: row
+            for row in period_rows(
+                _dates(years), _returns(len(years)), last_day=pd.Timestamp("2026-08-25"), tradable=True
+            )
+        }
+
+        # Then
+        assert rows[PERIOD_RECENT_5Y][DISPLAY_SIGNAL_COUNT] == 0
+        assert rows[PERIOD_RECENT_5Y][DISPLAY_SCREEN] == SCREEN_NOT_JUDGED
+
 
 class TestJudgeable:
     """판정가능 표시 — 표본 하한(원칙 12의 10건)"""
@@ -377,6 +405,44 @@ class TestValidation:
 
 class TestEmptyPeriodMetrics:
     """표본 0건 구간에서는 **모든** 지표가 비어 있다"""
+
+    def test_정수형이어도_빈칸은_빈칸으로_저장된다(self) -> None:
+        """
+        목적: 건수 컬럼을 정수로 바꾸는 처리(`to_summary_frame`)가 빈칸을 `0` 으로 바꾸지 않는지 고정한다
+
+        표본이 0건인 구간은 **잰 적이 없는 것**이라 건수도 빈칸이다.
+        `0` 을 적으면 「손절이 한 번도 안 걸렸다」로 읽혀 정반대의 사실이 된다.
+
+        **`,,` 가 문자열에 있는지만 보면 안 된다** — 표본 0건 행은 실수 지표 칸이 원래 줄줄이 비어
+        있어, 건수 칸이 `0` 으로 채워져도 그 검사는 통과한다. 그래서 건수 칸을 이름으로 읽는다.
+
+        Given: 최근 5년에 진입이 하나도 없는 체결 목록 (청산 사유 · 사건 번호를 함께 넘긴다)
+        When: 성적표 프레임으로 만들어 CSV 문자열로 뽑고 문자열 그대로 다시 읽었을 때
+        Then: 최근 5년 행의 건수 칸이 빈칸이고, `신호` 는 정수 `0` 이다 (0건인 것은 잰 사실이다)
+        """
+        # Given
+        years = list(range(2000, 2011))
+        rows = period_rows(
+            _dates(years),
+            _returns(len(years)),
+            last_day=pd.Timestamp("2026-08-25"),
+            tradable=True,
+            reasons=[EXIT_INTRADAY_STOP] * len(years),
+            event_ids=list(range(1, len(years) + 1)),
+        )
+        frame = to_summary_frame(rows)
+        recent = frame[frame[DISPLAY_PERIOD] == PERIOD_RECENT_5Y]
+
+        # When
+        cells = pd.read_csv(io.StringIO(recent.to_csv(index=False)), dtype=str, keep_default_na=False).iloc[0]
+
+        # Then
+        # 정수화하는 건수 컬럼 전부를 본다 — 목록을 따로 박으면 건수 컬럼이 늘 때 이 검사에서 조용히 빠진다
+        blank_columns = [column for column in COUNT_COLUMNS if column != DISPLAY_SIGNAL_COUNT]
+        assert blank_columns, "검사할 건수 컬럼이 없습니다"
+        filled = {column: cells[column] for column in blank_columns if cells[column] != ""}
+        assert filled == {}, f"잰 적이 없는 건수 칸이 값으로 채워졌습니다: {filled}"
+        assert cells[DISPLAY_SIGNAL_COUNT] == "0", f"표본 수가 정수 0 이 아닙니다: {cells[DISPLAY_SIGNAL_COUNT]!r}"
 
     def test_손절_건수도_비어_있다(self) -> None:
         """
@@ -638,3 +704,62 @@ class TestPeriodSpan:
                 continue
             assert row[DISPLAY_PERIOD_START] >= whole[DISPLAY_PERIOD_START]
             assert row[DISPLAY_PERIOD_END] <= whole[DISPLAY_PERIOD_END]
+
+
+class TestEventCount:
+    """`사건` — 사건 번호를 넘기면 구간마다 따로 센다 (측정의 원칙 5)"""
+
+    def test_사건이_구간마다_따로_세어진다(self) -> None:
+        """
+        목적: 전체 구간의 사건 수를 모든 행에 복사하지 않았음을 고정한다
+
+        같은 사건에서 파생된 신호를 묶어 세는 것이 측정의 원칙 5 이며, 구간을 쪼개면
+        그 수도 구간마다 달라야 한다.
+
+        Given: 진입 12건이 사건 넷(2000 · 2003 · 2006 · 2009 에서 시작하는 세 해씩)으로 묶인 체결 목록
+        When: 구간별 성적 행을 만든다
+        Then: 전체는 사건 4 이고 앞 절반(앞 6건)은 사건 2 다
+        """
+        # Given
+        years = list(range(2000, 2012))
+        event_ids = [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4]
+
+        # When
+        rows = {
+            row[DISPLAY_PERIOD]: row
+            for row in period_rows(
+                _dates(years),
+                _returns(len(years)),
+                last_day=pd.Timestamp("2026-08-25"),
+                tradable=True,
+                event_ids=event_ids,
+            )
+        }
+
+        # Then
+        assert rows[PERIOD_ALL][DISPLAY_EVENT_COUNT] == 4
+        assert rows[PERIOD_FIRST_HALF][DISPLAY_EVENT_COUNT] == 2
+
+    def test_사건_컬럼도_결측을_견디는_정수형이다(self) -> None:
+        """
+        목적: 매매법 고유 건수 컬럼도 다른 건수 컬럼과 같은 규칙을 받는다
+
+        Given: 사건 번호를 넘긴 체결 목록 (최근 5년이 0건이라 그 행의 사건이 결측이다)
+        When: 성적표 프레임으로 만든다
+        Then: `사건` 의 dtype 이 결측을 담는 정수형이다
+        """
+        # Given
+        years = list(range(2000, 2011))
+        rows = period_rows(
+            _dates(years),
+            _returns(len(years)),
+            last_day=pd.Timestamp("2026-08-25"),
+            tradable=True,
+            event_ids=list(range(1, len(years) + 1)),
+        )
+
+        # When
+        frame = to_summary_frame(rows)
+
+        # Then
+        assert str(frame[DISPLAY_EVENT_COUNT].dtype) == "Int64"

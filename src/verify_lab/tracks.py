@@ -77,9 +77,9 @@ class Track:
 # [중요] **띄어쓰기 대신 밑줄을 쓴다.** 이 값이 폴더 이름이므로 공백이 들어가면 셸·링크에서
 # 매번 따옴표를 달아야 하고, VSCode 확장이 공백 든 경로의 링크를 열지 못한다.
 TRACKS: Final = (
-    Track("reverse", "역방향", GRADE_TRADING, KIND_METHOD),
-    # 아래 셋은 걸지 않기로 해 실행 코드가 없다. **성적표를 낼 코드가 없으므로 종류도 성질 조사다** —
+    # 아래 넷은 걸지 않기로 해 실행 코드가 없다. **성적표를 낼 코드가 없으므로 종류도 성질 조사다** —
     # 매매법 계약을 요구받으면 안 된다. 근거와 되살리는 절차는 `docs/조사/` 의 그 조사 문서가 갖는다
+    Track("reverse", "역방향", GRADE_SURVEY, KIND_PROPERTY),
     Track("option_expiry", "옵션_만기일", GRADE_SURVEY, KIND_PROPERTY),
     Track("month_end", "월말_진입", GRADE_SURVEY, KIND_PROPERTY),
     # 위 둘을 2×2 로 교차한 매매법

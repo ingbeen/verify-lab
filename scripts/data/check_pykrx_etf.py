@@ -3,8 +3,8 @@
 
 KODEX 200 데이터 성질(분배금 조정 여부 · 유동성 · 괴리율 · 결측)을
 **한 번의 실행으로** 확인한다. KRX 호출은 5회이며 각 호출 결과를 받는 즉시 CSV 로 남기므로,
-뒤쪽 호출이 실패해도 앞선 원자료는 보존된다. 실측 결과는 `docs/매매/역방향/설계.md`
-「데이터 소스 실측 — pykrx KODEX 200」 에 있다.
+뒤쪽 호출이 실패해도 앞선 원자료는 보존된다. 실측 결과는 `docs/조사/역방향.md`
+「pykrx KODEX 200」 에 있다.
 
 외부 서버(KRX)에 실제 요청을 보내므로 **같은 데이터를 이유 없이 다시 받지 않는다.**
 
@@ -33,7 +33,7 @@ from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 역방향의 국내 대상. 상장일은 스펙 §2 가 지정한 값이다
+# 인자 없이 실행했을 때 재는 종목(KODEX 200)과 그 상장일
 DEFAULT_TICKER = "069500"
 DEFAULT_START_DATE = "20021014"
 

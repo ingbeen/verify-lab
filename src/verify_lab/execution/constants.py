@@ -7,9 +7,9 @@
 두 가지가 새어 나간다.
 
 - **공유 체결식의 기본값이 한 매매법의 값이 된다** — `trade_fill.simulate_signal` 의
-  `stop_level` 이 역방향의 −5% 면, 인자를 빠뜨린 다른 매매법이 조용히 그 손절선으로 체결된다
-- **이 모듈이 `studies.reverse.constants` 를 import 하게 된다.** 계약이 금지한 「매매법끼리
-  import」를 파일 이름으로는 피해도 **다른 매매법을 돌릴 때 역방향의 `DATASETS` 가 딸려 온다**
+  `stop_level` 이 한 매매법의 −5% 면, 인자를 빠뜨린 다른 매매법이 조용히 그 손절선으로 체결된다
+- **이 모듈이 `studies.<매매법>.constants` 를 import 하게 된다.** 계약이 금지한 「매매법끼리
+  import」를 파일 이름으로는 피해도 **다른 매매법을 돌릴 때 그 매매법의 `DATASETS` 가 딸려 온다**
 
 `tests/test_layer_contracts.py` 가 둘 다 생기지 못하게 막는다.
 """
@@ -50,9 +50,6 @@ TRADES_FILENAME: Final = "거래내역.csv"
 
 # 손절선의 성질을 실행 요약(`summary.json` 의 `notes`)에 남기는 문장. 매매법 이름이 붙지 않는
 # 문장이라 여기 둔다.
-#
-# **역방향은 이 상수를 쓰지 않는다.** 그쪽 문장은 「손절선은 **전부** 진입가 기준」으로 한 단어
-# 다르고, 합치면 역방향 `summary.json` 의 `notes` 가 바뀐다 — 두 문장이 갈라져 있는 것은 그래서다
 NOTE_STOP_BASE: Final = "손절선은 진입가 기준이고 보유 기간 내내 갱신하지 않는다. 갭 청산은 손절선보다 더 잃는다"
 
 # ============================================================
@@ -71,12 +68,8 @@ EXIT_LIMIT: Final = "기한청산"
 # ============================================================
 
 DISPLAY_TICKER: Final = "종목"
-DISPLAY_PARAMETER: Final = "파라미터"
-DISPLAY_START_YEAR: Final = "시작연도"
 DISPLAY_DIRECTION: Final = "방향"
 DISPLAY_ENTRY_PRICE: Final = "진입가"
-DISPLAY_CHANGE_RATE: Final = "등락률(%)"
-DISPLAY_EVENT_ID: Final = "사건 번호"
 DISPLAY_STOP_LEVEL: Final = "손절선(%)"
 DISPLAY_EXIT_REASON: Final = "청산 사유"
 DISPLAY_HOLD_DAYS: Final = "보유일"
@@ -129,9 +122,6 @@ DISPLAY_LOSING_COUNT: Final = "질 때 표본"
 # (측정의 원칙 3), 이긴 건수는 `신호 − 질 때 표본 − 보합` 이라 보합 없이는 유도되지 않는다
 DISPLAY_WIN_AMOUNT: Final = "이길 때(%)"
 DISPLAY_LOSS_AMOUNT: Final = "질 때(%)"
-
-# 파라미터 표기. `studies` 와 같은 접두사를 쓴다 — 두 산출물을 나란히 놓고 볼 때 갈라지면 안 된다
-PARAMETER_PREFIX_RANK_CUT: Final = "K"
 
 # 보유일 평균의 반올림 자릿수. 거래일 수라 소수 둘째 자리면 충분하다
 HOLD_DAYS_DECIMALS: Final = 2

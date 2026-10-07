@@ -19,18 +19,18 @@ import pytest
 
 from verify_lab import common_constants
 from verify_lab.report import writer
-from verify_lab.report.constants import RUN_SUMMARY_FILENAME, SIGNALS_FILENAME
+from verify_lab.report.constants import EXCESS_FILENAME, RUN_SUMMARY_FILENAME
 from verify_lab.tracks import GRADE_SURVEY, GRADE_TRADING, KIND_METHOD, Track, track_of
 
-TRACK_NAME = "reverse"
+TRACK_NAME = "leverage_tracking"
 
-# **같은 등급의 다른 매매법**이어야 「비우기가 그 폴더 안에만 미친다」를 잴 수 있다.
+# **같은 등급의 다른 트랙**이어야 「비우기가 그 폴더 안에만 미친다」를 잴 수 있다.
 # 등급이 다르면 부모가 달라 애초에 서로 닿지 않으므로 규칙이 깨져도 통과한다
-OTHER_TRACK_NAME = "midterm_cycle"
+OTHER_TRACK_NAME = "futures_leverage"
 
 # 등급이 다른 매매법. **같은 등급 둘만으로는 「등급이 상위 폴더가 된다」를 고정할 수 없다** —
 # 부모가 늘 같아 규칙이 깨져도 통과한다
-SURVEY_TRACK_NAME = "leverage_tracking"
+TRADING_TRACK_NAME = "midterm_cycle"
 
 
 @pytest.fixture
@@ -149,14 +149,14 @@ def test_clearing_keeps_other_tracks_in_the_layer(mock_results_dir: Path) -> Non
     # Given — 두 매매법의 등급이 갈리면 이 테스트는 규칙이 깨져도 통과한다
     other_grade, own_grade = track_of(OTHER_TRACK_NAME).grade, track_of(TRACK_NAME).grade
     assert other_grade == own_grade, (
-        f"같은 등급의 다른 매매법이 필요합니다 (지금 {OTHER_TRACK_NAME}={other_grade}, {TRACK_NAME}={own_grade}) "
-        f"— OTHER_TRACK_NAME 을 TRACK_NAME 과 같은 등급의 매매법으로 바꾸세요"
+        f"같은 등급의 다른 트랙이 필요합니다 (지금 {OTHER_TRACK_NAME}={other_grade}, {TRACK_NAME}={own_grade}) "
+        f"— OTHER_TRACK_NAME 을 TRACK_NAME 과 같은 등급의 트랙으로 바꾸세요"
     )
     # 비우기는 **이미 있는 폴더**에만 일어나므로 먼저 한 번 만들어 둔다 — 처음 만드는 호출만 재면
     # 비우는 경로를 한 번도 지나지 않아 범위가 넓어져도 통과한다
     writer.create_run_directory(TRACK_NAME)
     other = writer.create_run_directory(OTHER_TRACK_NAME)
-    kept = other / SIGNALS_FILENAME
+    kept = other / EXCESS_FILENAME
     kept.write_text("다른 매매법의 산출물", encoding="utf-8")
 
     # When
@@ -166,7 +166,7 @@ def test_clearing_keeps_other_tracks_in_the_layer(mock_results_dir: Path) -> Non
     assert kept.exists()
 
 
-@pytest.mark.parametrize("track_name", [TRACK_NAME, SURVEY_TRACK_NAME])
+@pytest.mark.parametrize("track_name", [TRACK_NAME, TRADING_TRACK_NAME])
 def test_grade_becomes_the_parent_folder(mock_results_dir: Path, track_name: str) -> None:
     """
     목적: 등급이 **경로**로 드러나는 것을 고정한다.
@@ -197,8 +197,8 @@ def test_grade_comes_from_the_registry_not_the_caller(mock_results_dir: Path) ->
     Then: 부모 폴더가 각자의 등급이고 서로 다르다
     """
     # When
-    trading = writer.create_run_directory(TRACK_NAME)
-    survey = writer.create_run_directory(SURVEY_TRACK_NAME)
+    trading = writer.create_run_directory(TRADING_TRACK_NAME)
+    survey = writer.create_run_directory(TRACK_NAME)
 
     # Then
     assert trading.parent.name == GRADE_TRADING
@@ -276,15 +276,15 @@ def test_accepts_every_real_track_name() -> None:
     """
     # Given
     from verify_lab.studies.futures_leverage.constants import TRACK_NAME as FUTURES
+    from verify_lab.studies.halving_cycle.constants import TRACK_NAME as HALVING_CYCLE
     from verify_lab.studies.leverage_tracking.constants import TRACK_NAME as LEVERAGE
     from verify_lab.studies.midterm_cycle.constants import TRACK_NAME as MIDTERM_CYCLE
-    from verify_lab.studies.reverse.constants import TRACK_NAME as REVERSE
     from verify_lab.studies.usdkrw_equivalence.constants import TRACK_NAME as EQUIVALENCE
 
     # 프로브 이름은 `scripts/data/check_*.py` 가 소유한다. 그 스크립트를 import 하면
     # pykrx 가 딸려 와 로그인을 시도하므로(계층 계약의 「지연 import」) 값만 옮겨 적는다
     probe_names = ["ecos_probe", "pykrx_etf_probe", "pykrx_splice_probe"]
-    names = [REVERSE, MIDTERM_CYCLE, EQUIVALENCE, LEVERAGE, FUTURES, *probe_names]
+    names = [MIDTERM_CYCLE, HALVING_CYCLE, EQUIVALENCE, LEVERAGE, FUTURES, *probe_names]
 
     # When / Then
     unmatched = [name for name in names if not writer.VALID_TRACK_NAME.match(name)]
@@ -434,7 +434,7 @@ def test_table_is_saved_without_index(tmp_path: Path) -> None:
     table = pd.DataFrame({"날짜": ["2026-01-05", "2026-01-06"], "평균(%)": [2.22, 3.33]})
 
     # When
-    path = writer.save_table(tmp_path, SIGNALS_FILENAME, table)
+    path = writer.save_table(tmp_path, EXCESS_FILENAME, table)
 
     # Then
     assert path.read_text(encoding="utf-8-sig").splitlines()[0] == "날짜,평균(%)"
@@ -452,7 +452,7 @@ def test_table_is_saved_with_bom(tmp_path: Path) -> None:
     table = pd.DataFrame({"구간": ["1일"]})
 
     # When
-    path = writer.save_table(tmp_path, SIGNALS_FILENAME, table)
+    path = writer.save_table(tmp_path, EXCESS_FILENAME, table)
 
     # Then
     assert path.read_bytes().startswith(b"\xef\xbb\xbf")
@@ -467,7 +467,7 @@ def test_rejects_empty_table(tmp_path: Path) -> None:
     Then: ValueError
     """
     with pytest.raises(ValueError, match="비어"):
-        writer.save_table(tmp_path, SIGNALS_FILENAME, pd.DataFrame({"구간": []}))
+        writer.save_table(tmp_path, EXCESS_FILENAME, pd.DataFrame({"구간": []}))
 
 
 def test_run_summary_keeps_parameters(tmp_path: Path) -> None:

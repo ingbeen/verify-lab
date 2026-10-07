@@ -80,16 +80,14 @@ _REPORT_CONSTANTS = "verify_lab/report/constants.py"
 _REPORT_LABEL_COLLISIONS = {
     # `pykrx` 가 돌려주는 인덱스 이름이라 표시 레이블이 아니라 **데이터 소스의 사실**이다
     "날짜": frozenset({"verify_lab/data/pykrx_collector.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
-    # **표마다 지시 대상이 다르다** — 역방향 성적표는 신호군 종류, 거래내역은 신호 방향,
-    # 배수 검증은 기초지수가 오른 날인지다. 계약 표가 이 갈림을 의도로 적어 두었다
+    # **표마다 지시 대상이 다르다** — 매매 계층은 거는 방향, 배수 검증은 기초지수가 오른 날인지다.
+    # 계약 표가 이 갈림을 의도로 적어 두었다
     "방향": frozenset(
         {
             "verify_lab/execution/constants.py",
             "verify_lab/studies/leverage_tracking/constants.py",
-            "verify_lab/studies/reverse/constants.py",
         }
     ),
-    "신호": frozenset({"verify_lab/studies/reverse/constants.py"}),
     # 뜻이 다르다 — `screening` 은 1차 판정의 «값», `usdkrw` 는 이상치 라벨,
     # `report` 는 제외 «건수» 컬럼의 머리다
     "제외": frozenset({"verify_lab/measure/screening.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
@@ -1246,7 +1244,7 @@ class TestExecutionLayerComposition:
         **`trade_fill.simulate_signal` 의 `stop_level` 기본값이 역방향의 −5% 였다.** 다른
         매매법은 자기 값을 넘기므로 드러나지 않았지만, 인자를 빠뜨리는 순간 **다른
         매매법의 손절선이 조용히 적용된다** — 예외가 나지 않고 성적만 달라진다.
-        공유 `constants.py` 가 `studies.reverse.constants` 를 가져오던 시절에는
+        공유 `constants.py` 가 한 매매법의 `constants` 를 가져오던 시절에는
         **월말 매매를 돌려도 역방향의 `DATASETS` 정의가 딸려 왔다.**
 
         **매매 파라미터가 검증 패키지 안에 있으므로 금지는 하나다** — 「검증 패키지를 가져오지
@@ -1315,7 +1313,7 @@ class TestExecutionLayerComposition:
         slugs = {path.parent.name for path in _trading_modules()}
 
         # Then
-        assert slugs == {"reverse", "midterm_cycle", "halving_cycle"}
+        assert slugs == {"midterm_cycle", "halving_cycle"}
 
     def test_체결_판정식을_공유_모듈_밖에서_정의하지_않는다(self) -> None:
         """
@@ -1356,10 +1354,8 @@ class TestDatasetRecordKeys:
         """
         # Given
         expected = {
-            "verify_lab/studies/reverse/runner.py",
             "verify_lab/studies/midterm_cycle/runner.py",
             "verify_lab/studies/halving_cycle/runner.py",
-            "verify_lab/studies/reverse/trading.py",
             "verify_lab/studies/midterm_cycle/trading.py",
             "verify_lab/studies/halving_cycle/trading.py",
         }
@@ -1757,15 +1753,12 @@ class TestKrxCommonOwnership:
 # 정당한 겹침까지 막힌다 — 아래 대부분은 `src/verify_lab/CLAUDE.md` 「어디까지가 공통이고
 # 어디부터 그 검증의 것인가」가 **일부러 뽑지 않기로 한** 배수형 어휘다(2026-09-14 결정).
 #
-# 대표적인 성격은 둘이다.
-#   ㉮ 배수형 두 검증이 공유하는 어휘 — `배수` · `지수` · `시작일` · `종료일`
-#   ㉯ 같은 매매법의 «검증과 매매»가 같은 말을 쓰는 것 — `사건` · `파라미터` · `시작연도`
+# 대표적인 성격은 배수형 두 검증이 공유하는 어휘다 — `배수` · `지수` · `시작일` · `종료일`
 #
 # **여기 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다**(부분집합 검사) —
 # 막으면 중복을 줄이는 계획서마다 이 테스트가 실패한다.
 _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "날짜": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
-    "등락률(%)": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     # 배수형 두 검증이 **같은 금리 경계**로 가른 같은 축이다(선물_대_레버리지_ETF 가 레버리지_ETF_괴리의 경계를 따른다).
     # `배수`·`지수` 와 같은 성격이라 여기 둔다 — 값까지 같지만 공통으로 뽑지 않는 것이 결정이다
     "금리 환경": frozenset(
@@ -1776,7 +1769,6 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
             "verify_lab/report/constants.py",
             "verify_lab/execution/constants.py",
             "verify_lab/studies/leverage_tracking/constants.py",
-            "verify_lab/studies/reverse/constants.py",
         }
     ),
     "배당 보정분(%p)": frozenset(
@@ -1785,13 +1777,9 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "배수": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "사건": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
-    "사건 번호": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
-    "시작연도": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "시작일": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "신호": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "실제(%)": frozenset(
         {"verify_lab/studies/leverage_tracking/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}
     ),
@@ -1803,14 +1791,12 @@ _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "종목": frozenset(
         {
             "verify_lab/execution/constants.py",
-            "verify_lab/studies/reverse/constants.py",
             "verify_lab/studies/usdkrw_equivalence/constants.py",
         }
     ),
     "지수": frozenset(
         {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
     ),
-    "파라미터": frozenset({"verify_lab/execution/constants.py", "verify_lab/studies/reverse/constants.py"}),
     "표본": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
 }
 
@@ -1935,7 +1921,7 @@ class TestHorizonLabelOwnership:
         거래일 수가 그대로 찍힌다. 같은 축을 다른 검증은 한글로 내므로 **두 산출물이 어긋난다.**
 
         Given: `COL_HORIZON` 을 출력 레이블로 내보내는 검증 패키지
-        When: 그 패키지가 이름표(또는 `horizon_label`)를 쓰는지 본다
+        When: 그 패키지가 이름표를 쓰는지 본다
         Then: 전부 쓴다
         """
         # Given
@@ -1951,9 +1937,7 @@ class TestHorizonLabelOwnership:
         for package in sorted(set(renamers), key=lambda item: item.name):
             sources = "\n".join(path.read_text(encoding="utf-8") for path in package.rglob("*.py"))
 
-            assert (
-                self._DICT_NAME in sources or "horizon_label" in sources
-            ), f"{package.name} 이 구간 축을 이름표 없이 내보냅니다 — 거래일 수가 원값으로 나갑니다"
+            assert self._DICT_NAME in sources, f"{package.name} 이 구간 축을 이름표 없이 내보냅니다 — 거래일 수가 원값으로 나갑니다"
 
 
 class TestCliHelpRenders:

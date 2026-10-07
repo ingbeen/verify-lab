@@ -2,7 +2,7 @@
 """pykrx 수정주가 구간 이어붙이기 실측
 
 `get_market_ohlcv(adjusted=True)` 는 분배락을 조정하지만 **한 번에 3,000행까지만** 돌려준다
-(`docs/매매/역방향/설계.md` §8 결론 2). 상장일부터 전 기간을 얻으려면 조회를 나눠
+(`docs/조사/역방향.md` 「데이터 실측 기록」 결론 2). 상장일부터 전 기간을 얻으려면 조회를 나눠
 이어붙여야 하는데, **나눠 받은 구간들이 같은 가격 축 위에 있는지는 확인된 적이 없다.**
 이 스크립트는 그것 하나를 잰다.
 
@@ -46,7 +46,7 @@ from verify_lab.utils.meta_manager import save_metadata
 
 logger = get_logger(__name__)
 
-# 역방향의 국내 대상과 그 상장일. 스펙 §2 가 지정한 값이다
+# 인자 없이 실행했을 때 재는 종목(KODEX 200)과 그 상장일
 DEFAULT_TICKER = "069500"
 DEFAULT_START_DATE = "20021014"
 
@@ -230,7 +230,7 @@ def _report_segments(table: TableLogger, segments: dict[str, pd.DataFrame], requ
 def _report_overlap(table: TableLogger, older: pd.DataFrame, newer: pd.DataFrame, label: str) -> int:
     """인접한 두 세그먼트의 겹치는 구간을 컬럼별로 비교한다.
 
-    종가만 보지 않는다. forward return 은 종가와 익일 시가를 모두 쓰므로(스펙 §4),
+    종가만 보지 않는다. 체결은 종가와 시가를 모두 쓰므로(진입 · 갭 손절 판정),
     종가만 맞고 시가가 어긋나면 그 결과는 쓸 수 없다.
 
     Args:

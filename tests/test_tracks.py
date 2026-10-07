@@ -299,7 +299,7 @@ class TestGradeSemantics:
         # Given / When / Then
         assert track_of("midterm_cycle").grade == GRADE_TRADING
 
-    @pytest.mark.parametrize("slug", ["option_expiry", "month_end", "expiry_monthend"])
+    @pytest.mark.parametrize("slug", ["reverse", "option_expiry", "month_end", "expiry_monthend"])
     def test_걸지_않기로_한_매매법은_조사_등급이다(self, slug: str) -> None:
         """
         목적: **강등도 이 한 줄이다.** 조사 등급의 뜻 하나가 「걸지 않기로 한 것」이다.

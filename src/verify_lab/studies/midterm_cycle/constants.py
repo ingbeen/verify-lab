@@ -218,7 +218,7 @@ DRAWDOWN_BUCKETS: Final[tuple[float, ...]] = (0.05, 0.10, 0.15, 0.20)
 RSI_WINDOW: Final = 14
 RSI_OVERSOLD: Final = 30.0
 
-# 이격도(종가 ÷ SMA)의 두 창. 200일은 **조건부 기준선이 이미 쓰는 창**이라 그 값을 가져온다 —
+# 이격도(종가 ÷ SMA)의 두 창. 200일은 공유 계층의 `DEFAULT_MA_WINDOW` 를 그대로 쓴다 —
 # 같은 창을 두 곳에 적으면 한쪽만 바뀌어도 예외가 나지 않는다
 SHORT_MA_WINDOW: Final = 20
 LONG_MA_WINDOW: Final = DEFAULT_MA_WINDOW

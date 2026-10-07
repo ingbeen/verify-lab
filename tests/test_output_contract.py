@@ -5,15 +5,14 @@
 셋이었고, `손절선(%)` 은 한쪽이 `"5.0"`(문자열·양수) 다른 쪽이 `-5.0`(실수·음수)이었다.
 **SoT 가 없어서 갈린 것**이지 설계가 달라서가 아니다.
 
-고정하는 계약은 일곱이다.
+고정하는 계약은 여섯이다.
 
 - 성적표는 `성적표.csv`, 거래내역은 `거래내역.csv` 이고 **이름은 상수 한 곳에서 온다**
 - 매매법마다 성적표가 **같은 공통 컬럼을 같은 순서로** 갖는다. 매매법 고유 컬럼만 뒤에 붙는다
 - `손절선(%)` 값은 **음수 실수**이고 문자열은 둘이다 — **`무손절`(걸지 않았다)과 `손절불가`(잴 수 없다)**.
   두 문자열이 갈려 있어야 **한 컬럼만으로** 한 손절선으로 고정한 행을 고를 수 있다
-- 역방향 성적표의 `방향` 은 **`역방향 전체` 한 값**이다 — 그 행이 폭등·폭락을 합친 성적이다
-- 역방향 성적표도 **구간 5행**이고, 표본이 하한에 못 미쳐도 행이 남는다 (측정의 원칙 17)
-- `사건` 은 **구간별**로 나오고 구간 분할은 `execution/periods.py` 하나가 소유한다
+- 성적표는 칸마다 **구간 5행**이고, 표본이 하한에 못 미쳐도 행이 남는다 (측정의 원칙 17)
+- 구간 분할은 `execution/periods.py` 하나가 소유하고, 사건 번호를 넘기지 않은 매매법은 `사건` 컬럼을 내지 않는다
 - **구현 못하는 칸은 `0` 이 아니라 빈칸**이다 — 0 은 「손절이 걸리지 않았다」로 읽힌다
 
 **기대 컬럼 목록을 손으로 박아 둔다.** 프로덕션 상수를 import 해서 비교하면 그 상수를 고치는
@@ -22,7 +21,6 @@
 """
 
 import importlib
-import io
 import json
 import re
 from collections.abc import Callable, Sequence
@@ -46,18 +44,14 @@ from verify_lab.common_constants import (
     INDEX_FILE_TEMPLATE,
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
-    PRICE_DECIMALS_KRW,
 )
 from verify_lab.execution import periods
 from verify_lab.execution.constants import (
     DISPLAY_DIRECTION,
     DISPLAY_EVENT_COUNT,
-    DISPLAY_GAP_STOP_COUNT,
-    DISPLAY_INTRADAY_STOP_COUNT,
     DISPLAY_LOSS_AMOUNT,
     DISPLAY_STOP_LEVEL,
     DISPLAY_TICKER,
-    DISPLAY_TOTAL,
     DISPLAY_WIN_AMOUNT,
     NO_STOP_LABEL,
     PERIOD_RECENT_5Y,
@@ -98,15 +92,6 @@ from verify_lab.studies.midterm_cycle.constants import Dataset as MidtermCycleDa
 from verify_lab.studies.midterm_cycle.trading import KEY_TARGETS as MIDTERM_CYCLE_KEY_TARGETS
 from verify_lab.studies.midterm_cycle.trading import TradingOutputs as MidtermCycleOutputs
 from verify_lab.studies.midterm_cycle.trading import run_midterm_cycle_trading
-from verify_lab.studies.reverse.constants import (
-    DISPLAY_DIRECTION_REVERSE_ALL,
-    EXTREME_DIRECTION_LABELS,
-    STOP_LOSS_LEVEL,
-    Target,
-)
-from verify_lab.studies.reverse.constants import Dataset as ReverseDataset
-from verify_lab.studies.reverse.trading import KEY_TARGETS as REVERSE_KEY_TARGETS
-from verify_lab.studies.reverse.trading import StrategyOutputs, run_reverse_trading
 from verify_lab.tracks import KIND_METHOD, tracks_of_kind
 
 # ============================================================
@@ -173,8 +158,7 @@ TRADE_COMMON_COLUMNS = (
     "청산 사유",
 )
 
-# 매매법 축 — 종목 바로 다음에 온다. **역방향만 두 칸**이다
-AXIS_REVERSE = ("파라미터", "시작연도")
+# 매매법 축 — 종목 바로 다음에 온다
 # 중간선거_사이클 — 성적표는 사이클 위치 하나, **거래내역은 진입 연도가 더 붙는다**
 # (신호가 4년에 한 번이라 어느 사이클의 체결인지 날짜만으로는 바로 읽히지 않는다)
 AXIS_MIDTERM_CYCLE = ("사이클 위치",)
@@ -184,14 +168,18 @@ AXIS_MIDTERM_CYCLE_TRADES = ("사이클 위치", "진입 연도")
 AXIS_HALVING_CYCLE = ("반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)")
 AXIS_HALVING_CYCLE_TRADES = ("반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)", "반감기")
 
+# 격자를 켠 중간선거_사이클 실행이 내는 숫자 손절선. **손으로 박는다**(머리말) — 진입가 대비 손절선이 백분율 음수로 나간다
+MIDTERM_CYCLE_STOP_GRID = {-5.0, -8.0, -10.0, -12.0, -15.0, -20.0, -25.0, -30.0}
+
 # 합성 지수 대상의 표시 이름. **살 수 없어 판정하지 않는 행**을 고르는 데 쓴다
 INDEX_LABEL = "합성 지수"
 
-# 매매법 고유 컬럼 — 맨 뒤에 붙는다. 역방향은 두 표에, 반감기_사이클은 거래내역에만 있다
-TAIL_REVERSE_SUMMARY = ("사건",)
-TAIL_REVERSE_TRADES = ("등락률(%)", "사건 번호")
+# 매매법 고유 컬럼 — 맨 뒤에 붙는다. 반감기_사이클의 거래내역에만 있다
 # 원본가에 없는 하드포크 몫 — 체결마다 청산가가 달라 체결마다 잰다
 TAIL_HALVING_CYCLE_TRADES = ("하드포크 몫(%p)",)
+
+# 사건 번호를 넘기는 매매법만 내는 컬럼. 손으로 박는다(머리말)
+EVENT_COLUMN = "사건"
 
 # 실행 요약의 대상별 기록에 제외 건수를 담는 키. **계약이 키 이름 자체를 정한다**(`src/verify_lab/CLAUDE.md`
 # 「매매 산출물 계약」). 한 매매법의 상수를 빌리면 그 매매법이 이름을 바꾸는 순간 검사가 따라가, 틀린 쪽은
@@ -211,6 +199,9 @@ TICKER_SHAPE = re.compile(r"[0-9A-Z]+")
 SYNTHETIC_START = "2016-01-04"
 SYNTHETIC_END = "2025-12-31"
 
+# 합성 ETF 가격의 자릿수. `_market_frame` 이 원화처럼 정수로 반올림한다
+SYNTHETIC_ETF_PRICE_DECIMALS = 0
+
 # 반감기_사이클의 합성 시세 시작. **첫 반감기(2012-11-28) 앞이어야** 네 사이클이 모두 든다
 HALVING_SYNTHETIC_START = "2012-01-01"
 
@@ -220,18 +211,11 @@ SYNTHETIC_SEED = 20260911
 # 순위 축적 구간에 심는 등락의 크기. 집계 구간에서는 이보다 큰 등락만 신호가 된다
 ACCUMULATION_SHOCK = 0.05
 
-# 집계 구간에 심는 등락의 크기. 순위 컷 안에 들어와 역방향 신호가 된다
+# 집계 구간에 심는 큰 등락의 크기
 SIGNAL_SHOCK = 0.09
-
-# 역방향 집계 시작연도. **축적 구간이 끝난 다음 해**여야 축적분이 신호로 세어지지 않는다
-REVERSE_START_YEAR = 2017
 
 # 신호를 심는 위치. 구간 전체에 퍼뜨려 다섯 구간 모두에 표본이 들어가게 한다
 SIGNAL_POSITIONS = tuple(400 + order * 150 for order in range(14))
-
-# **앞쪽에만 심은 위치.** 데이터가 2025년까지 가므로 최근 5년 구간의 표본이 0건이 된다 —
-# 「표본 0건이면 0 이 아니라 빈칸」 계약을 스킵 없이 검사하려고 둔다
-EARLY_SIGNAL_POSITIONS = tuple(range(400, 700, 40))
 
 
 def _closes(count: int, positions: Sequence[int]) -> np.ndarray:
@@ -252,7 +236,7 @@ def _closes(count: int, positions: Sequence[int]) -> np.ndarray:
     for offset in range(25):
         changes[offset * 8] = ACCUMULATION_SHOCK if offset % 2 else -ACCUMULATION_SHOCK
 
-    # 2. 집계 구간에 더 큰 등락을 심는다 — 이쪽이 역방향 신호가 된다
+    # 2. 집계 구간에 더 큰 등락을 심는다
     for order, position in enumerate(positions):
         changes[position] = SIGNAL_SHOCK if order % 2 else -SIGNAL_SHOCK
 
@@ -302,30 +286,6 @@ def _write_market(directory: Path, ticker: str, positions: Sequence[int] = SIGNA
     _market_frame(positions).to_csv(path, index=False)
 
     return path
-
-
-def _reverse_target(path: Path, *, rank_cut: int = 10) -> Target:
-    """합성 시세를 가리키는 역방향 대상을 만든다.
-
-    Args:
-        path: 시세 파일 경로
-        rank_cut: 순위 컷
-
-    Returns:
-        매매 대상
-    """
-    return Target(
-        dataset=ReverseDataset(
-            key="synthetic",
-            ticker="SYN",
-            label="합성 ETF",
-            price_basis="원본가",
-            path=path,
-            price_decimals=PRICE_DECIMALS_KRW,
-        ),
-        rank_cut=rank_cut,
-        start_year=REVERSE_START_YEAR,
-    )
 
 
 def _write_index(directory: Path, ticker: str) -> Path:
@@ -379,14 +339,6 @@ class MethodSpec:
 # 「매매법 전부」를 보는 검사는 전부 이 표를 돈다(`_BY_METHOD`) — 매매법을 손으로 적으면 새 매매법을
 # 등록해도 그 검사가 **조용히 건너뛴다.** 표가 둘이면 한쪽만 늘어도 새므로 픽스처 이름까지 한 표에 둔다
 METHOD_SPECS = {
-    "reverse": MethodSpec(
-        fixture="reverse_outputs",
-        summary_axis=AXIS_REVERSE,
-        summary_tail=TAIL_REVERSE_SUMMARY,
-        trade_axis=AXIS_REVERSE,
-        trade_tail=TAIL_REVERSE_TRADES,
-        targets_key=REVERSE_KEY_TARGETS,
-    ),
     "midterm_cycle": MethodSpec(
         fixture="midterm_cycle_outputs",
         summary_axis=AXIS_MIDTERM_CYCLE,
@@ -409,7 +361,7 @@ METHOD_SPECS = {
 _BY_METHOD = pytest.mark.parametrize("slug", sorted(METHOD_SPECS))
 
 
-def _outputs(request: pytest.FixtureRequest, slug: str) -> StrategyOutputs | MidtermCycleOutputs | HalvingCycleOutputs:
+def _outputs(request: pytest.FixtureRequest, slug: str) -> MidtermCycleOutputs | HalvingCycleOutputs:
     """그 매매법의 실행 결과를 픽스처에서 꺼낸다.
 
     Args:
@@ -442,14 +394,6 @@ def _method_constants(slug: str) -> ModuleType:
 
 
 @pytest.fixture(scope="module")
-def reverse_outputs(tmp_path_factory: pytest.TempPathFactory) -> StrategyOutputs:
-    """합성 시세로 돈 역방향 매매 결과."""
-    directory = tmp_path_factory.mktemp("reverse")
-
-    return run_reverse_trading([_reverse_target(_write_market(directory, "SYN"))], stop_levels=(STOP_LOSS_LEVEL,))
-
-
-@pytest.fixture(scope="module")
 def midterm_cycle_outputs(tmp_path_factory: pytest.TempPathFactory) -> MidtermCycleOutputs:
     """합성 시세와 합성 지수로 **인자 없이** 돈 중간선거_사이클 결과.
 
@@ -471,7 +415,7 @@ def midterm_cycle_grid_outputs(tmp_path_factory: pytest.TempPathFactory) -> Midt
     """같은 합성 입력으로 **손절선 격자를 켜고** 돈 중간선거_사이클 결과.
 
     **무손절과 숫자 손절선에 지수의 `손절불가` 까지 한 성적표에 함께 내는 실행이 이것뿐이다** — 기본 실행은
-    확정 규칙의 무손절 한 종이고 역방향은 −5% 한 종이며, 반감기_사이클은 격자 전부를 내지만 지수 대상이 없다.
+    확정 규칙의 무손절 한 종이고, 반감기_사이클은 격자 전부를 내지만 지수 대상이 없다.
     그래서 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의 두 실패 방식이 이 결과로만 재현된다.
     판정이 「후보」·「제외」로 갈리는 행도 이 실행에 있다.
 
@@ -557,7 +501,7 @@ def _midterm_cycle_datasets(directory: Path) -> tuple[MidtermCycleDataset, Midte
         directory=directory,
         file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_CLOSE,
-        price_decimals=PRICE_DECIMALS_KRW,
+        price_decimals=SYNTHETIC_ETF_PRICE_DECIMALS,
         is_index=False,
     )
     index = MidtermCycleDataset(
@@ -701,18 +645,29 @@ class TestStopLevelFormat:
         """손절선 컬럼의 서로 다른 값을 모은다."""
         return set(table[DISPLAY_STOP_LEVEL].tolist())
 
-    def test_역방향_손절선은_음수_실수다(self, reverse_outputs: StrategyOutputs) -> None:
+    def test_숫자_손절선은_음수_실수다(self, midterm_cycle_grid_outputs: MidtermCycleOutputs) -> None:
         """
         목적: 그 표에 걸린 손절선이 행 안에서 읽히는지 고정한다
 
         산출물만 보고 −5% 성적인지 무손절인지 판별할 수 없으면 그 표는 근거가 못 된다.
+        **격자를 켠 실행을 쓴다** — 숫자 손절선과 두 문자열이 한 성적표에 함께 나오는 실행이 이것뿐이다.
 
-        Given: 합성 시세로 돈 역방향 결과
-        When: 성적표의 손절선 값을 봤을 때
-        Then: −5.0 하나뿐이다
+        **값을 정확히 비교한다** — 「음수 실수인가」만 보면 단위가 틀린 값(비율 `-0.05` · 이중 백분율 `-500.0`)도
+        통과한다. 기대값은 중간선거_사이클의 손절선 격자(진입가 대비 5 · 8 · 10 · 12 · 15 · 20 · 25 · 30%)를 손으로 옮긴 것이다.
+
+        Given: 합성 시세로 손절선 격자를 켜고 돈 중간선거_사이클 결과
+        When: 성적표의 손절선 값 중 문자열이 아닌 것을 봤을 때
+        Then: 백분율 음수 실수 여덟 개와 정확히 같다
         """
-        # Given / When / Then
-        assert self._levels(reverse_outputs.performance) == {-5.0}
+        # Given
+        levels = self._levels(midterm_cycle_grid_outputs.performance)
+
+        # When
+        numeric = {level for level in levels if not isinstance(level, str)}
+
+        # Then
+        assert numeric == MIDTERM_CYCLE_STOP_GRID, f"숫자 손절선이 격자와 다릅니다: {sorted(numeric)}"
+        assert all(isinstance(level, float) for level in numeric), f"실수가 아닌 손절선: {numeric}"
 
     def test_중간선거_기본_실행은_무손절과_손절불가뿐이다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
@@ -802,70 +757,56 @@ class TestStopLevelFormat:
             stop_level_value(0.05, measurable=False)
 
 
-class TestReverseDirection:
-    """역방향의 `방향` — 성적표와 거래내역이 다른 것을 가리킨다"""
+class TestPeriods:
+    """성적표의 구간 축 (측정의 원칙 17)"""
 
-    def test_성적표의_방향은_역방향_전체_하나다(self, reverse_outputs: StrategyOutputs) -> None:
+    @staticmethod
+    def _cells(table: pd.DataFrame) -> list[pd.DataFrame]:
+        """성적표를 칸으로 나눈다 — 구간 컬럼 앞의 식별 컬럼이 같은 행들이 칸 하나다."""
+        identity = list(table.columns[: table.columns.get_loc(DISPLAY_PERIOD)])
+
+        return [group for _, group in table.groupby(identity, sort=False, dropna=False)]
+
+    @_BY_METHOD
+    def test_칸마다_구간_다섯_행이다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
-        목적: 합친 성적에 `위`·`아래` 를 적지 않는다는 것을 고정한다
-
-        그 행은 폭등 신호와 폭락 신호를 한 표본으로 묶은 것이라 어느 쪽도 아니다.
-
-        Given: 합성 시세로 돈 역방향 결과
-        When: 성적표의 방향 값을 봤을 때
-        Then: `역방향 전체` 하나뿐이다
-        """
-        # Given / When / Then
-        assert set(reverse_outputs.performance[DISPLAY_DIRECTION]) == {DISPLAY_DIRECTION_REVERSE_ALL}
-
-    def test_거래내역의_방향은_신호_방향_그대로다(self, reverse_outputs: StrategyOutputs) -> None:
-        """
-        목적: 거래내역의 `폭등`/`폭락` 을 거는 방향으로 환산하지 않았음을 고정한다
-
-        환산하면 기존 컬럼의 **뜻이 조용히 바뀌고** 규칙 문서 §5 원자료 표와 어긋난다.
-
-        Given: 합성 시세로 돈 역방향 결과
-        When: 거래내역의 방향 값을 봤을 때
-        Then: 폭등·폭락 안에 든다
-        """
-        # Given / When / Then
-        assert set(reverse_outputs.trades[DISPLAY_DIRECTION]) <= set(EXTREME_DIRECTION_LABELS.values())
-
-
-class TestReversePeriods:
-    """역방향 성적표의 구간 축 (측정의 원칙 17)"""
-
-    def test_대상마다_구간_다섯_행이다(self, reverse_outputs: StrategyOutputs) -> None:
-        """
-        목적: 역방향도 구간으로 쪼개진다는 것을 고정한다
+        목적: 매매법마다 성적표가 구간으로 쪼개진다는 것을 고정한다
 
         균등 2분할만으로는 신호가 식는 것을 놓친다.
         **행 수만 세는 검사를 매매법 테스트에 따로 두지 않는다** — 이것이 순서까지 보므로 그 상위집합이다.
 
-        Given: 대상 하나로 돈 역방향 결과
-        When: 성적표의 구간 컬럼을 봤을 때
+        Given: 그 매매법의 성적표
+        When: 칸마다 구간 컬럼을 봤을 때
         Then: `PERIODS` 순서 그대로 다섯 행이다
         """
-        # Given / When / Then
-        assert reverse_outputs.performance[DISPLAY_PERIOD].tolist() == list(PERIODS)
+        # Given
+        cells = self._cells(_outputs(request, slug).performance)
 
-    def test_표본이_하한에_못_미쳐도_행이_남는다(self, tmp_path: Path) -> None:
+        # When / Then
+        assert cells, f"{slug} 성적표에 칸이 없습니다"
+        for cell in cells:
+            assert cell[DISPLAY_PERIOD].tolist() == list(PERIODS), f"{slug} 의 칸 하나가 구간 다섯 행이 아닙니다"
+
+    @_BY_METHOD
+    def test_표본이_하한에_못_미쳐도_행이_남는다(self, slug: str, request: pytest.FixtureRequest) -> None:
         """
         목적: 행이 사라지면 그 구간을 못 봤다는 사실 자체를 모른다는 것을 고정한다
 
-        Given: 신호가 적게 심긴 합성 시세
-        When: 성적표를 봤을 때
-        Then: 다섯 행이 모두 있고 하한 미달 구간은 `판정가능` 이 「아니오」다
+        위 검사가 칸마다 다섯 행을 보므로, 여기서는 그 행이 하한 미달을 「아니오」로 적는지 본다.
+
+        Given: 그 매매법의 성적표 (합성 시세라 칸마다 표본이 하한에 못 미친다)
+        When: 표본 10건 미만인 행을 봤을 때
+        Then: 그런 행이 있고 전부 `판정가능` 이 「아니오」다
         """
         # Given
-        target = _reverse_target(_write_market(tmp_path / "sparse", "SYN", EARLY_SIGNAL_POSITIONS))
+        table = _outputs(request, slug).performance
 
         # When
-        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
+        short = table[table[DISPLAY_SIGNAL_COUNT] < 10]
 
         # Then
-        assert summary[DISPLAY_PERIOD].tolist() == list(PERIODS)
-        assert (summary.loc[summary[DISPLAY_SIGNAL_COUNT] < 10, DISPLAY_JUDGEABLE] == JUDGEABLE_NO).all()
+        assert not short.empty, f"{slug} 성적표에 하한 미달 행이 없어 계약을 검사하지 못했습니다"
+        assert (short[DISPLAY_JUDGEABLE] == JUDGEABLE_NO).all()
 
     @_BY_METHOD
     def test_성적표에_제외_컬럼을_두지_않는다(self, slug: str, request: pytest.FixtureRequest) -> None:
@@ -907,52 +848,9 @@ class TestReversePeriods:
         for record in group:
             assert EXCLUDED_COUNT_KEY in record, f"{slug} 요약에 제외 건수가 없습니다: {record}"
 
-    def test_표본이_0건인_구간은_지표를_비운다(self, tmp_path: Path) -> None:
-        """
-        목적: 구현 못하는 칸이 0 이 아니라 빈칸임을 고정한다
-
-        0 은 「손절이 걸리지 않았다」·「손실도 이익도 없었다」로 읽히는데 실제로는 「잰 적이 없다」다.
-
-        Given: 신호를 앞쪽에만 심은 합성 시세 (최근 5년 구간이 0건이 된다)
-        When: 표본이 0건인 구간 행을 봤을 때
-        Then: 합계·갭손절·장중손절이 비어 있다
-        """
-        # Given
-        target = _reverse_target(_write_market(tmp_path / "early", "SYN", EARLY_SIGNAL_POSITIONS))
-
-        # When
-        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
-        empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
-
-        # Then
-        assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다 — 신호 위치를 앞으로 옮기세요"
-        for column in (DISPLAY_TOTAL, DISPLAY_GAP_STOP_COUNT, DISPLAY_INTRADAY_STOP_COUNT):
-            assert empty[column].isna().all()
-
 
 class TestEventCount:
-    """`사건` — 구간별로 나오고 분할은 공유 모듈이 소유한다"""
-
-    def test_사건이_구간마다_따로_세어진다(self, reverse_outputs: StrategyOutputs) -> None:
-        """
-        목적: 전체 구간의 사건 수를 모든 행에 복사하지 않았음을 고정한다
-
-        같은 사건에서 파생된 신호를 묶어 세는 것이 측정의 원칙 5 이며, 구간을 쪼개면
-        그 수도 구간마다 달라야 한다.
-
-        Given: 합성 시세로 돈 역방향 결과
-        When: 전체 행과 앞 절반 행의 사건 수를 비교했을 때
-        Then: 앞 절반이 전체보다 작다
-        """
-        # Given
-        summary = reverse_outputs.performance.set_index(DISPLAY_PERIOD)
-
-        # When
-        whole = int(summary.loc[PERIODS[0], TAIL_REVERSE_SUMMARY[0]])
-        first_half = int(summary.loc[PERIODS[1], TAIL_REVERSE_SUMMARY[0]])
-
-        # Then
-        assert first_half < whole
+    """구간 분할은 공유 모듈이 소유하고, 사건 번호를 넘기지 않은 매매법은 `사건` 컬럼을 내지 않는다"""
 
     def test_사건을_주지_않은_매매법에는_그_컬럼이_없다(self, midterm_cycle_outputs: MidtermCycleOutputs) -> None:
         """
@@ -965,7 +863,7 @@ class TestEventCount:
         Then: 없다
         """
         # Given / When / Then
-        assert TAIL_REVERSE_SUMMARY[0] not in midterm_cycle_outputs.performance.columns
+        assert EVENT_COLUMN not in midterm_cycle_outputs.performance.columns
 
     def test_구간_분할은_periods_가_소유한다(self) -> None:
         """
@@ -1096,7 +994,7 @@ class TestFilenames:
         assert STATISTICS_FILENAME == "통계.csv"
         assert MEASURE_FILENAME == "측정.csv"
 
-    def test_역방향은_통계_이름을_낸다(self) -> None:
+    def test_격자를_재는_매매법은_통계_이름을_낸다(self) -> None:
         """
         목적: **같은 질문에 답하는 표가 매매법마다 다른 이름으로 불리던 상태를 닫는다.**
 
@@ -1110,17 +1008,19 @@ class TestFilenames:
         **측정 격자를 확정 칸으로 좁힌 매매법(중간선거_사이클)은 여기서 빠진다** — 측정 표를
         `측정.csv` 한 장으로 합친다. **격자를 재는 매매법만 축별 집계표가 필요하다.**
 
-        Given: 역방향의 산출물 파일 목록과 체결 산출물 이름
+        Given: 격자를 재는 매매법(반감기_사이클)의 산출물 파일 목록과 체결 산출물 이름
         When: 사용자가 보는 이름을 찾는다
         Then: 그 이름을 그대로 낸다
         """
         # Given
         from verify_lab.execution.constants import SUMMARY_FILENAME, TRADES_FILENAME
         from verify_lab.report.constants import STATISTICS_FILENAME
-        from verify_lab.studies.reverse.constants import OUTPUT_FILES as REVERSE_FILES
+        from verify_lab.studies.halving_cycle.constants import OUTPUT_FILES as HALVING_CYCLE_FILES
 
         # When / Then
-        assert STATISTICS_FILENAME in set(REVERSE_FILES.values()), f"역방향의 산출물에 사용자가 보는 이름이 없습니다: {STATISTICS_FILENAME}"
+        assert STATISTICS_FILENAME in set(
+            HALVING_CYCLE_FILES.values()
+        ), f"반감기_사이클의 산출물에 사용자가 보는 이름이 없습니다: {STATISTICS_FILENAME}"
 
         # 체결 둘은 `execution/constants.py` 가 소유하므로 매매법 전부가 자동으로 같다
         assert {SUMMARY_FILENAME, TRADES_FILENAME} == {"성적표.csv", "거래내역.csv"}
@@ -1382,7 +1282,7 @@ class TestIntegerCounts:
 
         Given: 손으로 박은 목록과 정수화의 소유자가 아는 목록
         When: 둘을 비교한다
-        Then: `사건`(역방향 전용, 별도 테스트가 본다)을 빼면 같다
+        Then: `사건`(사건 번호를 넘기는 매매법만 내는 컬럼 — `tests/test_execution_periods.py` 가 본다)을 빼면 같다
         """
         # Given
         owned = set(periods.COUNT_COLUMNS)
@@ -1391,50 +1291,6 @@ class TestIntegerCounts:
         assert set(self.COUNT_COLUMNS) | {DISPLAY_EVENT_COUNT} == owned, (
             f"건수 컬럼이 어긋납니다 — 손으로 박은 목록 {sorted(self.COUNT_COLUMNS)} · " f"프로덕션 {sorted(owned)}"
         )
-
-    def test_역방향_사건도_정수형이다(self, reverse_outputs: StrategyOutputs) -> None:
-        """
-        목적: 매매법 고유 건수 컬럼도 같은 규칙을 받는다
-
-        Given: 합성 시세로 돈 역방향 결과
-        When: `사건` 컬럼의 dtype 을 봤을 때
-        Then: 결측을 담을 수 있는 정수형이다
-        """
-        # Given / When / Then
-        assert str(reverse_outputs.performance[DISPLAY_EVENT_COUNT].dtype) == "Int64"
-
-    def test_정수형이어도_빈칸은_빈칸으로_저장된다(self, tmp_path: Path) -> None:
-        """
-        목적: 정수화가 빈칸을 `0` 으로 바꾸지 않는지 확인한다 — 그러면 원래 문제가 뒤집혀 재발한다
-
-        표본이 0건인 구간은 **잰 적이 없는 것**이라 건수도 빈칸이다.
-        `0` 을 적으면 「손절이 한 번도 안 걸렸다」로 읽혀 정반대의 사실이 된다.
-
-        **`,,` 가 문자열에 있는지만 보면 안 된다** — 표본 0건 행은 실수 지표 칸이 원래 줄줄이 비어
-        있어, 건수 칸이 `0` 으로 채워져도 그 검사는 통과한다. 그래서 건수 칸을 이름으로 읽는다.
-
-        Given: 신호를 앞쪽에만 심은 합성 시세 (최근 5년 구간이 0건이 된다)
-        When: 그 구간 행을 CSV 문자열로 뽑아 문자열 그대로 다시 읽었을 때
-        Then: 건수 칸이 빈칸이고, `신호` 는 정수 `0` 이다 (0건인 것은 잰 사실이다)
-        """
-        # Given
-        target = _reverse_target(_write_market(tmp_path / "early", "SYN", EARLY_SIGNAL_POSITIONS))
-        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
-        empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
-        assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다 — 신호 위치를 앞으로 옮기세요"
-
-        # When
-        text = empty.head(1).to_csv(index=False)
-        cells = pd.read_csv(io.StringIO(text), dtype=str, keep_default_na=False).iloc[0]
-
-        # Then
-        blank_columns = [
-            *(column for column in self.COUNT_COLUMNS if column != DISPLAY_SIGNAL_COUNT),
-            DISPLAY_EVENT_COUNT,
-        ]
-        filled = {column: cells[column] for column in blank_columns if cells[column] != ""}
-        assert filled == {}, f"잰 적이 없는 건수 칸이 값으로 채워졌습니다: {filled}"
-        assert cells[DISPLAY_SIGNAL_COUNT] == "0", f"표본 수가 정수 0 이 아닙니다: {cells[DISPLAY_SIGNAL_COUNT]!r}"
 
 
 class TestRunSummary:
@@ -1677,27 +1533,6 @@ class TestScreenColumn:
 
         # When / Then
         assert (index_rows[self.SCREEN_COLUMN] == self.NOT_JUDGED).all()
-
-    def test_표본이_0건인_구간은_판정_안_함이다(self, tmp_path: Path) -> None:
-        """
-        목적: 「재봤더니 아니었다」와 「재본 적이 없다」를 가른다.
-
-        0건 칸은 지표가 결측이라 비교가 전부 거짓이 되고, 가드가 없으면 「제외」로 찍힌다.
-
-        Given: 신호를 앞쪽에만 심어 최근 5년이 0건이 되는 합성 시세
-        When: 표본 0건 행의 판정을 봤을 때
-        Then: 「판정 안 함」이다
-        """
-        # Given
-        target = _reverse_target(_write_market(tmp_path / "empty", "SYN", EARLY_SIGNAL_POSITIONS))
-
-        # When
-        summary = run_reverse_trading([target], stop_levels=(STOP_LOSS_LEVEL,)).performance
-        empty = summary[summary[DISPLAY_SIGNAL_COUNT] == 0]
-
-        # Then
-        assert not empty.empty, "표본 0건 구간이 없어 계약을 검사하지 못했습니다"
-        assert (empty[self.SCREEN_COLUMN] == self.NOT_JUDGED).all()
 
     def test_판정이_승률과_평균에서_그대로_유도된다(self, midterm_cycle_grid_outputs: MidtermCycleOutputs) -> None:
         """
