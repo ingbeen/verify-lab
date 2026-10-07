@@ -33,6 +33,7 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
     BASE_DIR,
     COL_CLOSE,
     COL_DATE,
@@ -1442,6 +1443,72 @@ class TestDatasetFields:
                 dataset.ticker
             ), f"{slug} 의 데이터셋 ticker {dataset.ticker!r} 가 종목코드 모양이 아닙니다 — 표시 이름이 들어갔는지 보세요"
             assert dataset.label, f"{slug} 의 데이터셋에 표시 이름이 없습니다"
+
+
+class TestPriceBasis:
+    """가격 기준 — 매매법은 수정주가 파일을 읽는다 (측정의 원칙 14)
+
+    매매법 종류는 매매 · 검증 등급뿐이고(`tests/test_tracks.py`), 원칙 14 가 그 둘에 수정주가를 요구한다.
+    **수집기 기본값과 공통 파일 템플릿이 원본가라** 새 매매법이 대상 정의를 기본값으로 만들면 원본가를 읽고,
+    성적이 분배금만큼 낮게 에러 없이 나간다.
+    """
+
+    # 매매법이 읽어도 되는 파일 템플릿 — **허용 목록이다.** 원본가 템플릿 하나를 막는 차단 목록이면
+    # 다른 이름의 원본가 파일을 읽는 대상이 통과한다. 지수는 분배금이 없어 기준이 하나다
+    ALLOWED_TEMPLATES = {ADJUSTED_FILE_TEMPLATE, INDEX_FILE_TEMPLATE}
+
+    # 허용 목록 밖의 파일을 읽어도 되는 대상 — (매매법, ticker). 분배금이 없어 기준이 하나인 대상만 넣는다.
+    # **손으로 박는다**(머리말): 넣을 때는 왜 분배금이 없는지를 함께 적는다
+    NO_DISTRIBUTION = {
+        ("halving_cycle", "BTCUSD"),  # Bitstamp BTC/USD — 코인에는 분배금이 없다
+    }
+
+    @_BY_METHOD
+    def test_분배금이_있는_대상은_수정주가_파일을_읽는다(self, slug: str) -> None:
+        """
+        목적: 매매·검증의 가격 기준이 수정주가임을 매매법 전부에 건다
+
+        매매법 하나의 테스트로만 지키면 다음 매매법이 그 검사를 받지 않는다.
+
+        Given: 그 매매법의 데이터셋 목록
+        When: 허용 목록(수정주가 · 지수) 밖의 파일 템플릿을 읽는 대상을 고르면
+        Then: 분배금이 없다고 박아 둔 대상뿐이다
+        """
+        # Given
+        datasets = _method_constants(slug).DATASETS
+        assert datasets, f"{slug} 의 데이터셋 목록이 비어 있습니다"
+
+        # When
+        outside = {
+            dataset.ticker: dataset.file_template
+            for dataset in datasets
+            if dataset.file_template not in self.ALLOWED_TEMPLATES
+        }
+
+        # Then
+        unexpected = {
+            ticker: template for ticker, template in outside.items() if (slug, ticker) not in self.NO_DISTRIBUTION
+        }
+        assert unexpected == {}, (
+            f"{slug} 의 대상이 수정주가가 아닌 파일을 읽습니다: {unexpected} — 매매·검증은 수정주가 파일"
+            f"(ADJUSTED_FILE_TEMPLATE)을 읽습니다(측정의 원칙 14). 분배금이 없는 대상이면 NO_DISTRIBUTION 에 이유와 함께 넣으세요"
+        )
+
+    def test_예외는_허용_목록_밖을_읽는_실제_대상이다(self) -> None:
+        """
+        목적: 예외 목록이 죽은 항목으로 남아 다음 대상을 조용히 통과시키지 않게 한다
+
+        Given: 분배금이 없다고 박아 둔 대상
+        When: 그 매매법의 데이터셋에서 찾으면
+        Then: 있고, 허용 목록 밖의 파일을 읽는다 (허용 목록 안이면 예외가 필요 없다)
+        """
+        # Given / When / Then
+        for slug, ticker in sorted(self.NO_DISTRIBUTION):
+            matched = [dataset for dataset in _method_constants(slug).DATASETS if dataset.ticker == ticker]
+            assert matched, f"예외 목록의 {slug}:{ticker} 가 그 매매법의 대상에 없습니다 — 예외에서 빼세요"
+            assert all(
+                dataset.file_template not in self.ALLOWED_TEMPLATES for dataset in matched
+            ), f"예외 목록의 {slug}:{ticker} 는 허용 목록 안의 파일을 읽습니다 — 예외에서 빼세요"
 
 
 class TestScreenColumn:

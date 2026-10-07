@@ -36,9 +36,8 @@ poetry run black .                                   # 포맷 적용 (계획서�
 ### 미국 — yfinance
 
 ```bash
-poetry run python scripts/data/collect_yfinance.py                   # QQQ 전 기간 (기본값) · 원본가
-poetry run python scripts/data/collect_yfinance.py --ticker SPY
-poetry run python scripts/data/collect_yfinance.py --adjusted        # 수정주가 — 대조·실측용
+poetry run python scripts/data/collect_yfinance.py                   # QQQ 전 기간 (기본값) — 원본가와 수정주가를 함께 받는다
+poetry run python scripts/data/collect_yfinance.py --ticker SPY      # 수정주가는 매매·검증이, 원본가는 원본가로 잰 조사가 읽는다
 poetry run python scripts/data/collect_yfinance.py --index '^GSPC'   # 지수(종가 계열). ^ 는 셸 메타문자라 따옴표로 감싼다
 ```
 
@@ -48,7 +47,7 @@ KRX 데이터포털 계정이 필요합니다 — 저장소 루트 `.env` 의 `K
 
 ```bash
 poetry run python scripts/data/collect_pykrx.py                                              # KODEX 200 전 기간 (기본값) · 원본가
-poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --adjusted  # 수정주가 — 원달러 ETF 등가성이 쓴다
+poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --adjusted  # 수정주가 — 매매·검증과 원달러 ETF 등가성이 읽는다 (KRX 는 최근 3,000거래일만 준다)
 poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --nav       # NAV (단일 값 계열)
 poetry run python scripts/data/collect_pykrx.py --index --ticker 1001 --start 19800104       # 지수 종가 — 지수마다 첫날을 준다
 

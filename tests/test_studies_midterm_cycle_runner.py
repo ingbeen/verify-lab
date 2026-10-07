@@ -3,13 +3,15 @@
 **형제 매매법이 이미 거는 검사를 이 매매법에도 건다.** 계약 테스트가 둘만 돌면
 새 매매법의 산출물이 **컬럼이 비거나 대상이 섞여도 통과한다.**
 
-여기서 보는 것은 셋이다.
+여기서 보는 것은 둘이다.
 
 | 무엇 | 왜 |
 | --- | --- |
 | `DATASETS` 의 **표시 이름 중복 금지** | 종목명이 곧 데이터셋 구분자라 겹치면 **서로 다른 대상의 행이 조용히 뒤섞인다** (`src/verify_lab/CLAUDE.md` 「종목은 코드가 아니라 이름으로 냅니다」) |
 | 축·판정·비중첩의 조립 | 사이클 네 칸이 다 나오는지, 지수가 「판정 안 함」이 되는지, 롤링 기준선의 비중첩이 표본보다 적은지 |
-| 배당락의 **빈칸과 0 의 구별** | 지수는 분배금이 없어 «비우고», ETF 는 재서 값을 넣는다 — 0 으로 채우면 「안 걸림」과 「못 쟀다」가 같아진다 |
+
+실제 대상의 **가격 기준**(ETF 는 수정주가 파일)은 매매법 전부에 거는 계약 테스트
+`tests/test_output_contract.py` 의 `TestPriceBasis` 가 본다.
 """
 
 from pathlib import Path
@@ -19,7 +21,6 @@ import pandas as pd
 import pytest
 
 from verify_lab.common_constants import (
-    ADJUSTED_FILE_TEMPLATE,
     COL_CLOSE,
     COL_DATE,
     COL_HIGH,
@@ -32,8 +33,6 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
 )
 from verify_lab.measure.constants import (
-    COL_DIVIDEND_HIT_COUNT,
-    COL_DIVIDEND_MEASURED,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
     JUDGEABLE_NO,
@@ -91,14 +90,13 @@ def _frame() -> pd.DataFrame:
 def outputs(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
     """합성 ETF 와 합성 지수로 돈 측정 표.
 
-    **지수를 함께 넣는다** — 판정하지 않는 대상과 배당락을 비우는 대상이 있어야
-    두 계약이 검사된다.
+    **지수를 함께 넣는다** — 판정하지 않는 대상이 있어야 판정 계약이 검사된다.
     """
     return run_study(_write_inputs(tmp_path_factory.mktemp("midterm_cycle_runner")), repeats=TEST_REPEATS).statistics
 
 
 def _write_inputs(directory: Path) -> tuple[Dataset, Dataset]:
-    """합성 ETF(원본가·수정주가)와 합성 지수를 써 두고 그 둘을 가리키는 대상을 만든다.
+    """합성 ETF 와 합성 지수를 써 두고 그 둘을 가리키는 대상을 만든다.
 
     Args:
         directory: 저장할 임시 디렉터리
@@ -108,10 +106,6 @@ def _write_inputs(directory: Path) -> tuple[Dataset, Dataset]:
     """
     frame = _frame()
     frame.to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="SYN"), index=False)
-    # **수정주가는 원본가와 조금 다르게 둔다** — 같으면 배당락 왜곡이 0 이라 「쟀다」가 안 보인다
-    adjusted = frame.copy()
-    adjusted[COL_CLOSE] = np.round(adjusted[COL_CLOSE] * 0.99, PRICE_DECIMALS)
-    adjusted.to_csv(directory / ADJUSTED_FILE_TEMPLATE.format(ticker="SYN"), index=False)
     pd.DataFrame({COL_DATE: frame[COL_DATE], COL_VALUE: frame[COL_CLOSE] / 10.0}).to_csv(
         directory / INDEX_FILE_TEMPLATE.format(ticker="SYNIDX"), index=False
     )
@@ -323,54 +317,6 @@ class TestNonOverlapping:
         """
         # Given / When / Then
         assert (outputs[COL_BASELINE_NON_OVERLAPPING] < outputs[f"{COL_SAMPLE_COUNT}_baseline"]).all()
-
-
-class TestDividendColumns:
-    """배당락 — 「안 걸림」과 「못 쟀다」를 가른다"""
-
-    def test_지수는_비우고_ETF_는_잰다(self, outputs: pd.DataFrame) -> None:
-        """
-        목적: 0 으로 채우면 두 사실이 같아진다 (측정의 원칙 14)
-
-        지수는 상품이 아니라 계산값이라 분배금을 지급할 일이 없다.
-
-        Given: ETF 와 지수로 돈 측정 표
-        When: 배당락 대조 건수를 봤을 때
-        Then: 지수 행은 비어 있고 ETF 행은 값이 있다
-        """
-        # Given
-        index_rows = outputs[outputs["ticker"] == "합성 지수"]
-        etf_rows = outputs[outputs["ticker"] == "합성 ETF"]
-
-        # When / Then
-        assert index_rows[COL_DIVIDEND_MEASURED].isna().all(), "지수 행의 배당락이 비어 있지 않습니다"
-        assert etf_rows[COL_DIVIDEND_MEASURED].notna().all(), "ETF 행의 배당락을 재지 않았습니다"
-        assert (etf_rows[COL_DIVIDEND_HIT_COUNT] <= etf_rows[COL_DIVIDEND_MEASURED]).all()
-
-    def test_수정주가가_없으면_예외다(self, tmp_path: Path) -> None:
-        """
-        목적: 「못 쟀다」를 0 으로 흘려보내지 않음을 고정한다
-
-        Given: 수정주가 파일이 없는 ETF 대상
-        When: 측정을 돌리면
-        Then: ValueError 가 난다
-        """
-        # Given
-        _frame().to_csv(tmp_path / MARKET_FILE_TEMPLATE.format(ticker="SYN"), index=False)
-        etf = Dataset(
-            ticker="SYN",
-            label="합성 ETF",
-            symbol="SYN",
-            directory=tmp_path,
-            file_template=MARKET_FILE_TEMPLATE,
-            price_column=COL_CLOSE,
-            price_decimals=PRICE_DECIMALS,
-            is_index=False,
-        )
-
-        # When / Then
-        with pytest.raises(ValueError, match="수정주가 파일이 필요합니다"):
-            run_study((etf,), repeats=TEST_REPEATS)
 
 
 class TestRunStudyGuards:

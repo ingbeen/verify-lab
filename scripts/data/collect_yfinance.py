@@ -2,6 +2,8 @@
 """yfinance 시세 수집 CLI
 
 미국 상장 종목의 전 기간 일별 시세를 받아 원시 시세 파일로 저장한다.
+**종목은 원본가와 수정주가를 늘 함께 받는다** — 매매·검증은 수정주가, 원본가로 잰 조사는 원본가 파일을
+읽어서 한쪽만 받으면 다른 쪽을 읽는 실행이 경고 없이 옛 시세로 돈다(2026-10-07 사용자 결정).
 **지수는 `--index` 로 받으며 종가 하나짜리 계열이 된다** — 왜 OHLCV 가 아닌지는
 수집기의 `collect_yfinance_index` docstring 이 SoT다.
 
@@ -53,12 +55,6 @@ def parse_args() -> argparse.Namespace:
         help="yfinance 지수 심볼(예: ^GSPC · ^IXIC). **종가 계열**로 storage/series/ 에 저장하며 "
         "파일명에서는 접두 ^ 를 뗀다. 지수는 살 수 없어 시가 집행이 불가능하고, "
         "옛 구간의 고가·저가가 종가로 채워져 있어 OHLCV 로 받으면 장중 낙폭이 조용히 사라진다",
-    )
-    parser.add_argument(
-        "--adjusted",
-        action="store_true",
-        help="수정주가로 받는다 (기본값: 원본가). 저장 파일명이 달라 원본가를 덮어쓰지 않는다. "
-        "원본가가 기본인 이유는 수집기 모듈 docstring 참고. **지수에는 해당하지 않는다** — 분배금이 없다",
     )
     return parser.parse_args()
 
@@ -113,43 +109,45 @@ def main() -> int:
     # 수집기의 「지수 심볼이 비어 있습니다」 가드에 닿지도 못하고, 재수집은 이미 발행된
     # 결과 문서의 수치를 재현 불가로 만든다 (루트 `CLAUDE.md` 「재수집은 이미 나온 결과를 바꿉니다」)
     if args.index is not None:
-        # **`--adjusted` 를 조용히 무시하지 않는다.** 지수는 분배금이 없어 그 인자가 뜻을
-        # 갖지 않는데, 받아 놓고 버리면 사용자는 수정주가를 받았다고 믿고 산출물로는
-        # 구별할 수 없다 — 위 배타 그룹을 둔 것과 같은 이유다
-        if args.adjusted:
-            raise ValueError("--adjusted 는 지수에 쓸 수 없습니다 (지수는 분배금이 없습니다). --index 만 주세요")
-
         _collect_index(args.index)
         return 0
 
     # **`or` 로 두면 `--ticker ''` 가 거짓이라 기본 종목으로 빠져 QQQ 를 덮어쓴다** —
     # 수집기의 「종목 코드가 비어 있습니다」 가드에 닿지 못한다. `--index` 와 같은 이유로 `is None` 을 쓴다
     ticker = DEFAULT_TICKER if args.ticker is None else args.ticker
-    result = collect_yfinance_history(ticker, adjusted=args.adjusted)
+    # 두 기준을 함께 받는다(모듈 docstring). 기준을 고르는 인자를 두지 않는다 — 두면 빠뜨릴 수 있다
+    results = [collect_yfinance_history(ticker, adjusted=adjusted) for adjusted in (False, True)]
 
     table = TableLogger(SUMMARY_COLUMNS, logger)
-    table.print_table(
-        [
-            ["종목", result.ticker],
-            ["가격 기준", DISPLAY_ADJUSTED if result.adjusted else DISPLAY_RAW],
-            ["기간", f"{result.start_date} ~ {result.end_date}"],
-            ["행 수", f"{result.row_count:,}"],
-            ["최근 제외", f"{result.excluded_recent_count}행"],
-            ["저장 위치", str(result.path)],
-        ],
-        title="수집 결과",
-    )
+    for result in results:
+        table.print_table(
+            [
+                ["종목", result.ticker],
+                ["가격 기준", DISPLAY_ADJUSTED if result.adjusted else DISPLAY_RAW],
+                ["기간", f"{result.start_date} ~ {result.end_date}"],
+                ["행 수", f"{result.row_count:,}"],
+                ["최근 제외", f"{result.excluded_recent_count}행"],
+                ["저장 위치", str(result.path)],
+            ],
+            title="수집 결과",
+        )
 
+    # 한 실행은 이력 한 항목이다 — 기준마다 남기면 같은 실행이 두 줄이 된다
     save_metadata(
         KEY_META_YFINANCE,
         {
-            "ticker": result.ticker,
-            "adjusted": result.adjusted,
-            "path": str(result.path),
-            "row_count": result.row_count,
-            "start_date": str(result.start_date),
-            "end_date": str(result.end_date),
-            "excluded_recent_count": result.excluded_recent_count,
+            "ticker": results[0].ticker,
+            "files": [
+                {
+                    "adjusted": result.adjusted,
+                    "path": str(result.path),
+                    "row_count": result.row_count,
+                    "start_date": str(result.start_date),
+                    "end_date": str(result.end_date),
+                    "excluded_recent_count": result.excluded_recent_count,
+                }
+                for result in results
+            ],
         },
     )
 

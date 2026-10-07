@@ -1,7 +1,7 @@
 """중간선거_사이클 측정 조립 — 중간선거해 한 칸을 한 장으로 낸다
 
-**계산하지 않는다.** 달력은 `cycle_calendar`, 통계는 `measure/statistics`,
-배당락은 `measure/distribution` 이 소유하고 여기서는 조립만 한다.
+**계산하지 않는다.** 달력은 `cycle_calendar`, 통계는 `measure/statistics` 가 소유하고
+여기서는 조립만 한다.
 
 **축은 (종목 × 사이클 위치) 하나이고 `방향` 은 식별 «라벨»로 붙는다.** 값은 1배 롱 기준
 그대로이며 부호를 뒤집지 않는다 — 뒤집으면 `기준선 오른 비율` 이 실제로는 내린 비율을
@@ -22,26 +22,19 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
-from verify_lab.common_constants import ADJUSTED_FILE_TEMPLATE, COL_CLOSE, COL_DATE
+from verify_lab.common_constants import COL_DATE
 from verify_lab.data.loader import load_market_csv, load_series_csv
 from verify_lab.execution.trade_fill import resolve_positions
 from verify_lab.measure.constants import (
-    COL_DIVIDEND_HIT_COUNT,
-    COL_DIVIDEND_MEAN_IMPACT,
-    COL_DIVIDEND_MEASURED,
     COL_EXCLUDED_REASON,
-    COL_EXIT_DATE,
     COL_HOLD_DAYS,
     COL_HORIZON,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
-    DIVIDEND_IMPACT_DECIMALS,
     REASON_NONE,
 )
-from verify_lab.measure.distribution import dividend_impact
 from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.measure.statistics import (
     COL_BASIS,
@@ -118,7 +111,7 @@ class StudyOutputs:
     """측정 산출물
 
     Attributes:
-        statistics: (종목 × 사이클 위치) 마다 한 행. 기준선·차이·우연확률·배당락이 들어 있다
+        statistics: (종목 × 사이클 위치) 마다 한 행. 기준선·차이·우연확률이 들어 있다
         summary: 실행 요약
     """
 
@@ -195,20 +188,6 @@ def _baseline_returns(df: pd.DataFrame, dataset: Dataset) -> pd.DataFrame:
     schedule = month_offset_exit_schedule(trading_days, entries, month_offset=EXIT_MONTH_OFFSET)
 
     return cycle_returns(df, schedule, horizon=HORIZON_POOLED, price_column=dataset.price_column)
-
-
-def _valid(frame: pd.DataFrame) -> pd.DataFrame:
-    """제외되지 않은 행만 남긴다.
-
-    집계는 유효 표본으로만 한다. **제외 건수는 요약이 담당한다.**
-
-    Args:
-        frame: `cycle_returns` 의 결과
-
-    Returns:
-        유효 행만 남긴 DataFrame
-    """
-    return frame[frame[COL_EXCLUDED_REASON] == REASON_NONE].copy()
 
 
 def _non_overlapping_by_position(trading_days: pd.DatetimeIndex, frame: pd.DataFrame) -> dict[str, int]:
@@ -353,70 +332,6 @@ def _order_by_cycle(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.sort_values(COL_CYCLE_POSITION, key=lambda values: values.map(order)).reset_index(drop=True)
 
 
-def _dividend_row(dataset: Dataset, valid_signal: pd.DataFrame, position: str) -> dict[str, Any]:
-    """그 칸의 보유 구간에 들어간 배당락을 잰다.
-
-    **산식은 `measure/distribution.py` 가 소유한다.**
-
-    [중요] **이 매매법은 배당락이 «매번» 걸린다.** 보유가 9개월이라 분기 배당 3회가
-    구조적으로 들어오므로 「걸린 건수 = 표본」이 정상이고, **평균 왜곡이 곧 원본가가 놓친
-    몫**이다. 다른 매매법처럼 「걸린 칸을 뺀다」로 대응할 수 없어 크기를 수치로 남긴다.
-
-    [중요] **지수는 비운다.** 지수는 상품이 아니라 계산값이라 분배금을 지급할 일이 없고
-    수정주가 파일도 없다. **0 으로 채우면 「안 걸림」과 「잴 수 없음」이 구별되지 않는다.**
-
-    **방향은 「위」로 잰다** — 측정 표의 값이 1배 롱 기준 그대로이기 때문이다.
-
-    Args:
-        dataset: 대상 종목
-        valid_signal: 유효 신호 long-form
-        position: 재는 사이클 위치
-
-    Returns:
-        배당락 세 컬럼. 지수이거나 그 칸의 체결이 없으면 값이 비어 있다
-
-    Raises:
-        ValueError: ETF 인데 수정주가 파일이 없는 경우
-    """
-    blank: dict[str, Any] = {
-        COL_DIVIDEND_MEASURED: pd.NA,
-        COL_DIVIDEND_HIT_COUNT: pd.NA,
-        COL_DIVIDEND_MEAN_IMPACT: np.nan,
-    }
-
-    if dataset.is_index:
-        return blank
-
-    rows = valid_signal[valid_signal[COL_CYCLE_POSITION] == position]
-
-    # **0 으로 채우지 않는다.** 체결이 없는 것과 왜곡이 0 인 것은 다른 사실이다
-    if rows.empty:
-        return blank
-
-    adjusted_path = dataset.directory / ADJUSTED_FILE_TEMPLATE.format(ticker=dataset.ticker)
-    if not adjusted_path.is_file():
-        raise ValueError(f"배당락을 재려면 수정주가 파일이 필요합니다: {adjusted_path}")
-
-    raw_close = load_market_csv(dataset.path).set_index(COL_DATE)[dataset.price_column]
-    adjusted_close = load_market_csv(adjusted_path).set_index(COL_DATE)[COL_CLOSE]
-
-    impact = dividend_impact(
-        raw_close,
-        adjusted_close,
-        entry_dates=pd.DatetimeIndex(rows[COL_DATE]),
-        exit_dates=pd.DatetimeIndex(rows[COL_EXIT_DATE]),
-        bet_down=False,
-    )
-
-    return {
-        COL_DIVIDEND_MEASURED: impact.measured_count,
-        COL_DIVIDEND_HIT_COUNT: impact.hit_count,
-        # **여기서 반올림한다.** 이 값은 이미 %p 단위라 저장 계층의 비율→백분율 변환을 타지
-        # 않고, 그대로 두면 과학적 표기로 CSV 에 실려 읽히지 않는다
-        COL_DIVIDEND_MEAN_IMPACT: round(impact.mean_percent, DIVIDEND_IMPACT_DECIMALS),
-    }
-
-
 def _run_dataset(
     dataset: Dataset,
     accumulator: _Accumulator,
@@ -443,7 +358,6 @@ def _run_dataset(
 
     signal = signal_returns(df, dataset)
     baseline = _baseline_returns(df, dataset)
-    valid_signal = _valid(signal)
 
     # **전체를 넘긴다** — 유효만 넘기면 `제외` 가 언제나 0 이 된다 (위 함수의 설명)
     block = _aggregate_by_position(signal, baseline, trading_days=trading_days, repeats=repeats, seed=seed)
@@ -454,12 +368,6 @@ def _run_dataset(
         raise RuntimeError(f"내부 불변조건 위반: 사이클 위치별 집계가 비어 잴 수 없습니다: {dataset.label}")
 
     block = _order_by_cycle(block)
-
-    dividend = pd.DataFrame(
-        [_dividend_row(dataset, valid_signal, str(position)) for position in block[COL_CYCLE_POSITION]],
-        index=block.index,
-    )
-    block = pd.concat([block, dividend], axis=1)
 
     block.insert(0, COL_TICKER, dataset.label)
 

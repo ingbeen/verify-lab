@@ -40,7 +40,7 @@
 
 | 타입 | 기록하는 스크립트 | 내용 |
 | --- | --- | --- |
-| `yfinance_collect` | `data/collect_yfinance.py` | 수집한 종목, 가격 기준, 저장 경로, 행 수, 기간, 최근 제외 건수. **지수(`--index`)는 `symbol`(`^GSPC`)과 `ticker`(`GSPC`)를 따로 남기고 `kind` 가 「종가 계열」이다** — 파일명에서 접두 `^` 를 떼므로 둘이 다르다 |
+| `yfinance_collect` | `data/collect_yfinance.py` | 수집한 종목과 **두 기준(원본가 · 수정주가)마다**(`files`) 저장 경로, 행 수, 기간, 최근 제외 건수 — 한 실행이 두 기준을 함께 받으므로 이력도 한 항목이다. **지수(`--index`)는 `symbol`(`^GSPC`)과 `ticker`(`GSPC`)를 따로 남기고 `kind` 가 「종가 계열」이다** — 파일명에서 접두 `^` 를 떼므로 둘이 다르다 |
 | `pykrx_etf_probe` | `data/check_pykrx_etf.py` | 실측한 종목·기간, 원자료 저장 폴더, 함수별 반환 행 수 |
 | `pykrx_splice_probe` | `data/check_pykrx_splice.py` | 실측한 종목·시작일·분할 종료일, 원자료 저장 폴더, 세그먼트별 행 수, 겹침 불일치 건수, 덮지 못한 거래일 수 |
 | `pykrx_collect` | `data/collect_pykrx.py` | 수집한 종목·조회 시작일, 원본가의 저장 경로·행 수·기간·최근 제외 건수 |
@@ -115,7 +115,7 @@
   (규칙의 SoT는 [src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) 「내부/출력 분리」).
   사용자가 직접 여는 파일이므로 영문 토큰이 그대로 나가면 안 됩니다.
   용어는 [.claude/rules/docs.md](../.claude/rules/docs.md) 의 표준을 따릅니다 (승률 → 오른 비율 등)
-- **가격 기준 축을 만들지 않습니다.** 원본가 하나로 재므로 `price_basis` 같은 컬럼이 필요 없습니다
+- **가격 기준 축을 만들지 않습니다.** 한 매매법은 기준 하나로 재므로(매매·검증은 수정주가) `price_basis` 같은 컬럼이 필요 없습니다
   (루트 [CLAUDE.md](../CLAUDE.md) 측정의 원칙 14)
 
 ---

@@ -21,12 +21,12 @@ from pathlib import Path
 from typing import Final
 
 from verify_lab.common_constants import (
+    ADJUSTED_FILE_TEMPLATE,
     COL_CLOSE,
     COL_DATE,
     COL_VALUE,
     INDEX_FILE_TEMPLATE,
     MARKET_DIR,
-    MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
     RATE_TO_PERCENT,
     SERIES_DIR,
@@ -38,9 +38,6 @@ from verify_lab.execution.constants import (
 )
 from verify_lab.measure.baseline import DEFAULT_MA_WINDOW
 from verify_lab.measure.constants import (
-    COL_DIVIDEND_HIT_COUNT,
-    COL_DIVIDEND_MEAN_IMPACT,
-    COL_DIVIDEND_MEASURED,
     COL_ENTRY_CLOSE,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
@@ -82,9 +79,6 @@ from verify_lab.report.constants import (
     DISPLAY_BASELINE_SAMPLE,
     DISPLAY_DATE,
     DISPLAY_DIRECTION,
-    DISPLAY_DIVIDEND_HIT_COUNT,
-    DISPLAY_DIVIDEND_MEAN_IMPACT,
-    DISPLAY_DIVIDEND_MEASURED,
     DISPLAY_DOWN_RATE,
     DISPLAY_DOWN_RATE_DIFF,
     DISPLAY_DOWN_RATE_P_VALUE,
@@ -512,6 +506,9 @@ class Dataset:
 # 완결 표본이 8건인데 **DIA(7건)보다 한 건 많을 뿐**이라 「긴 축」 구실을 못 한다
 # `[실측] 2026-09-22`. 그래서 **DIA 에는 대응하는 긴 축이 없는 상태로 간다.**
 #
+# **ETF 는 수정주가 파일을 읽는다** (측정의 원칙 14 · `설계.md` 결정 ㉒). 보유가 9개월이라 분기 배당
+# 3회가 매번 들어오고, 원본가로 재면 그만큼 성적이 빠진다. 지수는 분배금이 없어 기준이 하나다
+#
 # **지수 둘은 판정하지 않는다** — 살 수 없으므로(측정의 원칙 9) 값만 내고
 # `1차 판정` 이 「판정 안 함」이 된다. 그래도 재는 것은 **중간선거 칸의 표본이
 # ETF 로는 6~8건뿐이고 하한 10 에 못 미치기 때문**이다
@@ -521,7 +518,7 @@ DATASETS: Final = (
         label="SPY",
         symbol="SPY",
         directory=MARKET_DIR,
-        file_template=MARKET_FILE_TEMPLATE,
+        file_template=ADJUSTED_FILE_TEMPLATE,
         price_column=COL_CLOSE,
         price_decimals=PRICE_DECIMALS,
         is_index=False,
@@ -531,7 +528,7 @@ DATASETS: Final = (
         label="DIA",
         symbol="DIA",
         directory=MARKET_DIR,
-        file_template=MARKET_FILE_TEMPLATE,
+        file_template=ADJUSTED_FILE_TEMPLATE,
         price_column=COL_CLOSE,
         price_decimals=PRICE_DECIMALS,
         is_index=False,
@@ -541,7 +538,7 @@ DATASETS: Final = (
         label="QQQ",
         symbol="QQQ",
         directory=MARKET_DIR,
-        file_template=MARKET_FILE_TEMPLATE,
+        file_template=ADJUSTED_FILE_TEMPLATE,
         price_column=COL_CLOSE,
         price_decimals=PRICE_DECIMALS,
         is_index=False,
@@ -804,10 +801,6 @@ COLUMN_LABELS: Final = {
     COL_UP_RATE_P_VALUE: DISPLAY_UP_RATE_P_VALUE,
     COL_DOWN_RATE_P_VALUE: DISPLAY_DOWN_RATE_P_VALUE,
     COL_TEST_NOTE: DISPLAY_TEST_NOTE,
-    # 배당락 (측정의 원칙 14) — 컬럼도 레이블도 공통 계층이 소유한다
-    COL_DIVIDEND_MEASURED: DISPLAY_DIVIDEND_MEASURED,
-    COL_DIVIDEND_HIT_COUNT: DISPLAY_DIVIDEND_HIT_COUNT,
-    COL_DIVIDEND_MEAN_IMPACT: DISPLAY_DIVIDEND_MEAN_IMPACT,
 }
 
 # 비율(0~1)로 들어와 백분율로 내보낼 컬럼. **기준선과 차이 컬럼도 빠짐없이 넣는다** —
@@ -849,7 +842,7 @@ PROBABILITY_COLUMNS: Final = (
 
 # **산출물 필드 이름 → 파일 이름.** 이 사전이 「이 검증이 무슨 파일을 내는가」의 자리다.
 #
-# **측정 한 장뿐이다.** 축이 (종목 × 사이클 위치) 하나라 기준선·차이·우연확률·배당락이
+# **측정 한 장뿐이다.** 축이 (종목 × 사이클 위치) 하나라 기준선·차이·우연확률이
 # 전부 같은 행에 실린다. 이름이 `측정.csv` 인 것은 **확정 규칙 하나만 내기** 때문이다 —
 # `통계.csv` 는 축 전체를 내는 표의 이름이라 담는 축이 다르다.
 #

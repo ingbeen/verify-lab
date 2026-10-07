@@ -38,7 +38,7 @@
 
 | 무엇 | 어떻게 |
 | --- | --- |
-| **`측정.csv` 와의 1:1 조인** | 측정 표는 칸마다 한 행인데 성적표가 두 행이 된다. 실측으로 측정 20행 대 성적표 `시기=전체` 232행이었고, 「아래」 칸 셋은 **중앙값·기준선·배당락이 어디에도 없었다** |
+| **`측정.csv` 와의 1:1 조인** | 측정 표는 칸마다 한 행인데 성적표가 두 행이 된다. 실측으로 측정 20행 대 성적표 `시기=전체` 232행이었고, 「아래」 칸 셋은 **중앙값·기준선(그때는 배당락도)이 어디에도 없었다** |
 | **「한 방향만 게이트를 통과한다」** | 손절이 손실만 끊어 두 방향의 평균이 더는 부호가 반대가 아니다 — 실측으로 **QQQ 대선해 −8% 칸이 위·아래 «둘 다» 후보**가 됐다. 같은 칸을 사고 동시에 팔라는 표가 된다 |
 
 `src/verify_lab/CLAUDE.md` 가 후자를 「보장이 아니라 관찰이며 재실행할 때마다 대조한다」로
@@ -226,7 +226,10 @@ NOTE_STOP_CONFIRMED = (
     "그 상품의 성적은 이 산출물에 없고(그 문서 §2) 1배 행이 그대로 옮겨지지 않는다. "
     "가격 손절선 격자(`constants.STOP_LEVELS_ETF`)는 스위치(CLI `--stop-grid`)를 켜야 나온다"
 )
-NOTE_DIVIDEND = "보유가 9개월이라 분기 배당 3회가 «매번» 구조적으로 들어온다. 원본가로 재므로 " "「위」 칸의 성적은 그만큼 과소평가돼 있으며, 그 크기는 측정 표의 배당락 세 컬럼이 낸다"
+NOTE_PRICE_BASIS = (
+    "ETF 는 수정주가로 잰다 — 보유 9개월에 분기 배당 3회가 매번 들어와서다. 분배금을 지급일에 전액 다시 샀다고 보며 "
+    "원천징수는 빼지 않았다. 과거 가격은 증권앱 차트(배당 미포함)의 가격과 다르다"
+)
 NOTE_INDEX = (
     "지수는 종가만 있어 장중 손절을 잴 수 없다. 한 줄로만 나오며 「손절선(%)」 에 「손절불가」로 적힌다. "
     "같은 이유로 「보유 중 최악(%)」 도 종가로 재므로 ETF 행(장중 고가·저가 기준)보다 얕게 나온다. "
@@ -1006,7 +1009,7 @@ def run_midterm_cycle_trading(datasets: tuple[Dataset, ...] = DATASETS, *, stop_
         notes.append(NOTE_STOP_BASE)
     notes.append(NOTE_SAMPLE)
     if has_etf:
-        notes.append(NOTE_DIVIDEND)
+        notes.append(NOTE_PRICE_BASIS)
         if not ran_price_stop:
             notes.append(NOTE_STOP_CONFIRMED)
     if any(dataset.is_index for dataset in datasets):
