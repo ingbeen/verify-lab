@@ -20,7 +20,8 @@
 **달력 매달 분할(결정 51 · 52 · 54)도 여기서 잰다** — 「달력만」 조합을 폭마다 쪽별 회차 수 · 간격만 바꾸고 기한을
 그 달의 말일로 옮겨 같은 두 함수(`leg_fills` · `position_result`)로 잰다. 회차 날짜와 평균 단가 · 최악의 정의가 두 벌이
 되지 않는다(절대 원칙 5). **달력 매달 분할에는 저점 이탈 손절과 하드포크 몫을 손절 표로 더 낸다**(결정 58) — 이탈하면
-남은 매도 회차를 손절 매도일로 옮겨 같은 `position_result` 로 잰다.
+남은 매도 회차를 손절 매도일로 옮겨 같은 `position_result` 로 잰다. 손절 표를 만든 성적은 표로 바꾸기 전 모양으로
+함께 낸다 — 체결 조립(`trading.py`)이 그것을 확정 규칙 행으로 옮긴다(결정 61).
 """
 
 from collections.abc import Sequence
@@ -215,18 +216,46 @@ class SplitGrid:
 
 
 @dataclass(frozen=True)
+class StopOutcome:
+    """달력 매달 분할 한 포지션의 손절 방식 하나 — 손절 표 한 행을 만든 성적 그대로 (결정 58 · 61)
+
+    **체결 조립(`trading.py`)이 확정 규칙 행을 이것으로 만든다** — 손절 표는 첫 매수일 · 보유 날 수를 싣지 않고,
+    표에서 산식을 다시 쓰면 두 벌이 된다(절대 원칙 5).
+
+    Attributes:
+        split: 폭
+        halving: 포지션을 산 반감기
+        method: 손절 방식 — `NO_STOP_LABEL` 또는 `STOP_METHOD_LOW_BREAK`
+        result: 그 손절 방식의 포지션 성적. 이탈해 손절 매도한 포지션은 남은 매도 회차를 손절 매도일로 옮긴 성적이다
+        reason: 손절 표의 제외 사유. 끝났으면 `REASON_NONE` — 이탈 다음 거래일이 데이터 뒤면 `result.reason` 과 다르다
+        fork_share: 하드포크 몫 (비율). 끝나지 않았으면 `None`
+        stop_sold: 저점 이탈로 남은 보유를 손절 매도했는가. 이탈했어도 팔 것이 남지 않았으면 거짓이다
+    """
+
+    split: CalendarSplit
+    halving: Halving
+    method: str
+    result: PositionResult
+    reason: str
+    fork_share: float | None
+    stop_sold: bool
+
+
+@dataclass(frozen=True)
 class CalendarSplitGrid:
-    """달력 매달 분할의 표 셋 (내부 컬럼 토큰)
+    """달력 매달 분할의 표 셋 (내부 컬럼 토큰)과 손절 표를 만든 결과
 
     Attributes:
         fills: 폭 × 반감기 × 쪽 × 회차. **체결 전 회차와 다음 반감기가 없는 매도 회차도 행이 있다**
         positions: 폭 × 반감기. **끝나지 않은 포지션도 행이 있다**
         stops: 폭 × 반감기 × 손절 방식(무손절 · 저점 이탈) — 결정 58. **끝나지 않은 포지션도 두 행이 있다**
+        outcomes: `stops` 의 행마다 하나, 같은 순서 — 표로 바뀌기 전의 성적
     """
 
     fills: pd.DataFrame
     positions: pd.DataFrame
     stops: pd.DataFrame
+    outcomes: tuple[StopOutcome, ...]
 
 
 @dataclass(frozen=True)
@@ -1095,31 +1124,41 @@ def _position_fork_share(
     return float(np.mean(shares))
 
 
-def _stop_metrics(
+def _finished_fork_share(
     closes: pd.Series,
     buy_fills: Sequence[TrancheFill],
     sell_fills: Sequence[TrancheFill] | None,
     result: PositionResult,
     forks: Sequence[HardFork],
-) -> dict[str, Any]:
-    """손절 표 한 행의 성적 칸 — 포지션 성적 그대로에 하드포크 몫을 더한다. 끝나지 않았으면 몫을 비운다.
+) -> float | None:
+    """끝난 포지션의 하드포크 몫. 끝나지 않았으면 `None` 이다.
 
     Args:
         closes: 날짜 인덱스의 종가
         buy_fills: 매수 회차
-        sell_fills: 그 행이 쓴 매도 회차. 다음 반감기가 없으면 `None`
+        sell_fills: 그 성적이 쓴 매도 회차. 다음 반감기가 없으면 `None`
         result: 그 매도 회차로 낸 포지션 성적
         forks: 하드포크 목록
 
     Returns:
+        몫 (비율) 또는 `None`
+    """
+    if result.reason != REASON_NONE or sell_fills is None:
+        return None
+
+    return _position_fork_share(closes, buy_fills, sell_fills, forks)
+
+
+def _stop_metrics(result: PositionResult, share: float | None) -> dict[str, Any]:
+    """손절 표 한 행의 성적 칸 — 포지션 성적 그대로에 하드포크 몫을 더한다.
+
+    Args:
+        result: 그 행의 포지션 성적
+        share: 하드포크 몫. 끝나지 않았으면 `None`
+
+    Returns:
         성적 칸
     """
-    share = (
-        _position_fork_share(closes, buy_fills, sell_fills, forks)
-        if result.reason == REASON_NONE and sell_fills is not None
-        else None
-    )
-
     return {
         COL_AVG_BUY_PRICE: _number(result.avg_buy_price),
         COL_AVG_SELL_PRICE: _number(result.avg_sell_price),
@@ -1142,8 +1181,8 @@ def _stop_rows(
     *,
     peak_window_months: int,
     forks: Sequence[HardFork],
-) -> list[dict[str, Any]]:
-    """손절 표의 두 행 — 무손절(포지션 표의 성적 그대로)과 저점 이탈 (결정 58).
+) -> list[tuple[dict[str, Any], StopOutcome]]:
+    """손절 표의 두 행과 그 행을 만든 성적 — 무손절(포지션 표의 성적 그대로)과 저점 이탈 (결정 58).
 
     **이탈하면 남은 매도 회차를 손절 매도일로 옮겨 같은 `position_result` 로 잰다** — 같은 양씩 파므로 「남은 보유를
     그날 전부 판다」와 같고, 평균 매도가 · 수익률 · 평균 단가 대비 최악의 정의가 두 벌이 되지 않는다(절대 원칙 5).
@@ -1164,7 +1203,7 @@ def _stop_rows(
         forks: 하드포크 목록
 
     Returns:
-        무손절 행 · 저점 이탈 행
+        (무손절 행, 그 성적) · (저점 이탈 행, 그 성적)
     """
     # **손절 칸을 빈 값으로 먼저 둔다** — 이탈이 한 건도 없으면 그 칸이 행에 없어, 표로 만들 때 날짜 열이 아니게 된다
     blank: dict[str, Any] = {
@@ -1177,14 +1216,18 @@ def _stop_rows(
         COL_SOLD_BEFORE_STOP: None,
     }
     identity = {COL_CALENDAR_SPLIT: split.name, COL_HALVING: halving.label}
+    plain_share = _finished_fork_share(closes, buy_fills, sell_fills, result, forks)
     plain = {
         **identity,
         COL_STOP_METHOD: NO_STOP_LABEL,
-        **_stop_metrics(closes, buy_fills, sell_fills, result, forks),
+        **_stop_metrics(result, plain_share),
         **blank,
     }
+    plain_outcome = StopOutcome(split, halving, NO_STOP_LABEL, result, result.reason, plain_share, stop_sold=False)
+    # 저점 이탈로 팔지 않은 포지션 — 성적이 무손절과 같다
+    held = StopOutcome(split, halving, STOP_METHOD_LOW_BREAK, result, result.reason, plain_share, stop_sold=False)
     if result.reason == REASON_POSITION_BUYING:
-        return [plain, {**plain, COL_STOP_METHOD: STOP_METHOD_LOW_BREAK}]
+        return [(plain, plain_outcome), ({**plain, COL_STOP_METHOD: STOP_METHOD_LOW_BREAK}, held)]
 
     sell_days = [fill.fill_day for fill in sell_fills or () if fill.fill_day is not None]
     sells_done = sell_fills is not None and len(sell_days) == len(sell_fills)
@@ -1205,16 +1248,19 @@ def _stop_rows(
     }
     stopped = {**plain, COL_STOP_METHOD: STOP_METHOD_LOW_BREAK}
     if cut.break_day is None:
-        return [plain, stopped]
+        return [(plain, plain_outcome), (stopped, held)]
 
     # 이탈일 종가까지 판 매도 회차는 그대로다 — 회차 체결일이 오름차순이라 앞쪽 일부다
     kept = [fill for fill in sell_fills or () if fill.fill_day is not None and fill.fill_day <= cut.break_day]
     remaining = (len(sell_fills) if sell_fills is not None else split.sell_tranches) - len(kept)
     if remaining == 0:
-        return [plain, stopped]
+        return [(plain, plain_outcome), (stopped, held)]
     if cut.sell_day is None:
         # 남은 회차가 있는데 다음 거래일이 데이터 뒤다 — 무손절 행도 끝나지 않은 포지션이라 성적 칸은 이미 비어 있다
-        return [plain, {**stopped, COL_EXCLUDED_REASON: REASON_STOP_SELL_PENDING}]
+        pending = StopOutcome(
+            split, halving, STOP_METHOD_LOW_BREAK, result, REASON_STOP_SELL_PENDING, plain_share, stop_sold=False
+        )
+        return [(plain, plain_outcome), ({**stopped, COL_EXCLUDED_REASON: REASON_STOP_SELL_PENDING}, pending)]
 
     moved_deadlines = (
         [fill.deadline for fill in sell_fills[len(kept) :]] if sell_fills is not None else [cut.sell_day] * remaining
@@ -1224,16 +1270,23 @@ def _stop_rows(
         *(TrancheFill(deadline, cut.sell_day, STOP_METHOD_LOW_BREAK, REASON_NONE) for deadline in moved_deadlines),
     ]
     stop_result = position_result(frame, buy_fills, stop_fills)
+    stop_share = _finished_fork_share(closes, buy_fills, stop_fills, stop_result, forks)
+    sold = StopOutcome(
+        split, halving, STOP_METHOD_LOW_BREAK, stop_result, stop_result.reason, stop_share, stop_sold=True
+    )
 
     return [
-        plain,
-        {
-            **stopped,
-            **_stop_metrics(closes, buy_fills, stop_fills, stop_result, forks),
-            COL_STOP_SELL_DATE: cut.sell_day,
-            COL_STOP_SELL_CLOSE: float(closes[cut.sell_day]),
-            COL_SOLD_BEFORE_STOP: len(kept),
-        },
+        (plain, plain_outcome),
+        (
+            {
+                **stopped,
+                **_stop_metrics(stop_result, stop_share),
+                COL_STOP_SELL_DATE: cut.sell_day,
+                COL_STOP_SELL_CLOSE: float(closes[cut.sell_day]),
+                COL_SOLD_BEFORE_STOP: len(kept),
+            },
+            sold,
+        ),
     ]
 
 
@@ -1262,7 +1315,8 @@ def calendar_split_grid(
         forks: 하드포크 목록 — 손절 표의 하드포크 몫
 
     Returns:
-        표 셋. 회차 표는 폭 → 반감기 → 매수 · 매도 → 회차 순, 손절 표는 폭 → 반감기 → 무손절 · 저점 이탈 순이다
+        표 셋과 손절 표를 만든 성적. 회차 표는 폭 → 반감기 → 매수 · 매도 → 회차 순, 손절 표와 그 성적은 폭 → 반감기 →
+        무손절 · 저점 이탈 순이다
 
     Raises:
         ValueError: 반감기나 폭이 없거나, 폭 이름이 겹치거나, 한쪽 회차 수가 1 보다 작거나, 첫 매수 · 매도 회차가 기준
@@ -1301,6 +1355,7 @@ def calendar_split_grid(
     fill_rows: list[dict[str, Any]] = []
     position_rows: list[dict[str, Any]] = []
     stop_rows: list[dict[str, Any]] = []
+    outcomes: list[StopOutcome] = []
     for split in splits:
         buy = SplitLeg(SPLIT_SIDE_BUY, SPLIT_THRESHOLD_NONE, (), None, None, split.buy_last_deadline)
         sell = SplitLeg(SPLIT_SIDE_SELL, SPLIT_THRESHOLD_NONE, (), None, None, split.sell_last_deadline)
@@ -1345,24 +1400,25 @@ def calendar_split_grid(
                     COL_EXCLUDED_REASON: result.reason,
                 }
             )
-            stop_rows.extend(
-                _stop_rows(
-                    frame,
-                    closes,
-                    split,
-                    halving,
-                    buy_fills,
-                    sell_fills,
-                    result,
-                    peak_window_months=peak_window_months,
-                    forks=forks,
-                )
-            )
+            for row, outcome in _stop_rows(
+                frame,
+                closes,
+                split,
+                halving,
+                buy_fills,
+                sell_fills,
+                result,
+                peak_window_months=peak_window_months,
+                forks=forks,
+            ):
+                stop_rows.append(row)
+                outcomes.append(outcome)
 
     return CalendarSplitGrid(
         fills=_frame_of(fill_rows).reindex(columns=_CALENDAR_FILL_COLUMNS),
         positions=_frame_of(position_rows).reindex(columns=_CALENDAR_POSITION_COLUMNS),
         stops=_frame_of(stop_rows).reindex(columns=_CALENDAR_STOP_COLUMNS),
+        outcomes=tuple(outcomes),
     )
 
 
@@ -1371,6 +1427,7 @@ __all__ = [
     "PositionResult",
     "SplitGrid",
     "SplitLeg",
+    "StopOutcome",
     "TrancheFill",
     "calendar_split_grid",
     "leg_fills",

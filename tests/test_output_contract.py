@@ -10,7 +10,8 @@
 - 성적표는 `성적표.csv`, 거래내역은 `거래내역.csv` 이고 **이름은 상수 한 곳에서 온다**
 - 매매법마다 성적표가 **같은 공통 컬럼을 같은 순서로** 갖는다. 매매법 고유 컬럼만 뒤에 붙는다
 - `손절선(%)` 값은 **음수 실수**이고 문자열은 둘이다 — **`무손절`(걸지 않았다)과 `손절불가`(잴 수 없다)**.
-  두 문자열이 갈려 있어야 **한 컬럼만으로** 한 손절선으로 고정한 행을 고를 수 있다
+  두 문자열이 갈려 있어야 **한 컬럼만으로** 한 손절선으로 고정한 행을 고를 수 있다.
+  가격 비율이 아닌 손절(반감기_사이클의 `저점 이탈`)은 **이름 그대로** 실리고, 그 이름은 두 문자열 · 숫자와 겹치지 않는다
 - 성적표는 칸마다 **구간 5행**이고, 표본이 하한에 못 미쳐도 행이 남는다 (측정의 원칙 17)
 - 구간 분할은 `execution/periods.py` 하나가 소유하고, 사건 번호를 넘기지 않은 매매법은 `사건` 컬럼을 내지 않는다
 - **구현 못하는 칸은 `0` 이 아니라 빈칸**이다 — 0 은 「손절이 걸리지 않았다」로 읽힌다
@@ -164,10 +165,14 @@ TRADE_COMMON_COLUMNS = (
 # (신호가 4년에 한 번이라 어느 사이클의 체결인지 날짜만으로는 바로 읽히지 않는다)
 AXIS_MIDTERM_CYCLE = ("사이클 위치",)
 AXIS_MIDTERM_CYCLE_TRADES = ("사이클 위치", "진입 연도")
-# 반감기_사이클 — 성적표는 격자 두 축(진입 시점 × 청산 시점), **거래내역은 반감기 날짜가 더 붙는다**
-# (한 칸에 사이클마다 한 체결이라 어느 사이클의 체결인지가 날짜만으로 바로 읽히지 않는다)
-AXIS_HALVING_CYCLE = ("반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)")
-AXIS_HALVING_CYCLE_TRADES = ("반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)", "반감기")
+# 반감기_사이클 — 성적표는 매매 방식(일시 격자 · 확정 규칙) 다음에 격자 두 축(진입 시점 × 청산 시점),
+# **거래내역은 반감기 날짜가 더 붙는다** (한 칸에 사이클마다 한 체결이라 어느 사이클의 체결인지가 날짜만으로
+# 바로 읽히지 않는다). **매매 방식이 맨 앞이다** — 확정 규칙 행의 개월 칸(첫 회차)이 일시 격자의 칸과 겹친다
+AXIS_HALVING_CYCLE = ("매매 방식", "반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)")
+AXIS_HALVING_CYCLE_TRADES = ("매매 방식", "반감기 뒤 진입(개월)", "반감기 뒤 청산(개월)", "반감기")
+
+# 반감기_사이클이 `손절선(%)` 에 싣는 이름 붙은 손절. 손으로 박는다(머리말)
+HALVING_CYCLE_NAMED_STOP = "저점 이탈"
 
 # 격자를 켠 중간선거_사이클 실행이 내는 숫자 손절선. **손으로 박는다**(머리말) — 진입가 대비 손절선이 백분율 음수로 나간다
 MIDTERM_CYCLE_STOP_GRID = {-5.0, -8.0, -10.0, -12.0, -15.0, -20.0, -25.0, -30.0}
@@ -416,7 +421,7 @@ def midterm_cycle_grid_outputs(tmp_path_factory: pytest.TempPathFactory) -> Midt
     """같은 합성 입력으로 **손절선 격자를 켜고** 돈 중간선거_사이클 결과.
 
     **무손절과 숫자 손절선에 지수의 `손절불가` 까지 한 성적표에 함께 내는 실행이 이것뿐이다** — 기본 실행은
-    확정 규칙의 무손절 한 종이고, 반감기_사이클은 격자 전부를 내지만 지수 대상이 없다.
+    확정 규칙의 무손절 한 종이고, 반감기_사이클은 숫자 손절선이 없고(무손절 · 저점 이탈) 지수 대상도 없다.
     그래서 한 컬럼 필터 계약(`TestSingleColumnStopFilter`)의 두 실패 방식이 이 결과로만 재현된다.
     판정이 「후보」·「제외」로 갈리는 행도 이 실행에 있다.
 
@@ -756,6 +761,61 @@ class TestStopLevelFormat:
         # When / Then
         with pytest.raises(RuntimeError, match="내부 불변조건 위반"):
             stop_level_value(0.05, measurable=False)
+
+    def test_이름_붙은_손절은_넘긴_이름_그대로다(self) -> None:
+        """
+        목적: 가격 비율이 아닌 손절의 표기도 **같은 소유자**를 지남을 고정한다 — 이름은 매매법이 넘기고 형식만 공통이 본다
+
+        **픽스처 이름은 실제(`저점 이탈`)와 다르다** — 함수가 한 매매법의 이름을 안에서 박으면 걸린다.
+
+        Given: 매매 계층의 이름 붙은 손절 변환기
+        When: 실제에 없는 이름을 넘겼을 때
+        Then: 그 이름이 그대로 나온다
+        """
+        # Given
+        from verify_lab.execution.constants import named_stop_value
+
+        # When / Then
+        assert named_stop_value("고점 돌파") == "고점 돌파"
+
+    @pytest.mark.parametrize(
+        "name",
+        ["", " ", NO_STOP_LABEL, STOP_NOT_MEASURABLE_LABEL, "-5.0", "5", " 고점 돌파", "고점 돌파 "],
+        ids=["빈 이름", "공백뿐", "무손절", "손절불가", "음수 숫자", "양수 숫자", "앞 공백", "뒤 공백"],
+    )
+    def test_이름_붙은_손절은_다른_표기와_섞일_이름을_거부한다(self, name: str) -> None:
+        """
+        목적: 한 컬럼 필터가 조용히 틀린 행 집합을 주는 이름을 막는다
+
+        `무손절` · `손절불가` 와 같은 이름이면 대조축 · 잴 수 없는 행과 섞이고, 숫자로 읽히는 글자면 진입가 대비
+        손절선으로 읽힌다. 앞뒤 공백은 눈으로는 같은 이름인데 필터에서 갈린다.
+
+        Args:
+            name: 거부해야 하는 이름
+
+        Given: 매매 계층의 이름 붙은 손절 변환기
+        When: 다른 표기와 섞일 이름을 넘겼을 때
+        Then: `ValueError` 를 던진다
+        """
+        # Given
+        from verify_lab.execution.constants import named_stop_value
+
+        # When / Then
+        with pytest.raises(ValueError, match="손절"):
+            named_stop_value(name)
+
+    def test_반감기_기본_실행은_무손절과_저점_이탈뿐이다(self, halving_cycle_outputs: HalvingCycleOutputs) -> None:
+        """
+        목적: 인자 없이 돌린 반감기_사이클 산출물에 진입가 % 손절선이 없음을 고정한다 (설계 결정 60 — 2026-10-08
+            「비트코인은 퍼센트로 손절 안할꺼야」). 일시 격자는 무손절 한 종, 확정 규칙은 무손절 · 저점 이탈 두 줄이다
+
+        Given: 합성 시세로 인자 없이 돈 반감기_사이클 결과
+        When: 성적표와 거래내역의 손절선 값을 봤을 때
+        Then: 둘 다 `무손절` 과 `저점 이탈` 뿐이다
+        """
+        # Given / When / Then
+        for table in (halving_cycle_outputs.performance, halving_cycle_outputs.trades):
+            assert self._levels(table) == {NO_STOP_LABEL, HALVING_CYCLE_NAMED_STOP}
 
 
 class TestPeriods:

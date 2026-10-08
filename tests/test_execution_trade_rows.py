@@ -13,7 +13,7 @@ import pytest
 
 from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_VALUE
 from verify_lab.execution.trade_fill import TradeResult
-from verify_lab.execution.trade_rows import trade_columns
+from verify_lab.execution.trade_rows import trade_columns, trade_columns_from
 
 # 거래내역 공통 컬럼 중 «식별 칸 뒤» 여덟 칸 — 이 순서까지 계약이다
 EXPECTED_COLUMNS = [
@@ -123,6 +123,60 @@ def test_가격_자릿수를_따른다() -> None:
     # Then
     assert columns["진입가"] == 101
     assert columns["청산가"] == 104
+
+
+@pytest.mark.parametrize("bet_down", [False, True], ids=["위", "아래"])
+def test_날짜와_진입가를_직접_받아도_시세_경로와_같은_여덟_칸이다(bet_down: bool) -> None:
+    """
+    목적: 여덟 칸의 형식과 청산가 되돌리기가 **두 진입점에서 한 벌**임을 고정한다 — 시세 경로가 직접 경로를 부른다
+
+    Given: 위치 1(2024-01-02 · 101)에 진입해 3일 든 체결
+    When: 시세 경로와, 같은 날짜 · 같은 진입가를 직접 넘긴 경로로 칸을 만든다
+    Then: 두 결과가 같다
+    """
+    # Given
+    result = TradeResult(return_rate=0.04, reason="기한청산", hold_days=3, worst_hold_rate=-0.03)
+
+    # When
+    from_frame = trade_columns(_frame(), 1, result, bet_down=bet_down, price_column=COL_CLOSE, price_decimals=4)
+    direct = trade_columns_from(
+        pd.Timestamp("2024-01-02"),
+        101.0,
+        pd.Timestamp("2024-01-05"),
+        result,
+        bet_down=bet_down,
+        price_decimals=4,
+    )
+
+    # Then
+    assert direct == from_frame
+
+
+def test_시세에_없는_진입가도_청산가를_수익률에서_되돌린다() -> None:
+    """
+    목적: 여러 회차로 산 포지션처럼 **진입가가 어느 날의 종가도 아닌** 체결의 청산가 산식을 고정한다 —
+        평균 매수가 × (1 + 수익률) = 평균 매도가
+
+    Given: 평균 매수가 96, 평균 매도가 200 인 포지션 (수익률 200 ÷ 96 − 1), 2019-06-30 ~ 2020-09-30 · 458일
+    When: 날짜와 진입가를 직접 넘겨 칸을 만든다
+    Then: 진입가 96 · 청산가 200 · 수익률 108.33 · 보유일 458 · 날짜 그대로
+    """
+    # Given
+    result = TradeResult(return_rate=200.0 / 96.0 - 1.0, reason="기한청산", hold_days=458, worst_hold_rate=-0.4)
+
+    # When
+    columns = trade_columns_from(
+        pd.Timestamp("2019-06-30"), 96.0, pd.Timestamp("2020-09-30"), result, bet_down=False, price_decimals=4
+    )
+
+    # Then
+    assert columns["진입일"] == "2019-06-30"
+    assert columns["진입가"] == pytest.approx(96.0, abs=0.01)
+    assert columns["청산일"] == "2020-09-30"
+    assert columns["보유일"] == 458
+    assert columns["청산가"] == pytest.approx(200.0, abs=0.01)
+    assert columns["수익률(%)"] == pytest.approx(108.33, abs=0.01)
+    assert columns["보유 중 최악(%)"] == pytest.approx(-40.0, abs=0.1)
 
 
 def test_가격_컬럼을_인자로_고른다() -> None:

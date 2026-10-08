@@ -1,7 +1,7 @@
 """매매 규칙 계층의 상수 — **매매법 이름이 붙지 않는 것만** 둔다
 
 매매법을 가리지 않는 것을 둔다 — 산출물 파일 이름 · 청산 사유 · 표시 레이블 ·
-구간 축 · `stop_level_value`.
+구간 축 · `stop_level_value` · `named_stop_value`.
 
 **매매법별 파라미터는 `studies/<slug>/constants.py` 가 갖는다.** 여기 함께 두면
 두 가지가 새어 나간다.
@@ -189,6 +189,36 @@ def stop_level_value(stop_level: float | None, *, measurable: bool) -> float | s
         return NO_STOP_LABEL
 
     return round(-stop_level * RATE_TO_PERCENT, PERCENT_DECIMALS)
+
+
+def named_stop_value(name: str) -> str:
+    """진입가 대비 비율로 적을 수 없는 손절을 산출물에 싣는 값으로 바꾼다 — 이름 그대로다.
+
+    **포지션마다 손절선 가격이 다른 손절이 있다** — 반감기_사이클의 「저점 이탈」은 사이클 고점 뒤 최저 종가라
+    한 숫자로 적을 수 없다. 그래도 `손절선(%)` 한 칸에 실어야 그 손절로 고정한 행을 **한 컬럼 필터**로 고른다
+    (`STOP_NOT_MEASURABLE_LABEL` 과 같은 이유). **이름은 매매법이 넘긴다** — 이 계층이 한 매매법의 이름을 들면
+    그것이 모든 매매법의 값이 된다. 여기서는 다른 표기와 섞이지 않는지만 본다.
+
+    Args:
+        name: 손절의 이름
+
+    Returns:
+        그 이름
+
+    Raises:
+        ValueError: 비었거나 앞뒤에 공백이 있거나, `무손절` · `손절불가` 와 같거나, 숫자로 읽히는 경우 — 앞의 셋은
+            한 컬럼 필터에서 다른 행과 섞이고, 숫자는 진입가 대비 손절선으로 읽힌다
+    """
+    if not name.strip() or name != name.strip():
+        raise ValueError(f"손절 이름이 비었거나 앞뒤에 공백이 있습니다: {name!r}")
+    if name in (NO_STOP_LABEL, STOP_NOT_MEASURABLE_LABEL):
+        raise ValueError(f"손절 이름이 손절선 표기({name})와 같습니다 — 대조축 · 잴 수 없는 행과 섞입니다")
+    try:
+        float(name)
+    except ValueError:
+        return name
+
+    raise ValueError(f"손절 이름이 숫자로 읽힙니다 — 진입가 대비 손절선과 섞입니다: {name}")
 
 
 # 방향 표기는 **`measure/screening.py` 의 `DIRECTION_UP`·`DIRECTION_DOWN` 하나**를 쓴다.

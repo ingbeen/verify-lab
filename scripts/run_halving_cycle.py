@@ -8,9 +8,10 @@
 **2단계(보조지표 · 온체인)도 같은 실행에서 잰다** — 책이 문턱을 적은 신호 열넷이 문턱을 돌파한 다음날 종가에 들어가
 같은 보유 · 같은 기준선으로 잰다. 1단계 진입일마다 진입 전날까지의 지표 값도 낸다. **측정만 하고 체결하지 않는다.**
 
-**3단계 체결은 진입 시점 × 청산 시점 격자를 손절선 격자 전부로 · 「위」 한 방향으로 낸다** — 둘 다 가장 최근 반감기
-뒤 몇 개월이고, 청산 시점이 진입보다 같거나 앞이면 다음 반감기 뒤다. 칸과 손절선을 고르지 않는다 — 고르는 것은
-`규칙.md` 에서 한다. 하드포크 몫은 거래내역 끝 칸에 따로 싣는다.
+**3단계 체결은 진입 시점 × 청산 시점의 일시 격자를 무손절로, 확정 규칙(달력 매달 분할)을 무손절 · 저점 이탈로 ·
+「위」 한 방향으로 낸다** — 일시 격자는 둘 다 가장 최근 반감기 뒤 몇 개월이고, 청산 시점이 진입보다 같거나 앞이면 다음
+반감기 뒤다. 일시 격자의 칸을 고르지 않는다(비교용). 확정 규칙은 끝난 포지션 하나가 체결 한 건이다. 진입가 % 손절선은
+두지 않는다. 하드포크 몫은 거래내역 끝 칸에 따로 싣는다.
 
 **3단계 격자 중 같은 사이클에 파는 칸은 같은 보유의 기준선과 나란히 측정 표로도 낸다**(격자기준선) — 판정에 쓰지 않는다.
 
@@ -18,8 +19,8 @@
 조합 전부로 내고(분할회차 · 분할포지션 · 분할조합), 측정 표라 1차 판정 · 손절이 없다. 조합을 고르지 않는다.
 
 **3단계 달력 매달 분할도 같은 실행에서 잰다** — 반감기 뒤 매달 사고 다음 반감기 뒤 매달 파는 포지션(달력분할회차 ·
-달력분할포지션)과, 포지션마다 무손절과 저점 이탈 손절을 하드포크 몫과 나란히 둔 손절 표(달력분할손절)다. 측정 표라
-1차 판정이 없다.
+달력분할포지션)과, 포지션마다 무손절과 저점 이탈 손절을 하드포크 몫과 나란히 둔 손절 표(달력분할손절)다. 이 셋은
+측정 표라 1차 판정이 없고, 같은 포지션의 1차 판정은 성적표의 확정 규칙 행이 받는다.
 
 **대상은 Bitstamp BTC/USD 하나다.** 거래량이 0 인 날의 종가는 Coin Metrics 기준가로 바꿔 재고(원시 파일은
 그대로), 두 소스의 차이가 허용폭을 넘은 날과 바꾼 날을 표로 함께 낸다.
@@ -74,6 +75,7 @@ from verify_lab.studies.halving_cycle.constants import (
     DISPLAY_HALVING_POSITION,
     DISPLAY_HOLD_MONTHS,
     DISPLAY_INDICATOR_SIGNAL,
+    DISPLAY_TRADE_METHOD,
     ENTRY_MONTHS,
     EXIT_MONTHS,
     FIELD_CALENDAR_YEARS,
@@ -81,7 +83,6 @@ from verify_lab.studies.halving_cycle.constants import (
     FIELD_STATISTICS,
     HOLD_MONTHS,
     OUTPUT_FILES,
-    STOP_LEVELS,
     TRACK_NAME,
 )
 from verify_lab.studies.halving_cycle.runner import StudyOutputs, display_tables, run_study
@@ -99,7 +100,7 @@ KEY_META = "halving_cycle"
 DISPLAY_FILE = "파일"
 DISPLAY_ROW_COUNT = "행 수"
 
-# 손절선별 후보 수 표의 컬럼
+# 매매 방식 · 손절선별 후보 수 표의 컬럼
 # **「후보」 한 낱말로 두지 않는다** — 1차 판정 값과 같은 글자라 판정을 CLI 에서 다시 쓰는 것으로 읽힌다
 DISPLAY_CELL_COUNT = "전체 칸"
 DISPLAY_CANDIDATE_COUNT = "후보 칸"
@@ -135,10 +136,11 @@ def parse_args() -> argparse.Namespace:
         description=(
             f"반감기_사이클 — 비트코인 반감기 뒤 {_grid_text(ENTRY_MONTHS)} 진입 × 보유 {_grid_text(HOLD_MONTHS)} "
             f"({len(ENTRY_MONTHS) * len(HOLD_MONTHS)}칸)을 Bitstamp BTC/USD 로 재고, 진입 × 청산 시점 "
-            f"({len(ENTRY_MONTHS) * len(EXIT_MONTHS)}칸)을 손절선 {len(STOP_LEVELS)}종으로 체결한 성적표와 두 소스 대조 표를 "
-            "함께 냅니다. 책이 문턱을 적은 보조지표 · 온체인 신호 열넷도 같은 보유와 기준선으로 잽니다(체결하지 않습니다). "
+            f"({len(ENTRY_MONTHS) * len(EXIT_MONTHS)}칸)의 일시 격자를 무손절로, 확정 규칙(달력 매달 분할)을 무손절 · 저점 이탈로 "
+            "체결한 성적표와 두 소스 대조 표를 함께 냅니다. 책이 문턱을 적은 보조지표 · 온체인 신호 열넷도 같은 보유와 기준선으로 잽니다(체결하지 않습니다). "
             "달력 + MVRV 혼합 분할매수 · 매도 격자도 측정 표로 냅니다(1차 판정 · 손절 없음). "
-            "달력 매달 분할도 측정 표로 내고, 포지션마다 무손절과 저점 이탈 손절을 나란히 잽니다(1차 판정 없음). "
+            "달력 매달 분할도 측정 표로 내고, 포지션마다 무손절과 저점 이탈 손절을 나란히 잽니다(측정 표에는 1차 판정이 없고, "
+            "같은 포지션은 성적표의 확정 규칙 행으로 판정받습니다). "
             "같은 사이클에 파는 칸은 같은 보유(청산 − 진입)의 기준선과 나란히 측정 표로도 냅니다(판정에 쓰지 않습니다)."
         )
     )
@@ -217,9 +219,10 @@ def _print_indicator_statistics(tables: dict[str, pd.DataFrame]) -> None:
 
 
 def _print_candidate_counts(trading: TradingOutputs) -> None:
-    """종목 · 손절선마다 1차 판정이 「후보」인 칸의 수를 화면에 띄운다.
+    """종목 · 매매 방식 · 손절선마다 1차 판정이 「후보」인 칸의 수를 화면에 띄운다.
 
-    **칸 목록을 띄우지 않는다** — 격자가 손절선마다 수백 칸이라 화면에서 읽히지 않고, 전체는 성적표가 갖는다.
+    **칸 목록을 띄우지 않는다** — 일시 격자가 수백 칸이라 화면에서 읽히지 않고, 전체는 성적표가 갖는다.
+    **매매 방식으로 가른다** — 일시 격자와 확정 규칙의 무손절 행이 한 줄에 합쳐지면 확정 규칙의 판정이 보이지 않는다.
     **후보는 자격이지 발견이 아니다.** 게이트를 넘었다는 뜻일 뿐이며, 표본이 하한에 못 미치고 칸끼리
     독립이 아니라는 사실은 그대로다. **종목으로도 묶는다** — 손절선으로만 묶으면 대상이 둘일 때 두 격자의 칸과
     판정하지 않는 대상의 칸이 한 줄에 합쳐진다.
@@ -231,13 +234,17 @@ def _print_candidate_counts(trading: TradingOutputs) -> None:
     whole = frame[frame[DISPLAY_PERIOD] == PERIOD_ALL]
     counts = (
         whole.assign(**{DISPLAY_CANDIDATE_COUNT: whole[DISPLAY_SCREEN] == SCREEN_CANDIDATE})
-        .groupby([DISPLAY_TICKER, DISPLAY_STOP_LEVEL], sort=False)
+        .groupby([DISPLAY_TICKER, DISPLAY_TRADE_METHOD, DISPLAY_STOP_LEVEL], sort=False)
         .agg(
             **{DISPLAY_CELL_COUNT: (DISPLAY_SCREEN, "size"), DISPLAY_CANDIDATE_COUNT: (DISPLAY_CANDIDATE_COUNT, "sum")}
         )
         .reset_index()
     )
-    print_dataframe(counts, logger, title="1차 판정 「후보」 칸 수 — 종목 · 손절선마다 (「위」 · 전체 구간). 칸 전체는 성적표에 있다")
+    print_dataframe(
+        counts,
+        logger,
+        title="1차 판정 「후보」 칸 수 — 종목 · 매매 방식 · 손절선마다 (「위」 · 전체 구간). 칸 전체는 성적표에 있다",
+    )
 
 
 def _save(

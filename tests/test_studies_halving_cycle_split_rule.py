@@ -81,6 +81,7 @@ from verify_lab.studies.halving_cycle.split_rule import (
     CalendarSplitGrid,
     SplitGrid,
     SplitLeg,
+    StopOutcome,
     TrancheFill,
     calendar_split_grid,
     leg_fills,
@@ -1833,6 +1834,81 @@ class TestCalendarSplitStops:
         assert self._row(broken, first, STOP_METHOD_LOW_BREAK)[COL_FORK_SHARE] == pytest.approx(0.0, abs=1e-12)
         assert self._row(broken, first, NO_STOP_LABEL)[COL_FORK_SHARE] == pytest.approx(held, abs=1e-12)
         assert pd.isna(self._row(quiet, self.HALVINGS[2], NO_STOP_LABEL)[COL_FORK_SHARE])
+
+    def _outcome(self, grid: CalendarSplitGrid, halving: Halving, method: str) -> StopOutcome:
+        found = [item for item in grid.outcomes if item.halving == halving and item.method == method]
+        assert len(found) == 1
+
+        return found[0]
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [{}, {"2019-11-05": 35.0, "2019-11-06": 45.0}, {"2020-06-15": 39.0, "2020-06-16": 42.5}],
+        ids=["이탈 없음", "매도 전 이탈", "매도 중 이탈"],
+    )
+    def test_손절_결과는_손절_표와_같은_순서_같은_값이다(self, overrides: dict[str, float]) -> None:
+        """
+        목적: 체결 조립이 받는 포지션 결과가 **손절 표를 만든 바로 그 값**임을 고정한다 — 산식이 두 벌이 되지 않는다
+            (절대 원칙 5). 체결 조립은 표로 바뀌기 전의 결과에서 첫 매수일 · 보유 날 수를 읽는다
+
+        Args:
+            overrides: 심을 종가
+
+        Given: 포크 하나를 품은 픽스처 시세 — 이탈 없음 · 매도 전 이탈 · 매도 중 이탈
+        When: 격자를 낸다
+        Then: 결과가 손절 표와 같은 개수 · 같은 순서이고, 행마다 폭 · 반감기 · 손절 방식 · 평균 매수 · 매도가 · 수익률 ·
+            평균 단가 대비 최악 · 마지막 매도일 · 하드포크 몫 · 사유가 같다
+        """
+        # When
+        grid = self._grid(self._market(overrides), forks=(self.FORK,))
+
+        # Then
+        assert len(grid.outcomes) == len(grid.stops)
+        for outcome, (_, row) in zip(grid.outcomes, grid.stops.iterrows(), strict=True):
+            assert (outcome.split.name, outcome.halving.label, outcome.method) == (
+                row[COL_CALENDAR_SPLIT],
+                row[COL_HALVING],
+                row[COL_STOP_METHOD],
+            )
+            assert outcome.reason == row[COL_EXCLUDED_REASON]
+            for value, column in (
+                (outcome.result.avg_buy_price, COL_AVG_BUY_PRICE),
+                (outcome.result.avg_sell_price, COL_AVG_SELL_PRICE),
+                (outcome.result.worst_vs_cost, COL_WORST_VS_COST),
+                (outcome.fork_share, COL_FORK_SHARE),
+            ):
+                assert (value is None) == pd.isna(row[column])
+                if value is not None:
+                    assert value == pytest.approx(float(row[column]), abs=1e-12)
+            if outcome.reason == REASON_NONE:
+                assert outcome.result.return_rate == pytest.approx(float(row[COL_POSITION_RETURN]), abs=1e-12)
+                assert outcome.result.last_sell_day == row[COL_LAST_SELL_DATE]
+
+    def test_손절_매도로_남은_보유를_판_결과만_그렇다고_표시한다(self) -> None:
+        """
+        목적: 체결 조립이 청산 사유(기한 · 저점 이탈)를 고르는 근거를 고정한다 — 이탈했어도 팔 것이 남지 않았으면 손절
+            매도가 아니다
+
+        Given: (가) 이탈 없음 (나) 2019-11-05 이탈 · 11-06 전량 매도 (다) 마지막 매도일 2020-09-30 이탈 — 팔 것이 남지 않음
+        When: 격자를 낸다
+        Then: (나)의 첫 반감기 저점 이탈 결과만 손절 매도다 — 첫 매수일 2019-06-30 · 마지막 매도일 11-06 · 보유 129일.
+            무손절 결과는 언제나 아니다
+        """
+        # When
+        quiet = self._grid(self._market())
+        broken = self._grid(self._market({"2019-11-05": 35.0, "2019-11-06": 45.0}))
+        last_day = self._grid(self._market({"2020-09-30": 38.0}))
+
+        # Then
+        first = self.HALVINGS[0]
+        assert not any(outcome.stop_sold for outcome in quiet.outcomes)
+        assert not any(outcome.stop_sold for outcome in last_day.outcomes)
+        sold = [outcome for outcome in broken.outcomes if outcome.stop_sold]
+        assert sold == [self._outcome(broken, first, STOP_METHOD_LOW_BREAK)]
+        assert sold[0].result.first_buy_day == pd.Timestamp("2019-06-30")
+        assert sold[0].result.last_sell_day == pd.Timestamp("2019-11-06")
+        assert sold[0].result.hold_days == 129
+        assert not self._outcome(broken, first, NO_STOP_LABEL).stop_sold
 
     @pytest.mark.parametrize("start", ["2019-03-01", "2019-04-01"])
     def test_시세가_반감기일보다_늦게_시작하면_멈춘다(self, start: str) -> None:

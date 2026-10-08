@@ -45,7 +45,7 @@
 
 | 이름 | slug | 코드 | 문서 | 상태 |
 | --- | --- | --- | --- | --- |
-| 반감기_사이클 | `halving_cycle` | `studies/halving_cycle/` | [설계](검증/반감기_사이클/설계.md) · [결과](검증/반감기_사이클/결과.md) · [도서](검증/반감기_사이클/도서.md) · [사전조사](검증/반감기_사이클/사전조사.md) | 재는 중 |
+| 반감기_사이클 | `halving_cycle` | `studies/halving_cycle/` | [설계](검증/반감기_사이클/설계.md) · [결과](검증/반감기_사이클/결과.md) · [규칙](검증/반감기_사이클/규칙.md) · [도서](검증/반감기_사이클/도서.md) · [사전조사](검증/반감기_사이클/사전조사.md) | 재는 중 |
 | 중간선거_사이클 | `midterm_cycle` | `studies/midterm_cycle/` | [설계](매매/중간선거_사이클/설계.md) · [결과](매매/중간선거_사이클/결과.md) · [규칙](매매/중간선거_사이클/규칙.md) | 확정 규칙 |
 | 원달러_ETF_등가성 | `usdkrw_equivalence` | `studies/usdkrw_equivalence/` | [설계](조사/원달러_ETF_등가성/설계.md) · [결과](조사/원달러_ETF_등가성/결과.md) | 성질 조사 |
 | 레버리지_ETF_괴리 | `leverage_tracking` | `studies/leverage_tracking/` | [설계](조사/레버리지_ETF_괴리/설계.md) · [결과](조사/레버리지_ETF_괴리/결과.md) | 성질 조사 |

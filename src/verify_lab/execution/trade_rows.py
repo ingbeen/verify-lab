@@ -53,16 +53,51 @@ def trade_columns(
     Returns:
         거래내역 공통 칸 여덟 (거래내역 컬럼 순서)
     """
-    entry_price = float(frame.iloc[entry_position][price_column])
     exit_position = entry_position + result.hold_days
 
+    return trade_columns_from(
+        pd.Timestamp(frame.iloc[entry_position][COL_DATE]),
+        float(frame.iloc[entry_position][price_column]),
+        pd.Timestamp(frame.iloc[exit_position][COL_DATE]),
+        result,
+        bet_down=bet_down,
+        price_decimals=price_decimals,
+    )
+
+
+def trade_columns_from(
+    entry_day: pd.Timestamp,
+    entry_price: float,
+    exit_day: pd.Timestamp,
+    result: TradeResult,
+    *,
+    bet_down: bool,
+    price_decimals: int,
+) -> dict[str, Any]:
+    """진입일 · 진입가 · 청산일을 직접 받아 공통 여덟 칸을 만든다.
+
+    **진입가가 어느 날의 종가도 아닌 체결이 있다** — 여러 회차로 나눠 산 포지션의 진입가는 평균 매수가다. 그래도
+    청산가는 같은 산식(수익률에서 되돌리기)으로 나와야 한다: 평균 매수가 × (1 + 수익률) = 평균 매도가.
+    `trade_columns` 도 시세에서 셋을 읽어 이것을 부른다 — 형식과 되돌리기가 한 벌이다.
+
+    Args:
+        entry_day: 진입일
+        entry_price: 진입가
+        exit_day: 실제로 나간 날
+        result: 체결 결과. 보유일은 `result.hold_days` 를 그대로 싣는다
+        bet_down: 아래로 걸었는지 여부
+        price_decimals: 가격 출력 자릿수. 원시 데이터를 저장한 자릿수와 같아야 한다
+
+    Returns:
+        거래내역 공통 칸 여덟 (거래내역 컬럼 순서)
+    """
     sign = -1.0 if bet_down else 1.0
     exit_price = entry_price * (1.0 + sign * result.return_rate)
 
     return {
-        DISPLAY_ENTRY_DATE: pd.Timestamp(frame.iloc[entry_position][COL_DATE]).strftime(DATE_FORMAT),
+        DISPLAY_ENTRY_DATE: entry_day.strftime(DATE_FORMAT),
         DISPLAY_ENTRY_PRICE: round(entry_price, price_decimals),
-        DISPLAY_EXIT_DATE: pd.Timestamp(frame.iloc[exit_position][COL_DATE]).strftime(DATE_FORMAT),
+        DISPLAY_EXIT_DATE: exit_day.strftime(DATE_FORMAT),
         DISPLAY_HOLD_DAYS: result.hold_days,
         DISPLAY_EXIT_PRICE: round(exit_price, price_decimals),
         DISPLAY_RETURN: round(result.return_rate * RATE_TO_PERCENT, PERCENT_DECIMALS),
@@ -71,4 +106,4 @@ def trade_columns(
     }
 
 
-__all__ = ["trade_columns"]
+__all__ = ["trade_columns", "trade_columns_from"]
