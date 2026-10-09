@@ -59,7 +59,7 @@ class TestCryptoMarketLoader:
 
     공용 로더에 임계값을 호출마다 넘기면 **수집기와 로더가 같은 값을 넘긴다는 약속이 기억에만 걸린다** —
     측정 runner 가 평소처럼 `load_market_csv(path)` 로 부르면 2011-10-28 +56.1% 에서 막힌다
-    (2026-09-29 사용자 결정 d · `docs/검증/반감기_사이클/설계.md`).
+    (2026-09-29 사용자 결정 d · `docs/매매/반감기_사이클/설계.md`).
     """
 
     def test_실제로_있었던_큰_변동은_통과한다(self, tmp_path: Path) -> None:

@@ -299,6 +299,20 @@ class TestGradeSemantics:
         # Given / When / Then
         assert track_of("midterm_cycle").grade == GRADE_TRADING
 
+    def test_반감기_사이클이_매매_등급이다(self) -> None:
+        """
+        목적: 규칙까지 확정한 매매법은 매매 등급이다 — 반감기_사이클의 확정 규칙(월말 분할 + 저점 이탈)은
+            그 매매법의 `규칙.md` §1 이고 성적표에서 1차 판정을 받는다 (2026-10-09 승격).
+
+        **승격은 이 한 줄이고 측정은 그대로다** — 산출물은 이동 전후로 바이트가 같다.
+
+        Given: 레지스트리
+        When: 반감기_사이클의 등급을 조회한다
+        Then: 매매다
+        """
+        # Given / When / Then
+        assert track_of("halving_cycle").grade == GRADE_TRADING
+
     @pytest.mark.parametrize("slug", ["reverse", "option_expiry", "month_end", "expiry_monthend"])
     def test_걸지_않기로_한_매매법은_조사_등급이다(self, slug: str) -> None:
         """
