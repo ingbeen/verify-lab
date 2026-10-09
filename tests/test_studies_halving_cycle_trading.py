@@ -34,7 +34,14 @@ from verify_lab.common_constants import (
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
 )
-from verify_lab.execution.constants import EXIT_LIMIT, NO_STOP_LABEL, PERIOD_ALL, PERIODS
+from verify_lab.execution.constants import (
+    EXIT_GAP_STOP,
+    EXIT_INTRADAY_STOP,
+    EXIT_LIMIT,
+    NO_STOP_LABEL,
+    PERIOD_ALL,
+    PERIODS,
+)
 from verify_lab.execution.run_summary import KEY_RULE
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_EXIT_DATE, COL_FORWARD_RETURN, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_UP, SCREEN_EXCLUDED, SCREEN_NOT_JUDGED
@@ -90,23 +97,28 @@ SPLIT = CalendarSplit(name="가짜 분할", buy_tranches=3, buy_last_deadline=26
 SPLIT_FIRST_BUY_MONTHS = 24
 SPLIT_FIRST_SELL_MONTHS = 10
 
-# 저점 이탈이 실제로 걸리는 손으로 짠 시세 — 기본 100 에 몇 날만 심고 2026-12-31 까지 낸다.
-# 첫 반감기(2012-11-28) 포지션은 고점 창 안 2013-12-01(150) · 그 뒤 최저 2014-06-01(60) — 손절선이다 · 매수 2014-11-30 ·
-# 12-31 · 2015-01-31(100) · 매수가 끝난 뒤 2015-03-10(55 < 60) 이탈 · 03-11(58) 전량 매도. 무손절은 다음 반감기(2016-07-09)
-# 뒤 2017-05-31 · 06-30(100)에 판다.
-# 넷째 반감기(2024-04-20) 포지션은 손절선 2025-06-01(60) · 매수 2026-04-30 · 05-31 · 06-30(100) · 2026-08-10(55) 이탈 ·
-# 08-11(58) 전량 매도 — **다음 반감기가 반감기 목록에 없어 무손절은 끝나지 않았는데 저점 이탈은 끝났다.**
+# 저점 이탈이 실제로 걸리는 손으로 짠 시세 — 기본 100 에 몇 날만 심고 2026-12-31 까지 낸다. 시가는 종가 × 0.999,
+# 저가는 종가 × 0.98 이다(`_dataset`).
+# 첫 반감기(2012-11-28) 포지션은 고점 창 안 2013-12-01(150) · 그 뒤 최저 2014-06-01(종가 60 · 저가 58.8) — 손절선 58.8 이다 ·
+# 매수 2014-11-30 · 12-31 · 2015-01-31(100) · 매수가 끝난 뒤 2015-03-10(종가 59.5 · 시가 59.4405 · 저가 58.31) — 시가는
+# 손절선 위이고 장중에 닿아 그날 손절선 58.8 에 전량 판다. 무손절은 다음 반감기(2016-07-09) 뒤 2017-05-31 · 06-30(100)에 판다.
+# 둘째 · 셋째 반감기 포지션은 손절선이 될 저점(2018-01-01 · 2021-12-01 의 60)을 심어 그 뒤 기본값(저가 98)이 닿지 않게 한다 —
+# 심지 않으면 매일 같은 저가 98 이 손절선이 되고 감시 첫날 그 값에 닿는다.
+# 넷째 반감기(2024-04-20) 포지션은 손절선 2025-06-01(저가 58.8) · 매수 2026-04-30 · 05-31 · 06-30(100) · 2026-08-10(59.5)
+# 장중 이탈 — **다음 반감기가 반감기 목록에 없어 무손절은 끝나지 않았는데 저점 이탈은 끝났다.**
 # 하루 등락은 비트코인 이상치 문턱(75%) 안이다
 FLAT_BASE = 100.0
 FLAT_END = "2026-12-31"
 FLAT_PLANTED = {
     "2013-12-01": 150.0,
     "2014-06-01": 60.0,
-    "2015-03-10": 55.0,
-    "2015-03-11": 58.0,
+    "2015-03-10": 59.5,
+    "2017-06-01": 150.0,
+    "2018-01-01": 60.0,
+    "2021-03-01": 150.0,
+    "2021-12-01": 60.0,
     "2025-06-01": 60.0,
-    "2026-08-10": 55.0,
-    "2026-08-11": 58.0,
+    "2026-08-10": 59.5,
 }
 
 
@@ -494,16 +506,17 @@ class TestConfirmedRule:
             assert set(rule[DISPLAY_EXIT_MONTHS]) == {SPLIT_FIRST_SELL_MONTHS}
             assert set(rule["손절선(%)"]) == {NO_STOP_LABEL, STOP_METHOD_LOW_BREAK}
 
-    def test_이탈한_포지션의_저점_이탈_행은_손절_매도일에_남은_보유를_판_체결이다(self, flat_trading: TradingOutputs) -> None:
+    def test_이탈한_포지션의_저점_이탈_행은_이탈일에_손절선_가격으로_남은_보유를_판_체결이다(self, flat_trading: TradingOutputs) -> None:
         """
         목적: 산식 고정 — 거래내역 한 줄의 여덟 칸이 포지션 성적이다. 진입가는 평균 매수가, 청산가는 평균 매도가,
-            보유 중 최악은 평균 단가 대비 최악(결정 ㊻)이고, 손절로 끝난 포지션은 손절 매도일 · 사유 「저점 이탈」이다
+            보유 중 최악은 평균 단가 대비 최악(결정 ㊻)이고, 손절로 끝난 포지션은 이탈일 · 사유 「장중손절」이다(결정 64)
 
-        Given: 첫 반감기 포지션 — 매수 2014-11-30 · 12-31 · 2015-01-31(100) · 손절선 60 · 2015-03-10(55) 이탈 · 03-11(58) 매도.
-            장중 저가는 종가 × 0.98 이라 최악은 2015-03-10 저가 53.9 ÷ 100 − 1
+        Given: 첫 반감기 포지션 — 매수 2014-11-30 · 12-31 · 2015-01-31(100) · 손절선 58.8(2014-06-01 저가) ·
+            2015-03-10 시가 59.4405 · 저가 58.31 — 장중에 닿는다. 손절로 나간 날은 체결가까지만 세 최악이 58.8 ÷ 100 − 1,
+            무손절은 그날 저가 58.31 을 지나간다
         When: 그 포지션의 두 거래내역 행을 본다
-        Then: 저점 이탈 — 2014-11-30 · 100 · 2015-03-11 · 101일 · 58 · −42.0% · −46.1% · 「저점 이탈」
-            무손절 — 2017-06-30 · 943일 · 100 · 0.0% · −46.1% · 「기한청산」
+        Then: 저점 이탈 — 2014-11-30 · 100 · 2015-03-10 · 100일 · 58.8 · −41.2% · −41.2% · 「장중손절」
+            무손절 — 2017-06-30 · 943일 · 100 · 0.0% · −41.69% · 「기한청산」
         """
         # Given
         first = HALVINGS[0].label
@@ -515,32 +528,32 @@ class TestConfirmedRule:
         plain_row = plain[plain["반감기"] == first].iloc[0]
 
         # Then
-        assert (stopped_row["진입일"], stopped_row["청산일"], stopped_row["보유일"]) == ("2014-11-30", "2015-03-11", 101)
+        assert (stopped_row["진입일"], stopped_row["청산일"], stopped_row["보유일"]) == ("2014-11-30", "2015-03-10", 100)
         assert stopped_row["진입가"] == pytest.approx(100.0, abs=0.01)
-        assert stopped_row["청산가"] == pytest.approx(58.0, abs=0.01)
-        assert stopped_row["수익률(%)"] == pytest.approx(-42.0, abs=0.01)
-        assert stopped_row["보유 중 최악(%)"] == pytest.approx(-46.1, abs=0.01)
-        assert stopped_row["청산 사유"] == STOP_METHOD_LOW_BREAK
+        assert stopped_row["청산가"] == pytest.approx(58.8, abs=0.01)
+        assert stopped_row["수익률(%)"] == pytest.approx(-41.2, abs=0.01)
+        assert stopped_row["보유 중 최악(%)"] == pytest.approx(-41.2, abs=0.01)
+        assert stopped_row["청산 사유"] == EXIT_INTRADAY_STOP
         assert (plain_row["진입일"], plain_row["청산일"], plain_row["보유일"]) == ("2014-11-30", "2017-06-30", 943)
         assert plain_row["청산가"] == pytest.approx(100.0, abs=0.01)
         assert plain_row["수익률(%)"] == pytest.approx(0.0, abs=0.01)
-        assert plain_row["보유 중 최악(%)"] == pytest.approx(-46.1, abs=0.01)
+        assert plain_row["보유 중 최악(%)"] == pytest.approx(-41.69, abs=0.01)
         assert plain_row["청산 사유"] == EXIT_LIMIT
 
     def test_전체_행만_끝난_포지션으로_판정한다(self, flat_trading: TradingOutputs) -> None:
         """
         목적: 확정 규칙도 일시 격자와 같은 게이트를 «전체 행 하나»로 받는다 — 판정과 집행이 같은 표에 있다
 
-        Given: 끝난 포지션 셋(2012 · 2016 · 2020 반감기)의 저점 이탈 수익률 −42 · 0 · 0 %
+        Given: 끝난 포지션 셋(2012 · 2016 · 2020 반감기)의 저점 이탈 수익률 −41.2 · 0 · 0 %
         When: 저점 이탈 행의 시기별 판정을 본다
-        Then: 전체 행 — 신호 3 · 평균 −14.0 · 「제외」. 나머지 네 행은 「판정 안 함」
+        Then: 전체 행 — 신호 3 · 평균 −13.73 · 「제외」. 나머지 네 행은 「판정 안 함」
         """
         # Given / When
         rows = _rule(flat_trading.performance, STOP_METHOD_LOW_BREAK).set_index("시기")
 
         # Then
         assert rows.loc[PERIOD_ALL, "신호"] == 3
-        assert rows.loc[PERIOD_ALL, "평균(%)"] == pytest.approx(-14.0, abs=0.01)
+        assert rows.loc[PERIOD_ALL, "평균(%)"] == pytest.approx(-13.73, abs=0.01)
         assert rows.loc[PERIOD_ALL, "1차 판정"] == SCREEN_EXCLUDED
         assert set(rows.drop(index=PERIOD_ALL)["1차 판정"]) == {SCREEN_NOT_JUDGED}
 
@@ -569,25 +582,29 @@ class TestConfirmedRule:
             }
         ]
 
-    def test_저점_이탈로_판_포지션은_표본에_들었든_빠졌든_요약이_센다(self, flat_trading: TradingOutputs) -> None:
+    def test_저점_이탈로_판_포지션은_장중손절로_세지고_표본에서_빠진_것은_요약이_센다(self, flat_trading: TradingOutputs) -> None:
         """
-        목적: 저점 이탈은 갭손절 · 장중손절에 들지 않고, 무손절이 끝나기 전에 이탈한 포지션은 거래내역에도 없다 — 그
-            이탈이 체결 산출물에 숫자로 남는 자리가 요약의 폭별 기록임을 고정한다
+        목적: 저점 이탈 손절은 성적표의 갭손절 · 장중손절에 세진다 — 어느 손절인지는 `손절선(%)` 의 「저점 이탈」이 말한다.
+            무손절이 끝나기 전에 이탈한 포지션은 거래내역에도 성적표에도 없다 — 그 이탈이 체결 산출물에 숫자로 남는 자리가
+            요약의 폭별 기록임을 고정한다
 
-        Given: 2012 포지션(2015-03-11 손절 매도 · 표본에 듦)과 2024 포지션(2026-08-11 손절 매도 · 무손절이 끝나지 않아 빠짐)
-        When: 거래내역의 「저점 이탈」 청산과 요약의 폭별 저점 이탈 매도 수를 본다
-        Then: 거래내역의 「저점 이탈」 청산은 1건(2012)이고, 요약은 빠진 2024 까지 2 를 센다. 성적표의 저점 이탈 전체 행의
-            갭손절 · 장중손절은 0 이다
+        Given: 2012 포지션(2015-03-10 장중손절 · 표본에 듦)과 2024 포지션(2026-08-10 장중손절 · 무손절이 끝나지 않아 빠짐)
+        When: 거래내역의 손절 청산 · 성적표의 저점 이탈 전체 행 · 요약의 폭별 저점 이탈 매도 수를 본다
+        Then: 거래내역의 「장중손절」 청산은 1건(2012)이고 「갭손절」은 없다. 성적표 전체 행의 장중손절 1 · 갭손절 0 ·
+            요약은 빠진 2024 까지 2 를 센다
         """
         # Given / When
-        stopped = flat_trading.trades[flat_trading.trades["청산 사유"] == STOP_METHOD_LOW_BREAK]
+        trades = flat_trading.trades
+        intraday = trades[trades["청산 사유"] == EXIT_INTRADAY_STOP]
         record = flat_trading.summary[KEY_RULE][KEY_TARGETS][0][KEY_SPLIT_TARGETS][0]
         rows = _rule(flat_trading.performance, STOP_METHOD_LOW_BREAK).set_index("시기")
 
         # Then
-        assert list(stopped["반감기"]) == [HALVINGS[0].label]
+        assert list(intraday["반감기"]) == [HALVINGS[0].label]
+        assert set(intraday["손절선(%)"]) == {STOP_METHOD_LOW_BREAK}
+        assert not (trades["청산 사유"] == EXIT_GAP_STOP).any()
+        assert (rows.loc[PERIOD_ALL, "갭손절"], rows.loc[PERIOD_ALL, "장중손절"]) == (0, 1)
         assert record[KEY_STOP_SOLD_COUNT] == 2
-        assert (rows.loc[PERIOD_ALL, "갭손절"], rows.loc[PERIOD_ALL, "장중손절"]) == (0, 0)
 
     def test_두_손절_방식은_같은_포지션을_잰다(self, flat_trading: TradingOutputs, flat_dataset: Dataset) -> None:
         """
@@ -595,7 +612,7 @@ class TestConfirmedRule:
             포지션이 끝났는가로 정한다. 저점 이탈로 먼저 끝난 포지션도 무손절이 끝날 때까지 두 행 모두에서 빠진다
             (일시 격자가 예정 청산일로 표본을 정하는 것과 같다)
 
-        Given: 2024 반감기 포지션 — 저점 이탈로는 2026-08-11 에 끝났지만 무손절은 다음 반감기가 없어 끝나지 않았다
+        Given: 2024 반감기 포지션 — 저점 이탈로는 2026-08-10 에 끝났지만 무손절은 다음 반감기가 없어 끝나지 않았다
             (그런 포지션이 실제로 생겼는지 분할 모듈의 결과로 먼저 확인한다)
         When: 두 손절 방식의 거래내역과 전체 행을 본다
         Then: 두 방식 모두 신호 3 · 거래내역의 반감기가 같은 셋이고 2024 행이 없다
@@ -611,9 +628,9 @@ class TestConfirmedRule:
         )
         last = HALVINGS[-1]
         early = [outcome for outcome in grid.outcomes if outcome.halving == last]
-        assert {(outcome.method, outcome.reason, outcome.stop_sold) for outcome in early} == {
-            (NO_STOP_LABEL, REASON_NO_NEXT_HALVING, False),
-            (STOP_METHOD_LOW_BREAK, REASON_NONE, True),
+        assert {(outcome.method, outcome.result.reason, outcome.exit_reason) for outcome in early} == {
+            (NO_STOP_LABEL, REASON_NO_NEXT_HALVING, None),
+            (STOP_METHOD_LOW_BREAK, REASON_NONE, EXIT_INTRADAY_STOP),
         }, "저점 이탈로만 먼저 끝난 포지션이 없어 계약을 검사하지 못했습니다"
 
         # When
@@ -655,7 +672,7 @@ class TestConfirmedRule:
         judged = {
             outcome.halving
             for outcome in grid.outcomes
-            if outcome.method == NO_STOP_LABEL and outcome.reason == REASON_NONE
+            if outcome.method == NO_STOP_LABEL and outcome.result.reason == REASON_NONE
         }
         chosen = [outcome for outcome in grid.outcomes if outcome.halving in judged]
 

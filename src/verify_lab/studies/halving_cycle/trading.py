@@ -119,8 +119,8 @@ KEY_NOT_YET_COUNT = "not_yet_count"
 # 확정 규칙의 폭마다 포지션 수와 끝나지 않은 포지션 — 끝나지 않은 것은 체결이 아니라 거래내역에 없고 여기에만 남는다
 # (결정 61). **포지션을 한 번 센다** — 표본은 무손절 포지션이 끝났는가로 정해 두 손절 방식이 같은 포지션을 잰다
 KEY_SPLIT_TARGETS = "calendar_split_targets"
-# 그 폭에서 저점 이탈로 남은 보유를 판 포지션 수 — **표본에서 빠진 포지션도 센다.** 저점 이탈은 갭손절 · 장중손절에 들지 않고,
-# 무손절이 끝나기 전에 이탈한 포지션은 거래내역에도 없어 이 칸이 아니면 체결 산출물에 숫자로 남지 않는다
+# 그 폭에서 저점 이탈로 남은 보유를 판 포지션 수 — **표본에서 빠진 포지션도 센다.** 무손절이 끝나기 전에 이탈한 포지션은
+# 거래내역에도 성적표의 갭손절 · 장중손절에도 없어 이 칸이 아니면 체결 산출물에 숫자로 남지 않는다
 KEY_STOP_SOLD_COUNT = "stop_sold_count"
 
 # 요약에 싣는 비율(0 ~ 1)의 자릿수 — 전역 반올림 규칙표의 「비율」이다
@@ -135,7 +135,7 @@ NOTE_ENTRY = (
 )
 NOTE_RULE = (
     "확정 규칙 — 매매 방식이 달력 분할의 폭 이름인 행이다. 끝난 포지션 하나가 체결 한 건이고, 진입일은 첫 매수일 · 진입가는 "
-    "평균 매수가 · 청산일은 마지막 매도일(저점 이탈로 판 포지션은 손절 매도일) · 청산가는 평균 매도가다. 개월 칸은 첫 매수 · "
+    "평균 매수가 · 청산일은 마지막 매도일(저점 이탈로 판 포지션은 이탈일) · 청산가는 평균 매도가다. 개월 칸은 첫 매수 · "
     "첫 매도 회차라 일시 격자의 같은 개월 칸과 겹친다 — 매매 방식 칸으로 가른다. 회차 원자료는 측정 표 달력분할회차에 있다. "
     "표본은 무손절 포지션이 끝났는가로 정한다 — 저점 이탈로 먼저 끝난 포지션도 무손절이 끝날 때까지 두 손절 방식 행 모두에서 "
     "빠지고(일시 격자가 예정 청산일로 표본을 정하는 것과 같다), 그동안 그 손절 성적은 측정 표 달력분할손절에 있다"
@@ -150,9 +150,10 @@ NOTE_INDEPENDENCE = "칸은 같은 반감기 사이클들을 진입 · 청산 �
 NOTE_HOLD_LENGTH = "다음 반감기 뒤에 파는 칸은 사이클 길이가 달라 같은 칸이라도 사이클마다 보유 길이가 몇 달씩 다르다 — 반감기에 묶어 파는 규칙이라 그 차이를 받아들인다"
 NOTE_STOP = (
     "일시 격자는 무손절 한 종이다 — 진입가 대비 % 손절선을 두지 않는다. 확정 규칙의 손절은 저점 이탈이다: 매수 기간에는 "
-    "손절이 없고, 마지막 매수일까지의 사이클 고점 뒤 최저 종가가 손절선이며, 그 뒤 종가가 손절선 아래면 다음 거래일 종가에 "
-    "남은 보유를 전부 판다. 종가로 판정하고 다음 날 종가에 팔아 갭손절 · 장중손절 건수에 들지 않는다 — 이탈은 거래내역의 "
-    "청산 사유와, 표본에서 빠진 포지션까지 세는 요약의 폭별 저점 이탈 매도 수(stop_sold_count)가 말한다"
+    "손절이 없고, 마지막 매수일까지의 사이클 고점 뒤 최저 장중 저가가 손절선이며, 그 뒤 장중 저가가 손절선에 닿으면 그날 "
+    "남은 보유를 전부 판다(걸어 둔 스탑 주문) — 체결가는 손절선, 그날 시가가 이미 그 이하면 시가다. 그 체결은 청산 사유 "
+    "장중손절 · 갭손절로 성적표의 두 건수에 세지고, 어느 손절인지는 손절선(%) 칸의 저점 이탈이 말한다. 표본에서 빠진 "
+    "포지션의 이탈은 요약의 폭별 저점 이탈 매도 수(stop_sold_count)가 센다"
 )
 NOTE_SCREEN = (
     "보유가 몇 달에서 한 사이클이라 평균이 양수인 칸은 거의 모두 1차 판정을 넘는다 — 게이트는 하나이고 이 격자에 맞춰 "
@@ -367,7 +368,7 @@ def _run_rule(
         split: 폭
         method: 손절 방식 — `NO_STOP_LABEL` 또는 `STOP_METHOD_LOW_BREAK`
         outcomes: 그 폭 · 손절 방식에서 **무손절 포지션이 끝난** 포지션의 결과 (반감기 순 — 첫 매수일 오름차순).
-            무손절이 끝났으면 저점 이탈도 끝나 있다 — 남은 매도 회차가 데이터 안에 있어 손절 매도일도 데이터 안이다
+            무손절이 끝났으면 저점 이탈도 끝나 있다 — 이탈하면 그날 판다
         accumulator: 결과를 쌓는 자리
 
     Raises:
@@ -388,12 +389,12 @@ def _run_rule(
     reasons: list[str] = []
     worst_rates: list[float] = []
     for outcome in outcomes:
-        if outcome.reason != REASON_NONE:
+        result = outcome.result
+        if result.reason != REASON_NONE:
             raise RuntimeError(
                 f"내부 불변조건 위반: 무손절이 끝난 포지션의 {outcome.method} 성적이 끝나지 않았습니다 — "
-                f"{outcome.split.name} · {outcome.halving.label} · {outcome.reason}"
+                f"{outcome.split.name} · {outcome.halving.label} · {result.reason}"
             )
-        result = outcome.result
         entry_day = _finished(result.first_buy_day, "첫 매수일", outcome)
         exit_day = _finished(result.last_sell_day, "마지막 매도일", outcome)
         entry_position, exit_position = resolve_positions(
@@ -401,7 +402,8 @@ def _run_rule(
         ).tolist()
         trade = TradeResult(
             return_rate=_finished(result.return_rate, "수익률", outcome),
-            reason=STOP_METHOD_LOW_BREAK if outcome.stop_sold else EXIT_LIMIT,
+            # **사유는 손절 판정이 정한다** — 저점 이탈로 판 체결은 장중손절 · 갭손절이고 성적표의 두 건수에 세진다
+            reason=EXIT_LIMIT if outcome.exit_reason is None else outcome.exit_reason,
             hold_days=exit_position - entry_position,
             worst_hold_rate=_finished(result.worst_vs_cost, "평균 단가 대비 최악", outcome),
         )
@@ -515,11 +517,11 @@ def run_halving_cycle_trading(
             # 그런 포지션은 무손절이 끝날 때까지 두 행 모두에서 빠지고, 그동안 그 손절 성적은 측정 표(달력분할손절)에,
             # 이탈했다는 사실은 아래 폭별 기록의 저점 이탈 매도 수에 있다
             plain = [outcome for outcome in outcomes if outcome.method == NO_STOP_LABEL]
-            judged = {outcome.halving for outcome in plain if outcome.reason == REASON_NONE}
+            judged = {outcome.halving for outcome in plain if outcome.result.reason == REASON_NONE}
             for method in (NO_STOP_LABEL, STOP_METHOD_LOW_BREAK):
                 chosen = [outcome for outcome in outcomes if outcome.method == method and outcome.halving in judged]
                 _run_rule(dataset, trading_days, split, method, chosen, accumulator)
-            unfinished = Counter(outcome.reason for outcome in plain if outcome.reason != REASON_NONE)
+            unfinished = Counter(outcome.result.reason for outcome in plain if outcome.result.reason != REASON_NONE)
             split_records.append(
                 {
                     KEY_NAME: split.name,
@@ -527,7 +529,9 @@ def run_halving_cycle_trading(
                     KEY_EXCLUDED_COUNT: sum(unfinished.values()),
                     KEY_EXCLUDED_BY_REASON: dict(unfinished),
                     KEY_STOP_SOLD_COUNT: sum(
-                        outcome.stop_sold for outcome in outcomes if outcome.method == STOP_METHOD_LOW_BREAK
+                        outcome.exit_reason is not None
+                        for outcome in outcomes
+                        if outcome.method == STOP_METHOD_LOW_BREAK
                     ),
                 }
             )

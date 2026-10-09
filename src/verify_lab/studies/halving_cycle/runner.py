@@ -130,8 +130,8 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_PREVIOUS_VALUE,
     COL_SIGNAL_MEANING,
     COL_SPLIT_FILL_CLOSE,
-    COL_STOP_LINE_CLOSE,
-    COL_STOP_SELL_CLOSE,
+    COL_STOP_FILL_PRICE,
+    COL_STOP_LINE_LOW,
     COL_TICKER,
     COL_ZERO_VOLUME,
     COLUMN_LABELS,
@@ -327,8 +327,10 @@ NOTE_CALENDAR_SPLIT_FORK = (
 NOTE_CALENDAR_SPLIT_HINDSIGHT = "매수 · 매도 기간은 과거 바닥 · 고점 시점과 최근 두 사이클의 쌍봉을 본 뒤 정했다 — 과거에 맞춰져 있다"
 NOTE_CALENDAR_SPLIT_STOP = (
     "손절은 저점 이탈 하나다 — 매수 기간에는 팔지 않고, 손절선은 포지션을 산 반감기의 사이클 고점(반감기 뒤 고점 창 안의 "
-    "최고 종가) 다음 날부터 마지막 매수일까지의 최저 종가로 고정한다. 마지막 매수 다음 날부터 마지막 매도일까지(매도가 "
-    "끝나지 않았으면 데이터 끝까지) 종가가 손절선 아래면 다음 거래일 종가에 남은 보유를 전부 판다. 그 전에 판 매도 회차는 그대로다"
+    "최고 종가) 다음 날부터 마지막 매수일까지의 최저 장중 저가로 고정한다. 마지막 매수 다음 날부터 마지막 매도일까지(매도가 "
+    "끝나지 않았으면 데이터 끝까지) 장중 저가가 손절선에 닿으면 그날 남은 보유를 전부 판다 — 걸어 둔 스탑 주문이다. 체결가는 "
+    "손절선이고, 그날 시가가 이미 손절선 이하면 그 시가다. 이탈일 전에 판 매도 회차는 그대로이고, 이탈일에 예정된 매도 회차도 "
+    "손절로 판다(월말 회차는 그날 종가라 장중 손절이 먼저다)"
 )
 CALENDAR_SPLIT_NOTES = (
     NOTE_CALENDAR_SPLIT_MEASURE_ONLY,
@@ -362,8 +364,8 @@ _SPLIT_PRICE_COLUMNS = (
     COL_SPLIT_FILL_CLOSE,
     COL_AVG_BUY_PRICE,
     COL_AVG_SELL_PRICE,
-    COL_STOP_LINE_CLOSE,
-    COL_STOP_SELL_CLOSE,
+    COL_STOP_LINE_LOW,
+    COL_STOP_FILL_PRICE,
 )
 
 # 조합 표의 사이클별 가로 칸 — 반감기 목록에서 이름을 만든다

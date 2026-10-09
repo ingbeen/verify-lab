@@ -619,15 +619,15 @@ COL_SELL_TRANCHES: Final = "sell_tranches"
 COL_BUY_FIRST_DEADLINE: Final = "buy_first_deadline"
 COL_SELL_FIRST_DEADLINE: Final = "sell_first_deadline"
 
-# 3단계 달력 매달 분할 — 손절 표(결정 58). 나머지 칸은 포지션 표와 뜻이 같아 같은 토큰을 쓴다
+# 3단계 달력 매달 분할 — 손절 표(결정 58 · 64). 나머지 칸은 포지션 표와 뜻이 같아 같은 토큰을 쓴다.
+# **손절 매도일 칸이 없다** — 장중에 닿은 그날 팔아 이탈일과 언제나 같다
 COL_STOP_METHOD: Final = "stop_method"
 COL_FORK_SHARE: Final = "fork_share"
 COL_STOP_LINE_DATE: Final = "stop_line_date"
-COL_STOP_LINE_CLOSE: Final = "stop_line_close"
+COL_STOP_LINE_LOW: Final = "stop_line_low"
 COL_STOP_LINE_VS_COST: Final = "stop_line_vs_cost"
 COL_BREAK_DATE: Final = "break_date"
-COL_STOP_SELL_DATE: Final = "stop_sell_date"
-COL_STOP_SELL_CLOSE: Final = "stop_sell_close"
+COL_STOP_FILL_PRICE: Final = "stop_fill_price"
 COL_SOLD_BEFORE_STOP: Final = "sold_before_stop"
 
 
@@ -699,8 +699,6 @@ STOP_METHOD_LOW_BREAK: Final = "저점 이탈"
 
 # 체결 산출물의 매매 방식 — 한 날에 사고 한 날에 파는 일시 격자(결정 ㉞). 확정 규칙 행은 달력 분할의 폭 이름이다(결정 61)
 TRADE_METHOD_LUMP: Final = "일시"
-# 이탈은 났는데 그 다음 거래일(손절 매도일)이 데이터 뒤다. 행은 남고 성적은 비운다
-REASON_STOP_SELL_PENDING: Final = "이탈 다음 거래일이 데이터 뒤"
 
 
 # ============================================================
@@ -798,11 +796,10 @@ DISPLAY_SELL_FIRST_DEADLINE: Final = "매도 첫 기한(개월)"
 # 3단계 달력 매달 분할 — 손절 표. **「손절선(%)」을 쓰지 않는다** — 체결 산출물의 진입가 대비 손절선 칸이다
 DISPLAY_STOP_METHOD: Final = "손절 방식"
 DISPLAY_STOP_LINE_DATE: Final = "손절선일"
-DISPLAY_STOP_LINE_CLOSE: Final = "손절선 종가"
+DISPLAY_STOP_LINE_LOW: Final = "손절선 저가"
 DISPLAY_STOP_LINE_VS_COST: Final = "손절선의 평균 단가 대비(%)"
 DISPLAY_BREAK_DATE: Final = "이탈일"
-DISPLAY_STOP_SELL_DATE: Final = "손절 매도일"
-DISPLAY_STOP_SELL_CLOSE: Final = "손절 매도 종가"
+DISPLAY_STOP_FILL_PRICE: Final = "손절 체결가"
 DISPLAY_SOLD_BEFORE_STOP: Final = "손절 전 매도 회차"
 
 
@@ -938,11 +935,10 @@ COLUMN_LABELS: Final = {
     COL_STOP_METHOD: DISPLAY_STOP_METHOD,
     COL_FORK_SHARE: DISPLAY_FORK_SHARE,
     COL_STOP_LINE_DATE: DISPLAY_STOP_LINE_DATE,
-    COL_STOP_LINE_CLOSE: DISPLAY_STOP_LINE_CLOSE,
+    COL_STOP_LINE_LOW: DISPLAY_STOP_LINE_LOW,
     COL_STOP_LINE_VS_COST: DISPLAY_STOP_LINE_VS_COST,
     COL_BREAK_DATE: DISPLAY_BREAK_DATE,
-    COL_STOP_SELL_DATE: DISPLAY_STOP_SELL_DATE,
-    COL_STOP_SELL_CLOSE: DISPLAY_STOP_SELL_CLOSE,
+    COL_STOP_FILL_PRICE: DISPLAY_STOP_FILL_PRICE,
     COL_SOLD_BEFORE_STOP: DISPLAY_SOLD_BEFORE_STOP,
 }
 

@@ -19,9 +19,12 @@
 
 **달력 매달 분할(결정 51 · 52 · 54)도 여기서 잰다** — 「달력만」 조합을 폭마다 쪽별 회차 수 · 간격만 바꾸고 기한을
 그 달의 말일로 옮겨 같은 두 함수(`leg_fills` · `position_result`)로 잰다. 회차 날짜와 평균 단가 · 최악의 정의가 두 벌이
-되지 않는다(절대 원칙 5). **달력 매달 분할에는 저점 이탈 손절과 하드포크 몫을 손절 표로 더 낸다**(결정 58) — 이탈하면
-남은 매도 회차를 손절 매도일로 옮겨 같은 `position_result` 로 잰다. 손절 표를 만든 성적은 표로 바꾸기 전 모양으로
-함께 낸다 — 체결 조립(`trading.py`)이 그것을 확정 규칙 행으로 옮긴다(결정 61).
+되지 않는다(절대 원칙 5). **달력 매달 분할에는 저점 이탈 손절과 하드포크 몫을 손절 표로 더 낸다**(결정 58 · 64) — 장중
+저가가 손절선에 닿으면 남은 매도 회차를 그날 손절 체결가로 옮겨 같은 `position_result` 로 잰다. 손절 표를 만든 성적은
+표로 바꾸기 전 모양으로 함께 낸다 — 체결 조립(`trading.py`)이 그것을 확정 규칙 행으로 옮긴다(결정 61).
+
+**손절 판정을 공유 체결식(`execution/trade_fill.py`)에 맡기지 않는다**(결정 64) — 그쪽 손절선은 진입가 대비 비율 하나인데
+이 손절선은 가격이고 진입가가 여섯이다. 판정 순서(시가 → 장중)와 비교(이하)는 그쪽과 같다.
 """
 
 from collections.abc import Sequence
@@ -31,8 +34,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_LOW
-from verify_lab.execution.constants import NO_STOP_LABEL
+from verify_lab.common_constants import COL_CLOSE, COL_DATE, COL_LOW, COL_OPEN
+from verify_lab.execution.constants import EXIT_GAP_STOP, EXIT_INTRADAY_STOP, NO_STOP_LABEL
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_HOLD_DAYS, REASON_NONE
 from verify_lab.measure.statistics import COL_MEAN, COL_MEDIAN, COL_MIN, COL_POSITIVE_COUNT
 from verify_lab.studies.halving_cycle.constants import (
@@ -79,18 +82,16 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_SPLIT_TOTAL,
     COL_SPLIT_TRANCHE,
     COL_SPLIT_TRIGGER,
-    COL_STOP_LINE_CLOSE,
+    COL_STOP_FILL_PRICE,
     COL_STOP_LINE_DATE,
+    COL_STOP_LINE_LOW,
     COL_STOP_LINE_VS_COST,
     COL_STOP_METHOD,
-    COL_STOP_SELL_CLOSE,
-    COL_STOP_SELL_DATE,
     COL_WORST_VS_COST,
     REASON_NO_NEXT_HALVING,
     REASON_POSITION_BUYING,
     REASON_POSITION_SELLING,
     REASON_SPLIT_PENDING,
-    REASON_STOP_SELL_PENDING,
     SPLIT_ANCHOR_HALVING,
     SPLIT_ANCHOR_HIGH,
     SPLIT_SIDE_BUY,
@@ -128,7 +129,6 @@ _DATE_COLUMNS = (
     COL_LAST_SELL_DATE,
     COL_STOP_LINE_DATE,
     COL_BREAK_DATE,
-    COL_STOP_SELL_DATE,
 )
 
 
@@ -162,12 +162,14 @@ class TrancheFill:
         fill_day: 체결일. 아직 체결 전이면 `None`
         trigger: 계기 (`constants.SPLIT_TRIGGER_*`). 체결 전이면 `None`
         reason: 제외 사유. 체결했으면 `REASON_NONE`
+        fill_price: 체결가. `None` 이면 그날 종가에 체결했다 — 손절 체결(저점 이탈)만 값을 든다
     """
 
     deadline: pd.Timestamp
     fill_day: pd.Timestamp | None
     trigger: str | None
     reason: str
+    fill_price: float | None = None
 
 
 @dataclass(frozen=True)
@@ -176,10 +178,11 @@ class PositionResult:
 
     Attributes:
         avg_buy_price: 체결한 매수 회차의 평균 단가(같은 금액 — 조화평균). 한 회차도 못 샀으면 `None`
-        avg_sell_price: 매도 회차 종가의 평균(같은 수량). 포지션이 끝나지 않았으면 `None`
+        avg_sell_price: 매도 회차 체결가의 평균(같은 수량) — 손절 체결 회차는 체결가, 나머지는 그날 종가다. 포지션이
+            끝나지 않았으면 `None`
         return_rate: 평균 매도가 ÷ 평균 매수가 − 1. 포지션이 끝나지 않았으면 `None`
         worst_vs_cost: 첫 매수 다음 날부터 마지막 매도일(끝나지 않았으면 데이터 끝)까지, 그날 전에 산 회차의 평균 단가
-            대비 장중 저가의 최저. 셀 날이 없으면 `None`
+            대비 장중 저가의 최저. 손절 체결로 끝난 날은 장중 저가 대신 체결가까지만 센다. 셀 날이 없으면 `None`
         first_buy_day: 첫 매수일
         last_sell_day: 마지막 매도일. 끝나지 않았으면 `None`
         hold_days: 첫 매수일부터 마지막 매도일까지의 날 수. 끝나지 않았으면 `None`
@@ -226,19 +229,18 @@ class StopOutcome:
         split: 폭
         halving: 포지션을 산 반감기
         method: 손절 방식 — `NO_STOP_LABEL` 또는 `STOP_METHOD_LOW_BREAK`
-        result: 그 손절 방식의 포지션 성적. 이탈해 손절 매도한 포지션은 남은 매도 회차를 손절 매도일로 옮긴 성적이다
-        reason: 손절 표의 제외 사유. 끝났으면 `REASON_NONE` — 이탈 다음 거래일이 데이터 뒤면 `result.reason` 과 다르다
+        result: 그 손절 방식의 포지션 성적. 손절한 포지션은 남은 매도 회차를 이탈일의 손절 체결로 옮긴 성적이다.
+            손절 표의 제외 사유는 `result.reason` 이다
         fork_share: 하드포크 몫 (비율). 끝나지 않았으면 `None`
-        stop_sold: 저점 이탈로 남은 보유를 손절 매도했는가. 이탈했어도 팔 것이 남지 않았으면 거짓이다
+        exit_reason: 저점 이탈로 남은 보유를 판 체결의 청산 사유 — `EXIT_GAP_STOP` · `EXIT_INTRADAY_STOP`. 팔지 않았으면 `None`
     """
 
     split: CalendarSplit
     halving: Halving
     method: str
     result: PositionResult
-    reason: str
     fork_share: float | None
-    stop_sold: bool
+    exit_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -260,19 +262,21 @@ class CalendarSplitGrid:
 
 @dataclass(frozen=True)
 class _LowBreak:
-    """달력 매달 분할 한 포지션의 저점 이탈 (결정 58)
+    """달력 매달 분할 한 포지션의 저점 이탈 (결정 58 · 64)
 
     Attributes:
         line_day: 손절선을 만든 날
-        line_close: 손절선 — 사이클 고점 다음 날부터 마지막 매수일까지의 최저 종가
-        break_day: 이탈일 — 감시 중 종가가 손절선 아래로 처음 내려간 날. 없으면 `None`
-        sell_day: 손절 매도일 — 이탈 다음 거래일. 이탈이 없거나 다음 거래일이 데이터 뒤면 `None`
+        line_low: 손절선 — 사이클 고점 다음 날부터 마지막 매수일까지의 최저 장중 저가
+        break_day: 이탈일 — 감시 중 장중 저가가 손절선에 처음 닿은 날. 그날 판다. 없으면 `None`
+        fill_price: 손절 체결가 — 손절선, 그날 시가가 이미 손절선 이하면 그 시가. 이탈이 없으면 `None`
+        exit_reason: 청산 사유 — `EXIT_GAP_STOP` · `EXIT_INTRADAY_STOP`. 이탈이 없으면 `None`
     """
 
     line_day: pd.Timestamp
-    line_close: float
+    line_low: float
     break_day: pd.Timestamp | None
-    sell_day: pd.Timestamp | None
+    fill_price: float | None
+    exit_reason: str | None
 
 
 def _require_increasing(index: pd.Index, label: str) -> pd.DatetimeIndex:
@@ -540,6 +544,29 @@ def _trigger_counts(fills: Sequence[TrancheFill]) -> tuple[int, int]:
     return triggers.count(SPLIT_TRIGGER_ONCHAIN), triggers.count(SPLIT_TRIGGER_CALENDAR)
 
 
+def _fill_prices(
+    dates: pd.DatetimeIndex, closes: np.ndarray, fills: Sequence[TrancheFill], *, label: str
+) -> np.ndarray:
+    """체결한 회차의 체결가 — 회차가 체결가를 들면(손절 체결) 그 값, 아니면 그날 종가. 회차 순서 그대로다.
+
+    Args:
+        dates: 시세의 날짜
+        closes: 같은 순서의 종가
+        fills: 회차
+        label: 메시지에 쓸 이름
+
+    Returns:
+        체결한 회차마다의 체결가
+    """
+    filled = [(fill.fill_day, fill.fill_price) for fill in fills if fill.fill_day is not None]
+    # **없는 날짜에서 멈춘다** — `get_indexer` 는 없는 날짜에 −1 을 돌려줘 마지막 행의 가격을 예외 없이 쓴다
+    on_day = closes[trading_positions(dates, pd.DatetimeIndex([day for day, _ in filled]), label=label)]
+
+    return np.array(
+        [close if price is None else price for (_, price), close in zip(filled, on_day, strict=True)], dtype=float
+    )
+
+
 def position_result(
     frame: pd.DataFrame, buy_fills: Sequence[TrancheFill], sell_fills: Sequence[TrancheFill] | None
 ) -> PositionResult:
@@ -549,18 +576,20 @@ def position_result(
     산술평균이고, 끝난 포지션의 수익률은 (매수 회차 × 매도 회차) 칸 수익률의 평균과 같다(결정 ㊱).
 
     **평균 단가 대비 최악은 그날 «전»에 산 회차만 센다** — 그날 종가에 산 회차는 그날 장중을 겪지 않았다. 첫 매수일
-    장중도 같은 이유로 세지 않고, 마지막 매도일 뒤는 들고 있지 않은 기간이다.
+    장중도 같은 이유로 세지 않고, 마지막 매도일 뒤는 들고 있지 않은 기간이다. **손절 체결(체결가를 든 매도 회차)로 끝난
+    날은 장중 저가 대신 그 체결가까지만 센다** — 그 가격에 다 팔고 나와 그날의 나머지는 들고 있지 않은 시간이다.
 
     Args:
         frame: 측정 시세 (날짜 · 종가 · 저가, 날짜 오름차순)
         buy_fills: 매수 회차
-        sell_fills: 매도 회차. 다음 반감기가 반감기 목록에 없으면 `None`
+        sell_fills: 매도 회차. 다음 반감기가 반감기 목록에 없으면 `None`. 체결가를 든 회차는 그 값에 판 것이다
 
     Returns:
         포지션 성적. 끝나지 않은 이유는 매수가 남음 → 다음 반감기 없음 → 매도가 남음 순으로 적는다
 
     Raises:
-        RuntimeError: 매도 회차가 매수가 끝나기 전(마지막 매수일 이전)에 있는 경우 (내부 불변조건)
+        RuntimeError: 매도 회차가 매수가 끝나기 전(마지막 매수일 이전)에 있거나, 체결가를 든 매도 회차가 포지션이 끝나는
+            날(마지막 매도일) 말고 있는 경우 (내부 불변조건 — 그 뒤에도 들고 있으면 그날을 체결가까지만 센 최악이 틀린다)
     """
     dates = pd.DatetimeIndex(frame[COL_DATE])
     closes = frame[COL_CLOSE].to_numpy(dtype=float)
@@ -581,8 +610,14 @@ def position_result(
     else:
         reason = REASON_NONE
 
-    # **없는 날짜에서 멈춘다** — `get_indexer` 는 없는 날짜에 −1 을 돌려줘 마지막 행의 가격을 예외 없이 쓴다
-    buy_prices = closes[trading_positions(dates, pd.DatetimeIndex(buy_days), label="매수 체결일")]
+    stop_prices = [fill.fill_price for fill in sell_fills or () if fill.fill_price is not None]
+    stop_days = {fill.fill_day for fill in sell_fills or () if fill.fill_price is not None}
+    if stop_prices and (reason != REASON_NONE or stop_days != {max(sell_days)}):
+        raise RuntimeError(
+            f"내부 불변조건 위반: 체결가를 든 매도 회차는 포지션이 끝나는 날에만 옵니다 — 사유 {reason} · 그 회차 {stop_days} · " f"매도 {sell_days}"
+        )
+
+    buy_prices = _fill_prices(dates, closes, buy_fills, label="매수 체결일")
     avg_buy = len(buy_prices) / float(np.sum(1.0 / buy_prices)) if buy_days else None
 
     avg_sell: float | None = None
@@ -590,7 +625,7 @@ def position_result(
     last_sell: pd.Timestamp | None = None
     hold_days: int | None = None
     if reason == REASON_NONE and avg_buy is not None:
-        avg_sell = float(np.mean(closes[trading_positions(dates, pd.DatetimeIndex(sell_days), label="매도 체결일")]))
+        avg_sell = float(np.mean(_fill_prices(dates, closes, sell_fills or (), label="매도 체결일")))
         return_rate = avg_sell / avg_buy - 1.0
         last_sell = max(sell_days)
         hold_days = (last_sell - min(buy_days)).days
@@ -605,7 +640,11 @@ def position_result(
         if window.any():
             held = sorted_days.searchsorted(dates[window], side="left")
             costs = held / cumulative_inverse[held - 1]
-            worst = float(np.min(lows[window] / costs - 1.0))
+            held_lows = lows[window]
+            if stop_prices:
+                # 구간의 마지막 날이 곧 손절 체결일이다 — 위 불변조건이 그 날을 마지막 매도일로 묶었다
+                held_lows[-1] = min(stop_prices)
+            worst = float(np.min(held_lows / costs - 1.0))
 
     return PositionResult(
         avg_buy_price=avg_buy,
@@ -1027,34 +1066,35 @@ _CALENDAR_STOP_COLUMNS = [
     COL_LAST_SELL_DATE,
     COL_FORK_SHARE,
     COL_STOP_LINE_DATE,
-    COL_STOP_LINE_CLOSE,
+    COL_STOP_LINE_LOW,
     COL_STOP_LINE_VS_COST,
     COL_BREAK_DATE,
-    COL_STOP_SELL_DATE,
-    COL_STOP_SELL_CLOSE,
+    COL_STOP_FILL_PRICE,
     COL_SOLD_BEFORE_STOP,
     COL_EXCLUDED_REASON,
 ]
 
 
 def _low_break(
-    closes: pd.Series,
+    frame: pd.DataFrame,
     halving_day: pd.Timestamp,
     last_buy_day: pd.Timestamp,
     watch_end: pd.Timestamp,
     *,
     peak_window_months: int,
 ) -> _LowBreak:
-    """손절선을 마지막 매수일에 고정하고, 그 다음 날부터 감시 끝까지 종가로 이탈을 찾는다 (결정 58).
+    """손절선을 마지막 매수일에 고정하고, 그 다음 날부터 감시 끝까지 장중 저가로 이탈을 찾는다 (결정 58 · 64).
 
     **손절선은 포지션을 산 반감기의 사이클에서 정한다** — 사이클 고점은 반감기 뒤 고점 창 안의 최고 종가(차트 사이클
-    요약과 같은 창)이고, 손절선은 그 다음 날부터 마지막 매수일까지의 최저 종가다. 매수 기간에 난 더 낮은 종가는 팔지 않고
-    손절선이 된다. 다음 반감기가 지나도 바꾸지 않는다.
+    요약과 같은 창)이고, 손절선은 그 다음 날부터 마지막 매수일까지의 최저 장중 저가다. 매수 기간에 난 더 낮은 저가는 팔지
+    않고 손절선이 된다. 다음 반감기가 지나도 바꾸지 않는다.
 
-    **판정한 날 종가에 팔지 않는다** — 그 종가를 보고 나서야 이탈을 알므로 다음 거래일 종가에 판다(결정 56 탈락안 ⑥).
+    **걸어 둔 스탑 주문처럼 판다** — 장중 저가가 손절선 «이하»인 첫날 그날 판다. 판정 순서는 시가 → 장중이다: 시가가 이미
+    손절선 이하면 그 시가(갭손절), 아니면 손절선(장중손절)이 체결가다. 손절선은 마지막 매수일 종가 뒤에 정해지고 주문은
+    그 뒤에 걸리므로 그날까지의 가격만 쓴다.
 
     Args:
-        closes: 날짜 인덱스의 종가 (휴장 없는 오름차순)
+        frame: 측정 시세 (날짜 · 시가 · 종가 · 저가, 휴장 없는 오름차순)
         halving_day: 포지션을 산 반감기일
         last_buy_day: 마지막 매수일
         watch_end: 감시 끝 — 마지막 매도일. 매도가 끝나지 않았으면 데이터 끝
@@ -1068,7 +1108,9 @@ def _low_break(
             물어도 예외가 나지 않는다(차트 사이클 요약 `chart._cycle_segments` 도 같은 이유로 반감기일 종가를 요구한다)
         RuntimeError: 마지막 매수일이 고점 창 안인 경우 (내부 불변조건 — `calendar_split_grid` 가 폭을 먼저 검사한다)
     """
-    days = pd.DatetimeIndex(closes.index)
+    days = pd.DatetimeIndex(frame[COL_DATE])
+    closes = pd.Series(frame[COL_CLOSE].to_numpy(dtype=float), index=days)
+    lows = pd.Series(frame[COL_LOW].to_numpy(dtype=float), index=days)
     window_end = halving_day + pd.DateOffset(months=peak_window_months)
     if last_buy_day < window_end:
         raise RuntimeError(f"내부 불변조건 위반: 마지막 매수일({last_buy_day.date()})이 고점 창(반감기 뒤 {peak_window_months}개월) 안입니다")
@@ -1077,20 +1119,21 @@ def _low_break(
 
     window = closes[(days >= halving_day) & (days < window_end)]
     peak_day = pd.Timestamp(window.idxmax())
-    formed = closes[(days > peak_day) & (days <= last_buy_day)]
+    formed = lows[(days > peak_day) & (days <= last_buy_day)]
     line_day = pd.Timestamp(formed.idxmin())
-    line_close = float(formed[line_day])
+    line_low = float(formed[line_day])
 
-    watched = closes[(days > last_buy_day) & (days <= watch_end)]
-    below = watched[watched < line_close]
-    if below.empty:
-        return _LowBreak(line_day, line_close, None, None)
+    watched = lows[(days > last_buy_day) & (days <= watch_end)]
+    touched = watched[watched <= line_low]
+    if touched.empty:
+        return _LowBreak(line_day, line_low, None, None, None)
 
-    break_day = pd.Timestamp(below.index[0])
-    following = int(days.searchsorted(break_day)) + 1
-    sell_day = pd.Timestamp(days[following]) if following < len(days) else None
+    break_day = pd.Timestamp(touched.index[0])
+    opening = float(pd.Series(frame[COL_OPEN].to_numpy(dtype=float), index=days)[break_day])
+    if opening <= line_low:
+        return _LowBreak(line_day, line_low, break_day, opening, EXIT_GAP_STOP)
 
-    return _LowBreak(line_day, line_close, break_day, sell_day)
+    return _LowBreak(line_day, line_low, break_day, line_low, EXIT_INTRADAY_STOP)
 
 
 def _position_fork_share(
@@ -1102,23 +1145,29 @@ def _position_fork_share(
     """끝난 포지션의 하드포크 몫 — (매수 회차 × 매도 회차) 칸마다의 몫의 평균.
 
     **칸마다 돈이 같다** — 같은 금액으로 사고 보유량을 같은 몫으로 판다. 포지션 수익률이 칸 수익률의 평균인 것과 같은
-    이유다(결정 ㊱). 칸의 몫은 체결 격자와 같은 산식(`hard_fork.hard_fork_share`)이다.
+    이유다(결정 ㊱). 칸의 몫은 체결 격자와 같은 산식(`hard_fork.hard_fork_share`)이다. 칸 수익률은 포지션 성적과 같은
+    체결가로 낸다 — 손절 체결 회차는 그날 종가가 아니라 체결가다.
 
     Args:
         closes: 날짜 인덱스의 종가
         buy_fills: 매수 회차 (모두 체결)
-        sell_fills: 매도 회차 (모두 체결 — 손절로 옮긴 회차는 손절 매도일)
+        sell_fills: 매도 회차 (모두 체결 — 손절로 옮긴 회차는 이탈일 · 체결가)
         forks: 하드포크 목록
 
     Returns:
         몫 (비율)
     """
+    dates = pd.DatetimeIndex(closes.index)
+    prices = closes.to_numpy(dtype=float)
     buy_days = [fill.fill_day for fill in buy_fills if fill.fill_day is not None]
     sell_days = [fill.fill_day for fill in sell_fills if fill.fill_day is not None]
+    # **체결가는 포지션 성적과 같은 함수로 읽는다** — 두 벌이면 몫과 수익률이 다른 가격을 쓴다(절대 원칙 5)
+    buy_prices = _fill_prices(dates, prices, buy_fills, label="매수 체결일")
+    sell_prices = _fill_prices(dates, prices, sell_fills, label="매도 체결일")
     shares = [
-        hard_fork_share(buy, sell, float(closes[sell]) / float(closes[buy]) - 1.0, forks)
-        for buy in buy_days
-        for sell in sell_days
+        hard_fork_share(buy_day, sell_day, sell_price / buy_price - 1.0, forks)
+        for buy_day, buy_price in zip(buy_days, buy_prices, strict=True)
+        for sell_day, sell_price in zip(sell_days, sell_prices, strict=True)
     ]
 
     return float(np.mean(shares))
@@ -1182,17 +1231,18 @@ def _stop_rows(
     peak_window_months: int,
     forks: Sequence[HardFork],
 ) -> list[tuple[dict[str, Any], StopOutcome]]:
-    """손절 표의 두 행과 그 행을 만든 성적 — 무손절(포지션 표의 성적 그대로)과 저점 이탈 (결정 58).
+    """손절 표의 두 행과 그 행을 만든 성적 — 무손절(포지션 표의 성적 그대로)과 저점 이탈 (결정 58 · 64).
 
-    **이탈하면 남은 매도 회차를 손절 매도일로 옮겨 같은 `position_result` 로 잰다** — 같은 양씩 파므로 「남은 보유를
-    그날 전부 판다」와 같고, 평균 매도가 · 수익률 · 평균 단가 대비 최악의 정의가 두 벌이 되지 않는다(절대 원칙 5).
-    이탈일까지 판 매도 회차는 그대로다. 다음 반감기가 아직 없어 매도 회차가 정해지지 않은 포지션도 이탈하면 전량 팔고 끝난다.
+    **이탈하면 남은 매도 회차를 이탈일 · 손절 체결가로 옮겨 같은 `position_result` 로 잰다** — 같은 양씩 파므로 「남은
+    보유를 그날 전부 판다」와 같고, 평균 매도가 · 수익률 · 평균 단가 대비 최악의 정의가 두 벌이 되지 않는다(절대 원칙 5).
+    이탈일 «전»에 판 매도 회차는 그대로다 — **이탈일에 예정된 회차도 손절로 판다.** 월말 회차는 그날 종가(UTC 하루의 끝)라
+    장중에 발동한 손절이 먼저다. 다음 반감기가 아직 없어 매도 회차가 정해지지 않은 포지션도 이탈하면 전량 팔고 끝난다.
 
     **손절선 · 이탈일은 포지션의 성질이라 두 행에 같이 싣는다** — 무손절 행에서 「이탈했는데 들고 갔다」가 보인다.
     매수가 끝나지 않았으면 손절선이 정해지지 않아 비운다.
 
     Args:
-        frame: 측정 시세 (날짜 · 종가 · 저가)
+        frame: 측정 시세 (날짜 · 시가 · 종가 · 저가)
         closes: 날짜 인덱스의 종가
         split: 폭
         halving: 포지션을 산 반감기
@@ -1204,15 +1254,19 @@ def _stop_rows(
 
     Returns:
         (무손절 행, 그 성적) · (저점 이탈 행, 그 성적)
+
+    Raises:
+        RuntimeError: 이탈했는데 손절 체결가 · 청산 사유가 비었거나 손절로 팔 회차가 남지 않은 경우 (내부 불변조건 —
+            `_low_break` 는 이탈일과 그 둘을 함께 채우고, 감시가 마지막 매도일까지이고 그날 회차도 손절로 팔아 언제나
+            하나 이상 남는다)
     """
     # **손절 칸을 빈 값으로 먼저 둔다** — 이탈이 한 건도 없으면 그 칸이 행에 없어, 표로 만들 때 날짜 열이 아니게 된다
     blank: dict[str, Any] = {
         COL_STOP_LINE_DATE: None,
-        COL_STOP_LINE_CLOSE: np.nan,
+        COL_STOP_LINE_LOW: np.nan,
         COL_STOP_LINE_VS_COST: np.nan,
         COL_BREAK_DATE: None,
-        COL_STOP_SELL_DATE: None,
-        COL_STOP_SELL_CLOSE: np.nan,
+        COL_STOP_FILL_PRICE: np.nan,
         COL_SOLD_BEFORE_STOP: None,
     }
     identity = {COL_CALENDAR_SPLIT: split.name, COL_HALVING: halving.label}
@@ -1223,16 +1277,16 @@ def _stop_rows(
         **_stop_metrics(result, plain_share),
         **blank,
     }
-    plain_outcome = StopOutcome(split, halving, NO_STOP_LABEL, result, result.reason, plain_share, stop_sold=False)
+    plain_outcome = StopOutcome(split, halving, NO_STOP_LABEL, result, plain_share, exit_reason=None)
     # 저점 이탈로 팔지 않은 포지션 — 성적이 무손절과 같다
-    held = StopOutcome(split, halving, STOP_METHOD_LOW_BREAK, result, result.reason, plain_share, stop_sold=False)
+    held = StopOutcome(split, halving, STOP_METHOD_LOW_BREAK, result, plain_share, exit_reason=None)
     if result.reason == REASON_POSITION_BUYING:
         return [(plain, plain_outcome), ({**plain, COL_STOP_METHOD: STOP_METHOD_LOW_BREAK}, held)]
 
     sell_days = [fill.fill_day for fill in sell_fills or () if fill.fill_day is not None]
     sells_done = sell_fills is not None and len(sell_days) == len(sell_fills)
     cut = _low_break(
-        closes,
+        frame,
         halving.day,
         max(fill.fill_day for fill in buy_fills if fill.fill_day is not None),
         max(sell_days) if sells_done else pd.Timestamp(closes.index[-1]),
@@ -1240,40 +1294,43 @@ def _stop_rows(
     )
     plain |= {
         COL_STOP_LINE_DATE: cut.line_day,
-        COL_STOP_LINE_CLOSE: cut.line_close,
+        COL_STOP_LINE_LOW: cut.line_low,
         COL_STOP_LINE_VS_COST: _number(
-            None if result.avg_buy_price is None else cut.line_close / result.avg_buy_price - 1.0
+            None if result.avg_buy_price is None else cut.line_low / result.avg_buy_price - 1.0
         ),
         COL_BREAK_DATE: cut.break_day,
     }
     stopped = {**plain, COL_STOP_METHOD: STOP_METHOD_LOW_BREAK}
     if cut.break_day is None:
         return [(plain, plain_outcome), (stopped, held)]
-
-    # 이탈일 종가까지 판 매도 회차는 그대로다 — 회차 체결일이 오름차순이라 앞쪽 일부다
-    kept = [fill for fill in sell_fills or () if fill.fill_day is not None and fill.fill_day <= cut.break_day]
-    remaining = (len(sell_fills) if sell_fills is not None else split.sell_tranches) - len(kept)
-    if remaining == 0:
-        return [(plain, plain_outcome), (stopped, held)]
-    if cut.sell_day is None:
-        # 남은 회차가 있는데 다음 거래일이 데이터 뒤다 — 무손절 행도 끝나지 않은 포지션이라 성적 칸은 이미 비어 있다
-        pending = StopOutcome(
-            split, halving, STOP_METHOD_LOW_BREAK, result, REASON_STOP_SELL_PENDING, plain_share, stop_sold=False
+    if cut.fill_price is None or cut.exit_reason is None:
+        raise RuntimeError(
+            f"내부 불변조건 위반: 이탈일({cut.break_day.date()})이 있는데 손절 체결가 · 청산 사유가 비었습니다 — "
+            f"체결가 {cut.fill_price} · 사유 {cut.exit_reason}"
         )
-        return [(plain, plain_outcome), ({**stopped, COL_EXCLUDED_REASON: REASON_STOP_SELL_PENDING}, pending)]
+
+    # 이탈일 «전»에 판 매도 회차는 그대로다 — 회차 체결일이 오름차순이라 앞쪽 일부다
+    kept = [fill for fill in sell_fills or () if fill.fill_day is not None and fill.fill_day < cut.break_day]
+    remaining = (len(sell_fills) if sell_fills is not None else split.sell_tranches) - len(kept)
+    if remaining < 1:
+        raise RuntimeError(
+            f"내부 불변조건 위반: 이탈했는데 손절로 팔 회차가 없습니다 — {split.name} · {halving.label} · 이탈일 "
+            f"{cut.break_day.date()} · 매도 {sell_days}"
+        )
 
     moved_deadlines = (
-        [fill.deadline for fill in sell_fills[len(kept) :]] if sell_fills is not None else [cut.sell_day] * remaining
+        [fill.deadline for fill in sell_fills[len(kept) :]] if sell_fills is not None else [cut.break_day] * remaining
     )
     stop_fills = [
         *kept,
-        *(TrancheFill(deadline, cut.sell_day, STOP_METHOD_LOW_BREAK, REASON_NONE) for deadline in moved_deadlines),
+        *(
+            TrancheFill(deadline, cut.break_day, STOP_METHOD_LOW_BREAK, REASON_NONE, fill_price=cut.fill_price)
+            for deadline in moved_deadlines
+        ),
     ]
     stop_result = position_result(frame, buy_fills, stop_fills)
     stop_share = _finished_fork_share(closes, buy_fills, stop_fills, stop_result, forks)
-    sold = StopOutcome(
-        split, halving, STOP_METHOD_LOW_BREAK, stop_result, stop_result.reason, stop_share, stop_sold=True
-    )
+    sold = StopOutcome(split, halving, STOP_METHOD_LOW_BREAK, stop_result, stop_share, exit_reason=cut.exit_reason)
 
     return [
         (plain, plain_outcome),
@@ -1281,8 +1338,7 @@ def _stop_rows(
             {
                 **stopped,
                 **_stop_metrics(stop_result, stop_share),
-                COL_STOP_SELL_DATE: cut.sell_day,
-                COL_STOP_SELL_CLOSE: float(closes[cut.sell_day]),
+                COL_STOP_FILL_PRICE: cut.fill_price,
                 COL_SOLD_BEFORE_STOP: len(kept),
             },
             sold,
@@ -1307,7 +1363,7 @@ def calendar_split_grid(
     포지션마다 무손절 · 저점 이탈 손절을 하드포크 몫과 함께 손절 표에 나란히 낸다(`_stop_rows`).
 
     Args:
-        frame: 측정 시세 (날짜 · 종가 · 저가, 날짜 오름차순 · 휴장 없음)
+        frame: 측정 시세 (날짜 · 시가 · 종가 · 저가, 날짜 오름차순 · 휴장 없음)
         halvings: 반감기 목록 (날짜 오름차순)
         splits: 폭 목록. 이름이 겹치면 안 된다
         step_months: 회차 간격(개월)
