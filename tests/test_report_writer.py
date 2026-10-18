@@ -266,7 +266,7 @@ def test_accepts_every_real_track_name() -> None:
     거부 테스트만 두면 패턴을 지나치게 좁혀도 통과한다. 짝으로 둬서 저장소의 실제 slug 가
     전부 통과하는지 본다.
 
-    [중요] **실측 프로브 이름도 함께 본다.** 그 셋도 `create_run_directory` 에 그대로 들어가는데
+    [중요] **실측 프로브 이름도 함께 본다.** 프로브도 `create_run_directory` 에 그대로 들어가는데
     `scripts/` 는 테스트 범위 밖이라, 여기서 빠지면 **새 프로브 이름이 검사를 통과한 채
     실행 시점에야 죽는다.**
 
@@ -275,16 +275,13 @@ def test_accepts_every_real_track_name() -> None:
     Then: 전부 통과한다
     """
     # Given
-    from verify_lab.studies.futures_leverage.constants import TRACK_NAME as FUTURES
     from verify_lab.studies.halving_cycle.constants import TRACK_NAME as HALVING_CYCLE
-    from verify_lab.studies.leverage_tracking.constants import TRACK_NAME as LEVERAGE
     from verify_lab.studies.midterm_cycle.constants import TRACK_NAME as MIDTERM_CYCLE
-    from verify_lab.studies.usdkrw_equivalence.constants import TRACK_NAME as EQUIVALENCE
 
     # 프로브 이름은 `scripts/data/check_*.py` 가 소유한다. 그 스크립트를 import 하면
     # pykrx 가 딸려 와 로그인을 시도하므로(계층 계약의 「지연 import」) 값만 옮겨 적는다
-    probe_names = ["ecos_probe", "pykrx_etf_probe", "pykrx_splice_probe"]
-    names = [MIDTERM_CYCLE, HALVING_CYCLE, EQUIVALENCE, LEVERAGE, FUTURES, *probe_names]
+    probe_names = ["pykrx_etf_probe", "pykrx_splice_probe"]
+    names = [MIDTERM_CYCLE, HALVING_CYCLE, *probe_names]
 
     # When / Then
     unmatched = [name for name in names if not writer.VALID_TRACK_NAME.match(name)]

@@ -1,16 +1,16 @@
-"""KRX 를 상대하는 세 수집기가 공유하는 판정
+"""KRX 를 상대하는 코드가 공유하는 판정
 
-`pykrx`·`etn`·`krx_futures` 는 같은 규격(쉼표 붙은 숫자 · `-` 결측 · `YYYYMMDD` 요청 ·
-확정되지 않은 최근 구간)을 상대하므로 **판정도 한 벌이어야 한다**
-(`src/verify_lab/CLAUDE.md` 「측정 계층의 절대 원칙」 5).
+수집기 `pykrx` 와 실측 프로브 `check_pykrx_splice` 는 같은 규격(`YYYYMMDD` 요청 · 확정되지 않은 최근 구간)을
+상대하므로 **판정도 한 벌이어야 한다** (`src/verify_lab/CLAUDE.md` 「측정 계층의 절대 원칙」 5).
+ETN · 선물 수집기가 쓰는 숫자 변환(`to_numeric`)은 그 수집기와 함께 되살린다 — `docs/조사/레버리지_ETF_괴리.md`(ETN) ·
+`docs/조사/선물_대_레버리지_ETF.md`(선물) 「재현 방법」.
 
 **수집기마다 복사본을 두지 않는다.** 복사본은 한 곳만 고쳐도 예외가 나지 않는다 —
 저장 경계가 수집기마다 하루씩 갈려도 파일은 그대로 만들어진다.
 
-[중요] **지연 import 헬퍼(`_import_krx_client`)는 여기 오지 않는다.** 세 수집기가 서로 다른
-pykrx 클래스를 가져오므로 공통 부분이 `load_krx_credentials()` 한 줄뿐이고,
-`tests/test_layer_contracts.py` 의 순서 검사가 **그 호출과 `from pykrx` 가 같은 함수 본문 안에
-있는지**를 보므로 뽑아내면 세 수집기 모두 그 계약을 잃는다.
+[중요] **지연 import 헬퍼(`_import_krx_client`)는 여기 오지 않는다.** `tests/test_layer_contracts.py` 의
+순서 검사가 **`load_krx_credentials()` 호출과 `from pykrx` 가 같은 함수 본문 안에 있는지**를 보므로,
+뽑아내면 수집기가 그 계약을 잃는다.
 """
 
 from datetime import date, datetime, timedelta
@@ -24,21 +24,6 @@ from verify_lab.data.constants import DOMESTIC_RECENT_EXCLUSION_DAYS, KRX_REQUES
 # 날짜 형식 오류 메시지. **어느 인자인지를 `label` 로 받는다** — 수집기마다 조회 시작일·
 # 훑기 종료일처럼 이름이 다른데, 이름을 빼면 인자가 둘인 호출에서 어느 쪽이 틀렸는지 알 수 없다
 _DATE_FORMAT_ERROR: Final = "{label} 형식이 잘못되었습니다 (YYYYMMDD 여야 합니다): {value}"
-
-
-def to_numeric(series: pd.Series) -> pd.Series:
-    """KRX 가 문자열로 주는 숫자를 실수로 바꾼다.
-
-    천 단위 구분 쉼표가 붙어 있고, 값이 없는 칸은 `-` 로 온다. 쉼표만 떼고 숫자로 바꾸며
-    **`-` 는 결측으로 남긴다** — 0 으로 채우면 「가격 0」인 날이 생겨 이상치 검사를 통과해 버린다.
-
-    Args:
-        series: KRX 반환값의 한 컬럼
-
-    Returns:
-        실수 Series. 변환할 수 없는 칸은 NaN
-    """
-    return pd.to_numeric(series.astype(str).str.replace(",", "", regex=False), errors="coerce")
 
 
 def exclude_recent(df: pd.DataFrame, today: date) -> tuple[pd.DataFrame, int]:
@@ -76,4 +61,4 @@ def validate_krx_date(label: str, value: str) -> None:
         raise ValueError(_DATE_FORMAT_ERROR.format(label=label, value=value)) from error
 
 
-__all__ = ["exclude_recent", "to_numeric", "validate_krx_date"]
+__all__ = ["exclude_recent", "validate_krx_date"]

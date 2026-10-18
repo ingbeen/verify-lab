@@ -67,7 +67,7 @@ pytest 설정은 루트 `pytest.ini`가 Single Source of Truth이며, 실행 명
 
 ## 3. 파일 격리
 
-- 일반 규칙(import 시점에 캡처한 경로 상수 · 묶음 상수의 patch)은 `python-tests.md` 「파일을 격리한다」. 이 저장소의 예: `meta_manager` 가 들고 있는 경로 · `ETF_TARGETS = (ETF_BASE, ETF_LEVERAGE)`
+- 일반 규칙(import 시점에 캡처한 경로 상수 · 묶음 상수의 patch)은 `python-tests.md` 「파일을 격리한다」. 이 저장소의 예: `meta_manager` 가 들고 있는 경로
 - 픽스처 작성 예시: `reference/test_examples/conftest_qbt_example.py` (`mock_storage_paths`)
 
 ### 예외 — 폴더의 «실재만» 보는 검사 (읽지도 쓰지도 않는다)

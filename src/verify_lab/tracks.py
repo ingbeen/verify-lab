@@ -56,8 +56,9 @@ class Track:
     Attributes:
         slug: 코드에서 부르는 이름. 정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME` 이고
             여기서는 그것을 키로 쓴다
-        label: 사람이 부르는 한글 이름. **산출물 폴더 이름과 문서 폴더 이름이 둘 다 이 값**이라
-            `docs/<등급>/<label>/` 과 `storage/results/<등급>/<label>/` 의 자리가 그대로 맞는다.
+        label: 사람이 부르는 한글 이름. **산출물 폴더 이름이 이 값이고, 그 줄의 문서가 따로 있으면 문서 이름도
+            이 값**이라(`docs/<등급>/<label>/` · 조사는 한 장 `docs/조사/<label>.md`) 자리가 그대로 맞는다. 문서가 없거나
+            다른 조사 문서의 한 절인 줄도 있다 — 어느 쪽인지는 `docs/INDEX.md` 「매매법·조사」 표가 말한다.
             그래서 **폴더 이름으로 쓸 수 있는 모양이어야** 하며 그 검사는 `report/writer.py` 가 한다 —
             폴더를 `rmtree` 로 비우므로 경로 구분자가 섞이면 산출물 루트 밖을 겨눈다
         grade: `GRADES` 중 하나. 산출물 폴더의 상위 폴더가 이 값이다
@@ -94,12 +95,15 @@ TRACKS: Final = (
     # 그 매매법의 `규칙.md` §1 이다(달력 매달 분할 + 저점 이탈). 체결은 확정 규칙 행과 비교용 일시 격자
     # (진입 × 청산, 무손절)의 맨몸 측정이다(그 매매법 `설계.md` 결정 61 · 63)
     Track("halving_cycle", "반감기_사이클", GRADE_TRADING, KIND_METHOD),
+    # 아래 셋은 성질 조사를 끝내 실행 코드가 없다(2026-10-16 사용자 결정). 줄을 남기는 것은 되살렸을 때
+    # 산출물이 같은 자리에 쌓이게 하려는 것이다 — 근거와 되살리는 절차는 `docs/조사/<한글 이름>.md` 「재현 방법」
     Track("usdkrw_equivalence", "원달러_ETF_등가성", GRADE_SURVEY, KIND_PROPERTY),
     Track("leverage_tracking", "레버리지_ETF_괴리", GRADE_SURVEY, KIND_PROPERTY),
     Track("futures_leverage", "선물_대_레버리지_ETF", GRADE_SURVEY, KIND_PROPERTY),
     # 걸지 않기로 해 실행 코드가 없다 — 옵션_만기일·월말_진입·만기_말일과 같은 자리다
     Track("usdkrw_grid", "원달러_그리드", GRADE_SURVEY, KIND_PROPERTY),
-    # 실측 프로브. 매매법이 아니라 **데이터 소스의 성질**을 잰다
+    # 실측 프로브. 매매법이 아니라 **데이터 소스의 성질**을 잰다.
+    # ECOS 프로브는 실행 코드가 없다 — 되살리는 절차는 `docs/조사/원달러_ETF_등가성.md` 「재현 방법」
     Track("ecos_probe", "ECOS_실측", GRADE_SURVEY, KIND_PROPERTY),
     Track("pykrx_etf_probe", "pykrx_ETF_실측", GRADE_SURVEY, KIND_PROPERTY),
     Track("pykrx_splice_probe", "pykrx_이어붙이기_실측", GRADE_SURVEY, KIND_PROPERTY),

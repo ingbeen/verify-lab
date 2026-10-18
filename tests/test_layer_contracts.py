@@ -79,19 +79,12 @@ _REPORT_CONSTANTS = "verify_lab/report/constants.py"
 # 실재하고, 그 사실은 `src/verify_lab/CLAUDE.md` 「매매 산출물 계약」이 이미 명시했다
 _REPORT_LABEL_COLLISIONS = {
     # `pykrx` 가 돌려주는 인덱스 이름이라 표시 레이블이 아니라 **데이터 소스의 사실**이다
-    "날짜": frozenset({"verify_lab/data/pykrx_collector.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
-    # **표마다 지시 대상이 다르다** — 매매 계층은 거는 방향, 배수 검증은 기초지수가 오른 날인지다.
-    # 계약 표가 이 갈림을 의도로 적어 두었다
-    "방향": frozenset(
-        {
-            "verify_lab/execution/constants.py",
-            "verify_lab/studies/leverage_tracking/constants.py",
-        }
-    ),
-    # 뜻이 다르다 — `screening` 은 1차 판정의 «값», `usdkrw` 는 이상치 라벨,
-    # `report` 는 제외 «건수» 컬럼의 머리다
-    "제외": frozenset({"verify_lab/measure/screening.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
-    "표본": frozenset({"verify_lab/studies/usdkrw_equivalence/constants.py"}),
+    "날짜": frozenset({"verify_lab/data/pykrx_collector.py"}),
+    # 매매 계층의 거래내역 헤더다 — `report` 와 같은 «거는 방향»이다. 같은 낱말을 다른 뜻(기초지수가 오른 날인지)으로
+    # 쓰는 배수 검증을 되살리면(`docs/조사/레버리지_ETF_괴리.md` 「재현 방법」) 그 파일도 여기 다시 넣는다
+    "방향": frozenset({"verify_lab/execution/constants.py"}),
+    # 뜻이 다르다 — `screening` 은 1차 판정의 «값», `report` 는 제외 «건수» 컬럼의 머리다
+    "제외": frozenset({"verify_lab/measure/screening.py"}),
 }
 
 # 매매 계층이 이미 내고 있는 다섯 키. **손으로 박는다** — `run_summary` 의 상수를 가져다
@@ -148,7 +141,7 @@ def _runner_scripts() -> list[Path]:
 def _load_script(script: Path) -> ModuleType:
     """실행 스크립트를 모듈로 읽어 온다.
 
-    [주의] **모듈 본문이 실제로 실행된다.** 지금 여섯 스크립트는 최상단이 import 와 상수뿐이라
+    [주의] **모듈 본문이 실제로 실행된다.** 지금 실행 스크립트는 최상단이 import 와 상수뿐이라
     안전하지만, 거기에 시세 로딩이나 외부 호출을 넣으면 **이 테스트가 실 storage 를 읽거나
     네트워크를 탄다**(`tests/CLAUDE.md` 「파일 격리」 · 「외부 의존성 금지」 절). 실행 스크립트의 최상단은 부작용이 없어야 한다.
 
@@ -970,7 +963,7 @@ class TestReportLabelOwnership:
 
     계약이 「검증마다 다른 말을 쓰면 두 결과를 나란히 읽을 수 없다」로 정한 자리다.
     **이미 알려진 충돌은 목록으로 고정하고 그 밖의 새 충돌만 막는다** — 같은 한글 단어가
-    계층마다 다른 것을 가리키는 자리가 실재하기 때문이다(`구간`·`방향`·`제외`).
+    계층마다 다른 것을 가리키는 자리가 실재하기 때문이다(예: `제외` — 1차 판정의 값과 제외 건수 컬럼의 머리).
     """
 
     def test_알려진_것_말고는_report_레이블을_재정의하지_않는다(self) -> None:
@@ -1596,12 +1589,13 @@ class TestDirectionNameOwnership:
     """`DIRECTION_*` 이라는 **이름**은 측정 계층 하나가 갖는다
 
     값 검사(`TestPrincipleValueOwnership`)는 `위`·`아래` 가 한 곳에만 있는지 본다.
-    그런데 배수 검증이 **같은 이름에 다른 값**(`오름`·`내림`)을 두고 있어 값 검사를 그대로
-    통과한다 — 잘못된 모듈에서 가져와도 문자열이 나오므로 **조용히 다른 축이 된다.**
+    그런데 배수 검증(`docs/조사/레버리지_ETF_괴리.md` 「재현 방법」으로 되살린다)이 **같은 이름에 다른 값**
+    (`오름`·`내림`)을 두면 값 검사를 그대로 통과한다 — 잘못된 모듈에서 가져와도 문자열이 나오므로
+    **조용히 다른 축이 된다.**
 
     두 값은 **동음이의어가 아니라 다른 개념**이다. `measure` 의 것은 신호를 «어느 쪽으로
     거는가»(원칙 11)이고 배수 검증의 것은 «기초지수가 오른 날인가»다. 그래서 통합하지 않고
-    **이름을 가른다.**
+    **이름을 가른다**(그 검증은 `TREND_*` 를 쓴다).
     """
 
     def test_방향_이름을_측정_계층_밖에서_쓰지_않는다(self) -> None:
@@ -1629,9 +1623,9 @@ class TestCredentialsBeforeImport:
         목적: 새 KRX 수집기가 순서를 빠뜨리는 것을 막는다.
 
         **`import pykrx` 자체가 로그인을 시도한다.** 자격증명이 환경 변수에 올라가기 전에
-        import 하면 실패하므로, 세 수집기가 전부 `load_krx_credentials()` 를 먼저 부르고
-        그 다음에 pykrx 를 가져온다. **지금은 각 docstring 이 설명할 뿐 아무도 검사하지 않는다** —
-        네 번째 수집기가 생길 때 순서를 빠뜨려도 테스트가 통과한다.
+        import 하면 실패하므로, KRX 수집기는 전부(지금은 `pykrx_collector` 하나) `load_krx_credentials()` 를
+        먼저 부르고 그 다음에 pykrx 를 가져온다. **검사가 없으면** 새 수집기가 생길 때 순서를 빠뜨려도
+        테스트가 통과한다.
 
         Given: pykrx 를 함수 안에서 가져오는 `data/` 모듈
         When: 각 함수 본문에서 두 호출의 순서를 본다
@@ -1661,7 +1655,7 @@ class TestKrxCommonOwnership:
     # 소유자와 검사 대상. **`scripts/data/` 까지 본다** — CLI 도 같은 규격을 상대하므로
     # 거기 복사본이 생기면 똑같이 갈라지고, `scripts/CLAUDE.md` 가 그것을 이미 금지한다
     _OWNER_FILE = "krx_common.py"
-    _SHARED_NAMES = ("to_numeric", "exclude_recent", "validate_krx_date")
+    _SHARED_NAMES = ("exclude_recent", "validate_krx_date")
 
     @staticmethod
     def _scanned_modules() -> list[Path]:
@@ -1710,7 +1704,7 @@ class TestKrxCommonOwnership:
         `data/` 만 훑는 검사는 그것을 초록으로 통과시켰다.
 
         Given: `data/` 와 `scripts/data/` 의 모듈들
-        When: 세 함수를 **정의하는** 파일을 센다
+        When: 공통 함수를 **정의하는** 파일을 센다
         Then: 각각 `krx_common.py` 하나뿐이다
         """
         # Given
@@ -1746,58 +1740,18 @@ class TestKrxCommonOwnership:
 
 
 # ============================================================
-# 산출물 레이블의 유일성과 측정 구간 축의 소유자
+# 산출물 레이블의 유일성
 # ============================================================
 
 # **이미 있는 겹침만 허용목록으로 고정하고 그 밖의 새 겹침을 막는다.** 전면 금지로 두면
-# 정당한 겹침까지 막힌다 — 아래 대부분은 `src/verify_lab/CLAUDE.md` 「어디까지가 공통이고
-# 어디부터 그 검증의 것인가」가 **일부러 뽑지 않기로 한** 배수형 어휘다(2026-09-14 결정).
-#
-# 대표적인 성격은 배수형 두 검증이 공유하는 어휘다 — `배수` · `지수` · `시작일` · `종료일`
+# 정당한 겹침까지 막힌다. 배수형 두 검증(`futures_leverage` ↔ `leverage_tracking`)을 되살리면 그 둘이
+# **일부러 뽑지 않기로 한** 어휘(2026-09-14 결정 — `배수` · `지수` · `시작일` · `종료일` 등)도 여기 다시 넣는다
+# (`docs/조사/선물_대_레버리지_ETF.md` 「재현 방법」).
 #
 # **여기 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다**(부분집합 검사) —
 # 막으면 중복을 줄이는 계획서마다 이 테스트가 실패한다.
 _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
-    "날짜": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
-    # 배수형 두 검증이 **같은 금리 경계**로 가른 같은 축이다(선물_대_레버리지_ETF 가 레버리지_ETF_괴리의 경계를 따른다).
-    # `배수`·`지수` 와 같은 성격이라 여기 둔다 — 값까지 같지만 공통으로 뽑지 않는 것이 결정이다
-    "금리 환경": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
-    "방향": frozenset(
-        {
-            "verify_lab/report/constants.py",
-            "verify_lab/execution/constants.py",
-            "verify_lab/studies/leverage_tracking/constants.py",
-        }
-    ),
-    "배당 보정분(%p)": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
-    "배수": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
-    "시작일": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
-    "실제(%)": frozenset(
-        {"verify_lab/studies/leverage_tracking/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}
-    ),
-    "종료일": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
-    # **뜻이 같은 겹침이고 그것이 요점이다** — `측정.csv` 와 `성적표.csv` 가 같은 이름으로
-    # 조인되어야 한다. 소유자를 하나로 모으는 것은 다섯 파일을 함께 옮기는 별도 작업이다
-    "종목": frozenset(
-        {
-            "verify_lab/execution/constants.py",
-            "verify_lab/studies/usdkrw_equivalence/constants.py",
-        }
-    ),
-    "지수": frozenset(
-        {"verify_lab/studies/futures_leverage/constants.py", "verify_lab/studies/leverage_tracking/constants.py"}
-    ),
-    "표본": frozenset({"verify_lab/report/constants.py", "verify_lab/studies/usdkrw_equivalence/constants.py"}),
+    "방향": frozenset({"verify_lab/report/constants.py", "verify_lab/execution/constants.py"}),
 }
 
 
@@ -1806,7 +1760,7 @@ def _display_label_owners() -> dict[str, list[str]]:
     """`src` 안의 `DISPLAY_*` 상수를 **값 → 그 값을 정의한 파일들**로 모은다.
 
     `_files_defining_value` 는 값 하나를 받아 트리를 통째로 훑는다. 여기서는 반대 방향이
-    필요해 한 번에 모은다 — 217종을 각각 훑으면 같은 파일을 수백 번 파싱한다.
+    필요해 한 번에 모은다 — 레이블마다 각각 훑으면 같은 파일을 수백 번 파싱한다.
 
     Returns:
         레이블 값 → 저장소 상대 경로 목록 (정렬됨)
@@ -1835,8 +1789,8 @@ class TestOutputLabelUniqueness:
         """
         목적: 「같은 이름이 다른 것을 가리키는」 상태가 **새로 생기는 것**을 막는다.
 
-        허용목록은 **이미 있는 겹침**을 고정한다. 대부분은 배수형 어휘를 일부러 뽑지
-        않기로 한 결정의 결과이고, 그 판단의 SoT 는 `src/verify_lab/CLAUDE.md` 다.
+        허용목록은 **이미 있는 겹침**을 고정한다. 어떤 겹침을 일부러 두는지의 판단은
+        `src/verify_lab/CLAUDE.md` 「어디까지가 공통이고 어디부터 그 검증의 것인가」가 SoT 다.
 
         Given: `src` 안의 모든 `DISPLAY_*` 상수
         When: 같은 값을 두 파일 이상이 정의하는 경우를 찾는다
@@ -1881,63 +1835,6 @@ class TestOutputLabelUniqueness:
 
         # Then
         assert stale == [], f"겹침이 해소됐는데 허용목록에 남아 있습니다: {stale}"
-
-
-class TestHorizonLabelOwnership:
-    """측정 구간(보유 기간)의 표시 이름은 `report/constants.py` 하나가 소유한다
-
-    **공통 계층의 사전이 자기 축을 다 덮지 못하면 검증이 사본을 만든다.** 실제로 그 사전이
-    네 칸(`1·5·10·21`)뿐이라, 같은 `(5, 10, 21, 63, 126, 252, 756)` 격자를 두고
-    한 검증은 일곱 칸짜리 사본을 만들어 `1주 · 3개월 · 3년` 을 내고, 다른 검증은 라벨을 거치지
-    않아 `5 · 63 · 756` 을 그대로 냈다. **두 결과를 나란히 읽을 수 없고 예외는 나지 않는다.**
-    """
-
-    _DICT_NAME = "HORIZON_LABELS"
-
-    def test_구간_이름표가_한_곳에만_있다(self) -> None:
-        """
-        목적: 사본이 다시 생기는 것을 막는다.
-
-        Given: `src` 안의 모든 모듈
-        When: `HORIZON_LABELS` 를 **정의하는** 파일을 찾는다
-        Then: `report/constants.py` 하나다
-        """
-        # Given / When
-        definers = sorted(
-            str(path.relative_to(_SOURCE_ROOT.parent))
-            for path in _SOURCE_ROOT.rglob("*.py")
-            for names, _ in _module_assignments(ast.parse(path.read_text(encoding="utf-8")))
-            if self._DICT_NAME in names
-        )
-
-        # Then
-        assert definers == [_REPORT_CONSTANTS], f"{self._DICT_NAME} 을 정의하는 파일이 여럿입니다: {definers}"
-
-    def test_구간_축을_내는_검증은_이름표를_거친다(self) -> None:
-        """
-        목적: **원값이 그대로 나가는 경로**를 막는다.
-
-        `COL_HORIZON` 을 표시 레이블로 rename 만 하고 값을 바꾸지 않으면 사용자가 여는 CSV 에
-        거래일 수가 그대로 찍힌다. 같은 축을 다른 검증은 한글로 내므로 **두 산출물이 어긋난다.**
-
-        Given: `COL_HORIZON` 을 출력 레이블로 내보내는 검증 패키지
-        When: 그 패키지가 이름표를 쓰는지 본다
-        Then: 전부 쓴다
-        """
-        # Given
-        renamers = [
-            package
-            for package in _study_packages()
-            for path in package.rglob("*.py")
-            if "COL_HORIZON: DISPLAY_HORIZON" in path.read_text(encoding="utf-8")
-        ]
-        assert renamers, "구간 축을 내보내는 검증을 하나도 찾지 못했습니다"
-
-        # When / Then
-        for package in sorted(set(renamers), key=lambda item: item.name):
-            sources = "\n".join(path.read_text(encoding="utf-8") for path in package.rglob("*.py"))
-
-            assert self._DICT_NAME in sources, f"{package.name} 이 구간 축을 이름표 없이 내보냅니다 — 거래일 수가 원값으로 나갑니다"
 
 
 class TestCliHelpRenders:

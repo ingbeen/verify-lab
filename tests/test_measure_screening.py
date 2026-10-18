@@ -321,9 +321,8 @@ class TestSingleOwner:
         그 스크립트가 나중에 기준값을 가져다 비교해도 통과한다. 허용 목록의 파일이 스캔에 잡히는지도
         본다 — 파일을 옮기거나 스캔 범위가 틀리면 그 허용이 아무것도 가리키지 않은 채 남는다.
 
-        **값 「제외」는 보지 않는다.** 같은 문자열이 제외 건수 컬럼(`report/constants.py`)과 이상치
-        라벨(`studies/usdkrw_equivalence/constants.py`)에 **동음이의어**로 있다
-        (`tests/test_layer_contracts.py` 의 `_REPORT_LABEL_COLLISIONS`).
+        **값 「제외」는 보지 않는다.** 같은 문자열이 제외 건수 컬럼(`report/constants.py`)에 **동음이의어**로
+        있다(`tests/test_layer_contracts.py` 의 `_REPORT_LABEL_COLLISIONS`).
 
         **정의 파일(`screening.py`)에 네 가지가 실제로 있는지도 본다** — 이름이나 값이 바뀌면 이 검사가
         옛 이름을 찾으며 헛돌아 아무것도 막지 못한 채 통과한다. 허용 경로에 더한 다른 파일에는

@@ -717,7 +717,7 @@ DISPLAY_FORK_SHARE: Final = "하드포크 몫(%p)"
 # 첫 회차라 일시 격자의 칸과 겹친다(결정 61)
 DISPLAY_TRADE_METHOD: Final = "매매 방식"
 
-# **「연도」를 쓰지 않는다** — 원달러_ETF_등가성이 그 이름을 이미 쓴다 (`tests/test_layer_contracts.py` 레이블 겹침 검사).
+# **「연도」를 쓰지 않는다** — 원달러_ETF_등가성의 레이블과 겹친다(그 코드를 `docs/조사/원달러_ETF_등가성.md` 「재현 방법」으로 되살리면 `tests/test_layer_contracts.py` 레이블 겹침 검사가 막는다).
 # 「사이클 위치」도 중간선거_사이클의 것이라 쓰지 않는다
 DISPLAY_CALENDAR_YEAR: Final = "달력 연도"
 DISPLAY_HALVING_POSITION: Final = "반감기 위치"

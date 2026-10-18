@@ -105,7 +105,7 @@ def _kst_now() -> datetime:
 def _validate_date(value: str, label: str) -> str:
     """YYYYMMDD 형식인지 확인하고 그대로 돌려준다.
 
-    **판정은 `data/krx_common` 이 한다** — 여기서 다시 구현하면 같은 형식 검증이 네 벌이 되고,
+    **판정은 `data/krx_common` 이 한다** — 여기서 다시 구현하면 같은 형식 검증이 두 벌이 되고,
     한쪽 메시지나 허용 형식만 바뀌어도 **예외가 나지 않는다**
     (`scripts/CLAUDE.md` 「CLI 계층에 도메인 로직 금지」).
 

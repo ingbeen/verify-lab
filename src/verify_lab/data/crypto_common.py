@@ -6,7 +6,7 @@ Coin Metrics 일별 값은 둘 다 **UTC 00:00 ~ 24:00** 이 하루이고, 날�
 
 그래서 「아직 끝나지 않은 봉」의 경계 · 「받은 이력의 양 끝이 제자리인가」 · 「빈 날이 있는가」를 **한 벌만** 둔다
 (`src/verify_lab/CLAUDE.md` 「측정 계층의 절대 원칙」 5). 두 수집기가 따로 계산하면 한쪽만
-하루 밀려도 예외가 나지 않고 저장 범위만 갈린다 — `krx_common.py` 가 국내 세 수집기에 대해 두는 것과 같은 이유다.
+하루 밀려도 예외가 나지 않고 저장 범위만 갈린다 — `krx_common.py` 가 KRX 를 상대하는 코드에 대해 두는 것과 같은 이유다.
 """
 
 from datetime import UTC, date, datetime, timedelta

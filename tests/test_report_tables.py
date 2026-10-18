@@ -256,8 +256,8 @@ class TestDisplayColumnsRejectDuplicateHeaders:
         """
         목적: 정당한 동일값 쌍을 막지 않는다.
 
-        `futures_leverage` 의 `Date`·`StartDate` 가 둘 다 `시작일` 인데 **한 표에 같이 나오지
-        않는다.** 사전으로 판정하면 이 정상 호출이 막힌다.
+        같은 값을 가진 두 키가 **한 표에 같이 나오지 않는** 경우가 있다 — 사전 하나를 여러 표가 나눠 쓰면
+        생긴다. 사전으로 판정하면 이런 정상 호출이 막힌다.
 
         Given: 같은 값을 가진 키가 둘 있지만 표에는 하나만 있는 경우
         When: 변환하면

@@ -116,20 +116,6 @@ def test_market_file_templates_produce_stored_names() -> None:
     assert common_constants.ADJUSTED_FILE_TEMPLATE.format(ticker="QQQ") == "QQQ_adjusted_max.csv"
 
 
-def test_futures_file_template_uses_product_id() -> None:
-    """
-    목적: 선물은 **종목이 아니라 상품 코드**로 파일이 갈린다는 사실을 이름에 남긴다.
-
-    같은 `{ticker}` 템플릿을 쓰면 선물 파일을 종목 파일로 착각해 로더를 잘못 고르게 된다 —
-    선물은 날짜만으로 행이 유일해지지 않아 전용 로더가 필요하다.
-
-    Given: 선물 파일명 템플릿
-    When: 상품 코드로 채우면
-    Then: 저장소에 실제로 있는 이름이 나온다
-    """
-    assert common_constants.FUTURES_FILE_TEMPLATE.format(product_id="KRDRVFUK2I") == "KRDRVFUK2I_max.csv"
-
-
 def test_series_file_templates_are_distinct() -> None:
     """
     목적: 시세와 단일 값 시계열의 파일명이 서로 섞이지 않음을 고정한다 (경계 조건).

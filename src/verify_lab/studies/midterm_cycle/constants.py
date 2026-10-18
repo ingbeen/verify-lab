@@ -630,16 +630,16 @@ COL_BASELINE_NON_OVERLAPPING: Final = f"{COL_NON_OVERLAPPING}{BASELINE_SUFFIX}"
 DISPLAY_CYCLE_POSITION: Final = "사이클 위치"
 DISPLAY_CYCLE_YEAR: Final = "진입 연도"
 
-# 분기 표의 축. **`구간` 을 쓰지 않는다** — `report/constants.DISPLAY_HORIZON` 이
-# 측정 구간을 그 이름으로 부르고 있어 같은 낱말이 두 뜻을 갖게 된다
+# 분기 표의 축. **`구간` 을 쓰지 않는다** — 그 낱말은 보유 기간(측정 구간)과 측정의 원칙 17 의 시기 구간을
+# 가리키는 말이라, 세 번째 뜻을 얹으면 같은 낱말이 표마다 다른 것을 가리킨다
 DISPLAY_QUARTER: Final = "분기"
 
 # 분기 원자료의 양 끝. **`진입가`·`청산가` 와 다른 이름인 것은 뜻이 다르기 때문이다** —
 # 분기의 시작가는 «직전 분기의 종가»이지 이 매매의 진입가가 아니다.
 #
-# [중요] **앞에 「분기」를 붙인다.** 배수 검증 둘이 `시작일`·`종료일` 을 그 구간의 양 끝이라는
-# 뜻으로 이미 쓰고 있어, 그냥 두면 같은 낱말이 세 곳에서 다른 것을 가리킨다
-# (`tests/test_layer_contracts.py` 의 레이블 겹침 검사가 이것을 막는다)
+# [중요] **앞에 「분기」를 붙인다.** `시작일`·`종료일` 만으로는 무엇의 양 끝인지 드러나지 않아 다른 표의
+# 같은 낱말과 겹친다 — 배수 검증 둘이 그 구간의 양 끝을 그 이름으로 부르는 레이블이라, 그 코드를 되살리면
+# (`docs/조사/` 의 그 조사 문서 「재현 방법」) `tests/test_layer_contracts.py` 의 레이블 겹침 검사가 막는다
 DISPLAY_SEGMENT_START_DATE: Final = "분기 시작일"
 DISPLAY_SEGMENT_START_PRICE: Final = "분기 시작가"
 DISPLAY_SEGMENT_END_DATE: Final = "분기 종료일"

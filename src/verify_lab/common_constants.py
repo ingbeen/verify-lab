@@ -61,44 +61,6 @@ REQUIRED_COLUMNS: Final = [COL_DATE, COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE, COL
 PRICE_COLUMNS: Final = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE]
 
 # ============================================================
-# 선물 시세 스키마 (공통 스키마의 확장)
-# ============================================================
-
-# 계약 식별자(ISIN)와 계약명. **선물은 하루에 여러 계약이 동시에 거래되므로 날짜만으로는
-# 행이 유일해지지 않는다.** 공통 시세 파일이 날짜를 유일 키로 전제하는 것과 갈리는 지점이며,
-# 그래서 선물은 전용 로더로 읽는다 (`data/loader.py` 의 `load_futures_csv`)
-COL_CONTRACT: Final = "Contract"
-COL_CONTRACT_NAME: Final = "ContractName"
-
-# 정산가. 거래가 없는 날에도 거래소가 매기므로 **롤 계수는 종가가 아니라 이 값으로 낸다.**
-# 원월물은 체결이 없는 날이 많아 종가가 결측이다
-COL_SETTLE: Final = "Settle"
-
-# 미결제약정. 시장이 어느 계약으로 옮겨갔는지를 보는 축이다
-COL_OPEN_INTEREST: Final = "OpenInterest"
-
-# 현물 지수값. 거래소가 시세와 함께 주므로 베이시스를 따로 받지 않아도 된다
-COL_SPOT: Final = "Spot"
-
-# 선물 시세 파일이 반드시 가져야 하는 컬럼과 그 순서
-FUTURES_REQUIRED_COLUMNS: Final = [
-    COL_DATE,
-    COL_CONTRACT,
-    COL_CONTRACT_NAME,
-    COL_OPEN,
-    COL_HIGH,
-    COL_LOW,
-    COL_CLOSE,
-    COL_VOLUME,
-    COL_SETTLE,
-    COL_OPEN_INTEREST,
-    COL_SPOT,
-]
-
-# 한 행을 유일하게 가리키는 키. 로더의 중복 판정이 이 조합을 쓴다
-FUTURES_ROW_KEY: Final = [COL_DATE, COL_CONTRACT]
-
-# ============================================================
 # 일별 단일 값 시계열 스키마
 # ============================================================
 
@@ -124,12 +86,9 @@ SERIES_REQUIRED_COLUMNS: Final = [COL_DATE, COL_VALUE]
 MARKET_FILE_TEMPLATE: Final = "{ticker}_max.csv"
 ADJUSTED_FILE_TEMPLATE: Final = "{ticker}_adjusted_max.csv"
 
-# 선물은 **종목이 아니라 상품 코드**로 갈린다. 하루에 여러 계약이 동시에 거래돼 날짜만으로는
-# 행이 유일해지지 않으므로 전용 로더로 읽으며, 이름이 그 사실을 드러내야 한다
-FUTURES_FILE_TEMPLATE: Final = "{product_id}_max.csv"
-
 # NAV 는 시세가 아니라 일별 단일 값이라 `SERIES_DIR` 에 저장한다.
-# 수집기가 쓰고 검증이 읽으므로 두 계층이 같은 이름을 봐야 한다
+# 수집기와 그것을 읽는 측정(원달러_ETF_등가성 — 지금은 코드가 없고 되살리는 절차는 그 조사 문서
+# 「재현 방법」)이 같은 이름을 봐야 하는 파일명 규칙이라 여기 둔다
 NAV_FILE_TEMPLATE: Final = "{ticker}_NAV.csv"
 
 # 지수는 시세가 아니라 **종가 하나짜리 계열**로 저장해 `SERIES_DIR` 에 둔다.
@@ -154,11 +113,6 @@ PRICE_DECIMALS: Final = 4
 # 비율(0~1)을 백분율로 바꾸는 계수. `measure`·`report`·`execution`·`studies` 가 모두 쓴다 —
 # 계층마다 따로 정의하면 한쪽만 바뀌어도 예외가 나지 않고 표만 조용히 어긋난다
 RATE_TO_PERCENT: Final = 100
-
-# 연 이자율을 하루치로 나눌 때 쓰는 일수. **달력일 기준이다** — 연율로 고시되는 금리는
-# 거래일이 아니라 달력일로 붙으므로, 거래일로 나누면 연휴가 긴 해에 이자가 덜 붙는다.
-# `usdkrw_equivalence` 와 `futures_leverage` 가 함께 쓴다
-CALENDAR_DAYS_PER_YEAR: Final = 365
 
 # 실행 시각과 타임스탬프의 기준 시간대. 수집기의 「오늘」 판정과
 # 실행 이력(`utils/meta_manager.py`)이 같은 값을 써야 두 기록이 같은 시각을 가리킨다

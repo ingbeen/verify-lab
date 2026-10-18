@@ -4,12 +4,14 @@
 AI 모델이 없는 파일을 찾거나 있는 파일을 놓친다. 이 프로젝트는 검증마다 문서가 계속
 늘어나므로 부패가 반드시 발생한다.
 
-네 가지를 검사한다.
+검사하는 것:
 
-1. INDEX에 적힌 경로가 실재하는가 (죽은 링크 차단)
-2. 실재하는 문서가 INDEX에 등록됐는가 (누락 차단)
-3. 세션 시작 규칙이 조건 없이 로드되는가 (진입 경로 보장)
-4. 걷어낸 문서가 되살아나지 않았는가 (「앞으로의 계획」·개인 운용 상태 재유입 차단)
+- INDEX에 적힌 경로가 실재하는가 (죽은 링크 차단)
+- 실재하는 문서가 INDEX에 등록됐는가 (누락 차단) · 진입에 필요한 핵심 문서가 링크됐는가
+- 세션 시작 규칙이 조건 없이 로드되는가 (진입 경로 보장)
+- 계획서 폴더가 비어도 남는가 (계획서 게이트 유지)
+- 걷어낸 문서가 되살아나지 않았는가 (「앞으로의 계획」·개인 운용 상태 재유입 차단)
+- 조사 등급 아래에 폴더가 없는가 (조사 문서는 한 장)
 """
 
 import re
@@ -40,6 +42,10 @@ BOOTSTRAP_RULE_PATH = PROJECT_ROOT / ".claude" / "rules" / "session-bootstrap.md
 # 계획서 폴더를 비워도 남겨야 하는 파일.
 # 폴더가 사라지면 계획서 게이트 훅이 규약 미채택으로 보고 조용히 꺼진다.
 PLANS_KEEPER_PATH = PROJECT_ROOT / "docs" / "plans" / ".gitkeep"
+
+# 조사 등급 문서 폴더. **조사는 언제나 한 장이라 이 아래에 폴더를 두지 않는다** — 끝난 조사라
+# 설계와 결과를 나눠 둘 이유가 없다(`.claude/rules/docs.md` 「배치는 «등급» 축이다」)
+SURVEY_DIR = PROJECT_ROOT / "docs" / "조사"
 
 # 저장소에서 걷어낸 문서.
 # 되살아나면 「앞으로의 계획」과 작업 일지가 다시 쌓이고, 근거가 두 벌이 된다.
@@ -206,6 +212,30 @@ def test_plans_folder_keeper_exists() -> None:
     Then: 파일이 존재한다
     """
     assert PLANS_KEEPER_PATH.is_file(), "docs/plans/.gitkeep 이 없습니다. 계획서를 전부 비우면 폴더가 사라져 " "계획서 게이트가 꺼집니다"
+
+
+def test_survey_grade_has_no_folders() -> None:
+    """
+    목적: 조사 문서가 언제나 한 장(`docs/조사/<이름>.md`)이라는 배치 계약을 고정한다.
+
+    폴더형이 다시 생겨도 다른 검사는 전부 통과한다 — INDEX 등록과 결과 문서 계약은 두 모양을 다 받는다.
+
+    Given: docs/조사/
+    When: 그 안의 폴더를 모은다 (이름만 본다)
+    Then: 하나도 없다
+    """
+    # Given — 경로가 틀려 빈 목록으로 통과하는 것을 막는다
+    assert SURVEY_DIR.is_dir(), f"조사 문서 폴더가 없습니다: {SURVEY_DIR.relative_to(PROJECT_ROOT)}"
+
+    # When
+    folders = sorted(path.name for path in SURVEY_DIR.iterdir() if path.is_dir())
+
+    # Then
+    assert not folders, (
+        "조사 등급 아래에 폴더가 있습니다:\n"
+        + "\n".join(f"  - docs/조사/{name}/" for name in folders)
+        + "\n  조사 문서는 `docs/조사/<이름>.md` 한 장으로 합칩니다 (.claude/rules/docs.md 「배치는 «등급» 축이다」)"
+    )
 
 
 @pytest.mark.parametrize("removed", REMOVED_DOCUMENTS)

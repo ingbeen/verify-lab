@@ -26,8 +26,8 @@ from verify_lab.common_constants import COL_DATE
 # 매매법 이름(slug). **값의 정의처는 `studies/<slug>/constants.py` 의 `TRACK_NAME`** 이고
 # 여기는 키 이름만 소유한다.
 #
-# [중요] **`execution` 이 아니라 여기 둔다.** 신호가 없는 조사 검증(등가성·배수·선물)은
-# 체결 계층을 쓰지 않는데, 키 하나 때문에 `execution` 을 import 하면 **쓰지도 않는 계층에
+# [중요] **`execution` 이 아니라 여기 둔다.** 신호가 없는 검증(지금은 코드가 없는 조사 셋 — `docs/조사/` 의 그 조사 문서
+# 「재현 방법」으로 되살린다)은 체결 계층을 쓰지 않는데, 키 하나 때문에 `execution` 을 import 하면 **쓰지도 않는 계층에
 # 의존**하게 된다. `dataset_record` 를 이 모듈에 둔 것과 같은 이유다 —
 # `studies` 도 `execution` 도 이미 `report` 에 의존한다
 KEY_TRACK: Final = "track"
@@ -96,7 +96,7 @@ def dataset_record(*, ticker: str, label: str, file: str, frame: pd.DataFrame) -
 def format_period(start: pd.Timestamp, end: pd.Timestamp) -> str:
     """기간을 산출물 표기로 바꾼다.
 
-    **`dataset_record` 밖에서도 필요하다** — 배수 검증이 구간 기간을 CSV 셀에 적는다.
+    **`dataset_record` 밖에서도 필요하다** — 반감기_사이클이 대조 계열의 기간을 요약에 적는다.
     거기서 형식을 따로 만들면 같은 뜻의 값이 두 산출물에서 다르게 보인다.
 
     Args:

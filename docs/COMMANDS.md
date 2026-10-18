@@ -30,7 +30,7 @@ poetry run black .                                   # 포맷 적용 (계획서�
 
 ## 데이터 수집
 
-> 외부 서버(Yahoo Finance · KRX · ECOS · FRED · Bitstamp · Coin Metrics)에 실제 요청을 보냅니다. 이미 받은 파일이 있으면 다시 받지 않고,
+> 외부 서버(Yahoo Finance · KRX · Bitstamp · Coin Metrics)에 실제 요청을 보냅니다. 이미 받은 파일이 있으면 다시 받지 않고,
 > 덮어썼으면 그 수치를 쓴 결과 문서에 새 데이터 기간을 적습니다 (루트 [CLAUDE.md](../CLAUDE.md) 「재수집은 이미 나온 결과를 바꿉니다」).
 
 ### 미국 — yfinance
@@ -47,37 +47,13 @@ KRX 데이터포털 계정이 필요합니다 — 저장소 루트 `.env` 의 `K
 
 ```bash
 poetry run python scripts/data/collect_pykrx.py                                              # KODEX 200 전 기간 (기본값) · 원본가
-poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --adjusted  # 수정주가 — 매매·검증과 원달러 ETF 등가성이 읽는다 (KRX 는 최근 3,000거래일만 준다)
+poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --adjusted  # 수정주가 — 다른 파일명으로 받는다. 매매·검증은 이 기준을 읽는다 (KRX 는 최근 3,000거래일만 준다)
 poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --nav       # NAV (단일 값 계열)
 poetry run python scripts/data/collect_pykrx.py --index --ticker 1001 --start 19800104       # 지수 종가 — 지수마다 첫날을 준다
-
-poetry run python scripts/data/collect_krx_futures.py                         # 코스피200·코스닥150 선물 (기본값). 동시에 여럿 띄우지 않는다
-poetry run python scripts/data/collect_krx_futures.py --product KRDRVFUKQI    # 한 상품만
-
-poetry run python scripts/data/collect_etn.py                                  # 삼성 인버스 2X 코스닥150 선물 ETN (기본값)
-poetry run python scripts/data/collect_etn.py --ticker 520057 --start 20221017 # 다른 종목 — 시작일은 그 종목의 상장일
-poetry run python scripts/data/collect_etn.py --indicative-value               # 증권당 지표가치 (ETF 의 NAV 에 해당)
 
 poetry run python scripts/data/check_pykrx_etf.py                              # 실측 — KODEX 200 데이터 성질
 poetry run python scripts/data/check_pykrx_splice.py                           # 실측 — 수정주가 구간 이어붙이기 (2분할)
 poetry run python scripts/data/check_pykrx_splice.py --ends 20081231,20141231  # 3분할 — 앞 구간이 상장일에 닿지 못했을 때
-```
-
-### 한국은행 — ECOS
-
-인증키가 필요합니다 — 저장소 루트 `.env` 의 `ECOS_API_KEY` (ecos.bok.or.kr 에서 발급).
-
-```bash
-poetry run python scripts/data/check_ecos.py                                          # 실측 — 통계표·항목 코드 (코드를 쓰기 전에)
-poetry run python scripts/data/check_ecos.py --keyword 환율 국제수지 --stat 731Y001
-poetry run python scripts/data/collect_ecos.py                                        # 환율(종가·매매기준율) + CD 91일물 (기본값: 전부 · 전 기간)
-poetry run python scripts/data/collect_ecos.py --series usdkrw_close --start 19980101 --end 20261231
-```
-
-### 미국 금리 — FRED
-
-```bash
-poetry run python scripts/data/collect_fred.py   # 미국 3개월 T-bill (DTB3). 인증키가 필요 없다
 ```
 
 ### 비트코인 — Bitstamp · Coin Metrics
@@ -111,24 +87,3 @@ BROWSER=true poetry run python scripts/chart_halving_cycle.py               # �
 ```
 
 선행 조건은 비트코인 수집(위 「비트코인 — Bitstamp · Coin Metrics」)이 받은 네 파일이다.
-
-### 원달러_ETF_등가성
-
-```bash
-poetry run python scripts/run_usdkrw_equivalence.py                   # 전 조합 (기본값)
-poetry run python scripts/run_usdkrw_equivalence.py --model usd_rate  # 이론값 모형 하나만
-```
-
-### 레버리지_ETF_괴리
-
-```bash
-poetry run python scripts/run_leverage_tracking.py                    # 전 쌍 (기본값)
-poetry run python scripts/run_leverage_tracking.py --index 나스닥100   # 한 지수만
-```
-
-### 선물_대_레버리지_ETF
-
-```bash
-poetry run python scripts/run_futures_leverage.py                     # 전 조합 (기본값)
-poetry run python scripts/run_futures_leverage.py --index KOSDAQ150   # 한 지수만
-```

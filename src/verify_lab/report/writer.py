@@ -187,8 +187,8 @@ def _strings_in(value: Any, trail: str = "") -> Iterator[tuple[str, str]]:
 def absolute_paths_in(payload: Any) -> list[tuple[str, str]]:
     """실행 요약 안의 절대경로를 **자리와 함께** 찾는다.
 
-    **중첩을 재귀로 훑는다.** 결함이 최상위 키에만 있지 않았다 — 등가성 검증의 것은
-    `inputs.spot.close` 처럼 두 단계 아래에 있어 얕게 보면 그대로 지나간다.
+    **중첩을 재귀로 훑는다.** 절대경로는 최상위 키에만 들지 않는다 — `inputs.spot.close` 처럼
+    두 단계 아래에 들면 얕게 보면 그대로 지나간다.
 
     Args:
         payload: 실행 요약
