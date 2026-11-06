@@ -14,8 +14,8 @@
 | 칸당 표본 하한 | `measure/constants.py` | 원칙 12·17이 같은 하한을 쓰므로 소유자가 하나다. 값은 `MIN_SAMPLE_PER_CELL` 이 갖는다 |
 | 체결 판정식 | `execution/trade_fill.py` | 시가·장중 순서가 뒤바뀌면 손실이 실제보다 작게 나오고, 두 곳에 두면 그 함정을 두 번 관리한다 |
 | 구간별 성적 산식 | `execution/periods.py` | 구간 5행은 매매법 전부에 공통이다 (측정의 원칙 17) |
-| 평균-비율 어긋남 판정과 그 임계값 | `measure/statistics.py` · `measure/constants.py` | 원칙 13이 모든 검증에 요구한다. **실제로 두 검증에 docstring까지 같은 함수가 두 벌 있었다** |
-| 판정가능 «식» | `measure/statistics.py` | 값(하한)만 공통이고 식은 다섯 곳에 있었다 — 하한을 바꿔도 한 곳이 안 따라오면 드러나지 않는다 |
+| 평균-비율 어긋남 판정과 그 임계값 | `measure/statistics.py` · `measure/constants.py` | 원칙 13이 모든 검증에 요구한다. 검증마다 두면 docstring 까지 같은 함수가 두 벌이 된다 |
+| 판정가능 «식» | `measure/statistics.py` | 값(하한)만 공통으로 두고 식을 곳곳에 쓰면 하한을 바꿔도 한 곳이 안 따라올 때 드러나지 않는다 |
 
 **「무엇이 여기 들어오는가」의 판단 기준은 하나다** — 루트 `CLAUDE.md` 의 「이것이 「측정의
 원칙」에 적혀 있는가」. 적혀 있으면 공통 계층이 소유해야 하고, 적혀 있지 않은 조립 유틸
@@ -389,13 +389,13 @@ def _package_trees(package: Path) -> dict[Path, ast.Module]:
 def _rename_dicts(tree: ast.Module) -> list[tuple[str, ast.Dict]]:
     """모듈 최상단의 **컬럼 이름표 사전**을 모은다 — `COL_* → DISPLAY_*` 모양의 것.
 
-    **이름이 아니라 «구조»로 찾는다: 키에 상수 이름이 오는 사전.** 처음에는 `*_LABELS` 라는
-    이름으로 찾았는데, 그러면 사전 이름을 `COLUMN_MAP` 으로 바꾸는 것만으로 그 검증이 감시에서
-    통째로 빠지면서 **검사는 초록으로 남는다** — 막으려는 실패 방식과 정확히 같다.
+    **이름이 아니라 «구조»로 찾는다: 키에 상수 이름이 오는 사전.** `*_LABELS` 같은 이름으로
+    찾으면 사전 이름을 `COLUMN_MAP` 으로 바꾸는 것만으로 그 검증이 감시에서 통째로 빠지면서
+    **검사는 초록으로 남는다** — 막으려는 실패 방식과 정확히 같다.
 
-    구조로 거르면 값-사전(`HORIZON_LABELS`·`MODEL_LABELS`·`EXTREME_DIRECTION_LABELS`)이
-    자연히 빠진다. 키가 정수·실수·열거형이라 이름이 아니기 때문이다. **그것들이 섞이면 해롭다** —
-    그 사전 «안»의 노드까지 「사전 안이라 참조로 세지 않는다」에 걸려, 값 자리에 쓰인 살아 있는
+    구조로 거르면 키가 리터럴(정수·실수)이거나 `열거형.멤버` 인 값-사전이 빠진다. 키가 맨 이름
+    (`ast.Name`)이 아니기 때문이다. 키를 이름 붙은 상수(`HORIZON_5 = 5` 의 `HORIZON_5`)로 쓴 값-사전은
+    빠지지 않는다. **값-사전이 섞이면 해롭다** — 그 사전 «안»의 노드까지 「사전 안이라 참조로 세지 않는다」에 걸려, 값 자리에 쓰인 살아 있는
     이름이 죽은 것으로 뒤집힌다.
 
     Args:
@@ -869,7 +869,7 @@ class TestPrincipleThirteenOwnership:
 
     def test_절반_임계값을_검증마다_두지_않는다(self) -> None:
         """
-        목적: 위 판정의 임계값이 두 `studies/*/constants.py` 에 흩어져 있던 것을 닫는다.
+        목적: 위 판정의 임계값을 `studies/*/constants.py` 마다 두지 않는다.
 
         Given: `src/verify_lab` 전체
         When: `HALF_RATE` 를 직접 정의하는 파일을 찾는다
@@ -883,12 +883,10 @@ class TestPrincipleThirteenOwnership:
 
     def test_판정가능_식을_손으로_쓰지_않는다(self) -> None:
         """
-        목적: 하한(값)만 공통이고 **식**은 다섯 곳에 있던 것을 닫는다.
+        목적: 하한(값)만이 아니라 **식**도 한 곳에 둔다.
 
-        `JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO` 가
-        `month_end`·`option_expiry`·`leverage_tracking`·`futures_leverage`·`execution/periods`
-        다섯 곳에 있었다. 하한을 바꿔도 한 곳이 안 따라오면 **예외 없이** 두 산출물의
-        `판정가능` 이 다른 기준으로 찍힌다.
+        `JUDGEABLE_YES if count >= MIN_SAMPLE_PER_CELL else JUDGEABLE_NO` 를 쓰는 곳마다 다시 쓰면
+        하한을 바꿔도 한 곳이 안 따라올 때 **예외 없이** 두 산출물의 `판정가능` 이 다른 기준으로 찍힌다.
 
         Given: `src/verify_lab` 전체
         When: 판정가능 값을 삼항식으로 만드는 파일을 찾는다
@@ -912,8 +910,8 @@ class TestPrincipleValueOwnership:
         """
         목적: 측정의 원칙 11 의 두 방향이 갈라지지 않게 한다.
 
-        **같은 컬럼의 같은 값이 두 경로로 들어오고 있었다** — 월말 매매는 `measure.screening`
-        에서, 옵션 만기일 매매는 `strategy.constants` 에서 가져왔다.
+        **같은 컬럼의 같은 값이 두 경로로 들어오면** 한쪽만 바뀌어도 예외 없이 두 산출물의
+        방향 표기가 갈린다.
 
         Given: `src/verify_lab` 전체
         When: `위`·`아래` 를 상수 값으로 정의하는 파일을 찾는다
@@ -927,9 +925,8 @@ class TestPrincipleValueOwnership:
         """
         목적: 측정의 원칙 13 의 **절반만 통합된 상태**를 닫는다.
 
-        판정 함수는 `measure/statistics` 로 올라갔는데 **컬럼 이름과 표시 레이블은 두 검증에
-        한 벌씩 남아 있었다.** 같은 원칙이 요구하는 것을 검증마다 두면 두 산출물의 같은 컬럼이
-        조용히 갈라진다.
+        판정 함수만 `measure/statistics` 에 두고 **컬럼 이름과 표시 레이블을 검증마다 두면**
+        같은 원칙이 요구하는 것이 두 산출물에서 조용히 갈라진다.
 
         Given: `src/verify_lab` 전체
         When: 컬럼 토큰과 표시 레이블을 정의하는 파일을 각각 찾는다
@@ -1003,7 +1000,7 @@ class TestDisplayLabelLiveness:
     전부 막힌다. **그 반대 방향을 여기서 본다.**
 
     그렇게 쌓인 죽은 레이블은 **미사용 전수 스캔에도 안 잡힌다** — 사전에 키로 한 번 얹히는
-    것만으로 「쓰인다」가 되기 때문이다. 한 검증이 두 쌍을 그렇게 이고 있던 것이 실물 사례다.
+    것만으로 「쓰인다」가 되기 때문이다.
     """
 
     def test_사전의_키_중_그_검증이_정의한_것은_사전_밖에서도_쓰인다(self) -> None:
@@ -1062,11 +1059,10 @@ class TestStudyPackageComposition:
 
     def test_같은_접두사의_같은_값을_두_파일에_두지_않는다(self) -> None:
         """
-        목적: 한 검증 안에서 같은 컬럼 토큰이 두 벌이던 상태로 되돌아가지 않게 한다.
+        목적: 한 검증 안에서 같은 컬럼 토큰이 두 벌이 되지 않게 한다.
 
-        `studies/futures_leverage` 가 `COL_PRICE`·`COL_INTEREST` 를 `constants.py` 와
-        `position.py` **양쪽에** 갖고 있었다. **값이 우연히 같아서 동작했고**, 한쪽만 바뀌면
-        `runner` 와 `position` 이 다른 컬럼을 가리키는데 예외는 나지 않는다.
+        한 패키지가 같은 `COL_*` 를 `constants.py` 와 다른 모듈 **양쪽에** 두면 **값이 우연히 같아서
+        동작할 뿐**이고, 한쪽만 바뀌면 두 모듈이 다른 컬럼을 가리키는데 예외는 나지 않는다.
 
         **접두사가 같을 때만 본다.** `COL_HOLD_DAYS`(DataFrame 컬럼)와 `KEY_HOLD_DAYS`(JSON 키)는
         **다른 이름공간**이라 같은 토큰을 써도 충돌이 아니다.
@@ -1129,10 +1125,9 @@ class TestCommonLayerReexport:
         """
         목적: 소유자를 옮겼는데 옛 경로로 들어오는 코드가 남는 것을 막는다.
 
-        `tests/test_studies_leverage_breakdown.py` 가 `max_non_overlapping` 을
-        **`studies.leverage_tracking.breakdown` 에서** 가져오고 있었다. 소유자가
-        `measure.statistics` 로 옮겨간 뒤에도 그 테스트는 통과했고, 그래서 이동이 실제로
-        일어났는지 확인할 방법이 없었다.
+        공통 이름(예: `measure.statistics` 의 `max_non_overlapping`)을 그것을 쓰는 `studies` 모듈에서
+        가져오면, 소유자를 옮긴 뒤에도 그 경로로 들어오는 코드와 테스트가 **그대로 통과해** 이동이
+        실제로 일어났는지 확인할 방법이 없다.
 
         Given: `studies/`·`execution/` 가 공통 계층에서 가져온 이름
         When: `src`·`tests`·`scripts` 전체에서 그 이름을 **그 모듈에서** 가져오는 곳을 찾는다
@@ -1189,10 +1184,10 @@ class TestDataConstantsOwnership:
 
     def test_국내_제외_일수를_수집기가_정의하지_않는다(self) -> None:
         """
-        목적: 세 국내 수집기가 같은 값을 각자 두던 상태로 되돌아가지 않게 한다.
+        목적: 국내 KRX 코드가 제외 일수를 각자 두지 않게 한다.
 
-        셋 다 「장중에도 당일 행이 반환되므로 당일은 뺀다」는 같은 이유로 같은 값을 썼고,
-        주석이 서로를 "같은 기준"이라 가리키고 있었다. 값이 갈라져도 예외는 나지 않는다.
+        「장중에도 당일 행이 반환되므로 당일은 뺀다」는 국내 KRX 코드 전부에 같은 이유라,
+        각자 두면 값이 갈라져도 예외는 나지 않는다.
 
         **미국 제외 일수는 검사 대상이 아니다** — 쓰는 곳이 `yfinance_collector` 하나뿐이라
         「1개 파일에서만 사용 → 해당 파일 상단」 규칙에 따라 제자리에 있는 것이 맞다.
@@ -1509,11 +1504,11 @@ class TestStudyOutputFiles:
 
     def test_CLI_가_파일_이름을_직접_적지_않는다(self) -> None:
         """
-        목적: 「스크립트가 그 문자열을 되짚는다」를 막는다 — `.csv` 규약이 생긴 이유다.
+        목적: 「스크립트가 그 문자열을 되짚는다」를 막는다 — `.csv` 규약의 이유다.
 
-        `run_month_end_study.py` 가 `save_table(directory, f"{name}.csv", table)` 로
-        요약의 별칭 키에 확장자를 붙여 파일 이름을 만들고 있었다. **그러면 파일 이름의 SoT 가
-        사실상 요약 키가 되고**, 그 키를 바꾸는 순간 산출물 파일 이름이 함께 바뀐다.
+        CLI 가 `save_table(directory, f"{name}.csv", table)` 처럼 요약의 별칭 키에 확장자를 붙여
+        파일 이름을 만들면 **파일 이름의 SoT 가 사실상 요약 키가 되고**, 그 키를 바꾸는 순간
+        산출물 파일 이름이 함께 바뀐다.
 
         **「조립 금지」가 아니라 「확장자를 적지 마라」로 건다.** 짝마다 파일을 내는 검증은
         `WINDOWS_FILENAME_TEMPLATE.format(...)` 로 이름을 만드는 것이 정당한데, 그때 확장자를
@@ -1670,8 +1665,7 @@ class TestKrxCommonOwnership:
         """
         목적: 저장 경계가 수집기마다 갈리는 것을 막는다.
 
-        `exclude_recent` 가 한 벌이 되기 전에는 `etn`·`krx_futures` 가 **바이트 단위로 같은
-        복사본**을 갖고 `pykrx_collector` 는 같은 로직을 세 함수에 인라인으로 갖고 있었다.
+        수집기마다 `exclude_recent` 의 복사본을 두거나 같은 로직을 인라인으로 다시 쓰면
         **한 곳만 고쳐도 예외가 나지 않는다** — 저장 범위만 하루 달라진 파일이 만들어진다.
 
         **이 검사는 한 가지 «표기»만 본다.** 공백을 바꾸거나 키워드를 빼서 다시 인라인하면

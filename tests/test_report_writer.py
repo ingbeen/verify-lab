@@ -53,7 +53,8 @@ def test_directory_name_is_the_korean_label(mock_results_dir: Path) -> None:
     목적: 결과 폴더 이름이 **그 매매법의 한글 이름 하나**임을 고정한다.
 
     **사용자가 여는 것은 산출물 폴더**인데 그 이름이 코드 식별자(slug)면 문서와 대조할 때마다
-    번역해야 한다. 한글 이름을 쓰면 `docs/<등급>/<이름>/` 과 자리가 그대로 맞는다.
+    번역해야 한다. 한글 이름을 쓰면 그 줄의 문서가 따로 있을 때 `docs/<등급>/<이름>/`(조사는 한 장
+    `docs/조사/<이름>.md`)과 자리가 그대로 맞는다.
 
     **실행 시각을 붙이지 않는다.** 같은 소스로 재실행하면 산출물이 바이트 단위로 같으므로,
     시각을 붙이면 **내용이 같고 이름만 다른 폴더**가 실행할 때마다 쌓인다.
@@ -242,7 +243,7 @@ def test_rejects_track_name_outside_the_slug_shape(mock_results_dir: Path, bad_n
 
     두 가지를 한꺼번에 막는다.
 
-    1. **이름 규약** — 코드에서 매매법은 영문 slug 하나로 불린다(`docs/INDEX.md` §3 이름표).
+    1. **이름 규약** — 코드에서 매매법은 영문 slug 하나로 불린다(`docs/INDEX.md` 「매매법·조사」 표).
        폴더 이름이 곧 그 slug 이므로 규약을 강제하는 자리가 여기다
     2. [중요] **경로 탈출** — 이름이 폴더 이름 «전체» 이고 그 폴더를 **비우므로**, `../` 나 `/`
        가 섞이면 산출물 루트 밖을 겨눠 **지운다.** 시각 접두어가 있던 때보다 위험이 커졌다
@@ -264,27 +265,23 @@ def test_accepts_every_real_track_name() -> None:
     목적: 위 검사가 **실제로 쓰는 이름을 막지 않는다**를 고정한다.
 
     거부 테스트만 두면 패턴을 지나치게 좁혀도 통과한다. 짝으로 둬서 저장소의 실제 slug 가
-    전부 통과하는지 본다.
+    전부 통과하는지 본다. **운영 코드와 같은 `fullmatch` 로 잰다** — `.match` 는 앞부분만 맞아도
+    통과해 패턴을 뒤쪽에서 좁히는 변경(길이 상한 등)을 못 잡는다.
 
-    [중요] **실측 프로브 이름도 함께 본다.** 프로브도 `create_run_directory` 에 그대로 들어가는데
-    `scripts/` 는 테스트 범위 밖이라, 여기서 빠지면 **새 프로브 이름이 검사를 통과한 채
+    [중요] **레지스트리의 slug 전부를 본다.** `create_run_directory` 는 등록된 이름만 받으므로
+    실제로 들어갈 수 있는 이름이 이것이 전부다 — 실측 프로브(`scripts/` 는 테스트 범위 밖)와 코드 없이
+    줄만 남은 조사도 들어 있다. 손으로 고른 목록이면 거기서 빠진 이름이 **검사를 통과한 채
     실행 시점에야 죽는다.**
 
-    Given: 각 검증 패키지의 매매법 이름과 실측 스크립트의 프로브 이름
+    Given: 레지스트리의 모든 slug
     When: 폴더 이름 검사 패턴에 맞춘다
     Then: 전부 통과한다
     """
     # Given
-    from verify_lab.studies.halving_cycle.constants import TRACK_NAME as HALVING_CYCLE
-    from verify_lab.studies.midterm_cycle.constants import TRACK_NAME as MIDTERM_CYCLE
-
-    # 프로브 이름은 `scripts/data/check_*.py` 가 소유한다. 그 스크립트를 import 하면
-    # pykrx 가 딸려 와 로그인을 시도하므로(계층 계약의 「지연 import」) 값만 옮겨 적는다
-    probe_names = ["pykrx_etf_probe", "pykrx_splice_probe"]
-    names = [MIDTERM_CYCLE, HALVING_CYCLE, *probe_names]
+    from verify_lab.tracks import TRACKS
 
     # When / Then
-    unmatched = [name for name in names if not writer.VALID_TRACK_NAME.match(name)]
+    unmatched = [track.slug for track in TRACKS if not writer.VALID_TRACK_NAME.fullmatch(track.slug)]
     assert unmatched == [], f"실제 매매법 이름이 폴더 이름 검사를 통과하지 못합니다: {unmatched}"
 
 
@@ -388,6 +385,7 @@ def test_accepts_every_real_label() -> None:
 
     거부 테스트만 두면 패턴을 지나치게 좁혀도 통과한다. 실측 프로브 이름(`ECOS_실측`·
     `pykrx_ETF_실측`)은 **대문자와 영문이 섞여** 있어 한글만 허용하는 패턴에서 조용히 막힌다.
+    위 slug 테스트와 같은 이유로 `fullmatch` 로 잰다.
 
     Given: 레지스트리의 모든 한글 이름
     When: 폴더 이름 검사 패턴에 맞춘다
@@ -397,7 +395,7 @@ def test_accepts_every_real_label() -> None:
     from verify_lab.tracks import TRACKS
 
     # When / Then
-    unmatched = [track.label for track in TRACKS if not writer.VALID_TRACK_LABEL.match(track.label)]
+    unmatched = [track.label for track in TRACKS if not writer.VALID_TRACK_LABEL.fullmatch(track.label)]
     assert unmatched == [], f"실제 한글 이름이 폴더 이름 검사를 통과하지 못합니다: {unmatched}"
 
 

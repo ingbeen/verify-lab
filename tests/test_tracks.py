@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 
+from verify_lab.report.writer import VALID_TRACK_LABEL, VALID_TRACK_NAME
 from verify_lab.tracks import (
     GRADE_STUDY,
     GRADE_SURVEY,
@@ -39,15 +40,6 @@ from verify_lab.tracks import (
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STUDIES_DIR = PROJECT_ROOT / "src" / "verify_lab" / "studies"
 INDEX_PATH = PROJECT_ROOT / "docs" / "INDEX.md"
-
-# slug 의 모양. 코드에서 매매법을 부르는 이름이라 영소문자와 밑줄만 쓴다
-SLUG_SHAPE = re.compile(r"^[a-z][a-z_]*$")
-
-# 한글 이름의 모양. **산출물 폴더 이름이 이 값**이므로 slug 와 요구가 다르다 —
-# 한글과 대문자를 허용하되 경로 구분자·점·공백은 막는다.
-# 정의처는 `report/writer.py` 의 `TRACK_LABEL_PATTERN` 이고 여기서는 레지스트리에 든 값이
-# 그 모양인지만 본다
-LABEL_SHAPE = re.compile(r"^[A-Za-z가-힣][0-9A-Za-z가-힣_]*$")
 
 # 폴더 이름에 절대 들어가면 안 되는 조각. **폴더를 비우므로** 이것이 섞이면 지우는 자리가 바뀐다
 PATH_ESCAPES = ("/", "\\", "..", " ")
@@ -89,7 +81,8 @@ class TestRegistryShape:
 
     def test_한글_이름이_유일하다(self) -> None:
         """
-        목적: 한글 이름이 문서 폴더 이름이 되므로 겹치면 두 매매법의 문서가 섞인다.
+        목적: 한글 이름이 산출물 폴더 이름(문서가 따로 있으면 문서 이름도)이 되므로 겹치면 두 매매법의
+            산출물이 한 폴더에 섞인다.
 
         Given: 레지스트리 전체
         When: 한글 이름을 모은다
@@ -106,12 +99,15 @@ class TestRegistryShape:
         """
         목적: slug 가 폴더 이름 전체이므로 `../` 나 `/` 가 섞이면 산출물 루트 밖을 겨눈다.
 
+        **모양은 운영 코드(`report/writer.py`)의 패턴을 `fullmatch` 로 잰다.** 패턴을 복사해 두면
+        운영 패턴이 바뀌어도 옛 모양을 재고, `$` 는 끝 개행 앞에서도 맞아 `"reverse\\n"` 이 통과한다.
+
         Given: 레지스트리의 한 줄
         When: slug 의 모양을 본다
         Then: 영소문자와 밑줄로만 이루어져 있다
         """
         # Given / When / Then
-        assert SLUG_SHAPE.match(track.slug), f"slug 모양이 맞지 않습니다: {track.slug}"
+        assert VALID_TRACK_NAME.fullmatch(track.slug), f"slug 모양이 맞지 않습니다: {track.slug!r}"
 
     @pytest.mark.parametrize("track", TRACKS, ids=lambda track: track.slug)
     def test_한글_이름이_폴더_이름으로_쓸_수_있는_모양이다(self, track: Track) -> None:
@@ -120,13 +116,14 @@ class TestRegistryShape:
 
         slug 와 요구가 다르다 — 한글과 대문자를 써야 하므로 slug 패턴을 쓸 수 없고,
         그렇다고 아무 문자나 허용하면 `../` 가 섞였을 때 **산출물 루트 밖을 겨눠 지운다.**
+        위 slug 와 같은 이유로 운영 코드의 패턴을 `fullmatch` 로 잰다.
 
         Given: 레지스트리의 한 줄
         When: 한글 이름의 모양을 본다
         Then: 한글·영숫자·밑줄로만 이루어져 있고 경로 조각이 섞이지 않았다
         """
         # Given / When / Then
-        assert LABEL_SHAPE.match(track.label), f"한글 이름 모양이 맞지 않습니다: {track.label}"
+        assert VALID_TRACK_LABEL.fullmatch(track.label), f"한글 이름 모양이 맞지 않습니다: {track.label!r}"
 
         found = [piece for piece in PATH_ESCAPES if piece in track.label]
         assert not found, f"{track.label}: 폴더 이름에 쓸 수 없는 조각이 있습니다 {found}"
