@@ -36,8 +36,7 @@ poetry run black .                                   # 포맷 적용 (계획서�
 > - 받을 파일: `storage/market/quant_data_files.txt` (한 줄에 quant-data storage 기준 경로 하나)
 > - 받은 버전: `storage/market/quant_data_manifest.json` — quant-data 커밋 · 커밋 안 된 변경 · 기준일 · 파일별 기간
 >
-> 다시 내보냈으면 아래 매매법을 전부 인자 없이 다시 돌리고, 그 수치를 쓴 결과 문서에 새 데이터 기간을 적습니다
-> (루트 [CLAUDE.md](../CLAUDE.md) 「재수집은 이미 나온 결과를 바꿉니다」).
+> 다시 내보냈으면 아래 「시세를 다시 받은 뒤 다시 돌리는 순서」대로 다시 돌립니다.
 
 ---
 
@@ -64,3 +63,26 @@ BROWSER=true poetry run python scripts/chart_halving_cycle.py               # �
 ```
 
 선행 조건은 「데이터 받기」로 받은 사본 넷(`BTCUSD_raw.csv` · Coin Metrics 셋)이다.
+
+---
+
+## 시세를 다시 받은 뒤 다시 돌리는 순서
+
+> 결과 파일은 만들 때의 시세로 굳은 사본입니다. quant-data 에서 갱신 · 내보내기를 다시 해 `storage/market/` 의 사본이 바뀌면
+> 아래 매매법을 끝까지 차례로 다시 돌리고, 그 수치를 쓴 결과 문서에 새 데이터 기간을 적습니다(루트 [CLAUDE.md](../CLAUDE.md)
+> 「재수집은 이미 나온 결과를 바꿉니다」). **단계마다 끝까지 성공한 것을 보고 다음 단계로 갑니다.**
+>
+> **① 시세 받기** — 「데이터 받기」. quant-data 의 갱신이 비정상으로 멈추면 아무 파일도 쓰이지 않습니다 — 처리는 quant-data `CLAUDE.md`.
+> 갱신에서 `--exclude` 로 뺀 종목은 옛 끝날에 머물러, 그 종목의 결과도 거기서 에러 없이 끝납니다 — 반감기_사이클만은 온체인 두 계열
+> (MVRV · 시가총액)이 시세보다 하루 넘게 짧으면 멈춥니다. 파일별 끝날은 `storage/market/quant_data_manifest.json`.
+>
+> **② 매매법** — 블록의 줄 순서대로 돕니다. 하나가 실패하면 뒤는 돌지 않습니다(`set -e` 는 괄호 안 하위 셸에만 걸린다). 블록 안에는
+> 주석을 두지 않습니다 — 주석 옵션(`interactivecomments`)이 꺼진 대화형 zsh 는 `#` 줄을 명령으로 읽어 첫 줄에서 멈춥니다.
+
+```bash
+(
+  set -e
+  poetry run python scripts/run_midterm_cycle.py
+  poetry run python scripts/run_halving_cycle.py
+)
+```

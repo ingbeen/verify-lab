@@ -24,9 +24,14 @@
 모든 검증은 결론 요약표, 신호일 전체 목록(날짜·가격·등락률), 한계 섹션을 갖춘 문서로 남습니다.
 집계값만 보고 믿는 것이 아니라 차트에서 직접 대조할 수 있어야 하기 때문입니다.
 
+## 관련 저장소
+
+- 측정소 (이 저장소) — https://github.com/ingbeen/verify-lab
+- 시세 받기 · 판정 (데이터 저장소) — https://github.com/ingbeen/quant-data
+
 ## 기술 스택
 
-Python 3.12 · pandas · scipy · Poetry · PyRight(strict) · Ruff · Black · pytest
+Python 3.12 · pandas · Poetry · PyRight(strict) · Ruff · Black · pytest
 
 ## 관련 문서
 
