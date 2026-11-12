@@ -50,10 +50,6 @@ _SOURCE_ROOT = Path(measure_constants.__file__).resolve().parents[1]
 # 이 개념을 소유한 파일. 나머지는 전부 여기서 가져와야 한다
 _OWNER = Path(measure_constants.__file__).resolve()
 
-# 수집 계층의 공유 상수를 소유한 파일. `_files_defining` 은 소유자를 빼지 않으므로
-# 이 이름이 결과에 그대로 남는 것이 정상이다
-_DATA_CONSTANTS = "verify_lab/data/constants.py"
-
 # 매매 계층의 공유 로직을 소유한 모듈. 매매법 모듈은 여기서만 가져온다
 _EXECUTION_SHARED = ("trade_fill", "trade_rows", "periods", "constants", "run_summary")
 
@@ -78,8 +74,6 @@ _REPORT_CONSTANTS = "verify_lab/report/constants.py"
 # **이 목록이 비어 있지 않은 것이 정상이다.** 같은 한글 단어가 계층마다 다른 것을 가리키는 자리가
 # 실재하고, 그 사실은 `src/verify_lab/CLAUDE.md` 「매매 산출물 계약」이 이미 명시했다
 _REPORT_LABEL_COLLISIONS = {
-    # `pykrx` 가 돌려주는 인덱스 이름이라 표시 레이블이 아니라 **데이터 소스의 사실**이다
-    "날짜": frozenset({"verify_lab/data/pykrx_collector.py"}),
     # 매매 계층의 거래내역 헤더다 — `report` 와 같은 «거는 방향»이다. 같은 낱말을 다른 뜻(기초지수가 오른 날인지)으로
     # 쓰는 배수 검증을 되살리면(`docs/조사/레버리지_ETF_괴리.md` 「재현 방법」) 그 파일도 여기 다시 넣는다
     "방향": frozenset({"verify_lab/execution/constants.py"}),
@@ -196,27 +190,6 @@ def _trading_modules() -> list[Path]:
         `studies/<slug>/trading.py` 목록 (정렬됨)
     """
     return sorted((_SOURCE_ROOT / "studies").glob("*/trading.py"))
-
-
-def _functions_importing_pykrx(path: Path) -> list[ast.FunctionDef]:
-    """파일 안에서 **본문에 pykrx import 를 가진** 함수를 찾는다.
-
-    Args:
-        path: 검사할 소스 파일
-
-    Returns:
-        해당 함수 노드 목록
-    """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-
-    return [
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef)
-        and any(
-            isinstance(inner, ast.ImportFrom) and (inner.module or "").startswith("pykrx") for inner in ast.walk(node)
-        )
-    ]
 
 
 def _files_defining(pattern: str) -> list[str]:
@@ -1179,44 +1152,6 @@ class TestCommonLayerReexport:
             assert reexported == set(), f"{module.name} 이 공통 계층의 이름을 재노출합니다: {sorted(reexported)}"
 
 
-class TestDataConstantsOwnership:
-    """수집 계층이 공유하는 값은 `data/constants.py` 가 소유한다"""
-
-    def test_국내_제외_일수를_수집기가_정의하지_않는다(self) -> None:
-        """
-        목적: 국내 KRX 코드가 제외 일수를 각자 두지 않게 한다.
-
-        「장중에도 당일 행이 반환되므로 당일은 뺀다」는 국내 KRX 코드 전부에 같은 이유라,
-        각자 두면 값이 갈라져도 예외는 나지 않는다.
-
-        **미국 제외 일수는 검사 대상이 아니다** — 쓰는 곳이 `yfinance_collector` 하나뿐이라
-        「1개 파일에서만 사용 → 해당 파일 상단」 규칙에 따라 제자리에 있는 것이 맞다.
-
-        Given: `src/verify_lab` 전체
-        When: 국내 제외 일수를 직접 정의하는 파일을 찾는다
-        Then: `data/constants.py` 말고는 하나도 없다
-        """
-        # When
-        offenders = _files_defining(r"^\s*DOMESTIC_RECENT_EXCLUSION_DAYS(?:\s*:\s*\w+)?\s*=\s*\d")
-
-        # Then
-        assert offenders == [_DATA_CONSTANTS], f"국내 제외 일수를 자체 정의한 파일이 있습니다: {offenders}"
-
-    def test_KRX_날짜_포맷을_수집기가_정의하지_않는다(self) -> None:
-        """
-        목적: KRX 요청·응답 날짜 규격의 정의처를 하나로 유지한다.
-
-        Given: `src/verify_lab` 전체
-        When: KRX 날짜 포맷을 직접 정의하는 파일을 찾는다
-        Then: `data/constants.py` 말고는 하나도 없다
-        """
-        # When
-        offenders = _files_defining(r'^\s*KRX_(?:REQUEST|RESPONSE)_DATE_FORMAT(?:\s*:\s*\w+)?\s*=\s*["\']')
-
-        # Then
-        assert offenders == [_DATA_CONSTANTS], f"KRX 날짜 포맷을 자체 정의한 파일이 있습니다: {offenders}"
-
-
 class TestExecutionLayerComposition:
     """공유 실행 계층은 매매법을 모르고, 매매법마다 실행 모듈이 하나다
 
@@ -1608,129 +1543,6 @@ class TestDirectionNameOwnership:
         # **이름만 갈라서는 안 닫힌다.** 컬럼 토큰이 같으면 그 프레임이 측정 계층의 헬퍼를
         # 지날 때 값이 조용히 다른 축으로 읽힌다 — 둘 다 `str` 이라 타입 검사도 못 잡는다
         assert _files_defining_value("Direction") == [_MEASURE_SCREENING], "`Direction` 을 자체 정의한 파일이 있습니다"
-
-
-class TestCredentialsBeforeImport:
-    """pykrx 를 가져오기 전에 자격증명을 올린다"""
-
-    def test_지연_import_헬퍼가_자격증명을_먼저_부른다(self) -> None:
-        """
-        목적: 새 KRX 수집기가 순서를 빠뜨리는 것을 막는다.
-
-        **`import pykrx` 자체가 로그인을 시도한다.** 자격증명이 환경 변수에 올라가기 전에
-        import 하면 실패하므로, KRX 수집기는 전부(지금은 `pykrx_collector` 하나) `load_krx_credentials()` 를
-        먼저 부르고 그 다음에 pykrx 를 가져온다. **검사가 없으면** 새 수집기가 생길 때 순서를 빠뜨려도
-        테스트가 통과한다.
-
-        Given: pykrx 를 함수 안에서 가져오는 `data/` 모듈
-        When: 각 함수 본문에서 두 호출의 순서를 본다
-        Then: 자격증명 호출이 pykrx import 보다 앞에 있다
-        """
-        # Given
-        modules = sorted((_SOURCE_ROOT / "data").glob("*.py"))
-
-        # When · Then
-        checked = 0
-        for path in modules:
-            for function in _functions_importing_pykrx(path):
-                body = ast.unparse(function)
-                credential_at = body.find("load_krx_credentials()")
-                import_at = body.find("from pykrx")
-                assert credential_at >= 0, f"{path.name}:{function.name} 가 자격증명을 부르지 않습니다"
-                assert credential_at < import_at, f"{path.name}:{function.name} 가 자격증명보다 먼저 import 합니다"
-                checked += 1
-
-        # 검사할 함수가 하나도 없으면 위 루프가 통째로 비어 통과한다 — 그것을 막는다
-        assert checked >= 1, "pykrx 를 함수 안에서 가져오는 곳을 하나도 찾지 못했습니다"
-
-
-class TestKrxCommonOwnership:
-    """KRX 공통 판정을 수집기가 다시 만들지 않는다"""
-
-    # 소유자와 검사 대상. **`scripts/data/` 까지 본다** — CLI 도 같은 규격을 상대하므로
-    # 거기 복사본이 생기면 똑같이 갈라지고, `scripts/CLAUDE.md` 가 그것을 이미 금지한다
-    _OWNER_FILE = "krx_common.py"
-    _SHARED_NAMES = ("exclude_recent", "validate_krx_date")
-
-    @staticmethod
-    def _scanned_modules() -> list[Path]:
-        """검사 대상 파일 목록을 만든다.
-
-        Returns:
-            `data/` 와 `scripts/data/` 의 파이썬 파일
-        """
-        return sorted((_SOURCE_ROOT / "data").glob("*.py")) + sorted((BASE_DIR / "scripts" / "data").glob("*.py"))
-
-    def test_최근_구간_제외를_인라인으로_다시_만들지_않는다(self) -> None:
-        """
-        목적: 저장 경계가 수집기마다 갈리는 것을 막는다.
-
-        수집기마다 `exclude_recent` 의 복사본을 두거나 같은 로직을 인라인으로 다시 쓰면
-        **한 곳만 고쳐도 예외가 나지 않는다** — 저장 범위만 하루 달라진 파일이 만들어진다.
-
-        **이 검사는 한 가지 «표기»만 본다.** 공백을 바꾸거나 키워드를 빼서 다시 인라인하면
-        걸리지 않는다 — 함께 있는 정의처 검사가 그 몫을 맡는다.
-
-        Given: `data/` 와 `scripts/data/` 의 모듈들
-        When: 제외 경계를 직접 만드는 식(`DOMESTIC_RECENT_EXCLUSION_DAYS` 로 날짜를 빼는 것)을 찾는다
-        Then: 소유자인 `krx_common.py` 밖에는 없다
-        """
-        # Given
-        modules = self._scanned_modules()
-        assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
-
-        # When
-        offenders = [
-            path.name
-            for path in modules
-            if path.name != self._OWNER_FILE
-            and "timedelta(days=DOMESTIC_RECENT_EXCLUSION_DAYS)" in path.read_text(encoding="utf-8")
-        ]
-
-        # Then
-        assert offenders == [], f"최근 구간 제외를 직접 만드는 모듈이 있습니다: {offenders}"
-
-    def test_공통_판정의_정의처가_하나다(self) -> None:
-        """
-        목적: 같은 판정이 두 곳에서 구현되는 것을 막는다 (절대 원칙 5).
-
-        **`scripts/data/` 도 본다** — 날짜 형식 검증이 실제로 거기 네 번째 벌로 남아 있었고,
-        `data/` 만 훑는 검사는 그것을 초록으로 통과시켰다.
-
-        Given: `data/` 와 `scripts/data/` 의 모듈들
-        When: 공통 함수를 **정의하는** 파일을 센다
-        Then: 각각 `krx_common.py` 하나뿐이다
-        """
-        # Given
-        modules = self._scanned_modules()
-        assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
-
-        # When · Then
-        for name in self._SHARED_NAMES:
-            definers = [path.name for path in modules if f"def {name}(" in path.read_text(encoding="utf-8")]
-            assert definers == [self._OWNER_FILE], f"`{name}` 을 정의하는 파일이 여럿입니다: {definers}"
-
-    def test_날짜_형식_오류_메시지를_다시_적지_않는다(self) -> None:
-        """
-        목적: 판정을 공유해도 **메시지를 따로 적으면** 같은 드리프트가 남는 것을 막는다.
-
-        Given: `data/` 와 `scripts/data/` 의 모듈들
-        When: 형식 오류 문장을 직접 적은 파일을 찾는다
-        Then: 소유자 밖에는 없다
-        """
-        # Given
-        modules = self._scanned_modules()
-        assert modules, "검사할 모듈을 하나도 찾지 못했습니다"
-
-        # When
-        offenders = [
-            path.name
-            for path in modules
-            if path.name != self._OWNER_FILE and "형식이 잘못되었습니다 (YYYYMMDD" in path.read_text(encoding="utf-8")
-        ]
-
-        # Then
-        assert offenders == [], f"날짜 형식 오류 메시지를 직접 적은 모듈이 있습니다: {offenders}"
 
 
 # ============================================================

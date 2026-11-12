@@ -26,7 +26,7 @@
 
 ## 기술 스택
 
-Python 3.12 · pandas · scipy · yfinance · pykrx · Poetry · PyRight(strict) · Ruff · Black · pytest
+Python 3.12 · pandas · scipy · Poetry · PyRight(strict) · Ruff · Black · pytest
 
 ## 관련 문서
 

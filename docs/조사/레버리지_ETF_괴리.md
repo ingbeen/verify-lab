@@ -79,7 +79,7 @@
 | 도출된 매매 규칙 | **없음** — 이 검증은 상품의 성질을 재며 매매 규칙을 도출하지 않는다 |
 | 측정 정의 | **삭제** — `src/verify_lab/studies/leverage_tracking/` 였다 · 배당 보정분은 공통 계층인 `src/verify_lab/measure/distribution.py` 였고 함께 지웠다(쓰는 곳이 이 조사와 선물_대_레버리지_ETF 뿐이었다) |
 | 실행 스크립트 | **삭제** — `scripts/run_leverage_tracking.py` 였다 |
-| 데이터 수집 | [scripts/data/collect_yfinance.py](../../scripts/data/collect_yfinance.py) · [scripts/data/collect_pykrx.py](../../scripts/data/collect_pykrx.py) · ETN 수집기는 **삭제** — `scripts/data/collect_etn.py` · `src/verify_lab/data/etn_collector.py` 였다 |
+| 데이터 수집 | **삭제** — 시세 수집기 `scripts/data/collect_yfinance.py` · `scripts/data/collect_pykrx.py` 는 2026-11-12(quant-data 전환), ETN 수집기 `scripts/data/collect_etn.py` · `src/verify_lab/data/etn_collector.py` 는 2026-10-16 에 지웠다. 다시 받는 법은 §19.2 |
 | 테스트 | **삭제** — `tests/test_studies_leverage_divergence.py` · `tests/test_studies_leverage_breakdown.py` · `tests/test_studies_leverage_pairing.py` · `tests/test_measure_distribution.py` · `tests/test_studies_leverage_runner.py` · `tests/test_etn_collector.py` 였다 |
 | 산출물 | **삭제** — 마지막 산출물은 git `2faa555` 의 `storage/results/조사/레버리지_ETF_괴리/` 에 있다 |
 | 실행 명령어 | **없음** — 실행할 스크립트가 없다. 되살린 뒤의 명령은 §19.2 |
@@ -871,7 +871,7 @@ git checkout 2faa555 -- <경로…>
 | --- | --- |
 | 측정 패키지 · 실행 | `src/verify_lab/studies/leverage_tracking/` · `scripts/run_leverage_tracking.py` |
 | 배당 보정분 (공통 계층 — 선물_대_레버리지_ETF 도 쓴다) | `src/verify_lab/measure/distribution.py` · `tests/test_measure_distribution.py` |
-| ETN 수집기 | `src/verify_lab/data/etn_collector.py` · `scripts/data/collect_etn.py` · `tests/test_etn_collector.py` |
+| ETN 수집기 | **되살리지 않는다** — 2026-11-12 부터 시세는 quant-data 가 받는다(ETN 은 quant-data 에 받기를 더해 사본으로 받는다 — §19.2). 옛 코드는 `src/verify_lab/data/etn_collector.py` · `scripts/data/collect_etn.py` · `tests/test_etn_collector.py` 다 |
 | 측정 테스트 | `tests/test_studies_leverage_divergence.py` · `tests/test_studies_leverage_breakdown.py` · `tests/test_studies_leverage_pairing.py` · `tests/test_studies_leverage_runner.py` |
 
 `2faa555` 는 이 코드를 지운 커밋의 부모다. **삭제 커밋 자체에는 파일이 없다** — `git log -- <패키지>` 로
@@ -884,12 +884,11 @@ git checkout 2faa555 -- <경로…>
 | 파일 | 되살릴 것 |
 | --- | --- |
 | `src/verify_lab/report/constants.py` | `HORIZON_LABELS` · `DISPLAY_HORIZON` — 측정 패키지와 그 테스트가 쓰는 구간 이름표 |
-| `src/verify_lab/data/krx_common.py` · `tests/test_krx_common.py` | `to_numeric` 과 그 테스트 — ETN 수집기가 쓴다 |
-| `src/verify_lab/data/constants.py` | `KRX_RESPONSE_DATE_FORMAT` — ETN 수집기가 쓴다 |
-| `tests/test_layer_contracts.py` | 레이블 겹침 허용목록(`_REPORT_LABEL_COLLISIONS` · `_KNOWN_LABEL_DUPLICATES`)의 이 패키지 항목 — **배수형 어휘(`배수` · `지수` · `시작일` · `종료일` · `금리 환경` · `배당 보정분(%p)`)는 레버리지_ETF_괴리와 선물_대_레버리지_ETF 를, `실제(%)` 는 레버리지_ETF_괴리와 원달러_ETF_등가성을 «함께» 되살릴 때만 넣는다** — 한쪽만이면 겹침이 아니라 `test_허용목록이_실제_겹침만_담는다` 가 실패한다 · `TestKrxCommonOwnership._SHARED_NAMES` 의 `to_numeric` · `TestHorizonLabelOwnership` 의 첫 검사 `test_구간_이름표가_한_곳에만_있다`(이 패키지가 갖던 구간 이름표 사본을 공통 계층으로 올릴 때 넣은 가드). **둘째 검사 `test_구간_축을_내는_검증은_이름표를_거친다` 는 선물_대_레버리지_ETF 를 «함께» 되살릴 때만 넣는다** — 그 검사가 찾는 `COL_HORIZON: DISPLAY_HORIZON` 을 가진 것이 그 패키지 하나라, 이 조사만이면 `assert renamers` 로 실패한다(그 조사 §21.1 ②) |
+| `src/verify_lab/data/krx_common.py` · `tests/test_krx_common.py` · `src/verify_lab/data/constants.py` | **되살리지 않는다** — `to_numeric` · `KRX_RESPONSE_DATE_FORMAT` 은 ETN 수집기만 썼고(위 ①), 세 파일은 2026-11-12 에 파일째 지웠다 |
+| `tests/test_layer_contracts.py` | 레이블 겹침 허용목록(`_REPORT_LABEL_COLLISIONS` · `_KNOWN_LABEL_DUPLICATES`)의 이 패키지 항목 — **배수형 어휘(`배수` · `지수` · `시작일` · `종료일` · `금리 환경` · `배당 보정분(%p)`)는 레버리지_ETF_괴리와 선물_대_레버리지_ETF 를, `실제(%)` 는 레버리지_ETF_괴리와 원달러_ETF_등가성을 «함께» 되살릴 때만 넣는다** — 한쪽만이면 겹침이 아니라 `test_허용목록이_실제_겹침만_담는다` 가 실패한다 · `TestHorizonLabelOwnership` 의 첫 검사 `test_구간_이름표가_한_곳에만_있다`(이 패키지가 갖던 구간 이름표 사본을 공통 계층으로 올릴 때 넣은 가드). **둘째 검사 `test_구간_축을_내는_검증은_이름표를_거친다` 는 선물_대_레버리지_ETF 를 «함께» 되살릴 때만 넣는다** — 그 검사가 찾는 `COL_HORIZON: DISPLAY_HORIZON` 을 가진 것이 그 패키지 하나라, 이 조사만이면 `assert renamers` 로 실패한다(그 조사 §21.1 ②) |
 | `tests/test_report_writer.py` | 실제 이름 검사(`test_accepts_every_real_track_name`)의 `TRACK_NAME` import 한 줄 |
-| `src/verify_lab/CLAUDE.md` | 「검증 계층도 `row_counts` 의 키가 파일 이름입니다」의 「짝마다 나오는 파일」 행(`windows_{pair}.csv` 를 파일마다 한 줄씩 센다) · 「이벤트가 없는 검증의 계약」(원문은 `docs/조사/원달러_ETF_등가성.md` 의 같은 이름 절) · 「종목은 코드가 아니라 이름으로 냅니다」 표의 「범위를 「대상 목록」으로 말하지 않는 검증도 있습니다」 행(원문은 `docs/조사/원달러_ETF_등가성.md` §15 — 되살린 runner 는 `datasets` 대신 `pairs` 를 낸다) · 「원시 시세 저장 규칙 — data 와 수집기」 표의 「KRX 공통 판정의 소유자」 행에 숫자 변환(`to_numeric`)을 되돌리고, 「pykrx import 순서」 · 「그 지연 import 헬퍼는 수집기마다 둡니다」 행의 「지금은 `pykrx_collector` 하나」를 ETN 수집기까지 넓힌다 — 지운 문장은 `git show 2faa555:src/verify_lab/CLAUDE.md` |
-| `docs/COMMANDS.md` · `scripts/CLAUDE.md` | 실행 · ETN 수집 명령과 메타 타입 행(`leverage_tracking` · `etn_collect`) |
+| `src/verify_lab/CLAUDE.md` | 「검증 계층도 `row_counts` 의 키가 파일 이름입니다」의 「짝마다 나오는 파일」 행(`windows_{pair}.csv` 를 파일마다 한 줄씩 센다) · 「이벤트가 없는 검증의 계약」(원문은 `docs/조사/원달러_ETF_등가성.md` 의 같은 이름 절) · 「종목은 코드가 아니라 이름으로 냅니다」 표의 「범위를 「대상 목록」으로 말하지 않는 검증도 있습니다」 행(원문은 `docs/조사/원달러_ETF_등가성.md` §15 — 되살린 runner 는 `datasets` 대신 `pairs` 를 낸다) — 지운 문장은 `git show 2faa555:src/verify_lab/CLAUDE.md` |
+| `docs/COMMANDS.md` · `scripts/CLAUDE.md` | 실행 명령과 메타 타입 행(`leverage_tracking`) |
 
 `src/verify_lab/tracks.py` 의 줄(`leverage_tracking` — 조사 · 성질 조사)은 지우지 않았으므로 되살릴 것이 없다.
 
@@ -898,8 +897,11 @@ git checkout 2faa555 -- <경로…>
 
 ### 19.2 되살린 뒤의 실행
 
-**선행 조건**: `storage/market/` 에 원본가 27종과 수정주가 25종(ETN 2종 제외)이 있어야 한다.
-수집 명령과 실행 명령은 꺼낸 커밋의 `docs/COMMANDS.md`(`git show 2faa555:docs/COMMANDS.md` 의 「데이터 수집」 · 「레버리지_ETF_괴리」)를 참고한다.
+**선행 조건**: 원본가 27종과 수정주가 25종(ETN 2종 제외). 그때의 파일은 2026-11-12 quant-data 전환에서 저장소에서 지웠다 —
+같은 값으로 재현하려면 머리말 데이터 기간과 끝날이 같은 판을 `git log -- storage/market/<파일>` 에서 골라 `git show <커밋>:storage/market/<파일>` 로 꺼낸다(마지막 판 `c3a2641` 은 측정 뒤 다시 받은 것일 수 있다). 새로 잴 때는 quant-data 사본(`<종목>_raw.csv` · `<종목>_adjusted.csv`)으로
+받는다(`docs/COMMANDS.md` 「데이터 받기」) — 국내 수정주가는 KRX 기준가로 이은 것이라 옛 KRX 수정주가와 다른 자료이고, quant-data 에 없는 종목
+(ETN 둘 등)은 거기에 받기를 더하는 것이 먼저다.
+실행 명령은 꺼낸 커밋의 `docs/COMMANDS.md`(`git show 2faa555:docs/COMMANDS.md` 의 「레버리지_ETF_괴리」)를 참고한다.
 산출물 파일과 각 내용은 되살린 `src/verify_lab/studies/leverage_tracking/runner.py` 모듈 docstring 에 있다 —
 가장 먼저 볼 표는 `divergence.csv` 다.
 

@@ -10,7 +10,7 @@
 tests/
 ├── CLAUDE.md       # 테스트 규칙 (이 문서)
 ├── conftest.py     # 공통 픽스처
-└── test_*.py       # 이름이 검사 대상을 말한다 (test_<계층>_<모듈> · 수집기는 test_<모듈>)
+└── test_*.py       # 이름이 검사 대상을 말한다 (test_<계층>_<모듈> · 일부는 계층 접두 없이 test_<모듈>)
 ```
 
 **짝 모듈이 없는 테스트는 계층·문서를 가로지르는 계약 검사입니다** — `test_layer_contracts.py`·
@@ -95,7 +95,7 @@ pytest 설정은 루트 `pytest.ini`가 Single Source of Truth이며, 실행 명
 
 ## 4. 외부 의존성 금지
 
-일반 규칙은 `python-tests.md` 「외부 의존성을 쓰지 않는다」. 이 저장소에서는 yfinance · pykrx 같은 수집 라이브러리 호출도 스텁으로 대체합니다.
+일반 규칙은 `python-tests.md` 「외부 의존성을 쓰지 않는다」. 이 저장소에는 외부 서버를 부르는 코드가 없습니다 — 시세는 quant-data 사본을 읽고, 테스트는 `tmp_path` 에 쓴 합성 파일을 읽습니다.
 
 ---
 

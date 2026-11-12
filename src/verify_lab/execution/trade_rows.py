@@ -48,7 +48,7 @@ def trade_columns(
         result: `trade_fill` 이 낸 체결 결과
         bet_down: 아래로 걸었는지 여부
         price_column: 진입가를 읽을 가격 컬럼
-        price_decimals: 가격 출력 자릿수. 원시 데이터를 저장한 자릿수와 같아야 한다
+        price_decimals: 가격 출력 자릿수
 
     Returns:
         거래내역 공통 칸 여덟 (거래내역 컬럼 순서)
@@ -86,7 +86,7 @@ def trade_columns_from(
         exit_day: 실제로 나간 날
         result: 체결 결과. 보유일은 `result.hold_days` 를 그대로 싣는다
         bet_down: 아래로 걸었는지 여부
-        price_decimals: 가격 출력 자릿수. 원시 데이터를 저장한 자릿수와 같아야 한다
+        price_decimals: 가격 출력 자릿수
 
     Returns:
         거래내역 공통 칸 여덟 (거래내역 컬럼 순서)

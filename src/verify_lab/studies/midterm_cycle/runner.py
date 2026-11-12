@@ -25,7 +25,7 @@ from typing import Any
 import pandas as pd
 
 from verify_lab.common_constants import COL_DATE
-from verify_lab.data.loader import load_market_csv, load_series_csv
+from verify_lab.data.loader import load_close_series, load_market_csv
 from verify_lab.execution.trade_fill import resolve_positions
 from verify_lab.measure.constants import (
     COL_EXCLUDED_REASON,
@@ -132,6 +132,9 @@ def load_dataset(dataset: Dataset) -> pd.DataFrame:
     **측정과 체결이 같은 함수를 쓴다** — 같은 패키지 안에 두 벌을 두면 ETF·지수 분기가
     갈릴 수 있고, 그러면 한 매매법의 두 계층이 다른 스키마를 보게 된다.
 
+    **지수는 종가 하나짜리 계열로 읽는다** — 고가 · 저가가 프레임에 남으면 장중 판정이 옛 구간의 가짜
+    저가를 쓴다(`설계.md` 결정 ⑥ · ㉔).
+
     Args:
         dataset: 검증 대상 정의
 
@@ -139,7 +142,7 @@ def load_dataset(dataset: Dataset) -> pd.DataFrame:
         날짜 오름차순 가격 DataFrame
     """
     if dataset.is_index:
-        return load_series_csv(dataset.path)
+        return load_close_series(dataset.path)
 
     return load_market_csv(dataset.path)
 

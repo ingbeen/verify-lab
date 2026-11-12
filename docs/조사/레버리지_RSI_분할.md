@@ -20,7 +20,7 @@
 | **이벤트 정의** | **없음** — §15 의 재현 코드 안에 있다. 기대 이익이 작아 패키지를 만들지 않았다(§12) |
 | **실행 스크립트** | **없음** — §15 의 재현 코드를 돌린다 |
 | **테스트** | **없음** — 코드가 저장소에 없다 |
-| **데이터 수집** | [collect_pykrx.py](../../scripts/data/collect_pykrx.py) (국내) · [collect_yfinance.py](../../scripts/data/collect_yfinance.py) (미국) |
+| **데이터 수집** | **삭제** — 시세 수집기 `scripts/data/collect_pykrx.py`(국내) · `scripts/data/collect_yfinance.py`(미국) 였다(2026-11-12 — 시세는 quant-data 가 받는다). 다시 받는 법은 「재현 방법」 |
 | **실행 명령어** | **없음** — 평상시 돌리는 실행이 아니라 `docs/COMMANDS.md` 에 싣지 않았다. 절차는 §15 다 |
 
 원시 시세 파일과 기간은 §3 에 있다.
@@ -543,9 +543,9 @@ KODEX 레버리지 · 청산 당일 재매수 · 즉시 정정. 손절선은 **�
 
 ## 15. 재현 방법
 
-**선행 조건** — 저장소의 `storage/market/` 를 덮지 않으려면 새 폴더를 만들어 그곳으로 받는다. `collect_pykrx_history(ticker, start, adjusted=False, output_dir=폴더)` 로 `122630`(시작 `20100222`) · `233740`(시작 `20151217`)을, `collect_yfinance_history(ticker, adjusted=True, output_dir=폴더)` 로 `TQQQ` · `UPRO` · `UDOW` 를 받는다. **SOXL 은 수집기가 막으므로**(§11.2) `yf.Ticker("SOXL").history(period="max", auto_adjust=True)` 를 같은 스키마로 저장한다. §10.4 까지 재려면 `QQQ` · `SOXX` · `SPY` · `DIA` 수정주가와 KODEX 200 원본가 `069500_max.csv` 를 같은 폴더에 둔다. `load_krx_credentials()` 는 수집기가 부른다.
+**선행 조건** — 시세 폴더 하나에 `122630` · `233740`(국내 원본가)과 `TQQQ` · `SOXL` · `UPRO` · `UDOW`(수정주가)를 둔다. §10.4 까지 재려면 `QQQ` · `SOXX` · `SPY` · `DIA` 수정주가와 KODEX 200 원본가도 같은 폴더에 둔다. 아래 코드는 옛 파일 이름(`<종목>_max.csv` · `<종목>_adjusted_max.csv`)으로 읽는다. 옛 절차는 저장소의 `storage/market/` 를 덮지 않게 새 폴더로 받으라고 했다(데이터 끝 2026-10-30) — 옛 수집기 호출(`collect_pykrx_history(..., adjusted=False)` · `collect_yfinance_history(..., adjusted=True)` · SOXL 은 `yf.Ticker("SOXL").history(period="max", auto_adjust=True)` — §11.2)은 그때의 기록이다. **2026-11-12 부터 시세는 quant-data 가 받는다** — 수집기를 되살리지 않고, quant-data 사본(`<종목>_raw.csv` · `<종목>_adjusted.csv`)을 옛 이름으로 바꿔 그 폴더에 둔다(`docs/COMMANDS.md` 「데이터 받기」). quant-data 에 없는 종목(SOXL · SOXX 등)은 거기에 받기를 더하는 것이 먼저이고, 국내 수정주가는 KRX 기준가로 이은 것이라 옛 KRX 수정주가와 다른 자료다.
 
-**실행** — 아래 코드를 파일로 저장해 `env -u VIRTUAL_ENV poetry run python 파일 폴더` 로 돌린다. 인자가 없으면 `storage/market/` 를 읽고, 시세가 `DATA_END` 까지 없으면 예외를 낸다. 난수는 시드 0 이다.
+**실행** — 아래 코드를 파일로 저장해 `env -u VIRTUAL_ENV poetry run python 파일 폴더` 로 돌린다. 인자가 없으면 `storage/market/` 를 읽고(지금은 사본 이름이라 옛 이름 파일이 없다 — 폴더를 인자로 준다), 시세가 `DATA_END` 까지 없으면 예외를 낸다. 난수는 시드 0 이다.
 
 **데이터를 갱신해 재실행하면** — `DATA_END` 를 바꾸면 신호 수와 전 장의 수치가 달라진다. 2026-10-30 으로 두면 KODEX 레버리지 국내 장(§5 ~ §9)은 원본가라 그대로이고, 미국 상품(§10)은 수정주가가 다시 조정돼 값이 조금 달라질 수 있다.
 

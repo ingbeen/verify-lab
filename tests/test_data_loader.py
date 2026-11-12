@@ -23,6 +23,7 @@ from verify_lab.common_constants import (
 )
 from verify_lab.data.loader import (
     MAX_DAILY_CHANGE_RATE,
+    load_close_series,
     load_market_csv,
     load_series_csv,
 )
@@ -709,3 +710,60 @@ def test_series_source_file_is_not_modified(valid_series_csv: Path) -> None:
 
     # Then
     assert valid_series_csv.read_text(encoding="utf-8") == before
+
+
+# ============================================================
+# 시세 파일을 종가 하나짜리 계열로 — 지수
+# ============================================================
+#
+# 미국 지수 사본은 시세(OHLCV) 파일인데 옛 구간의 고가 · 저가가 종가로 채워져 있다.
+# 장중 판정은 가격 컬럼 이름이 고르므로(`execution/trade_fill.py`) 고가 · 저가가 프레임에 남으면 안 된다.
+
+
+def _index_row(date: str, close: float) -> dict[str, object]:
+    """고가 · 저가를 종가와 다르게 벌린 하루치 행 — 새어 나가면 값으로 드러나게 한다."""
+    return {
+        COL_DATE: date,
+        COL_OPEN: close,
+        COL_HIGH: close * 1.5,
+        COL_LOW: close * 0.5,
+        COL_CLOSE: close,
+        COL_VOLUME: 0,
+    }
+
+
+def test_close_series_keeps_only_date_and_close(tmp_path: Path) -> None:
+    """
+    목적: 시세 파일을 종가 계열로 읽으면 날짜와 값 두 칸만 남고 값이 종가임을 고정한다.
+
+    Given: 고가 · 저가가 종가와 다른 시세 파일
+    When: 종가 계열로 읽는다
+    Then: 컬럼이 날짜 · 값 둘이고 값이 종가다
+    """
+    # Given
+    path = _write_csv(tmp_path / "^IDX_raw.csv", [_index_row("2026-01-02", 100.0), _index_row("2026-01-05", 101.5)])
+
+    # When
+    df = load_close_series(path)
+
+    # Then
+    assert list(df.columns) == [COL_DATE, COL_VALUE]
+    assert df[COL_VALUE].tolist() == pytest.approx([100.0, 101.5], abs=1e-12)
+
+
+def test_close_series_applies_market_checks(tmp_path: Path) -> None:
+    """
+    목적: 종가 계열로 읽어도 시세의 판정(0 이하 가격)을 그대로 거는지 고정한다 (경계 조건).
+
+    값 하나짜리 계열의 판정은 0 이하를 통과시킨다 — 지수 사본을 그쪽으로 읽으면 0 이 그대로 들어온다.
+
+    Given: 종가가 0 인 행이 섞인 시세 파일
+    When: 종가 계열로 읽는다
+    Then: ValueError 가 발생한다
+    """
+    # Given
+    path = _write_csv(tmp_path / "^IDX_raw.csv", [_index_row("2026-01-02", 100.0), _index_row("2026-01-05", 0.0)])
+
+    # When / Then
+    with pytest.raises(ValueError, match="0 이하"):
+        load_close_series(path)

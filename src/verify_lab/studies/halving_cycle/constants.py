@@ -29,9 +29,7 @@ from typing import Final
 
 import pandas as pd
 
-from verify_lab.common_constants import COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE, PRICE_DECIMALS, SERIES_DIR
-from verify_lab.data.bitstamp_collector import BITSTAMP_TICKER
-from verify_lab.data.coinmetrics_collector import BTC_PRICE_SERIES, MARKET_CAP_SERIES, MVRV_SERIES
+from verify_lab.common_constants import COL_DATE, MARKET_DIR, MARKET_FILE_TEMPLATE, PRICE_DECIMALS
 from verify_lab.data.crosscheck import COL_DIFF_RATE, COL_PRIMARY, COL_SECONDARY
 from verify_lab.execution.constants import (
     DISPLAY_ENTRY_DATE,
@@ -464,7 +462,7 @@ class Dataset:
         reference_path: 대조 계열(일별 단일 값) 파일. 거래량 0 인 날의 종가를 이 값으로 바꾼다(결정 ④)
         mvrv_path: MVRV 계열 파일. 2단계 측정만 읽는다(결정 ⑧)
         market_cap_path: 시가총액 계열 파일. 2단계 측정만 읽는다 — 실현 시가총액은 `시가총액 ÷ MVRV` 다
-        price_decimals: 가격 출력 자릿수. 원시 데이터를 저장한 값과 같아야 한다
+        price_decimals: 가격 출력 자릿수
         is_judged: 1차 판정을 거는가 — **살 수 있는 대상에만 건다** (측정의 원칙 9 · 결정 ⑤)
     """
 
@@ -489,16 +487,16 @@ class Dataset:
 
 
 # **Bitstamp BTC/USD 하나다** — 거래소 한 곳의 실제 체결가이고 「살 수 있는 대상」으로 본다(결정 ① · ⑤).
-# 업비트 원화는 대조용이라 여기 없다
+# 업비트 원화는 대조용이라 여기 없다. 파일 넷은 quant-data 사본의 이름 그대로(결정 66)
 DATASETS: Final = (
     Dataset(
-        ticker=BITSTAMP_TICKER,
+        ticker="BTCUSD",
         label="Bitstamp BTC/USD",
         directory=MARKET_DIR,
         file_template=MARKET_FILE_TEMPLATE,
-        reference_path=SERIES_DIR / BTC_PRICE_SERIES.file_name,
-        mvrv_path=SERIES_DIR / MVRV_SERIES.file_name,
-        market_cap_path=SERIES_DIR / MARKET_CAP_SERIES.file_name,
+        reference_path=MARKET_DIR / "BTC_PriceUSD.csv",
+        mvrv_path=MARKET_DIR / "BTC_CapMVRVCur.csv",
+        market_cap_path=MARKET_DIR / "BTC_CapMrktCurUSD.csv",
         price_decimals=PRICE_DECIMALS,
         is_judged=True,
     ),

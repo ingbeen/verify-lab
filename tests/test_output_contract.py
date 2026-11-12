@@ -43,7 +43,6 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VALUE,
     COL_VOLUME,
-    INDEX_FILE_TEMPLATE,
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
 )
@@ -294,22 +293,33 @@ def _write_market(directory: Path, ticker: str, positions: Sequence[int] = SIGNA
     return path
 
 
-def _write_index(directory: Path, ticker: str) -> Path:
-    """합성 지수 계열을 임시 폴더에 쓴다.
+def _write_index(directory: Path, symbol: str) -> Path:
+    """합성 지수 시세를 임시 폴더에 쓴다.
 
-    **시가·고가·저가가 없다.** 실제 코스닥150 지수가 그렇고, 그래서 장중 손절을 잴 수 없다.
+    **고가 · 저가를 종가와 다르게 벌린다.** 실제 미국 지수 사본은 옛 구간의 고가 · 저가가 종가로 채워져 있어
+    장중 손절을 잴 수 없다 — 로더가 종가만 남기는지가 계약이라, 흘리면 값으로 드러나게 벌려 둔다.
 
     Args:
         directory: 저장할 폴더
-        ticker: 지수 코드
+        symbol: 지수 심볼 (파일 이름에 그대로 들어간다)
 
     Returns:
         저장된 파일 경로
     """
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / INDEX_FILE_TEMPLATE.format(ticker=ticker)
+    path = directory / MARKET_FILE_TEMPLATE.format(ticker=symbol)
     frame = _market_frame()
-    pd.DataFrame({COL_DATE: frame[COL_DATE], COL_VALUE: frame[COL_CLOSE] / 10.0}).to_csv(path, index=False)
+    closes = frame[COL_CLOSE] / 10.0
+    pd.DataFrame(
+        {
+            COL_DATE: frame[COL_DATE],
+            COL_OPEN: closes,
+            COL_HIGH: closes * 1.5,
+            COL_LOW: closes * 0.5,
+            COL_CLOSE: closes,
+            COL_VOLUME: 0,
+        }
+    ).to_csv(path, index=False)
 
     return path
 
@@ -498,7 +508,7 @@ def _midterm_cycle_datasets(directory: Path) -> tuple[MidtermCycleDataset, Midte
         (합성 ETF, 합성 지수)
     """
     _write_market(directory, "SYN")
-    _write_index(directory, "SYNIDX")
+    _write_index(directory, "^SYNIDX")
 
     etf = MidtermCycleDataset(
         ticker="SYN",
@@ -515,7 +525,7 @@ def _midterm_cycle_datasets(directory: Path) -> tuple[MidtermCycleDataset, Midte
         label=INDEX_LABEL,
         symbol="^SYNIDX",
         directory=directory,
-        file_template=INDEX_FILE_TEMPLATE,
+        file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,
@@ -1509,18 +1519,20 @@ class TestPriceBasis:
     """가격 기준 — 매매법은 수정주가 파일을 읽는다 (측정의 원칙 14)
 
     매매법 종류는 매매 · 검증 등급뿐이고(`tests/test_tracks.py`), 원칙 14 가 그 둘에 수정주가를 요구한다.
-    **수집기 기본값과 공통 파일 템플릿이 원본가라** 새 매매법이 대상 정의를 기본값으로 만들면 원본가를 읽고,
+    **공통 파일 템플릿의 기본(`MARKET_FILE_TEMPLATE`)이 원본가라** 새 매매법이 대상 정의를 기본값으로 만들면 원본가를 읽고,
     성적이 분배금만큼 낮게 에러 없이 나간다.
     """
 
     # 매매법이 읽어도 되는 파일 템플릿 — **허용 목록이다.** 원본가 템플릿 하나를 막는 차단 목록이면
-    # 다른 이름의 원본가 파일을 읽는 대상이 통과한다. 지수는 분배금이 없어 기준이 하나다
-    ALLOWED_TEMPLATES = {ADJUSTED_FILE_TEMPLATE, INDEX_FILE_TEMPLATE}
+    # 다른 이름의 원본가 파일을 읽는 대상이 통과한다
+    ALLOWED_TEMPLATES = {ADJUSTED_FILE_TEMPLATE}
 
     # 허용 목록 밖의 파일을 읽어도 되는 대상 — (매매법, ticker). 분배금이 없어 기준이 하나인 대상만 넣는다.
     # **손으로 박는다**(머리말): 넣을 때는 왜 분배금이 없는지를 함께 적는다
     NO_DISTRIBUTION = {
         ("halving_cycle", "BTCUSD"),  # Bitstamp BTC/USD — 코인에는 분배금이 없다
+        ("midterm_cycle", "GSPC"),  # S&P 500 지수 — 지수에는 분배금이 없다(가격지수)
+        ("midterm_cycle", "IXIC"),  # 나스닥 종합 지수 — 같은 이유
     }
 
     @_BY_METHOD
@@ -1531,7 +1543,7 @@ class TestPriceBasis:
         매매법 하나의 테스트로만 지키면 다음 매매법이 그 검사를 받지 않는다.
 
         Given: 그 매매법의 데이터셋 목록
-        When: 허용 목록(수정주가 · 지수) 밖의 파일 템플릿을 읽는 대상을 고르면
+        When: 허용 목록(수정주가) 밖의 파일 템플릿을 읽는 대상을 고르면
         Then: 분배금이 없다고 박아 둔 대상뿐이다
         """
         # Given

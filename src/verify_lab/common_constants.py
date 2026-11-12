@@ -20,13 +20,9 @@ BASE_DIR: Final = Path(__file__).resolve().parents[2]
 
 STORAGE_DIR: Final = BASE_DIR / "storage"
 
-# 수집한 원시 시세. git 으로 동기화하며 분석 코드가 덮어쓰지 않는 불변 자산이다
+# quant-data 사본(목록 · 매니페스트 포함)을 받는 폴더 — 손으로 고치지 않고 결과와 함께 커밋
+# 시세와 값 하나짜리 계열이 섞여 있어 어느 로더로 읽을지는 매매법의 대상 정의가 정함
 MARKET_DIR: Final = STORAGE_DIR / "market"
-
-# 일별 단일 값 시계열 (환율 고시가·금리 등). `MARKET_DIR` 와 **폴더를 나누는 것이 곧 스키마 구분**이다 —
-# 한 폴더에 OHLCV 와 단일 값이 섞이면 파일을 열어보기 전에는 어느 로더로 읽어야 할지 알 수 없고,
-# 잘못된 로더를 부르면 컬럼 검증에서야 걸린다. 폴더가 다르면 그 판단이 경로에서 끝난다
-SERIES_DIR: Final = STORAGE_DIR / "series"
 
 # 검증 산출물. **매매법당 한 폴더**이고 재실행이 그 자리를 덮는다. git 으로 동기화하는 것은
 # diff 가 「재실행이 숫자를 바꿨는가」를 알려주는 유일한 신호이기 때문이다
@@ -66,7 +62,7 @@ PRICE_COLUMNS: Final = [COL_OPEN, COL_HIGH, COL_LOW, COL_CLOSE]
 
 # 값 컬럼. 환율은 원, 금리는 백분율처럼 **단위가 소스마다 다르므로 중립적인 이름을 쓴다** —
 # `Close` 나 `Rate` 로 두면 그 이름이 맞지 않는 소스가 들어올 때 컬럼을 다시 갈라야 한다.
-# 단위와 자릿수는 각 수집기가 소유하고 그 매매법의 `설계.md` 가 기록한다
+# 단위와 자릿수는 quant-data 가 정하고 그 매매법의 `설계.md` 가 기록한다
 COL_VALUE: Final = "Value"
 
 # 단일 값 시계열 파일이 반드시 가져야 하는 컬럼과 그 순서
@@ -76,34 +72,17 @@ SERIES_REQUIRED_COLUMNS: Final = [COL_DATE, COL_VALUE]
 # 원시 시세 파일명
 # ============================================================
 
-# **파일명 규칙은 수집기와 읽는 쪽이 공유하는 계약이다.** 수집·측정·검증·스크립트가 모두
-# 같은 이름을 봐야 하며, 한 곳만 달라져도 **예외는 「파일 없음」으로만 뜬다** —
-# 무엇이 어긋났는지가 드러나지 않는다. 그래서 한 곳에서만 정한다
-# (`src/verify_lab/CLAUDE.md` 「계층 간 계약」의 원시 시세 저장 규칙).
-#
-# **기간은 파일명에 넣지 않는다.** 언제나 받을 수 있는 전 기간을 받으므로 로더가 읽을 대상이
-# 갈리지 않는다. 반면 **가격 기준이 다르면 내용이 다른 데이터**라 파일을 나눈다
-MARKET_FILE_TEMPLATE: Final = "{ticker}_max.csv"
-ADJUSTED_FILE_TEMPLATE: Final = "{ticker}_adjusted_max.csv"
-
-# NAV 는 시세가 아니라 일별 단일 값이라 `SERIES_DIR` 에 저장한다.
-# 수집기와 그것을 읽는 측정(원달러_ETF_등가성 — 지금은 코드가 없고 되살리는 절차는 그 조사 문서
-# 「재현 방법」)이 같은 이름을 봐야 하는 파일명 규칙이라 여기 둔다
-NAV_FILE_TEMPLATE: Final = "{ticker}_NAV.csv"
-
-# 지수는 시세가 아니라 **종가 하나짜리 계열**로 저장해 `SERIES_DIR` 에 둔다.
-# 살 수 없어 시가 집행이 불가능하므로 OHLCV 를 들고 있을 이유가 없고, 코스닥150 지수는
-# 소급 산출 구간에 시가·고가·저가가 아예 0 이다 (지수별 구간과 건수는 `collect_pykrx_index` docstring)
-INDEX_FILE_TEMPLATE: Final = "{ticker}_index.csv"
+# quant-data 사본의 이름 그대로(그 저장소 결정 Q33) — 어긋나면 「파일 없음」으로만 드러나 한 곳에서 정함
+# (`src/verify_lab/CLAUDE.md` 「받은 사본 규칙」). 지수는 야후 심볼(`^GSPC`)이 든 원본가 이름
+MARKET_FILE_TEMPLATE: Final = "{ticker}_raw.csv"
+ADJUSTED_FILE_TEMPLATE: Final = "{ticker}_adjusted.csv"
 
 # ============================================================
 # 가격 표기
 # ============================================================
 
-# 소수가 나오는 시장의 가격 자릿수. 원시 시세 저장(`data/`)과 결과 CSV 의 종가 출력(`studies/`)이
-# **반드시 같은 값**을 써야 한다 — 저장이 4자리인데 출력이 더 깊으면 없는 정밀도를 만들어 내고,
-# 반대면 저장해 둔 값을 버린다. 두 계층이 각자 정의하면 한쪽만 바뀌어도 예외가 나지 않는다.
-# 자릿수 규칙표는 `~/.claude/rules/python.md` 가 SoT다
+# 결과 CSV · 판단용 차트의 가격 자릿수 — 입력 사본은 6자리(quant-data 결정 Q6), 내보낼 때만 깎음
+# (자릿수 규칙표는 `~/.claude/rules/python.md` · 근거는 `src/verify_lab/CLAUDE.md` 「받은 사본 규칙」)
 PRICE_DECIMALS: Final = 4
 
 # ============================================================
@@ -114,6 +93,5 @@ PRICE_DECIMALS: Final = 4
 # 계층마다 따로 정의하면 한쪽만 바뀌어도 예외가 나지 않고 표만 조용히 어긋난다
 RATE_TO_PERCENT: Final = 100
 
-# 실행 시각과 타임스탬프의 기준 시간대. 수집기의 「오늘」 판정과
-# 실행 이력(`utils/meta_manager.py`)이 같은 값을 써야 두 기록이 같은 시각을 가리킨다
+# 실행 시각의 기준 시간대 — 실행 이력(`utils/meta_manager.py`)과 판단용 차트의 만든 시각을 맞춤
 KST: Final = ZoneInfo("Asia/Seoul")

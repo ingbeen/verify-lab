@@ -48,8 +48,8 @@ logger = get_logger(__name__)
 # 국내 지수 ETF 의 가격제한폭(±30%)과 QQQ 의 역대 최대 일간 변동(약 ±17%)이 모두 이 아래에 있어
 # 정상적인 급변동을 오탐하지 않는다.
 #
-# **주식·ETF 의 값이다.** 정상 변동 폭이 다른 자산군은 자기 값을 인자로 넘기고, 그 값은 그 자산군의
-# 수집 계층이 소유한다(비트코인은 `data/crypto_common.py`) — 여기 올리면 한 자산군의 값이
+# **주식·ETF 의 값이다.** 정상 변동 폭이 다른 자산군은 자기 값을 인자로 넘기고, 그 값은 그 자산군을
+# 읽는 모듈이 소유한다(비트코인은 `data/crypto_common.py`) — 여기 올리면 한 자산군의 값이
 # 모든 시세의 판정 기준이 된다
 MAX_DAILY_CHANGE_RATE = 0.50
 
@@ -58,9 +58,8 @@ def validate_market_data(df: pd.DataFrame, *, max_daily_change_rate: float = MAX
     """시세 DataFrame 의 이상 여부를 검사한다.
 
     가격과 거래량의 결측 · 무한대, 0 이하 가격, 음수 거래량, 비정상 급등락을 검사하며, 어떤 형태의 보간도 하지 않는다.
-    수집기와 로더가 이 함수를 함께 쓴다 — 판정이 두 곳으로 갈라지면
-    "수집은 통과했는데 로딩에서 막히는" 데이터가 생긴다. **임계값을 넘기는 자산군은
-    수집기와 로더 양쪽에 같은 값을 넘긴다.**
+    받은 사본은 quant-data 가 이미 판정했지만, 읽는 쪽에서도 같은 데이터 오류를 막는다 — 손으로 고친 사본이나
+    다른 형식의 파일이 측정까지 올라오지 않게 하는 마지막 관문이다.
 
     Args:
         df: 검사할 시세 DataFrame (필수 컬럼이 이미 존재한다고 전제)
@@ -156,8 +155,8 @@ def load_market_csv(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHAN
 
     Args:
         path: 시세 CSV 경로
-        max_daily_change_rate: 데이터 오류로 볼 일간 변동 임계 (비율). **그 파일을 저장한 수집기가
-            넘긴 값과 같아야 한다** — 다르면 저장은 됐는데 읽을 때 막힌다
+        max_daily_change_rate: 데이터 오류로 볼 일간 변동 임계 (비율). 정상 변동 폭이 다른 자산군은
+            그 자산군의 값을 넘긴다 (비트코인은 `crypto_common.load_crypto_market_csv`)
 
     Returns:
         날짜 오름차순으로 정렬되고 인덱스가 0부터 다시 매겨진 DataFrame.
@@ -197,15 +196,34 @@ def load_market_csv(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHAN
     return df
 
 
+def load_close_series(path: Path) -> pd.DataFrame:
+    """시세 CSV 를 읽어 종가 하나짜리 계열(`Date`, `Value`)로 돌려준다.
+
+    지수처럼 **고가 · 저가를 믿을 수 없는 시세**에 쓴다 — 미국 지수 사본은 옛 구간의 고가 · 저가가
+    종가로 채워져 있다(`docs/매매/중간선거_사이클/설계.md` §3.2). 장중 판정은 가격 컬럼 이름이 고르므로
+    (`execution/trade_fill.py`) 고가 · 저가를 프레임에 남기지 않는다. 검사는 `load_market_csv` 그대로다.
+
+    Args:
+        path: 시세 CSV 경로
+
+    Returns:
+        날짜 오름차순의 날짜 · 값 두 컬럼 DataFrame. 값은 종가다
+
+    Raises:
+        FileNotFoundError: 파일이 없는 경우
+        ValueError: `load_market_csv` 가 거부하는 모든 경우
+    """
+    df = load_market_csv(path)
+
+    return df[[COL_DATE, COL_CLOSE]].rename(columns={COL_CLOSE: COL_VALUE})
+
+
 def validate_series_data(df: pd.DataFrame) -> None:
     """일별 단일 값 시계열의 이상 여부를 검사한다.
 
     **값의 부호와 변동폭은 보지 않는다.** 마이너스 금리와 0% 금리는 실제로 존재하고,
     원달러는 하루에 20% 넘게 움직인 날이 있다. 시세의 판정을 그대로 걸면 정상 데이터가 막힌다.
-    소스마다 다른 값의 타당 범위는 각 수집기가 자기 도메인 지식으로 검사한다.
-
-    수집기와 로더가 이 함수를 함께 쓴다 — 판정이 두 곳으로 갈라지면
-    "수집은 통과했는데 로딩에서 막히는" 데이터가 생긴다.
+    소스마다 다른 값의 타당 범위는 받는 쪽(quant-data)이 자기 도메인 지식으로 검사한다.
 
     Args:
         df: 검사할 시계열 DataFrame (필수 컬럼이 이미 존재한다고 전제)

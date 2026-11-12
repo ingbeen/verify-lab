@@ -24,7 +24,6 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VALUE,
     COL_VOLUME,
-    INDEX_FILE_TEMPLATE,
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
 )
@@ -90,6 +89,33 @@ def _frame() -> pd.DataFrame:
     )
 
 
+def _index_frame(frame: pd.DataFrame, scale: float) -> pd.DataFrame:
+    """합성 시세의 종가로 지수 시세 파일을 만든다.
+
+    **고가 · 저가를 종가와 다르게 벌린다** — 실제 미국 지수 사본은 옛 구간의 고가 · 저가가 종가로 채워져
+    있어 쓰면 안 된다. 로더가 그 둘을 흘리면 값으로 드러나게 일부러 벌려 둔다.
+
+    Args:
+        frame: 합성 시세
+        scale: 종가에 곱할 배수
+
+    Returns:
+        시세 스키마 DataFrame
+    """
+    closes = frame[COL_CLOSE] * scale
+
+    return pd.DataFrame(
+        {
+            COL_DATE: frame[COL_DATE],
+            COL_OPEN: closes,
+            COL_HIGH: closes * 1.5,
+            COL_LOW: closes * 0.5,
+            COL_CLOSE: closes,
+            COL_VOLUME: 0,
+        }
+    )
+
+
 @pytest.fixture(scope="module")
 def datasets(tmp_path_factory: pytest.TempPathFactory) -> tuple[Dataset, Dataset]:
     """합성 ETF 와 합성 지수.
@@ -99,9 +125,7 @@ def datasets(tmp_path_factory: pytest.TempPathFactory) -> tuple[Dataset, Dataset
     directory = tmp_path_factory.mktemp("midterm_cycle_trading")
     frame = _frame()
     frame.to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="SYN"), index=False)
-    pd.DataFrame({COL_DATE: frame[COL_DATE], COL_VALUE: frame[COL_CLOSE] * 10.0}).to_csv(
-        directory / INDEX_FILE_TEMPLATE.format(ticker="SYNIDX"), index=False
-    )
+    _index_frame(frame, 10.0).to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="^SYNIDX"), index=False)
 
     etf = Dataset(
         ticker="SYN",
@@ -118,7 +142,7 @@ def datasets(tmp_path_factory: pytest.TempPathFactory) -> tuple[Dataset, Dataset
         label="합성 지수",
         symbol="^SYNIDX",
         directory=directory,
-        file_template=INDEX_FILE_TEMPLATE,
+        file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,

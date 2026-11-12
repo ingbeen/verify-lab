@@ -28,7 +28,6 @@ from verify_lab.common_constants import (
     COL_OPEN,
     COL_VALUE,
     COL_VOLUME,
-    INDEX_FILE_TEMPLATE,
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
 )
@@ -86,6 +85,33 @@ def _frame() -> pd.DataFrame:
     )
 
 
+def _index_frame(frame: pd.DataFrame, scale: float) -> pd.DataFrame:
+    """합성 시세의 종가로 지수 시세 파일을 만든다.
+
+    **고가 · 저가를 종가와 다르게 벌린다** — 실제 미국 지수 사본은 옛 구간의 고가 · 저가가 종가로 채워져
+    있어 쓰면 안 된다. 로더가 그 둘을 흘리면 값으로 드러나게 일부러 벌려 둔다.
+
+    Args:
+        frame: 합성 시세
+        scale: 종가에 곱할 배수
+
+    Returns:
+        시세 스키마 DataFrame
+    """
+    closes = frame[COL_CLOSE] * scale
+
+    return pd.DataFrame(
+        {
+            COL_DATE: frame[COL_DATE],
+            COL_OPEN: closes,
+            COL_HIGH: closes * 1.5,
+            COL_LOW: closes * 0.5,
+            COL_CLOSE: closes,
+            COL_VOLUME: 0,
+        }
+    )
+
+
 @pytest.fixture(scope="module")
 def outputs(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
     """합성 ETF 와 합성 지수로 돈 측정 표.
@@ -106,9 +132,7 @@ def _write_inputs(directory: Path) -> tuple[Dataset, Dataset]:
     """
     frame = _frame()
     frame.to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="SYN"), index=False)
-    pd.DataFrame({COL_DATE: frame[COL_DATE], COL_VALUE: frame[COL_CLOSE] / 10.0}).to_csv(
-        directory / INDEX_FILE_TEMPLATE.format(ticker="SYNIDX"), index=False
-    )
+    _index_frame(frame, 0.1).to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker="^SYNIDX"), index=False)
 
     etf = Dataset(
         ticker="SYN",
@@ -125,7 +149,7 @@ def _write_inputs(directory: Path) -> tuple[Dataset, Dataset]:
         label="합성 지수",
         symbol="^SYNIDX",
         directory=directory,
-        file_template=INDEX_FILE_TEMPLATE,
+        file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,
@@ -151,9 +175,9 @@ class TestDatasetsInvariant:
         # Then
         assert len(labels) == len(set(labels)), f"표시 이름이 겹칩니다: {labels}"
 
-    def test_파일명에_쓰는_이름도_겹치지_않는다(self) -> None:
+    def test_고르는_이름도_겹치지_않는다(self) -> None:
         """
-        목적: 같은 파일을 두 대상이 가리키면 같은 값이 두 번 실린다
+        목적: `--ticker` 로 고르는 이름이 겹치면 한 대상이 다른 대상을 조용히 가린다
 
         Given: 선언된 대상 목록
         When: `ticker` 를 모았을 때
@@ -163,7 +187,39 @@ class TestDatasetsInvariant:
         tickers = [dataset.ticker for dataset in DATASETS]
 
         # Then
-        assert len(tickers) == len(set(tickers)), f"파일명이 겹칩니다: {tickers}"
+        assert len(tickers) == len(set(tickers)), f"고르는 이름이 겹칩니다: {tickers}"
+
+    def test_읽는_파일이_겹치지_않는다(self) -> None:
+        """
+        목적: 같은 파일을 두 대상이 가리키면 같은 값이 두 이름으로 두 번 실린다
+
+        파일 이름은 `ticker` 가 아니라 `symbol` 로 만든다 — `ticker` 가 달라도 `symbol` 이 같으면 같은 파일을 읽는다.
+
+        Given: 선언된 대상 목록
+        When: 읽는 파일 경로를 모았을 때
+        Then: 중복이 없다
+        """
+        # Given / When
+        paths = [dataset.path for dataset in DATASETS]
+
+        # Then
+        assert len(paths) == len(set(paths)), f"두 대상이 같은 파일을 읽습니다: {[path.name for path in paths]}"
+
+    def test_읽는_파일은_quant_data_사본의_이름이다(self) -> None:
+        """
+        목적: 대상이 가리키는 파일 이름을 고정한다 — 파일은 읽지 않는다
+
+        ETF 는 수정주가 사본, 지수는 야후 심볼이 든 원본가 사본이다. 이름이 어긋나면 「파일 없음」으로만 드러난다.
+
+        Given: 선언된 대상 목록
+        When: 파일 이름을 모았을 때
+        Then: quant-data 가 내보내는 이름 그대로다
+        """
+        # Given / When
+        names = [dataset.path.name for dataset in DATASETS]
+
+        # Then
+        assert names == ["SPY_adjusted.csv", "DIA_adjusted.csv", "QQQ_adjusted.csv", "^GSPC_raw.csv", "^IXIC_raw.csv"]
 
     def test_지수만_판정에서_빠진다(self) -> None:
         """
@@ -212,6 +268,32 @@ class TestDatasetsInvariant:
         """
         # Given / When / Then
         assert datasets_of() == DATASETS
+
+
+class TestIndexLoad:
+    """지수는 종가 하나짜리 계열로 읽는다 (`설계.md` 결정 ⑥)"""
+
+    def test_지수_대상은_고가_저가_없이_읽힌다(self, tmp_path: Path) -> None:
+        """
+        목적: 지수 사본의 고가 · 저가가 측정 · 체결에 들어가지 않음을 고정한다
+
+        장중 고가 · 저가를 쓸지는 `is_index` 가 아니라 가격 컬럼 이름이 고른다(`execution/trade_fill.py`).
+        지수 사본은 시세 파일이라, 로더가 고가 · 저가를 남기면 옛 구간의 가짜 저가가 보유 중 최악에 에러 없이 들어간다.
+
+        Given: 고가 · 저가를 종가와 다르게 벌린 합성 지수 시세 파일
+        When: 그 지수 대상을 읽으면
+        Then: 날짜와 값 두 칸이고 값은 종가다
+        """
+        # Given
+        _, index = _write_inputs(tmp_path)
+
+        # When
+        frame = midterm_runner.load_dataset(index)
+
+        # Then
+        assert list(frame.columns) == [COL_DATE, COL_VALUE]
+        expected = pd.read_csv(index.path)[COL_CLOSE].to_numpy()
+        np.testing.assert_allclose(frame[COL_VALUE].to_numpy(), expected, rtol=0.0, atol=1e-12)
 
 
 class TestStatisticsAssembly:

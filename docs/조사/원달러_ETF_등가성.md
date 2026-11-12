@@ -37,8 +37,8 @@
 | **이 결과를 쓰는 매매 규칙** | **없음.** 쓰던 원달러 그리드는 걸지 않기로 했습니다(`원달러_조달.md` 부록). 같은 문서 §14.3 이 직접 환전과의 비용 비교에 이 결과를 씁니다 |
 | **이벤트 정의** | **삭제** — `src/verify_lab/studies/usdkrw_equivalence/` 였다 |
 | **실행 스크립트** | **삭제** — `scripts/run_usdkrw_equivalence.py` 였다 |
-| **데이터 수집** | [collect_pykrx.py](../../scripts/data/collect_pykrx.py) (ETF·NAV) · 환율·CD91 · DTB3 의 수집기는 **삭제** — `scripts/data/collect_ecos.py` · `scripts/data/collect_fred.py` · `src/verify_lab/data/ecos_collector.py` · `src/verify_lab/data/ecos_credentials.py` · `src/verify_lab/data/fred_collector.py` 였다 |
-| **실측 프로브** | **삭제** — ECOS 통계표 · 항목 코드를 재던 `scripts/data/check_ecos.py` 였다(§14.1). ETF 쪽 프로브 [check_pykrx_etf.py](../../scripts/data/check_pykrx_etf.py) 는 남는다(§14.3) |
+| **데이터 수집** | **삭제** — ETF · NAV 를 받던 `scripts/data/collect_pykrx.py` 는 2026-11-12(quant-data 전환), 환율·CD91 · DTB3 의 수집기는 2026-10-16 에 지웠다 — `scripts/data/collect_ecos.py` · `scripts/data/collect_fred.py` · `src/verify_lab/data/ecos_collector.py` · `src/verify_lab/data/ecos_credentials.py` · `src/verify_lab/data/fred_collector.py` 였다 |
+| **실측 프로브** | **삭제** — ECOS 통계표 · 항목 코드를 재던 `scripts/data/check_ecos.py` 였다(§14.1). ETF 쪽 프로브 `scripts/data/check_pykrx_etf.py` 도 2026-11-12 에 지웠다 — 원자료는 §14.3, 되살리는 절차는 `docs/조사/역방향.md` §20.7 |
 | **테스트** | **삭제** — `tests/test_studies_equivalence_*.py` 다섯과 `tests/test_ecos_collector.py` · `tests/test_ecos_credentials.py` · `tests/test_fred_collector.py` 였다 |
 | **산출물** | **삭제** — 마지막 산출물은 git `2faa555` 의 `storage/results/조사/원달러_ETF_등가성/` · `storage/results/조사/ECOS_실측/` 에 있다 |
 | **실행 명령어** | **없음** — 실행할 스크립트가 없다. 되살린 뒤의 명령은 §20 「실행」 |
@@ -905,7 +905,7 @@ git checkout 2faa555 -- <경로…>
 | 파일 | 되살릴 것 |
 | --- | --- |
 | `src/verify_lab/common_constants.py` | `CALENDAR_DAYS_PER_YEAR` — 이론값 · 실효 비용의 이자 일할(결정 C14) |
-| `src/verify_lab/data/constants.py` | `SERIES_NOT_FOUND_TEMPLATE` — ECOS · FRED 수집기가 쓴다 |
+| `src/verify_lab/data/constants.py` | **2026-11-12 에 파일째 지웠다** — `git show c3a2641:src/verify_lab/data/constants.py` 로 꺼내고 `SERIES_NOT_FOUND_TEMPLATE` 을 더한다. ECOS · FRED 수집기가 쓴다 |
 | `src/verify_lab/CLAUDE.md` | 「이벤트가 없는 검증의 계약」(원문은 §15 의 같은 이름 절) · 「종목은 코드가 아니라 이름으로 냅니다」 표의 「범위를 「대상 목록」으로 말하지 않는 검증도 있습니다」 행(원문은 §15 — 되살린 runner 는 `datasets` 대신 `inputs` 를 낸다) · 「단일 값 시계열 계층 계약」의 ECOS 비밀값 행 |
 | `tests/test_layer_contracts.py` | 레이블 겹침 허용목록(`_REPORT_LABEL_COLLISIONS` · `_KNOWN_LABEL_DUPLICATES`)의 이 패키지 항목 — **`실제(%)` 는 레버리지_ETF_괴리와의 짝 어휘라 둘을 «함께» 되살릴 때만 넣는다** — 한쪽만이면 겹침이 아니라 `test_허용목록이_실제_겹침만_담는다` 가 실패한다 |
 | `tests/test_report_writer.py` | 실제 이름 검사(`test_accepts_every_real_track_name`)의 `TRACK_NAME` import 한 줄과 프로브 이름 `ecos_probe` |
@@ -913,11 +913,16 @@ git checkout 2faa555 -- <경로…>
 
 `src/verify_lab/tracks.py` 의 줄(`usdkrw_equivalence` · `ecos_probe` — 조사 · 성질 조사)은 지우지 않았으므로 되살릴 것이 없다.
 
+🔴 **2026-11-12 부터 시세 · 계열은 quant-data 가 받는다** — 되살린 ECOS · FRED 수집기로 측정 입력을 받지 않는다. 환율 · CD91 · DTB3 가 필요하면
+quant-data 에 받기를 더해 사본으로 받는다(`docs/INDEX.md` 「매매법·조사」 아래 문단). 수집기 두 행을 표에 남기는 것은 ECOS 프로브가 그 모듈을
+import 하기 때문이다(`check_ecos.py` → `ecos_collector`).
+
 **③ 품질 검증을 돌린다** — `docs/COMMANDS.md` 「품질 검증」. **꺼낸 코드가 지금 없는 이름을 import 할 수 있다** —
 검증이 실패하면 꺼낸 코드를 지금 공유 계층에 맞춘다. 공유 계층을 옛 모양으로 되돌리지 않는다.
 
 ### 데이터 소스를 다시 받을 때 (옛 설계 §6)
 
+**측정 입력은 quant-data 에서 받는다**(2026-11-12 — 아래 「선행 조건」). 아래는 옛 수집기의 기록이다.
 ECOS · FRED 수집과 ECOS 프로브 명령어는 꺼낸 커밋의 `docs/COMMANDS.md` "데이터 수집" 에 있습니다(지금 파일에서는 뺐다).
 
 - ECOS 는 저장소 루트 `.env` 의 `ECOS_API_KEY`, KRX 는 `KRX_ID`·`KRX_PW` 가 필요합니다
@@ -928,13 +933,14 @@ ECOS · FRED 수집과 ECOS 프로브 명령어는 꺼낸 커밋의 `docs/COMMAN
 
 ### 선행 조건
 
-`storage/series/` 에 `USDKRW_CLOSE.csv`·`USDKRW.csv`·`CD91.csv`·`DTB3.csv`·`261240_NAV.csv`·`261250_NAV.csv`,
-`storage/market/` 에 `261240_adjusted_max.csv`·`261250_adjusted_max.csv`·`261240_max.csv`·`261250_max.csv` 가 있어야 한다.
-없으면 ETF · NAV 는 지금 [COMMANDS.md](../COMMANDS.md) "데이터 수집" 의 pykrx 명령을 따른다 — 그곳의 261240 명령을 261250 에도 같은
-시작일로 돌리고, 원본가(`_max.csv`)는 `--adjusted`·`--nav` 없이 받는다. 환율 · CD91 · DTB3 는 §20.1 로 되살린 ECOS · FRED 수집기로 받는다
-(명령은 `git show 2faa555:docs/COMMANDS.md` 의 「한국은행 — ECOS」 · 「미국 금리 — FRED」).
+그때의 파일은 2026-11-12 quant-data 전환에서 저장소에서 지웠다 — `storage/series/` 의 `USDKRW_CLOSE.csv`·`USDKRW.csv`·`CD91.csv`·`DTB3.csv`·
+`261240_NAV.csv`·`261250_NAV.csv` 와 `storage/market/` 의 `261240_adjusted_max.csv`·`261250_adjusted_max.csv`·`261240_max.csv`·`261250_max.csv`.
+**같은 값으로 재현하려면** 머리말 데이터 기간과 끝날이 같은 판을 `git log -- storage/<series|market>/<파일>` 에서 골라 `git show <커밋>:storage/<series|market>/<파일>` 로 꺼낸다(마지막 판 `c3a2641` 은 측정 뒤 다시 받은 것일 수 있다) — 되살린 코드가 읽는 자리에 둔다.
 
-ECOS 인증키(`ECOS_API_KEY`)와 KRX 계정(`KRX_ID`·`KRX_PW`)이 저장소 루트 `.env` 에 필요하다.
+**새로 잴 때**는 ETF 원본가 · NAV 를 quant-data 사본(`261240_raw.csv` · `261250_raw.csv` · `261240_NAV.csv` · `261250_NAV.csv`)으로 받는다
+([COMMANDS.md](../COMMANDS.md) 「데이터 받기」). 🔴 **수정주가는 옛 파일과 다른 자료다** — quant-data 의 국내 수정주가(`<코드>_adjusted.csv`)는
+KRX 기준가로 이은 것이고, 옛 파일은 KRX 수정주가(최근 3,000거래일)였다. 환율 · CD91 · DTB3 는 quant-data 에 없다 — 거기에 받기를 더하는 것이 먼저다.
+ECOS 프로브를 되살리면 ECOS 인증키(`ECOS_API_KEY`)가 저장소 루트 `.env` 에 필요하다.
 
 ### 실행
 

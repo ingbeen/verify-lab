@@ -25,11 +25,10 @@ from verify_lab.common_constants import (
     COL_CLOSE,
     COL_DATE,
     COL_VALUE,
-    INDEX_FILE_TEMPLATE,
     MARKET_DIR,
+    MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
     RATE_TO_PERCENT,
-    SERIES_DIR,
 )
 from verify_lab.execution.constants import (
     DISPLAY_EXIT_DATE,
@@ -454,17 +453,17 @@ MAX_TRANCHES: Final = max(method.tranches for method in SPLIT_METHODS)
 class Dataset:
     """검증 대상 하나
 
-    **ETF 와 지수는 스키마가 다르다.** ETF 는 시세(`storage/market/`)의 `Close`,
-    지수는 단일 값 계열(`storage/series/`)의 `Value` 다.
+    **ETF 와 지수는 읽는 모양이 다르다.** ETF 는 시세의 `Close`, 지수는 시세 사본에서 종가만 꺼낸
+    계열의 `Value` 다 — 지수 사본의 고가 · 저가는 옛 구간이 종가로 채워져 있어 쓰지 않는다(`설계.md` 결정 ⑥ · ㉔).
 
     Attributes:
-        ticker: 파일명에 쓰는 이름. **산출물의 데이터셋 구분자이므로 겹치면 안 된다**
+        ticker: 고르는 이름(`--ticker`). **산출물의 데이터셋 구분자이므로 겹치면 안 된다**
         label: 표시 이름. **산출물의 종목 컬럼이 쓰는 값**이다
-        symbol: 원 심볼. 지수는 `^GSPC` 처럼 접두가 붙어 파일명과 다르다
+        symbol: 원 심볼이자 파일 이름에 쓰는 이름. 지수는 `^GSPC` 처럼 접두가 붙어 `ticker` 와 다르다
         directory: 파일이 있는 폴더
         file_template: 파일명 템플릿
         price_column: 가격 컬럼 이름
-        price_decimals: 가격 출력 자릿수. 원시 데이터를 저장한 값과 같아야 한다
+        price_decimals: 가격 출력 자릿수
         is_index: 지수면 True. **살 수 없다는 사실을 산출물에 남기기 위한 값**이다
     """
 
@@ -484,7 +483,7 @@ class Dataset:
         Returns:
             읽을 파일의 전체 경로
         """
-        return self.directory / self.file_template.format(ticker=self.ticker)
+        return self.directory / self.file_template.format(ticker=self.symbol)
 
     @property
     def is_judged(self) -> bool:
@@ -547,8 +546,8 @@ DATASETS: Final = (
         ticker="GSPC",
         label="S&P 500 지수",
         symbol="^GSPC",
-        directory=SERIES_DIR,
-        file_template=INDEX_FILE_TEMPLATE,
+        directory=MARKET_DIR,
+        file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,
@@ -557,8 +556,8 @@ DATASETS: Final = (
         ticker="IXIC",
         label="나스닥 종합 지수",
         symbol="^IXIC",
-        directory=SERIES_DIR,
-        file_template=INDEX_FILE_TEMPLATE,
+        directory=MARKET_DIR,
+        file_template=MARKET_FILE_TEMPLATE,
         price_column=COL_VALUE,
         price_decimals=PRICE_DECIMALS,
         is_index=True,

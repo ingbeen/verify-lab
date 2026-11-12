@@ -59,15 +59,20 @@
 | 원달러_조달 | — | 없음 | [원달러_조달.md](조사/원달러_조달.md) | 성질 조사 |
 | 연속_등락 | — | 없음 | [연속_등락.md](조사/연속_등락.md) | 우위 없음 |
 | ECOS_실측 | `ecos_probe` | 없음 | [원달러_ETF_등가성.md](조사/원달러_ETF_등가성.md) 「재현 방법」 | 데이터 실측 |
-| pykrx_ETF_실측 | `pykrx_etf_probe` | `scripts/data/check_pykrx_etf.py` | 없음 | 데이터 실측 |
-| pykrx_이어붙이기_실측 | `pykrx_splice_probe` | `scripts/data/check_pykrx_splice.py` | 없음 | 데이터 실측 |
+| pykrx_ETF_실측 | `pykrx_etf_probe` | 없음 | [역방향.md](조사/역방향.md) 「재현 방법」 | 데이터 실측 |
+| pykrx_이어붙이기_실측 | `pykrx_splice_probe` | 없음 | [역방향.md](조사/역방향.md) 「재현 방법」 | 데이터 실측 |
 
 확정 규칙의 본문은 각 `규칙.md` §1 입니다 — 달력 조사 셋(옵션_만기일 · 월말_진입 · 만기_말일)과 레버리지_RSI_분할은 한 장 안의
 「걸지 않기로 한 규칙과 그 근거」 절, 역방향은 [역방향.md](조사/역방향.md) §10.1 「규칙」(걸지 않기로 한 근거는 §11), 원달러_그리드는 [원달러_조달.md](조사/원달러_조달.md) 부록입니다.
 코드가 없는 매매법 · 조사를 되살리는 절차는 그 조사 문서에 있고,
 달력 조사 셋은 [만기_말일.md](조사/만기_말일.md) 「재현 방법」 한 곳에, 역방향은 [역방향.md](조사/역방향.md) 「재현 방법」에 있습니다.
 성질 조사 셋(원달러_ETF_등가성 · 레버리지_ETF_괴리 · 선물_대_레버리지_ETF)과 그 셋만 쓰던 수집기(ECOS · FRED · ETN · KRX 선물) ·
-ECOS 프로브는 각 조사 문서의 「재현 방법」에 있습니다.
+ECOS 프로브는 각 조사 문서의 「재현 방법」에 있습니다. pykrx 실측 둘(pykrx_ETF_실측 · pykrx_이어붙이기_실측)은
+[역방향.md](조사/역방향.md) 「재현 방법」에 있습니다 — 두 실측이 그 문서의 pykrx 「데이터 실측 기록」을 잰 것입니다.
+**시세는 quant-data 가 받습니다** — 되살린 코드가 시세를 받으려 하면 수집기를 되살리지 않고 quant-data 에서 내보냅니다(그 자료가 quant-data 에 없으면 거기에 받기를 더하는 것이 먼저).
+지금 `src/verify_lab/common_constants.py` 에는 `SERIES_DIR` · `NAV_FILE_TEMPLATE` · `INDEX_FILE_TEMPLATE` 이 없고 두 시세 템플릿의 값은
+`{ticker}_raw.csv` · `{ticker}_adjusted.csv` 입니다 — 되살린 코드가 옛 이름(`{ticker}_max.csv` · `{ticker}_adjusted_max.csv` · 폴더 둘)을 쓰면 사본의 이름과
+한 폴더(`MARKET_DIR`)에 맞춥니다(옛 정의는 `git show c3a2641:src/verify_lab/common_constants.py`).
 
 ---
 

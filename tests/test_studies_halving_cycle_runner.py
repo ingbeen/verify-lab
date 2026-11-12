@@ -8,6 +8,7 @@
 | 크로스체크가 «대체 전» 값으로 잰다 | 대체한 값끼리 견주면 거래가 없던 날의 괴리가 사라져 목록에서 빠진다 |
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from verify_lab.common_constants import (
     MARKET_FILE_TEMPLATE,
     PRICE_DECIMALS,
 )
-from verify_lab.data.crosscheck import COL_PRIMARY, COL_SECONDARY
+from verify_lab.data.crosscheck import COL_DIFF_RATE, COL_PRIMARY, COL_SECONDARY
 from verify_lab.execution.constants import NO_STOP_LABEL
 from verify_lab.execution.run_summary import KEY_DATASETS, KEY_ROW_COUNTS
 from verify_lab.measure.constants import (
@@ -300,12 +301,14 @@ class TestConstants:
         """
         목적: 측정 대상(결정 ⑤)과 대체용 계열(결정 ④)의 파일을 고정한다 — 파일은 읽지 않는다.
 
+        이름은 quant-data 가 내보내는 사본의 이름이다 — 어긋나면 「파일 없음」으로만 드러난다.
+
         Given: 대상 목록
         When: 파일 이름을 본다
-        Then: 대상 하나이고 `BTCUSD_max.csv` · `BTC_PriceUSD.csv` 이며 판정 대상이다
+        Then: 대상 하나이고 `BTCUSD_raw.csv` · `BTC_PriceUSD.csv` 이며 판정 대상이다
         """
         assert len(DATASETS) == 1
-        assert DATASETS[0].path.name == "BTCUSD_max.csv"
+        assert DATASETS[0].path.name == "BTCUSD_raw.csv"
         assert DATASETS[0].reference_path.name == "BTC_PriceUSD.csv"
         assert DATASETS[0].mvrv_path.name == "BTC_CapMVRVCur.csv"
         assert DATASETS[0].market_cap_path.name == "BTC_CapMrktCurUSD.csv"
@@ -486,6 +489,54 @@ class TestDataQualityTables:
         Then: 그 이틀이다
         """
         assert outputs.replaced[COL_DATE].tolist() == list(pd.to_datetime(HALT_DAYS))
+
+    def test_두_소스의_종가는_가격_자릿수로_낸다(self, tmp_path: Path) -> None:
+        """
+        목적: 6자리로 받은 기준가가 두 대조 표에 6자리로 새지 않음을 고정한다 (가격 출력 자릿수).
+
+        quant-data 사본의 Coin Metrics 기준가는 6자리이고, 두 표는 그 값을 그대로 옮겨 싣는다.
+
+        Given: 기준가를 소수 6자리로 쓴 합성 입력
+        When: 크로스체크 · 대체일의 표시용 표를 본다
+        Then: 두 종가 칸이 소수 4자리를 넘지 않는다
+        """
+        # Given
+        dataset = _dataset(tmp_path)
+        reference = pd.read_csv(dataset.reference_path)
+        reference[COL_VALUE] = (reference[COL_VALUE] * 1.0000123).round(6)
+        reference.to_csv(dataset.reference_path, index=False)
+
+        # When
+        tables = display_tables(run_study((dataset,), repeats=TEST_REPEATS, seed=0))
+
+        # Then
+        for field in ("crosscheck", "replaced"):
+            for label in ("Bitstamp 종가", "Coin Metrics 종가"):
+                prices = tables[field][label].to_numpy(dtype=float)
+                assert len(prices) > 0, f"{field} 표에 행이 없어 자릿수를 볼 수 없습니다"
+                np.testing.assert_allclose(prices, np.round(prices, PRICE_DECIMALS), atol=0.0)
+
+    def test_차이율은_표에_찍힌_두_종가로_다시_낸_값이다(self, outputs: StudyOutputs) -> None:
+        """
+        목적: 크로스체크 표가 자기 자신과 어긋나지 않음을 고정한다 (측정의 원칙 8 — 사용자가 표 값으로 다시 계산해 대조한다).
+
+        두 종가는 4자리로 잘라 내므로, 차이율을 자르기 전 6자리 값으로 둔 채 내면 끝자리가 어긋나는 행이 생긴다.
+
+        Given: 기준가가 6자리인 한 행 — 실측 2011-10-19 (Bitstamp 3.92 · 기준가 2.217255 → 자르기 전 차이율 76.80% ·
+            자른 값끼리 76.79%)
+        When: 크로스체크의 표시용 표를 본다
+        Then: 차이율이 표에 찍힌 두 종가로 다시 낸 값과 같다
+        """
+        # Given
+        row = outputs.crosscheck.iloc[:1].assign(**{COL_PRIMARY: 3.92, COL_SECONDARY: 2.217255})
+        row[COL_DIFF_RATE] = row[COL_PRIMARY] / row[COL_SECONDARY] - 1
+
+        # When
+        table = display_tables(replace(outputs, crosscheck=row))["crosscheck"]
+
+        # Then
+        recomputed = ((table["Bitstamp 종가"] / table["Coin Metrics 종가"] - 1) * 100).round(2)
+        assert table["차이율(%)"].tolist() == pytest.approx(recomputed.tolist(), abs=1e-9)
 
     def test_달력_연도는_데이터가_닿는_해마다_한_행이다(self, outputs: StudyOutputs) -> None:
         """
@@ -737,7 +788,7 @@ class TestOnchainLoading:
         """
         목적: 묵은 파일이 섞이면 멈춤을 고정한다 — 끝 날을 빼고 지나가면 그 사이의 온체인 돌파가 예외 없이 사라진다.
 
-        허용치는 수집기의 공개 지연 일수(`data/coinmetrics_collector.PUBLICATION_LAG_DAYS`)다. 두 계열을 같은 수집에서
+        허용치는 공개 지연 일수(`runner.PUBLICATION_LAG_DAYS`)다. 두 계열을 같은 내보내기에서
         받으면 그보다 크게 어긋날 수 없다.
 
         Given: 시가총액만 이틀 짧은 입력 (허용치 하루)

@@ -31,7 +31,7 @@ def test_storage_dir_is_under_base_dir() -> None:
 
 def test_market_dir_holds_raw_prices() -> None:
     """
-    목적: 수집한 원시 시세의 위치 계약을 고정한다 (git 동기화 대상).
+    목적: quant-data 가 내보낸 사본을 받는 폴더의 위치 계약을 고정한다 (git 동기화 대상).
 
     Given: 공통 상수
     When: MARKET_DIR 을 확인한다
@@ -101,32 +101,30 @@ def test_price_columns_exclude_date_and_volume() -> None:
 
 def test_market_file_templates_produce_stored_names() -> None:
     """
-    목적: 파일명 규칙이 **이미 저장된 원시 시세의 실제 이름**과 같음을 고정한다.
+    목적: 파일명 규칙이 **quant-data 가 내보내는 사본의 실제 이름**과 같음을 고정한다.
 
-    이 규칙은 수집기 4곳·측정 1곳·검증 2곳·스크립트 1곳에 흩어져 있었다. 한 곳으로 모으면서
-    문자열이 한 글자라도 달라지면 **기존 파일을 못 읽는데 예외는 파일 없음으로만 뜬다.**
-    그래서 값 자체를 여기에 박아 둔다.
+    문자열이 한 글자라도 달라지면 **사본을 못 읽는데 예외는 파일 없음으로만 뜬다.**
+    그래서 값 자체를 여기에 박아 둔다. 지수는 야후 심볼(`^GSPC`)이 이름에 그대로 들어간다.
 
     Given: 파일명 템플릿 상수
-    When: 종목 코드로 채우면
-    Then: 저장소에 실제로 있는 이름이 나온다
+    When: 종목 이름으로 채우면
+    Then: quant-data 사본의 이름이 나온다
     """
-    assert common_constants.MARKET_FILE_TEMPLATE.format(ticker="QQQ") == "QQQ_max.csv"
-    assert common_constants.MARKET_FILE_TEMPLATE.format(ticker="069500") == "069500_max.csv"
-    assert common_constants.ADJUSTED_FILE_TEMPLATE.format(ticker="QQQ") == "QQQ_adjusted_max.csv"
+    assert common_constants.MARKET_FILE_TEMPLATE.format(ticker="BTCUSD") == "BTCUSD_raw.csv"
+    assert common_constants.MARKET_FILE_TEMPLATE.format(ticker="^GSPC") == "^GSPC_raw.csv"
+    assert common_constants.ADJUSTED_FILE_TEMPLATE.format(ticker="QQQ") == "QQQ_adjusted.csv"
 
 
-def test_series_file_templates_are_distinct() -> None:
+def test_price_basis_templates_are_distinct() -> None:
     """
-    목적: 시세와 단일 값 시계열의 파일명이 서로 섞이지 않음을 고정한다 (경계 조건).
+    목적: 원본가와 수정주가의 파일명이 서로 섞이지 않음을 고정한다 (경계 조건).
 
-    Given: 세 종류의 파일명 템플릿
-    When: 같은 종목 코드로 채우면
-    Then: 셋이 모두 다른 이름이다
+    같은 이름이 되면 한 기준을 읽으려던 실행이 다른 기준을 에러 없이 읽는다.
+
+    Given: 두 가격 기준의 파일명 템플릿
+    When: 같은 종목 이름으로 채우면
+    Then: 둘이 다른 이름이다
     """
-    names = {
-        common_constants.MARKET_FILE_TEMPLATE.format(ticker="261240"),
-        common_constants.ADJUSTED_FILE_TEMPLATE.format(ticker="261240"),
-        common_constants.NAV_FILE_TEMPLATE.format(ticker="261240"),
-    }
-    assert len(names) == 3
+    assert common_constants.MARKET_FILE_TEMPLATE.format(ticker="SPY") != common_constants.ADJUSTED_FILE_TEMPLATE.format(
+        ticker="SPY"
+    )

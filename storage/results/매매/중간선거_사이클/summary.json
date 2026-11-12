@@ -23,9 +23,9 @@
       {
         "ticker": "SPY",
         "label": "SPY",
-        "file": "SPY_adjusted_max.csv",
-        "period": "1993-01-29 ~ 2026-10-05",
-        "rows": 8478,
+        "file": "SPY_adjusted.csv",
+        "period": "1993-01-29 ~ 2026-11-10",
+        "rows": 8504,
         "symbol": "SPY",
         "is_index": false,
         "entry_count": 9,
@@ -34,9 +34,9 @@
       {
         "ticker": "DIA",
         "label": "DIA",
-        "file": "DIA_adjusted_max.csv",
-        "period": "1998-01-20 ~ 2026-10-05",
-        "rows": 7222,
+        "file": "DIA_adjusted.csv",
+        "period": "1998-01-20 ~ 2026-11-10",
+        "rows": 7248,
         "symbol": "DIA",
         "is_index": false,
         "entry_count": 8,
@@ -45,9 +45,9 @@
       {
         "ticker": "QQQ",
         "label": "QQQ",
-        "file": "QQQ_adjusted_max.csv",
-        "period": "1999-03-10 ~ 2026-10-05",
-        "rows": 6936,
+        "file": "QQQ_adjusted.csv",
+        "period": "1999-03-10 ~ 2026-11-10",
+        "rows": 6962,
         "symbol": "QQQ",
         "is_index": false,
         "entry_count": 7,
@@ -56,9 +56,9 @@
       {
         "ticker": "GSPC",
         "label": "S&P 500 지수",
-        "file": "GSPC_index.csv",
-        "period": "1927-12-30 ~ 2026-10-05",
-        "rows": 24807,
+        "file": "^GSPC_raw.csv",
+        "period": "1927-12-30 ~ 2026-11-10",
+        "rows": 24833,
         "symbol": "^GSPC",
         "is_index": true,
         "entry_count": 25,
@@ -67,9 +67,9 @@
       {
         "ticker": "IXIC",
         "label": "나스닥 종합 지수",
-        "file": "IXIC_index.csv",
-        "period": "1971-02-05 ~ 2026-10-05",
-        "rows": 14033,
+        "file": "^IXIC_raw.csv",
+        "period": "1971-02-05 ~ 2026-11-10",
+        "rows": 14059,
         "symbol": "^IXIC",
         "is_index": true,
         "entry_count": 14,
@@ -82,37 +82,37 @@
       {
         "ticker": "SPY",
         "label": "SPY",
-        "file": "SPY_adjusted_max.csv",
-        "period": "1993-01-29 ~ 2026-10-05",
-        "rows": 8478
+        "file": "SPY_adjusted.csv",
+        "period": "1993-01-29 ~ 2026-11-10",
+        "rows": 8504
       },
       {
         "ticker": "DIA",
         "label": "DIA",
-        "file": "DIA_adjusted_max.csv",
-        "period": "1998-01-20 ~ 2026-10-05",
-        "rows": 7222
+        "file": "DIA_adjusted.csv",
+        "period": "1998-01-20 ~ 2026-11-10",
+        "rows": 7248
       },
       {
         "ticker": "QQQ",
         "label": "QQQ",
-        "file": "QQQ_adjusted_max.csv",
-        "period": "1999-03-10 ~ 2026-10-05",
-        "rows": 6936
+        "file": "QQQ_adjusted.csv",
+        "period": "1999-03-10 ~ 2026-11-10",
+        "rows": 6962
       },
       {
         "ticker": "GSPC",
         "label": "S&P 500 지수",
-        "file": "GSPC_index.csv",
-        "period": "1927-12-30 ~ 2026-10-05",
-        "rows": 24807
+        "file": "^GSPC_raw.csv",
+        "period": "1927-12-30 ~ 2026-11-10",
+        "rows": 24833
       },
       {
         "ticker": "IXIC",
         "label": "나스닥 종합 지수",
-        "file": "IXIC_index.csv",
-        "period": "1971-02-05 ~ 2026-10-05",
-        "rows": 14033
+        "file": "^IXIC_raw.csv",
+        "period": "1971-02-05 ~ 2026-11-10",
+        "rows": 14059
       }
     ],
     "rule": {

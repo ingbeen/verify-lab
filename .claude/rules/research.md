@@ -90,7 +90,7 @@ docs/조사/<이름>.md                  조사는 언제나 «한 장» — 설
 | 도출된 매매 규칙 | `docs/<등급>/<매매법>/규칙.md` (조사는 그 한 장의 규칙 절) |
 | 이벤트 정의 | `src/verify_lab/studies/<검증명>/` |
 | 실행 스크립트 | `scripts/run_<매매법>.py` |
-| 데이터 수집 | 이 검증이 쓰는 시세를 만드는 `scripts/data/` 스크립트 |
+| 데이터 | 이 검증이 읽는 시세 사본의 목록 `storage/market/quant_data_files.txt` — 받는 명령은 `docs/COMMANDS.md` 「데이터 받기」 |
 | 테스트 | 계약이 코드로 고정된 자리 |
 | 실행 명령어 | `docs/COMMANDS.md` |
 

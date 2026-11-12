@@ -4,8 +4,8 @@
 > README.md·CLAUDE.md 등 다른 문서에는 실행 명령어를 기재하지 않으며, 필요 시 이 문서를 참조합니다.
 > 설치처럼 한 번만 쓰는 일회성 명령어는 기재하지 않습니다. **평상시 반복 실행하는 명령어만** 관리합니다.
 >
-> **명령과 한 줄 주석만 둡니다.** 인자의 뜻·기본값·저장 위치·데이터 소스의 함정은 각 스크립트와 수집기의
-> `--help`·모듈 docstring 이, 산출물을 읽는 법은 그 매매법 결과 문서의 「재현 방법」이 말합니다 —
+> **명령과 한 줄 주석만 둡니다.** 인자의 뜻·기본값·저장 위치는 각 스크립트의
+> `--help`·모듈 docstring 이, 데이터 소스의 함정은 quant-data 문서가, 산출물을 읽는 법은 그 매매법 결과 문서의 「재현 방법」이 말합니다 —
 > 여기에 함께 두면 코드와 두 벌이 되어 어긋납니다 (2026-09-26 사용자 결정).
 
 ---
@@ -28,39 +28,16 @@ poetry run black .                                   # 포맷 적용 (계획서�
 
 ---
 
-## 데이터 수집
+## 데이터 받기
 
-> 외부 서버(Yahoo Finance · KRX · Bitstamp · Coin Metrics)에 실제 요청을 보냅니다. 이미 받은 파일이 있으면 다시 받지 않고,
-> 덮어썼으면 그 수치를 쓴 결과 문서에 새 데이터 기간을 적습니다 (루트 [CLAUDE.md](../CLAUDE.md) 「재수집은 이미 나온 결과를 바꿉니다」).
-
-### 미국 — yfinance
-
-```bash
-poetry run python scripts/data/collect_yfinance.py                   # QQQ 전 기간 (기본값) — 원본가와 수정주가를 함께 받는다
-poetry run python scripts/data/collect_yfinance.py --ticker SPY      # 수정주가는 매매·검증이, 원본가는 원본가로 잰 조사가 읽는다
-poetry run python scripts/data/collect_yfinance.py --index '^GSPC'   # 지수(종가 계열). ^ 는 셸 메타문자라 따옴표로 감싼다
-```
-
-### 국내 — pykrx · KRX
-
-KRX 데이터포털 계정이 필요합니다 — 저장소 루트 `.env` 의 `KRX_ID` · `KRX_PW`.
-
-```bash
-poetry run python scripts/data/collect_pykrx.py                                              # KODEX 200 전 기간 (기본값) · 원본가
-poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --adjusted  # 수정주가 — 다른 파일명으로 받는다. 매매·검증은 이 기준을 읽는다 (KRX 는 최근 3,000거래일만 준다)
-poetry run python scripts/data/collect_pykrx.py --ticker 261240 --start 20161227 --nav       # NAV (단일 값 계열)
-poetry run python scripts/data/collect_pykrx.py --index --ticker 1001 --start 19800104       # 지수 종가 — 지수마다 첫날을 준다
-
-poetry run python scripts/data/check_pykrx_etf.py                              # 실측 — KODEX 200 데이터 성질
-poetry run python scripts/data/check_pykrx_splice.py                           # 실측 — 수정주가 구간 이어붙이기 (2분할)
-poetry run python scripts/data/check_pykrx_splice.py --ends 20081231,20141231  # 3분할 — 앞 구간이 상장일에 닿지 못했을 때
-```
-
-### 비트코인 — Bitstamp · Coin Metrics
-
-```bash
-poetry run python scripts/data/collect_btc.py   # Bitstamp 일봉 + Coin Metrics 기준가 · MVRV · 시가총액 전 기간, 받은 뒤 두 소스 종가를 크로스체크. 인증키가 필요 없다
-```
+> 시세는 quant-data 가 받고 판정해 내보낸 사본이고, **이 저장소에는 받기 명령이 없습니다** — quant-data 저장소에서
+> 그 저장소 `docs/COMMANDS.md` 의 「갱신」 → 「내보내기」를 돌립니다(받는 폴더 `storage/market/`).
+>
+> - 받을 파일: `storage/market/quant_data_files.txt` (한 줄에 quant-data storage 기준 경로 하나)
+> - 받은 버전: `storage/market/quant_data_manifest.json` — quant-data 커밋 · 커밋 안 된 변경 · 기준일 · 파일별 기간
+>
+> 다시 내보냈으면 아래 매매법을 전부 인자 없이 다시 돌리고, 그 수치를 쓴 결과 문서에 새 데이터 기간을 적습니다
+> (루트 [CLAUDE.md](../CLAUDE.md) 「재수집은 이미 나온 결과를 바꿉니다」).
 
 ---
 
@@ -86,4 +63,4 @@ poetry run python scripts/chart_halving_cycle.py                            # �
 BROWSER=true poetry run python scripts/chart_halving_cycle.py               # 같은 차트를 브라우저를 열지 않고 만든다 (헤드리스 캡처 확인용)
 ```
 
-선행 조건은 비트코인 수집(위 「비트코인 — Bitstamp · Coin Metrics」)이 받은 네 파일이다.
+선행 조건은 「데이터 받기」로 받은 사본 넷(`BTCUSD_raw.csv` · Coin Metrics 셋)이다.

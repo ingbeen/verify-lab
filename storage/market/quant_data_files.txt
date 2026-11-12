@@ -1,0 +1,11 @@
+# quant-data 에서 받을 파일 — 한 줄에 quant-data storage 기준 경로 하나 (내보내기 명령은 quant-data docs/COMMANDS.md)
+# 두 매매법이 읽는 것만 받는다 — 중간선거_사이클(ETF 셋 수정주가 · 지수 둘)과 반감기_사이클(Bitstamp 일봉 · Coin Metrics 셋)
+prices/SPY_adjusted.csv
+prices/DIA_adjusted.csv
+prices/QQQ_adjusted.csv
+prices/^GSPC_raw.csv
+prices/^IXIC_raw.csv
+prices/BTCUSD_raw.csv
+series/BTC_PriceUSD.csv
+series/BTC_CapMVRVCur.csv
+series/BTC_CapMrktCurUSD.csv

@@ -4,14 +4,14 @@
     "통계.csv": 48,
     "excess.csv": 48,
     "test.csv": 48,
-    "진입내역.csv": 174,
+    "진입내역.csv": 177,
     "달력연도.csv": 16,
     "크로스체크.csv": 107,
     "대체일.csv": 33,
     "지표신호.csv": 681,
     "지표통계.csv": 42,
     "지표사이클.csv": 168,
-    "진입지표.csv": 58,
+    "진입지표.csv": 59,
     "분할회차.csv": 792,
     "분할포지션.csv": 3060,
     "분할조합.csv": 765,
@@ -19,7 +19,7 @@
     "달력분할회차.csv": 64,
     "달력분할포지션.csv": 4,
     "달력분할손절.csv": 8,
-    "거래내역.csv": 767,
+    "거래내역.csv": 783,
     "성적표.csv": 1290
   },
   "cost": "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)",
@@ -287,24 +287,24 @@
       {
         "ticker": "BTCUSD",
         "label": "Bitstamp BTC/USD",
-        "file": "BTCUSD_max.csv",
-        "period": "2011-08-18 ~ 2026-09-30",
-        "rows": 5523,
+        "file": "BTCUSD_raw.csv",
+        "period": "2011-08-18 ~ 2026-11-10",
+        "rows": 5564,
         "reference": {
           "file": "BTC_PriceUSD.csv",
-          "period": "2010-07-18 ~ 2026-09-30",
-          "rows": 5919
+          "period": "2010-07-18 ~ 2026-11-10",
+          "rows": 5960
         },
         "onchain": {
           "mvrv": {
             "file": "BTC_CapMVRVCur.csv",
-            "period": "2010-07-18 ~ 2026-09-30",
-            "rows": 5919
+            "period": "2010-07-18 ~ 2026-11-10",
+            "rows": 5960
           },
           "market_cap": {
             "file": "BTC_CapMrktCurUSD.csv",
-            "period": "2010-07-18 ~ 2026-09-30",
-            "rows": 5919
+            "period": "2010-07-18 ~ 2026-11-10",
+            "rows": 5960
           },
           "dropped_tail_days": 0,
           "missing_price_days": 0
@@ -381,25 +381,26 @@
             "excluded_count": 0
           }
         ],
-        "signal_count": 174,
+        "signal_count": 177,
         "excluded_count": 7,
         "replaced_count": 33,
         "split": {
           "fill_rows": 792,
           "unfilled_by_reason": {
-            "기한이 데이터 뒤라 아직 체결 전": 70,
-            "다음 반감기가 반감기 목록에 없음": 45
+            "다음 반감기가 반감기 목록에 없음": 45,
+            "기한이 데이터 뒤라 아직 체결 전": 43
           },
           "position_rows": 3060,
           "unfinished_by_reason": {
-            "매수 회차가 남음": 765
+            "매수 회차가 남음": 510,
+            "다음 반감기가 반감기 목록에 없음": 255
           }
         },
         "calendar_split": {
           "fill_rows": 64,
           "unfilled_by_reason": {
             "다음 반감기가 반감기 목록에 없음": 10,
-            "기한이 데이터 뒤라 아직 체결 전": 3
+            "기한이 데이터 뒤라 아직 체결 전": 2
           },
           "position_rows": 4,
           "unfinished_by_reason": {
@@ -408,7 +409,7 @@
         },
         "crosscheck": {
           "tolerance": 0.05,
-          "overlap_days": 5523,
+          "overlap_days": 5564,
           "over_tolerance_days": 107,
           "primary_only_days": 0,
           "secondary_only_days": 396,
@@ -422,9 +423,9 @@
       {
         "ticker": "BTCUSD",
         "label": "Bitstamp BTC/USD",
-        "file": "BTCUSD_max.csv",
-        "period": "2011-08-18 ~ 2026-09-30",
-        "rows": 5523
+        "file": "BTCUSD_raw.csv",
+        "period": "2011-08-18 ~ 2026-11-10",
+        "rows": 5564
       }
     ],
     "rule": {
@@ -519,14 +520,14 @@
       "targets": [
         {
           "label": "Bitstamp BTC/USD",
-          "signal_count": 912,
+          "signal_count": 928,
           "excluded_count": 151,
           "excluded_by_reason": {
             "구간 끝이 데이터 범위를 넘음": 136,
             "청산 시점 전에 다음 반감기": 15
           },
           "outside_cycle_count": 16,
-          "not_yet_count": 96,
+          "not_yet_count": 80,
           "calendar_split_targets": [
             {
               "name": "월말 분할",

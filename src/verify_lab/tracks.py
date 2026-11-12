@@ -103,7 +103,7 @@ TRACKS: Final = (
     # 걸지 않기로 해 실행 코드가 없다 — 옵션_만기일·월말_진입·만기_말일과 같은 자리다
     Track("usdkrw_grid", "원달러_그리드", GRADE_SURVEY, KIND_PROPERTY),
     # 실측 프로브. 매매법이 아니라 **데이터 소스의 성질**을 잰다.
-    # ECOS 프로브는 실행 코드가 없다 — 되살리는 절차는 `docs/조사/원달러_ETF_등가성.md` 「재현 방법」
+    # 셋 다 실행 코드가 없다 — 되살리는 절차는 ECOS 가 `docs/조사/원달러_ETF_등가성.md`, pykrx 둘이 `docs/조사/역방향.md` 의 「재현 방법」
     Track("ecos_probe", "ECOS_실측", GRADE_SURVEY, KIND_PROPERTY),
     Track("pykrx_etf_probe", "pykrx_ETF_실측", GRADE_SURVEY, KIND_PROPERTY),
     Track("pykrx_splice_probe", "pykrx_이어붙이기_실측", GRADE_SURVEY, KIND_PROPERTY),

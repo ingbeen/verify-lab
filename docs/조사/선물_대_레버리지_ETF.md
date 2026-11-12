@@ -67,7 +67,7 @@
 | 구간 수익률·분해 | **삭제** — `src/verify_lab/studies/futures_leverage/comparison.py` 였다 |
 | 정수 계약 제약 | **삭제** — `src/verify_lab/studies/futures_leverage/contracts.py` 였다 |
 | 실행 | **삭제** — `src/verify_lab/studies/futures_leverage/runner.py` · `scripts/run_futures_leverage.py` 였다 |
-| 데이터 수집 | [collect_pykrx.py](../../scripts/data/collect_pykrx.py) · 선물 · ETN 수집기는 **삭제** — `scripts/data/collect_krx_futures.py` · `scripts/data/collect_etn.py` 였다 |
+| 데이터 수집 | **삭제** — 시세 수집기 `scripts/data/collect_pykrx.py` 는 2026-11-12(quant-data 전환), 선물 · ETN 수집기 `scripts/data/collect_krx_futures.py` · `scripts/data/collect_etn.py` 는 2026-10-16 에 지웠다. 다시 받는 법은 §21 「선행 조건」 |
 | 배당 보정분 | **삭제** — 공통 계층의 `src/verify_lab/measure/distribution.py` 였고 레버리지_ETF_괴리의 코드와 함께 지웠다 |
 | 테스트 | **삭제** — `tests/test_studies_futures_comparison.py` · `tests/test_studies_futures_position.py` · `tests/test_studies_futures_continuous.py` · `tests/test_studies_futures_contracts.py` · `tests/test_studies_futures_runner.py` · `tests/test_krx_futures_collector.py` 와 `tests/test_data_loader.py` 의 선물 로더 검사였다 |
 | 산출물 | **삭제** — 마지막 산출물은 git `2faa555` 의 `storage/results/조사/선물_대_레버리지_ETF/` 에 있다 |
@@ -923,13 +923,12 @@ git checkout 2faa555 -- <경로…>
 | 무엇 | 경로 |
 | --- | --- |
 | 측정 패키지 · 실행 | `src/verify_lab/studies/futures_leverage/` · `scripts/run_futures_leverage.py` |
-| KRX 선물 수집기 | `src/verify_lab/data/krx_futures_collector.py` · `scripts/data/collect_krx_futures.py` · `tests/test_krx_futures_collector.py` |
+| KRX 선물 수집기 | **되살리지 않는다** — 2026-11-12 부터 시세는 quant-data 가 받는다(선물 · CD91 은 quant-data 에 받기를 더해 사본으로 받는다 — 「선행 조건」). 옛 코드는 `src/verify_lab/data/krx_futures_collector.py` · `scripts/data/collect_krx_futures.py` · `tests/test_krx_futures_collector.py` 다 |
 | 배당 보정분 (공통 계층 — 레버리지_ETF_괴리도 쓴다) | `src/verify_lab/measure/distribution.py` · `tests/test_measure_distribution.py` |
 | 측정 테스트 | `tests/test_studies_futures_comparison.py` · `tests/test_studies_futures_position.py` · `tests/test_studies_futures_continuous.py` · `tests/test_studies_futures_contracts.py` · `tests/test_studies_futures_runner.py` |
 
 `2faa555` 는 이 코드를 지운 커밋의 부모다. **삭제 커밋 자체에는 파일이 없다** — `git log -- <패키지>` 로
-「마지막 커밋」을 찾으면 삭제 커밋이 나오므로 쓰지 않는다. 짝 `530107`(ETN) 의 시세를 다시 받으려면
-`docs/조사/레버리지_ETF_괴리.md` §19.1 의 ETN 수집기를 함께 꺼낸다.
+「마지막 커밋」을 찾으면 삭제 커밋이 나오므로 쓰지 않는다. 짝 `530107`(ETN) 의 시세도 quant-data 에서 받는다(「선행 조건」).
 **달력 조사(`docs/조사/만기_말일.md` §13.1)도 함께 되살리면 이 두 파일은 `7521cf5` 의 것을 꺼낸다** — 그쪽은 `dividend_impact` 를 더 갖고, `2faa555` 판과의 차이는 그것과 모듈 docstring 뿐이다. 차례로 꺼내면 나중 것이 앞의 것을 덮는다.
 
 **② 지금 트리에 있는 파일은 통째로 꺼내지 않고 필요한 부분만 옮겨 붙인다.** 통째로 꺼내면 복원 지점 뒤에
@@ -939,13 +938,12 @@ git checkout 2faa555 -- <경로…>
 | --- | --- |
 | `src/verify_lab/common_constants.py` · `tests/test_common_constants.py` | 선물 시세 스키마 여덟 — `COL_CONTRACT` · `COL_CONTRACT_NAME` · `COL_SETTLE` · `COL_OPEN_INTEREST` · `COL_SPOT` · `FUTURES_REQUIRED_COLUMNS` · `FUTURES_ROW_KEY` · `FUTURES_FILE_TEMPLATE` 과 `CALENDAR_DAYS_PER_YEAR`(포지션 엔진의 이자 일할), 그리고 선물 파일명 검사(`test_futures_file_template_uses_product_id`) |
 | `src/verify_lab/data/loader.py` · `tests/test_data_loader.py` | `validate_futures_data` · `load_futures_csv` 와 그 검사 |
-| `src/verify_lab/data/krx_common.py` · `tests/test_krx_common.py` | `to_numeric` 과 그 테스트 — 선물 수집기가 쓴다 |
-| `src/verify_lab/data/constants.py` | `KRX_RESPONSE_DATE_FORMAT` — 선물 수집기가 쓴다 |
+| `src/verify_lab/data/krx_common.py` · `tests/test_krx_common.py` · `src/verify_lab/data/constants.py` | **되살리지 않는다** — `to_numeric` · `KRX_RESPONSE_DATE_FORMAT` 은 선물 수집기만 썼고(위 ①), 세 파일은 2026-11-12 에 파일째 지웠다 |
 | `src/verify_lab/report/constants.py` | `HORIZON_LABELS` · `DISPLAY_HORIZON` — 측정 패키지 · 실행 스크립트 · 그 테스트가 쓰는 구간 이름표 |
-| `tests/test_layer_contracts.py` | 레이블 겹침 허용목록(`_REPORT_LABEL_COLLISIONS` · `_KNOWN_LABEL_DUPLICATES`)의 이 패키지 항목 — **배수형 어휘(`배수` · `지수` · `시작일` · `종료일` · `금리 환경` · `배당 보정분(%p)`)는 레버리지_ETF_괴리와 선물_대_레버리지_ETF 를 «함께» 되살릴 때만 넣는다** — 한쪽만이면 겹침이 아니라 `test_허용목록이_실제_겹침만_담는다` 가 실패한다 · `TestKrxCommonOwnership._SHARED_NAMES` 의 `to_numeric` · `TestHorizonLabelOwnership` 두 검사 — 둘째 검사 `test_구간_축을_내는_검증은_이름표를_거친다` 가 찾는 `COL_HORIZON: DISPLAY_HORIZON` 을 가진 것이 이 패키지 하나였다. 첫 검사 `test_구간_이름표가_한_곳에만_있다` 는 레버리지_ETF_괴리만 되살려도 넣는다(그 조사 §19.1 ②) |
+| `tests/test_layer_contracts.py` | 레이블 겹침 허용목록(`_REPORT_LABEL_COLLISIONS` · `_KNOWN_LABEL_DUPLICATES`)의 이 패키지 항목 — **배수형 어휘(`배수` · `지수` · `시작일` · `종료일` · `금리 환경` · `배당 보정분(%p)`)는 레버리지_ETF_괴리와 선물_대_레버리지_ETF 를 «함께» 되살릴 때만 넣는다** — 한쪽만이면 겹침이 아니라 `test_허용목록이_실제_겹침만_담는다` 가 실패한다 · `TestHorizonLabelOwnership` 두 검사 — 둘째 검사 `test_구간_축을_내는_검증은_이름표를_거친다` 가 찾는 `COL_HORIZON: DISPLAY_HORIZON` 을 가진 것이 이 패키지 하나였다. 첫 검사 `test_구간_이름표가_한_곳에만_있다` 는 레버리지_ETF_괴리만 되살려도 넣는다(그 조사 §19.1 ②) |
 | `tests/test_report_writer.py` | 실제 이름 검사(`test_accepts_every_real_track_name`)의 `TRACK_NAME` import 한 줄 |
-| `src/verify_lab/CLAUDE.md` | 「검증 계층도 `row_counts` 의 키가 파일 이름입니다」의 「짝마다 나오는 파일」 행 · 「이벤트가 없는 검증의 계약」(원문은 `docs/조사/원달러_ETF_등가성.md` 의 같은 이름 절) · 「종목은 코드가 아니라 이름으로 냅니다」 표의 「범위를 「대상 목록」으로 말하지 않는 검증도 있습니다」 행(원문은 `docs/조사/원달러_ETF_등가성.md` §15 — 되살린 runner 는 `datasets` · `inputs` · `pairs` 를 셋 다 내지 않고 `index_filter` · `pair_count` · `skipped_pairs` · `wipeout_window_total` 을 낸다) · 「원시 시세 저장 규칙 — data 와 수집기」 표의 「KRX 공통 판정의 소유자」 행에 숫자 변환(`to_numeric`)을 되돌리고, 「pykrx import 순서」 · 「그 지연 import 헬퍼는 수집기마다 둡니다」 행의 「지금은 `pykrx_collector` 하나」를 선물 수집기까지 넓힌다 · 선물 로더 서술은 §17 — 지운 문장은 `git show 2faa555:src/verify_lab/CLAUDE.md` |
-| `docs/COMMANDS.md` · `scripts/CLAUDE.md` | 실행 · 선물 수집 명령과 메타 타입 행(`futures_leverage` · `krx_futures_collect`) |
+| `src/verify_lab/CLAUDE.md` | 「검증 계층도 `row_counts` 의 키가 파일 이름입니다」의 「짝마다 나오는 파일」 행 · 「이벤트가 없는 검증의 계약」(원문은 `docs/조사/원달러_ETF_등가성.md` 의 같은 이름 절) · 「종목은 코드가 아니라 이름으로 냅니다」 표의 「범위를 「대상 목록」으로 말하지 않는 검증도 있습니다」 행(원문은 `docs/조사/원달러_ETF_등가성.md` §15 — 되살린 runner 는 `datasets` · `inputs` · `pairs` 를 셋 다 내지 않고 `index_filter` · `pair_count` · `skipped_pairs` · `wipeout_window_total` 을 낸다) · 선물 로더 서술은 §17 — 지운 문장은 `git show 2faa555:src/verify_lab/CLAUDE.md` |
+| `docs/COMMANDS.md` · `scripts/CLAUDE.md` | 실행 명령과 메타 타입 행(`futures_leverage`) |
 
 `src/verify_lab/tracks.py` 의 줄(`futures_leverage` — 조사 · 성질 조사)은 지우지 않았으므로 되살릴 것이 없다.
 
@@ -954,12 +952,15 @@ git checkout 2faa555 -- <경로…>
 
 ### 선행 조건
 
-`storage/market/` 에 선물 2종(`KRDRVFUK2I_max.csv`·`KRDRVFUKQI_max.csv`)과 짝이 되는
-ETF·ETN 8종, `storage/series/CD91.csv` 가 있어야 한다. 파일별 기간과 행 수는 [3.2](#32-원시-시세-파일)에 있다.
+선물 2종(`KRDRVFUK2I_max.csv`·`KRDRVFUKQI_max.csv`)과 짝이 되는 ETF·ETN 8종, `CD91.csv`. 파일별 기간과 행 수는 [3.2](#32-원시-시세-파일)에 있다.
+그때의 파일은 2026-11-12 quant-data 전환에서 저장소에서 지웠다 — 같은 값으로 재현하려면 머리말 데이터 기간과 끝날이 같은 판을 `git log -- storage/market/<파일>` 에서 골라 `git show <커밋>:storage/market/<파일>` 로 꺼낸다(마지막 판 `c3a2641` 은 측정 뒤 다시 받은 것일 수 있다)
+(`CD91.csv` 는 `storage/series/`). 새로 잴 때는 quant-data 사본으로 받는다(`docs/COMMANDS.md` 「데이터 받기」) — 국내 ETF 는
+`<코드>_raw.csv` · `<코드>_adjusted.csv`(수정주가는 KRX 기준가로 이은 것이라 옛 KRX 수정주가와 다른 자료)이고, 선물 · ETN · CD91 은 quant-data 에
+없어 거기에 받기를 더하는 것이 먼저다.
 
 ### 실행
 
-실행 명령어는 꺼낸 커밋의 `docs/COMMANDS.md`(`git show 2faa555:docs/COMMANDS.md` 의 「선물_대_레버리지_ETF」 · 「데이터 수집」)에 있다.
+실행 명령어는 꺼낸 커밋의 `docs/COMMANDS.md`(`git show 2faa555:docs/COMMANDS.md` 의 「선물_대_레버리지_ETF」)에 있다.
 **인자는 지수로 좁히는 것 하나뿐**이며 배수·격자·리밸런싱 주기·롤 규칙은 상수로 고정돼 있다.
 산출물 파일과 각 내용은 되살린 `src/verify_lab/studies/futures_leverage/runner.py` 모듈 docstring 에 있다 —
 가장 먼저 볼 표는 `comparison.csv` 다.
@@ -974,5 +975,5 @@ ETF·ETN 8종, `storage/series/CD91.csv` 가 있어야 한다. 파일별 기간�
 | 3.2 의 기간과 행 수 | 3.1 의 대상 6쌍 |
 | 10장 — **정산가가 바뀌면 1계약 명목과 실제 배수가 전부 달라진다** | 18.4·20장의 한계 항목 |
 
-**시세 수집기는 같은 파일명에 덮어쓴다.** 재수집하면 이 문서의 수치가 그 시점부터 재현되지
+**사본을 다시 내보내면 같은 파일명에 덮어쓴다.** 재수집하면 이 문서의 수치가 그 시점부터 재현되지
 않으므로, 덮어쓴 뒤에는 **새 데이터 기준일과 무엇이 달라졌는지를 이 문서에 적는다.**

@@ -36,7 +36,6 @@ import numpy as np
 import pandas as pd
 
 from verify_lab.common_constants import COL_DATE, COL_VALUE, PRICE_DECIMALS
-from verify_lab.data.coinmetrics_collector import PUBLICATION_LAG_DAYS
 from verify_lab.data.crosscheck import (
     COL_DIFF_RATE,
     COL_PRIMARY,
@@ -230,6 +229,10 @@ from verify_lab.studies.halving_cycle.split_rule import (
 from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# 온체인 계열과 시세의 끝 날짜 어긋남 허용 일수 — Coin Metrics 가 끝난 날 값을 다음날 올려 사본 끝이 갈림(결정 66)
+# 넘으면 묵은 파일이 섞인 것이라 멈춤
+PUBLICATION_LAG_DAYS = 1
 
 # `summary.json` 의 측정 칸 — 무엇을 어떤 규칙으로 쟀나
 KEY_PERMUTATION_REPEATS = "permutation_repeats"
@@ -632,7 +635,7 @@ def load_onchain(dataset: Dataset) -> LoadedOnchain:
     **측정만 쓴다** — 2단계 지표와 3단계 혼합 분할의 문턱 · 4년 순위가 이 표의 MVRV 를 쓴다. 체결은 읽지 않으므로
     `load_dataset` 에 넣지 않는다.
 
-    두 계열은 따로 받고 각자 공개 지연을 허용받으므로(`data/coinmetrics_collector.PUBLICATION_LAG_DAYS`)
+    두 계열은 따로 받고 각자 공개 지연을 허용받으므로(`PUBLICATION_LAG_DAYS`)
     **끝이 그만큼 어긋날 수 있다** — 그때는 한쪽에만 있는 끝 날을 빼고 경고하며 뺀 날 수를 돌려준다.
     **허용치를 넘는 끝 어긋남은 멈춘다** — 묵은 파일이 섞인 것이라, 빼고 지나가면 그 사이의 온체인 돌파가
     예외 없이 사라진다. 어긋남이 끝이 아닌 자리에 있으면 「같은 날의 값끼리」라는 전제가 무너진 것이라 멈춘다.
@@ -655,7 +658,7 @@ def load_onchain(dataset: Dataset) -> LoadedOnchain:
         if not series[COL_DATE].iloc[: len(common)].reset_index(drop=True).equals(common):
             raise ValueError(
                 f"MVRV 와 시가총액의 날짜가 끝이 아닌 자리에서 어긋납니다 ({path.name}) — "
-                "두 계열을 같은 수집에서 받았는지 확인하고 `scripts/data/collect_btc.py` 로 다시 받으세요"
+                "두 계열을 같은 내보내기에서 받았는지 확인하고 quant-data 에서 다시 내보내세요(`docs/COMMANDS.md` 「데이터 받기」)"
             )
     tails = {
         path.name: len(series) - len(common)
@@ -665,7 +668,7 @@ def load_onchain(dataset: Dataset) -> LoadedOnchain:
         raise ValueError(
             f"MVRV 와 시가총액의 끝 날짜가 공개 지연 허용치({PUBLICATION_LAG_DAYS}일)보다 크게 어긋납니다 "
             f"(한쪽에만 있는 끝 날: {tails}) — 묵은 파일이 섞였을 수 있습니다. "
-            "`scripts/data/collect_btc.py` 로 두 계열을 함께 다시 받으세요"
+            "quant-data 에서 두 계열을 함께 다시 내보내세요(`docs/COMMANDS.md` 「데이터 받기」)"
         )
     dropped = sum(tails.values())
     if dropped:
@@ -688,9 +691,9 @@ def _onchain_gap(trading_days: pd.DatetimeIndex, onchain: pd.DataFrame) -> int:
     """시세의 거래일 중 온체인 값이 없는 날을 센다 — **끝에서 공개 지연 허용치까지만** 받는다.
 
     온체인 두 계열은 시세와 따로 받고 공개 지연을 허용받으므로 시세보다 그만큼 짧을 수 있다
-    (`data/coinmetrics_collector.PUBLICATION_LAG_DAYS`). 그보다 짧거나 끝이 아닌 자리가 비면 **묵은 온체인 파일**이
-    섞인 것이라 멈춘다 — 빈칸으로 두고 지나가면 그 사이의 온체인 돌파가 예외 없이 사라진다. 수집은 시세를 먼저
-    저장하므로 온체인 수집이 실패하면 새 시세 옆에 묵은 온체인 파일이 남는다.
+    (`PUBLICATION_LAG_DAYS`). 그보다 짧거나 끝이 아닌 자리가 비면 **묵은 온체인 파일**이
+    섞인 것이라 멈춘다 — 빈칸으로 두고 지나가면 그 사이의 온체인 돌파가 예외 없이 사라진다. quant-data 갱신에서
+    한쪽만 옛 끝날에 남기면(`--exclude`) 새 시세 옆에 묵은 온체인 사본이 내보내진다.
 
     Args:
         trading_days: 시세의 거래일
@@ -709,7 +712,7 @@ def _onchain_gap(trading_days: pd.DatetimeIndex, onchain: pd.DataFrame) -> int:
             f"온체인 계열이 시세의 거래일을 덮지 못합니다 — 온체인 값이 없는 거래일 {missing:,}일"
             f"(허용: 끝 {PUBLICATION_LAG_DAYS}일까지) · 시세 {trading_days[0].date()} ~ {trading_days[-1].date()} · "
             f"온체인 {onchain[COL_DATE].iloc[0].date()} ~ {onchain[COL_DATE].iloc[-1].date()}. "
-            "묵은 파일이 섞였을 수 있습니다 — `scripts/data/collect_btc.py` 로 다시 받으세요"
+            "묵은 파일이 섞였을 수 있습니다 — quant-data 에서 다시 내보내세요(`docs/COMMANDS.md` 「데이터 받기」)"
         )
     if missing:
         logger.warning(f"시세의 끝 {missing}일에 온체인 값이 없어 그날들의 온체인 돌파를 판정하지 않습니다 (공개 지연)")
@@ -1539,6 +1542,28 @@ def _rounded_prices(table: pd.DataFrame) -> pd.DataFrame:
     return table.round({column: PRICE_DECIMALS for column in _SPLIT_PRICE_COLUMNS if column in table.columns})
 
 
+def _rounded_closes(table: pd.DataFrame) -> pd.DataFrame:
+    """두 소스 대조 표(크로스체크 · 대체일)의 두 종가를 가격 자릿수로 자르고, 차이율이 있으면 자른 값끼리 다시 낸다.
+    입력은 변경하지 않는다.
+
+    **Coin Metrics 기준가는 6자리로 받는다**(quant-data 사본) — 그대로 내면 차트와 대조할 때 방해가 된다.
+    **차이율을 자르기 전 값으로 두면 표가 자기 자신과 어긋난다** — 표에 찍힌 두 종가로 다시 계산한 값과 끝자리가
+    다른 행이 생긴다(`손익분기 대비(%p)` 를 반올림 뒤 값끼리 빼는 것과 같은 이유). 어느 날이 목록에 오르는지는
+    자르기 전 값이 이미 정했다.
+
+    Args:
+        table: 두 종가 컬럼이 있는 표
+
+    Returns:
+        자릿수를 맞춘 사본
+    """
+    rounded = table.round({COL_PRIMARY: PRICE_DECIMALS, COL_SECONDARY: PRICE_DECIMALS})
+    if COL_DIFF_RATE in rounded.columns:
+        rounded[COL_DIFF_RATE] = rounded[COL_PRIMARY] / rounded[COL_SECONDARY] - 1
+
+    return rounded
+
+
 def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
     """저장할 표를 표시용(한글 헤더·백분율)으로 바꾼다.
 
@@ -1561,8 +1586,8 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
         # **진입일을 시세의 날짜와 다른 이름으로 낸다** — 거래내역의 「진입일」과 같은 헤더가 나가야 대조된다
         FIELD_ENTRIES: outputs.entries.rename(columns={COL_DATE: COL_ENTRY_DATE}),
         FIELD_CALENDAR_YEARS: outputs.calendar_years,
-        FIELD_CROSSCHECK: outputs.crosscheck,
-        FIELD_REPLACED: outputs.replaced,
+        FIELD_CROSSCHECK: _rounded_closes(outputs.crosscheck),
+        FIELD_REPLACED: _rounded_closes(outputs.replaced),
         FIELD_INDICATOR_SIGNALS: _rounded_indicators(
             outputs.indicator_signals.rename(columns={COL_DATE: COL_ENTRY_DATE})
         ),
