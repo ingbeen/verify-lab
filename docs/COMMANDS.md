@@ -74,7 +74,8 @@ BROWSER=true poetry run python scripts/chart_halving_cycle.py               # �
 >
 > **① 시세 받기** — 「데이터 받기」. quant-data 의 갱신이 비정상으로 멈추면 아무 파일도 쓰이지 않습니다 — 처리는 quant-data `CLAUDE.md`.
 > 갱신에서 `--exclude` 로 뺀 종목은 옛 끝날에 머물러, 그 종목의 결과도 거기서 에러 없이 끝납니다 — 반감기_사이클만은 온체인 두 계열
-> (MVRV · 시가총액)이 시세보다 하루 넘게 짧으면 멈춥니다. 파일별 끝날은 `storage/market/quant_data_manifest.json`.
+> (MVRV · 시가총액)이 시세보다 공개 지연 허용치(`src/verify_lab/studies/halving_cycle/runner.py` 의 `PUBLICATION_LAG_DAYS`)를 넘게 짧으면 멈춥니다.
+> 파일별 끝날은 `storage/market/quant_data_manifest.json`.
 >
 > **② 매매법** — 블록의 줄 순서대로 돕니다. 하나가 실패하면 뒤는 돌지 않습니다(`set -e` 는 괄호 안 하위 셸에만 걸린다). 블록 안에는
 > 주석을 두지 않습니다 — 주석 옵션(`interactivecomments`)이 꺼진 대화형 zsh 는 `#` 줄을 명령으로 읽어 첫 줄에서 멈춥니다.

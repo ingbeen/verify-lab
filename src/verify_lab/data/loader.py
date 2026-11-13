@@ -20,8 +20,8 @@
 값의 부호와 변동폭이 무엇을 뜻하는지는 소스마다 달라서, 시세의 판정을 시계열에 그대로
 걸면 정상 데이터가 막힌다. 그래서 시계열 쪽은 **구조와 결측만** 본다.
 
-**선물 시세(유일 키가 날짜 + 계약)에 `load_market_csv` 를 쓰면 안 된다** — 날짜 기준 중복 제거가
-첫 계약만 남기고 나머지를 예외 없이 지운다. 선물 전용 로더는 `docs/조사/선물_대_레버리지_ETF.md`
+**선물 시세(유일 키가 날짜 + 계약)는 `load_market_csv` 로 읽을 수 없다** — 날짜만 유일 키로 보므로 같은 날의
+계약들이 중복 날짜로 멈춘다. 선물 전용 로더는 `docs/조사/선물_대_레버리지_ETF.md`
 「저장 스키마와 로더」 · 「재현 방법」에 있다.
 """
 
@@ -147,10 +147,29 @@ def validate_market_frame(df: pd.DataFrame, required_columns: Sequence[str]) -> 
         raise ValueError("시세가 날짜 오름차순이 아닙니다")
 
 
+def _require_unique_dates(df: pd.DataFrame, path: Path) -> None:
+    """같은 날짜의 행이 둘 이상이면 멈춘다 — 어느 행이 맞는지 알 수 없어 고르지 않는다.
+
+    quant · quant-data 도 같은 자리에서 멈춘다. 사본은 quant-data 가 내보내기 전에 이미 거르므로,
+    여기서 걸리면 사본을 손으로 고쳤거나 다른 형식의 파일이 들어온 것이다.
+
+    Raises:
+        ValueError: 같은 날짜의 행이 둘 이상인 경우
+    """
+    duplicated = df.loc[df.duplicated(subset=[COL_DATE]), COL_DATE].drop_duplicates()
+    if not duplicated.empty:
+        dates = duplicated.head().dt.strftime("%Y-%m-%d").tolist()
+        raise ValueError(
+            f"중복 날짜 발견 - 날짜 수: {len(duplicated)}, 예시 날짜: {dates} (파일: {path}) — "
+            "어느 행이 맞는지 알 수 없어 고르지 않습니다. "
+            "사본이면 quant-data 에서 다시 내보내세요(`docs/COMMANDS.md` 「데이터 받기」)"
+        )
+
+
 def load_market_csv(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHANGE_RATE) -> pd.DataFrame:
     """시세 CSV 를 읽어 검증된 DataFrame 으로 돌려준다.
 
-    파일 존재 확인 → 필수 컬럼 검증 → 날짜 파싱 → 시간순 정렬 → 중복 제거 → 이상치 검사
+    파일 존재 확인 → 필수 컬럼 검증 → 날짜 파싱 → 시간순 정렬 → 중복 날짜 검사 → 이상치 검사
     순으로 수행한다. 원본 파일은 읽기만 하며 수정하지 않는다.
 
     Args:
@@ -164,7 +183,7 @@ def load_market_csv(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHAN
 
     Raises:
         FileNotFoundError: 파일이 없는 경우
-        ValueError: 필수 컬럼 누락, 빈 데이터, 이상치가 발견된 경우
+        ValueError: 필수 컬럼 누락, 중복 날짜, 빈 데이터, 이상치가 발견된 경우
     """
     if not path.is_file():
         raise FileNotFoundError(f"시세 파일을 찾을 수 없습니다: {path}")
@@ -182,11 +201,8 @@ def load_market_csv(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHAN
     # 3. 시간순 정렬
     df = df.sort_values(COL_DATE).reset_index(drop=True)
 
-    # 4. 중복 날짜 제거. 몇 건이 왜 빠졌는지 남겨 표본이 조용히 사라지지 않게 한다
-    duplicate_count = int(df.duplicated(subset=[COL_DATE]).sum())
-    if duplicate_count > 0:
-        logger.warning(f"중복 날짜 {duplicate_count}건을 제거했습니다 (파일: {path})")
-        df = df.drop_duplicates(subset=[COL_DATE], keep="first").reset_index(drop=True)
+    # 4. 중복 날짜 검사
+    _require_unique_dates(df, path)
 
     # 5. 이상치 검사. 통과한 데이터만 호출자에게 넘긴다
     validate_market_data(df, max_daily_change_rate=max_daily_change_rate)
@@ -244,7 +260,7 @@ def load_series_csv(path: Path) -> pd.DataFrame:
     """일별 단일 값 시계열 CSV 를 읽어 검증된 DataFrame 으로 돌려준다.
 
     처리 순서는 `load_market_csv` 와 같다. 파일 존재 확인 → 필수 컬럼 검증 → 날짜 파싱 →
-    시간순 정렬 → 중복 제거 → 이상치 검사. 원본 파일은 읽기만 하며 수정하지 않는다.
+    시간순 정렬 → 중복 날짜 검사 → 이상치 검사. 원본 파일은 읽기만 하며 수정하지 않는다.
 
     Args:
         path: 시계열 CSV 경로
@@ -255,7 +271,7 @@ def load_series_csv(path: Path) -> pd.DataFrame:
 
     Raises:
         FileNotFoundError: 파일이 없는 경우
-        ValueError: 필수 컬럼 누락, 빈 데이터, 결측이 발견된 경우
+        ValueError: 필수 컬럼 누락, 중복 날짜, 빈 데이터, 결측이 발견된 경우
     """
     if not path.is_file():
         raise FileNotFoundError(f"시계열 파일을 찾을 수 없습니다: {path}")
@@ -273,11 +289,8 @@ def load_series_csv(path: Path) -> pd.DataFrame:
     # 3. 시간순 정렬
     df = df.sort_values(COL_DATE).reset_index(drop=True)
 
-    # 4. 중복 날짜 제거. 몇 건이 왜 빠졌는지 남겨 표본이 조용히 사라지지 않게 한다
-    duplicate_count = int(df.duplicated(subset=[COL_DATE]).sum())
-    if duplicate_count > 0:
-        logger.warning(f"중복 날짜 {duplicate_count}건을 제거했습니다 (파일: {path})")
-        df = df.drop_duplicates(subset=[COL_DATE], keep="first").reset_index(drop=True)
+    # 4. 중복 날짜 검사
+    _require_unique_dates(df, path)
 
     # 5. 이상치 검사. 통과한 데이터만 호출자에게 넘긴다
     validate_series_data(df)

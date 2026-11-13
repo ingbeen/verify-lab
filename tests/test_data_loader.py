@@ -123,13 +123,16 @@ def test_index_is_reset_after_sorting(tmp_path: Path) -> None:
     assert list(df.index) == [0, 1]
 
 
-def test_duplicate_dates_are_removed(tmp_path: Path) -> None:
+def test_duplicate_dates_raise(tmp_path: Path) -> None:
     """
-    목적: 중복 날짜가 한 건만 남음을 고정한다.
+    목적: 같은 값이 두 번 든 날짜도 지우지 않고 멈춤을 고정한다 (경계).
 
-    Given: 같은 날짜가 두 번 들어 있는 파일
+    어느 행이 맞는지 알 수 없으므로 고르지 않는다 — quant · quant-data 와 같은 정책이다.
+    값이 같으면 통과시키는 예외를 두면 값이 다를 때 다시 골라야 한다.
+
+    Given: 같은 날짜가 같은 값으로 두 번 들어 있는 파일
     When: 로드한다
-    Then: 그 날짜가 한 번만 남는다
+    Then: ValueError 이고 메시지에 그 날짜가 있다
     """
     # Given
     path = _write_csv(
@@ -137,12 +140,28 @@ def test_duplicate_dates_are_removed(tmp_path: Path) -> None:
         [_row("2026-01-02", 100.0), _row("2026-01-02", 100.0), _row("2026-01-05", 101.0)],
     )
 
-    # When
-    df = load_market_csv(path)
+    # When / Then
+    with pytest.raises(ValueError, match=r"중복 날짜.*2026-01-02"):
+        load_market_csv(path)
 
-    # Then
-    assert len(df) == 2
-    assert df[COL_DATE].duplicated().sum() == 0
+
+def test_duplicate_dates_with_different_values_raise(tmp_path: Path) -> None:
+    """
+    목적: 값이 다른 두 행 중 하나를 고르지 않고 멈춤을 고정한다.
+
+    Given: 같은 날짜가 다른 종가로 두 번 들어 있는 파일
+    When: 로드한다
+    Then: ValueError 이고 메시지에 그 날짜와 파일 이름이 있다
+    """
+    # Given
+    path = _write_csv(
+        tmp_path / "dup_values.csv",
+        [_row("2026-01-02", 100.0), _row("2026-01-02", 105.0), _row("2026-01-05", 101.0)],
+    )
+
+    # When / Then
+    with pytest.raises(ValueError, match=r"중복 날짜.*2026-01-02.*dup_values\.csv"):
+        load_market_csv(path)
 
 
 def test_missing_file_raises_file_not_found(tmp_path: Path) -> None:
@@ -547,13 +566,13 @@ def test_series_rows_are_sorted_and_reindexed(tmp_path: Path) -> None:
     assert df.index.tolist() == [0, 1, 2]
 
 
-def test_series_duplicate_dates_are_removed(tmp_path: Path) -> None:
+def test_series_duplicate_dates_raise(tmp_path: Path) -> None:
     """
-    목적: 같은 날짜가 두 번 오면 첫 행만 남김을 고정한다.
+    목적: 시계열도 같은 날짜의 두 값 중 하나를 고르지 않고 멈춤을 고정한다.
 
-    Given: 날짜가 중복된 시계열 파일
+    Given: 날짜가 다른 값으로 중복된 시계열 파일
     When: 로드한다
-    Then: 행이 하나로 줄고 먼저 나온 값이 남는다
+    Then: ValueError 이고 메시지에 그 날짜가 있다
     """
     # Given
     path = _series_csv(
@@ -564,12 +583,9 @@ def test_series_duplicate_dates_are_removed(tmp_path: Path) -> None:
         ],
     )
 
-    # When
-    df = load_series_csv(path)
-
-    # Then
-    assert len(df) == 1
-    assert df[COL_VALUE].iloc[0] == pytest.approx(1.0, abs=1e-12)
+    # When / Then
+    with pytest.raises(ValueError, match=r"중복 날짜.*2026-01-02"):
+        load_series_csv(path)
 
 
 def test_series_accepts_zero_and_negative_values(tmp_path: Path) -> None:
