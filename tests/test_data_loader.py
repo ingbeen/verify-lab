@@ -783,3 +783,55 @@ def test_close_series_applies_market_checks(tmp_path: Path) -> None:
     # When / Then
     with pytest.raises(ValueError, match="0 이하"):
         load_close_series(path)
+
+
+def test_close_series_default_threshold_rejects_a_large_move(tmp_path: Path) -> None:
+    """
+    목적: 종가 계열도 임계값 인자를 주지 않으면 공용 임계값을 쓴다 (기존 호출의 동작 보존).
+
+    Given: +60% 하루 변동이 있는 시세 파일
+    When: 임계값 인자 없이 종가 계열로 읽는다
+    Then: ValueError 가 발생한다
+    """
+    # Given
+    path = _write_csv(tmp_path / "^IDX_raw.csv", [_index_row("2026-01-02", 100.0), _index_row("2026-01-05", 160.0)])
+
+    # When / Then
+    with pytest.raises(ValueError, match="급등락"):
+        load_close_series(path)
+
+
+def test_close_series_accepts_a_move_below_the_asset_threshold(tmp_path: Path) -> None:
+    """
+    목적: 종가 계열로 읽을 때 넘긴 자산군 임계값 아래의 변동은 통과함을 고정한다.
+
+    변동 지수처럼 정상 변동 폭이 주식과 다른 계열을 종가 계열로 읽는 경로다.
+
+    Given: +60% 하루 변동
+    When: 임계값 0.80 으로 종가 계열로 읽는다
+    Then: 예외 없이 두 행이 나온다
+    """
+    # Given
+    path = _write_csv(tmp_path / "^IDX_raw.csv", [_index_row("2026-01-02", 100.0), _index_row("2026-01-05", 160.0)])
+
+    # When
+    df = load_close_series(path, max_daily_change_rate=0.80)
+
+    # Then
+    assert df[COL_VALUE].tolist() == pytest.approx([100.0, 160.0], abs=1e-12)
+
+
+def test_close_series_still_rejects_a_move_above_the_asset_threshold(tmp_path: Path) -> None:
+    """
+    목적: 종가 계열에 넘긴 임계값이 판정까지 실제로 전달됨을 고정한다 — 받기만 하고 버리면 공용 값이 쓰인다.
+
+    Given: ×10 (+900%) 변동
+    When: 임계값 0.80 으로 종가 계열로 읽는다
+    Then: ValueError 가 발생하고 메시지에 그 임계값이 담긴다
+    """
+    # Given
+    path = _write_csv(tmp_path / "^IDX_raw.csv", [_index_row("2026-01-02", 100.0), _index_row("2026-01-05", 1_000.0)])
+
+    # When / Then
+    with pytest.raises(ValueError, match="80%"):
+        load_close_series(path, max_daily_change_rate=0.80)

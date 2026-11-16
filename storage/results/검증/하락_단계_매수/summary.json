@@ -1,0 +1,516 @@
+{
+  "track": "drawdown_tiers",
+  "row_counts": {
+    "통계.csv": 8208,
+    "excess.csv": 456,
+    "test.csv": 456,
+    "신호내역.csv": 7164,
+    "거래내역.csv": 6528,
+    "성적표.csv": 2280
+  },
+  "cost": "맨몸 성적 — 수수료·슬리피지·세금 미반영 (사용자 요청 시에만 반영)",
+  "measure": {
+    "permutation_repeats": 1000,
+    "permutation_seed": 0,
+    "horizons": [
+      21,
+      63,
+      126,
+      252,
+      504,
+      756
+    ],
+    "rules": [
+      {
+        "indicator": "낙폭",
+        "levels": [
+          "-5% 이하",
+          "-10% 이하",
+          "-15% 이하",
+          "-20% 이하",
+          "-25% 이하",
+          "-30% 이하",
+          "-40% 이하",
+          "-50% 이하"
+        ],
+        "fires_below": true,
+        "rearm_level": 0.0
+      },
+      {
+        "indicator": "VIX",
+        "levels": [
+          "25 이상",
+          "30 이상",
+          "35 이상",
+          "40 이상",
+          "50 이상",
+          "60 이상"
+        ],
+        "fires_below": false,
+        "rearm_level": 20.0
+      },
+      {
+        "indicator": "공포탐욕지수",
+        "levels": [
+          "25 이하",
+          "20 이하",
+          "15 이하",
+          "10 이하",
+          "5 이하"
+        ],
+        "fires_below": true,
+        "rearm_level": 50.0
+      }
+    ],
+    "indicator_files": [
+      {
+        "indicator": "VIX",
+        "file": "^VIX_raw.csv",
+        "period": "1990-01-02 ~ 2026-11-10",
+        "rows": 9285
+      },
+      {
+        "indicator": "공포탐욕지수",
+        "file": "fear_greed_daily.csv",
+        "period": "2011-01-03 ~ 2026-11-10",
+        "rows": 3965
+      }
+    ],
+    "datasets": [
+      {
+        "ticker": "SPY",
+        "label": "SPY",
+        "file": "SPY_adjusted.csv",
+        "period": "1993-01-29 ~ 2026-11-10",
+        "rows": 8504,
+        "signal_file": "SPY_adjusted.csv",
+        "indicators": [
+          {
+            "indicator": "낙폭",
+            "judging_start": "1993-01-29",
+            "tier_signals": {
+              "-5% 이하": 37,
+              "-10% 이하": 12,
+              "-15% 이하": 7,
+              "-20% 이하": 4,
+              "-25% 이하": 3,
+              "-30% 이하": 3,
+              "-40% 이하": 2,
+              "-50% 이하": 1
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 414,
+            "excluded_count": 20,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 20
+            }
+          },
+          {
+            "indicator": "VIX",
+            "judging_start": "1993-01-29",
+            "tier_signals": {
+              "25 이상": 50,
+              "30 이상": 24,
+              "35 이상": 14,
+              "40 이상": 9,
+              "50 이상": 3,
+              "60 이상": 2
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 612,
+            "excluded_count": 34,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 34
+            }
+          },
+          {
+            "indicator": "공포탐욕지수",
+            "judging_start": "2011-01-03",
+            "tier_signals": {
+              "25 이하": 36,
+              "20 이하": 27,
+              "15 이하": 19,
+              "10 이하": 15,
+              "5 이하": 9
+            },
+            "missing_days": 23,
+            "unjudged_days": 0,
+            "signal_count": 636,
+            "excluded_count": 51,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 51
+            }
+          }
+        ]
+      },
+      {
+        "ticker": "DIA",
+        "label": "DIA",
+        "file": "DIA_adjusted.csv",
+        "period": "1998-01-20 ~ 2026-11-10",
+        "rows": 7248,
+        "signal_file": "SPY_adjusted.csv",
+        "indicators": [
+          {
+            "indicator": "낙폭",
+            "judging_start": "1993-01-29",
+            "tier_signals": {
+              "-5% 이하": 37,
+              "-10% 이하": 12,
+              "-15% 이하": 7,
+              "-20% 이하": 4,
+              "-25% 이하": 3,
+              "-30% 이하": 3,
+              "-40% 이하": 2,
+              "-50% 이하": 1
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 414,
+            "excluded_count": 74,
+            "excluded_by_reason": {
+              "판정일에 대상이 상장 전": 54,
+              "구간 끝이 데이터 범위를 넘음": 20
+            }
+          },
+          {
+            "indicator": "VIX",
+            "judging_start": "1993-01-29",
+            "tier_signals": {
+              "25 이상": 50,
+              "30 이상": 24,
+              "35 이상": 14,
+              "40 이상": 9,
+              "50 이상": 3,
+              "60 이상": 2
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 612,
+            "excluded_count": 58,
+            "excluded_by_reason": {
+              "판정일에 대상이 상장 전": 24,
+              "구간 끝이 데이터 범위를 넘음": 34
+            }
+          },
+          {
+            "indicator": "공포탐욕지수",
+            "judging_start": "2011-01-03",
+            "tier_signals": {
+              "25 이하": 36,
+              "20 이하": 27,
+              "15 이하": 19,
+              "10 이하": 15,
+              "5 이하": 9
+            },
+            "missing_days": 23,
+            "unjudged_days": 0,
+            "signal_count": 636,
+            "excluded_count": 51,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 51
+            }
+          }
+        ]
+      },
+      {
+        "ticker": "QQQ",
+        "label": "QQQ",
+        "file": "QQQ_adjusted.csv",
+        "period": "1999-03-10 ~ 2026-11-10",
+        "rows": 6962,
+        "signal_file": "SPY_adjusted.csv",
+        "indicators": [
+          {
+            "indicator": "낙폭",
+            "judging_start": "1993-01-29",
+            "tier_signals": {
+              "-5% 이하": 37,
+              "-10% 이하": 12,
+              "-15% 이하": 7,
+              "-20% 이하": 4,
+              "-25% 이하": 3,
+              "-30% 이하": 3,
+              "-40% 이하": 2,
+              "-50% 이하": 1
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 414,
+            "excluded_count": 98,
+            "excluded_by_reason": {
+              "판정일에 대상이 상장 전": 78,
+              "구간 끝이 데이터 범위를 넘음": 20
+            }
+          },
+          {
+            "indicator": "VIX",
+            "judging_start": "1993-01-29",
+            "tier_signals": {
+              "25 이상": 50,
+              "30 이상": 24,
+              "35 이상": 14,
+              "40 이상": 9,
+              "50 이상": 3,
+              "60 이상": 2
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 612,
+            "excluded_count": 94,
+            "excluded_by_reason": {
+              "판정일에 대상이 상장 전": 60,
+              "구간 끝이 데이터 범위를 넘음": 34
+            }
+          },
+          {
+            "indicator": "공포탐욕지수",
+            "judging_start": "2011-01-03",
+            "tier_signals": {
+              "25 이하": 36,
+              "20 이하": 27,
+              "15 이하": 19,
+              "10 이하": 15,
+              "5 이하": 9
+            },
+            "missing_days": 23,
+            "unjudged_days": 0,
+            "signal_count": 636,
+            "excluded_count": 51,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 51
+            }
+          }
+        ]
+      },
+      {
+        "ticker": "GSPC",
+        "label": "S&P 500 지수",
+        "file": "^GSPC_raw.csv",
+        "period": "1927-12-30 ~ 2026-11-10",
+        "rows": 24833,
+        "signal_file": "^GSPC_raw.csv",
+        "indicators": [
+          {
+            "indicator": "낙폭",
+            "judging_start": "1927-12-30",
+            "tier_signals": {
+              "-5% 이하": 74,
+              "-10% 이하": 26,
+              "-15% 이하": 16,
+              "-20% 이하": 12,
+              "-25% 이하": 10,
+              "-30% 이하": 7,
+              "-40% 이하": 4,
+              "-50% 이하": 2
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 906,
+            "excluded_count": 20,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 20
+            }
+          },
+          {
+            "indicator": "VIX",
+            "judging_start": "1990-01-02",
+            "tier_signals": {
+              "25 이상": 52,
+              "30 이상": 25,
+              "35 이상": 15,
+              "40 이상": 9,
+              "50 이상": 3,
+              "60 이상": 2
+            },
+            "missing_days": 0,
+            "unjudged_days": 0,
+            "signal_count": 636,
+            "excluded_count": 34,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 34
+            }
+          },
+          {
+            "indicator": "공포탐욕지수",
+            "judging_start": "2011-01-03",
+            "tier_signals": {
+              "25 이하": 36,
+              "20 이하": 27,
+              "15 이하": 19,
+              "10 이하": 15,
+              "5 이하": 9
+            },
+            "missing_days": 23,
+            "unjudged_days": 0,
+            "signal_count": 636,
+            "excluded_count": 51,
+            "excluded_by_reason": {
+              "구간 끝이 데이터 범위를 넘음": 51
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "trade": {
+    "datasets": [
+      {
+        "ticker": "SPY",
+        "label": "SPY",
+        "file": "SPY_adjusted.csv",
+        "period": "1993-01-29 ~ 2026-11-10",
+        "rows": 8504
+      },
+      {
+        "ticker": "DIA",
+        "label": "DIA",
+        "file": "DIA_adjusted.csv",
+        "period": "1998-01-20 ~ 2026-11-10",
+        "rows": 7248
+      },
+      {
+        "ticker": "QQQ",
+        "label": "QQQ",
+        "file": "QQQ_adjusted.csv",
+        "period": "1999-03-10 ~ 2026-11-10",
+        "rows": 6962
+      },
+      {
+        "ticker": "GSPC",
+        "label": "S&P 500 지수",
+        "file": "^GSPC_raw.csv",
+        "period": "1927-12-30 ~ 2026-11-10",
+        "rows": 24833
+      }
+    ],
+    "rule": {
+      "targets": [
+        {
+          "label": "SPY",
+          "indicator": "낙폭",
+          "signal_count": 414,
+          "excluded_count": 20,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 20
+          }
+        },
+        {
+          "label": "SPY",
+          "indicator": "VIX",
+          "signal_count": 612,
+          "excluded_count": 34,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 34
+          }
+        },
+        {
+          "label": "SPY",
+          "indicator": "공포탐욕지수",
+          "signal_count": 636,
+          "excluded_count": 51,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 51
+          }
+        },
+        {
+          "label": "DIA",
+          "indicator": "낙폭",
+          "signal_count": 414,
+          "excluded_count": 74,
+          "excluded_by_reason": {
+            "판정일에 대상이 상장 전": 54,
+            "구간 끝이 데이터 범위를 넘음": 20
+          }
+        },
+        {
+          "label": "DIA",
+          "indicator": "VIX",
+          "signal_count": 612,
+          "excluded_count": 58,
+          "excluded_by_reason": {
+            "판정일에 대상이 상장 전": 24,
+            "구간 끝이 데이터 범위를 넘음": 34
+          }
+        },
+        {
+          "label": "DIA",
+          "indicator": "공포탐욕지수",
+          "signal_count": 636,
+          "excluded_count": 51,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 51
+          }
+        },
+        {
+          "label": "QQQ",
+          "indicator": "낙폭",
+          "signal_count": 414,
+          "excluded_count": 98,
+          "excluded_by_reason": {
+            "판정일에 대상이 상장 전": 78,
+            "구간 끝이 데이터 범위를 넘음": 20
+          }
+        },
+        {
+          "label": "QQQ",
+          "indicator": "VIX",
+          "signal_count": 612,
+          "excluded_count": 94,
+          "excluded_by_reason": {
+            "판정일에 대상이 상장 전": 60,
+            "구간 끝이 데이터 범위를 넘음": 34
+          }
+        },
+        {
+          "label": "QQQ",
+          "indicator": "공포탐욕지수",
+          "signal_count": 636,
+          "excluded_count": 51,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 51
+          }
+        },
+        {
+          "label": "S&P 500 지수",
+          "indicator": "낙폭",
+          "signal_count": 906,
+          "excluded_count": 20,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 20
+          }
+        },
+        {
+          "label": "S&P 500 지수",
+          "indicator": "VIX",
+          "signal_count": 636,
+          "excluded_count": 34,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 34
+          }
+        },
+        {
+          "label": "S&P 500 지수",
+          "indicator": "공포탐욕지수",
+          "signal_count": 636,
+          "excluded_count": 51,
+          "excluded_by_reason": {
+            "구간 끝이 데이터 범위를 넘음": 51
+          }
+        }
+      ]
+    },
+    "notes": [
+      "판정일(그날 종가로 단계에 닿은 날)의 다음 거래일 종가에 사서 보유 기간(거래일) 뒤 종가에 판다 — VIX 종가와 공포탐욕지수는 ETF 종가보다 늦게 확정돼 판정일 종가에는 살 수 없다",
+      "ETF 행은 신호 대상(측정 요약 datasets 의 signal_file)의 낙폭 · 거래일로 판정한 같은 신호를 쓴다 — 신호 대상보다 늦게 상장한 대상의 상장 전 신호는 거래내역에 없고 요약의 제외 사유에 남는다. 지수 행은 자기 낙폭 · 자기 거래일로 판정한다",
+      "신호는 구간마다 단계별로 처음 닿은 날 한 번이다 — 지표가 다시 켜는 수준(낙폭 0% 이상 · VIX 20 미만 · 공포탐욕지수 50 이상)에 닿으면 단계를 모두 다시 켠다. 낙폭 0% 이상이 곧 새 고점(고점과 같은 종가 포함)이다",
+      "같은 하락장의 단계 · 지표 · 보유 기간은 같은 미래 경로를 공유해 행끼리 독립이 아니다 — 성적표의 사건 칸은 신호가 든 하락장(판정일까지의 역대 고점 → 새 고점) 수다. 후보는 자격이지 발견이 아니다",
+      "깊은 단계는 사건이 적어 칸당 표본 하한(10)에 못 미친다 — 「판정가능」이 「아니오」인 칸은 통계로 우열을 가릴 수 없다. 결론의 일부이지 버그가 아니다",
+      "손절선이 없는 맨몸 격자다 — 지수는 장중을 잴 수 없어 손절불가이고 보유 중 최악도 종가로 잰 값이라 실제보다 얕다",
+      "보유가 길어 평균이 양수인 칸은 거의 모두 1차 판정을 넘는다 — 게이트는 하나이고 이 격자에 맞춰 바꾸지 않는다. 성적표에는 기준선을 두지 않는다 — 같은 진입 규칙의 기준선과 그 차이는 측정 표(excess)에 있다",
+      "방향은 「위」 하나다. 아래로 거는 칸의 크기와 빈도는 측정 표(통계)의 내린 비율과 평균이 준다"
+    ]
+  }
+}
