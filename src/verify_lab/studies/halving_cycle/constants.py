@@ -40,77 +40,25 @@ from verify_lab.execution.constants import (
 )
 from verify_lab.measure.constants import (
     COL_ENTRY_CLOSE,
-    COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
     COL_EXIT_CLOSE,
     COL_EXIT_DATE,
     COL_FORWARD_RETURN,
     COL_HOLD_DAYS,
-    COL_JUDGEABLE,
-    COL_MEAN_RATE_CONFLICT,
-    COL_SIGNAL_COUNT,
+    COL_TICKER,
 )
 from verify_lab.measure.screening import COL_DIRECTION
-from verify_lab.measure.statistics import (
-    COL_DOWN_RATE_P_VALUE,
-    COL_LOSS_RATE,
-    COL_LOSS_RATE_EXCESS,
-    COL_MAX,
-    COL_MEAN,
-    COL_MEAN_EXCESS,
-    COL_MEAN_P_VALUE,
-    COL_MEDIAN,
-    COL_MEDIAN_EXCESS,
-    COL_MEDIAN_P_VALUE,
-    COL_MIN,
-    COL_NEGATIVE_COUNT,
-    COL_NEGATIVE_MEAN,
-    COL_POSITIVE_COUNT,
-    COL_POSITIVE_MEAN,
-    COL_SAMPLE_COUNT,
-    COL_SIGNAL_SAMPLE_COUNT,
-    COL_STD,
-    COL_TEST_NOTE,
-    COL_UP_RATE_P_VALUE,
-    COL_WIN_RATE,
-    COL_WIN_RATE_EXCESS,
-)
 from verify_lab.report.constants import (
     DATE_FORMAT,
     DISPLAY_DATE,
     DISPLAY_DIRECTION,
-    DISPLAY_DOWN_RATE,
-    DISPLAY_DOWN_RATE_DIFF,
-    DISPLAY_DOWN_RATE_P_VALUE,
     DISPLAY_ENTRY_CLOSE,
-    DISPLAY_EXCLUDED,
     DISPLAY_EXCLUDED_REASON,
     DISPLAY_EXIT_CLOSE,
     DISPLAY_HOLD_DAYS_EXACT,
-    DISPLAY_JUDGEABLE,
-    DISPLAY_MAX,
-    DISPLAY_MEAN,
-    DISPLAY_MEAN_DIFF,
-    DISPLAY_MEAN_P_VALUE,
-    DISPLAY_MEAN_RATE_CONFLICT,
-    DISPLAY_MEDIAN,
-    DISPLAY_MEDIAN_DIFF,
-    DISPLAY_MEDIAN_P_VALUE,
-    DISPLAY_MIN,
-    DISPLAY_NEGATIVE_COUNT,
-    DISPLAY_NEGATIVE_MEAN,
-    DISPLAY_NON_OVERLAPPING,
-    DISPLAY_POSITIVE_COUNT,
-    DISPLAY_POSITIVE_MEAN,
-    DISPLAY_SAMPLE_COUNT,
-    DISPLAY_SIGNAL_COUNT,
-    DISPLAY_SIGNAL_SAMPLE,
-    DISPLAY_STD,
-    DISPLAY_TEST_NOTE,
-    DISPLAY_UP_RATE,
-    DISPLAY_UP_RATE_DIFF,
-    DISPLAY_UP_RATE_P_VALUE,
     EXCESS_FILENAME,
+    MEASURE_COLUMN_LABELS,
+    MEASURE_PERCENT_COLUMNS,
     STATISTICS_FILENAME,
     TEST_FILENAME,
 )
@@ -507,8 +455,6 @@ DATASETS: Final = (
 # DataFrame 컬럼 (내부 계산용 토큰)
 # ============================================================
 
-COL_TICKER: Final = "ticker"
-
 # 어느 반감기 사이클의 진입인가 — 반감기 날짜 문자열이다
 COL_HALVING: Final = "halving"
 
@@ -529,15 +475,6 @@ COL_YEAR_END_CLOSE: Final = "year_end_close"
 
 # 크로스체크 표 — 그날 Bitstamp 에 거래가 없었는가 (예/아니오)
 COL_ZERO_VOLUME: Final = "zero_volume"
-
-# 기준선 집계를 신호 집계와 나란히 놓을 때 붙이는 접미사
-BASELINE_SUFFIX: Final = "_baseline"
-
-# 겹치지 않게 고를 수 있는 체결의 최대 개수 (산식은 `measure.statistics.max_non_overlapping`).
-# **기준선이 이 값을 반드시 필요로 한다** — 매일 진입해 몇 달을 드는 롤링이라 이웃이 거의 다 겹친다.
-# 신호 쪽은 사이클마다 한 번이라 겹침이 없고, 두 값이 같다는 것이 「표본이 서로 독립인가」의 답이다
-COL_NON_OVERLAPPING: Final = "NonOverlappingCount"
-COL_BASELINE_NON_OVERLAPPING: Final = f"{COL_NON_OVERLAPPING}{BASELINE_SUFFIX}"
 
 # 2단계 — 지표 값. 일간 다섯은 시세의 날짜 위에, 월간 둘은 끝난 달의 말일 위에 있다
 COL_MVRV: Final = "mvrv"
@@ -728,9 +665,6 @@ DISPLAY_REFERENCE_CLOSE: Final = "Coin Metrics 종가"
 DISPLAY_DIFF_RATE: Final = "차이율(%)"
 DISPLAY_ZERO_VOLUME: Final = "거래량 0"
 
-# 기준선 값 컬럼 앞에 붙이는 말
-BASELINE_PREFIX: Final = "기준선 "
-
 # 2단계. **「신호」를 쓰지 않는다** — 공통 계층의 신호 «건수» 머리다(`report/constants.DISPLAY_SIGNAL_COUNT`)
 DISPLAY_INDICATOR_SIGNAL: Final = "지표 신호"
 DISPLAY_SIGNAL_MEANING: Final = "책이 붙인 뜻"
@@ -805,24 +739,6 @@ DISPLAY_SOLD_BEFORE_STOP: Final = "손절 전 매도 회차"
 # 저장 직전 컬럼 헤더 (`COL_* → DISPLAY_*`)
 # ============================================================
 
-# 집계 컬럼과 그 이름. 기준선 쪽(접미사)은 이 목록에서 유도한다 — 손으로 두 벌 적으면 한쪽이 빠진다
-_SUMMARY_LABELS: Final = (
-    (COL_SIGNAL_COUNT, DISPLAY_SIGNAL_COUNT),
-    (COL_EXCLUDED_COUNT, DISPLAY_EXCLUDED),
-    (COL_SAMPLE_COUNT, DISPLAY_SAMPLE_COUNT),
-    (COL_MEAN, DISPLAY_MEAN),
-    (COL_MEDIAN, DISPLAY_MEDIAN),
-    (COL_WIN_RATE, DISPLAY_UP_RATE),
-    (COL_LOSS_RATE, DISPLAY_DOWN_RATE),
-    (COL_MAX, DISPLAY_MAX),
-    (COL_MIN, DISPLAY_MIN),
-    (COL_STD, DISPLAY_STD),
-    (COL_POSITIVE_MEAN, DISPLAY_POSITIVE_MEAN),
-    (COL_NEGATIVE_MEAN, DISPLAY_NEGATIVE_MEAN),
-    (COL_POSITIVE_COUNT, DISPLAY_POSITIVE_COUNT),
-    (COL_NEGATIVE_COUNT, DISPLAY_NEGATIVE_COUNT),
-)
-
 # **정의만 하고 `rename` 에 연결하지 않으면 규칙을 지킨 것이 아니다** (`src/verify_lab/CLAUDE.md` 「내부/출력 분리」).
 # 표마다 컬럼 구성이 달라 이 사전은 모든 표의 상위집합이다
 COLUMN_LABELS: Final = {
@@ -841,25 +757,8 @@ COLUMN_LABELS: Final = {
     COL_HOLD_DAYS: DISPLAY_HOLD_DAYS_EXACT,
     COL_FORWARD_RETURN: DISPLAY_RETURN,
     COL_EXCLUDED_REASON: DISPLAY_EXCLUDED_REASON,
-    # 통계
-    **dict(_SUMMARY_LABELS),
-    COL_MEAN_RATE_CONFLICT: DISPLAY_MEAN_RATE_CONFLICT,
-    COL_JUDGEABLE: DISPLAY_JUDGEABLE,
-    COL_NON_OVERLAPPING: DISPLAY_NON_OVERLAPPING,
-    # 기준선 (접미사) 과 기준선 대비 차이
-    **{f"{column}{BASELINE_SUFFIX}": f"{BASELINE_PREFIX}{label}" for column, label in _SUMMARY_LABELS},
-    COL_BASELINE_NON_OVERLAPPING: f"{BASELINE_PREFIX}{DISPLAY_NON_OVERLAPPING}",
-    COL_SIGNAL_SAMPLE_COUNT: DISPLAY_SIGNAL_SAMPLE,
-    COL_MEAN_EXCESS: DISPLAY_MEAN_DIFF,
-    COL_MEDIAN_EXCESS: DISPLAY_MEDIAN_DIFF,
-    COL_WIN_RATE_EXCESS: DISPLAY_UP_RATE_DIFF,
-    COL_LOSS_RATE_EXCESS: DISPLAY_DOWN_RATE_DIFF,
-    # 무작위 뽑기 대조. **판정에 쓰지 않지만 계산은 남긴다** — 지우면 기준선 중 「무작위 진입」이 사라진다
-    COL_MEAN_P_VALUE: DISPLAY_MEAN_P_VALUE,
-    COL_MEDIAN_P_VALUE: DISPLAY_MEDIAN_P_VALUE,
-    COL_UP_RATE_P_VALUE: DISPLAY_UP_RATE_P_VALUE,
-    COL_DOWN_RATE_P_VALUE: DISPLAY_DOWN_RATE_P_VALUE,
-    COL_TEST_NOTE: DISPLAY_TEST_NOTE,
+    # 통계 · 기준선 · 차이 · 무작위 뽑기 대조 — 측정이 내는 칸은 공통 이름표 (`report/constants.py`)
+    **MEASURE_COLUMN_LABELS,
     # 달력 연도
     COL_CALENDAR_YEAR: DISPLAY_CALENDAR_YEAR,
     COL_HALVING_POSITION: DISPLAY_HALVING_POSITION,
@@ -940,28 +839,9 @@ COLUMN_LABELS: Final = {
     COL_SOLD_BEFORE_STOP: DISPLAY_SOLD_BEFORE_STOP,
 }
 
-# 비율(0~1)로 들어와 백분율로 내보낼 컬럼. **기준선과 차이 컬럼도 빠짐없이 넣는다** —
-# 하나라도 빠지면 헤더는 `(%)` 인데 값이 비율로 남아 표 안에서 단위가 섞인다
-_RATE_COLUMNS: Final = (
-    COL_MEAN,
-    COL_MEDIAN,
-    COL_WIN_RATE,
-    COL_LOSS_RATE,
-    COL_MAX,
-    COL_MIN,
-    COL_STD,
-    COL_POSITIVE_MEAN,
-    COL_NEGATIVE_MEAN,
-)
-
+# 비율(0~1)로 들어와 백분율로 내보낼 컬럼 — 측정 칸 공통 목록 위에 이 매매법의 칸을 더함
 PERCENT_COLUMNS: Final = (
-    *_RATE_COLUMNS,
-    *(f"{column}{BASELINE_SUFFIX}" for column in _RATE_COLUMNS),
-    COL_MEAN_EXCESS,
-    COL_MEDIAN_EXCESS,
-    COL_WIN_RATE_EXCESS,
-    COL_LOSS_RATE_EXCESS,
-    COL_FORWARD_RETURN,
+    *MEASURE_PERCENT_COLUMNS,
     COL_DIFF_RATE,
     COL_DISPARITY,
     *COL_HOLD_RETURNS.values(),
@@ -985,14 +865,6 @@ INDICATOR_VALUE_COLUMNS: Final = (
     COL_PI_CYCLE,
     COL_MACD_HISTOGRAM,
     COL_SPLIT_PRIOR_MVRV,
-)
-
-# 확률로 들어와 자릿수만 맞출 컬럼. **100 을 곱하지 않는다** — 우연확률은 비율이 아니다
-PROBABILITY_COLUMNS: Final = (
-    COL_MEAN_P_VALUE,
-    COL_MEDIAN_P_VALUE,
-    COL_UP_RATE_P_VALUE,
-    COL_DOWN_RATE_P_VALUE,
 )
 
 
@@ -1094,6 +966,5 @@ KEY_LABEL: Final = "label"
 KEY_NAME: Final = "name"
 
 # **진입 하나가 축의 칸 수만큼 세어진 행의 수다** — 측정은 진입 × 보유, 체결은 진입 × 청산이다.
-# 제외는 청산일을 정하지 못한 행이다
+# 제외(`report/run_summary.KEY_EXCLUDED_COUNT`)는 청산일을 정하지 못한 행이다
 KEY_SIGNAL_COUNT: Final = "signal_count"
-KEY_EXCLUDED_COUNT: Final = "excluded_count"

@@ -49,6 +49,8 @@ from verify_lab.execution.constants import NO_STOP_LABEL
 from verify_lab.execution.run_summary import KEY_DATASETS, KEY_ROW_COUNTS
 from verify_lab.execution.trade_fill import resolve_positions
 from verify_lab.measure.constants import (
+    BASELINE_SUFFIX,
+    COL_BASELINE_NON_OVERLAPPING,
     COL_ENTRY_CLOSE,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
@@ -59,7 +61,9 @@ from verify_lab.measure.constants import (
     COL_HORIZON,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
+    COL_NON_OVERLAPPING,
     COL_SIGNAL_COUNT,
+    COL_TICKER,
     REASON_NONE,
 )
 from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP
@@ -95,16 +99,22 @@ from verify_lab.measure.statistics import (
     summarize,
     yes_no,
 )
-from verify_lab.report.run_summary import KEY_TRACK, dataset_record, format_period
+from verify_lab.report.constants import MEASURE_PROBABILITY_COLUMNS
+from verify_lab.report.run_summary import (
+    KEY_EXCLUDED_COUNT,
+    KEY_PERMUTATION_REPEATS,
+    KEY_PERMUTATION_SEED,
+    KEY_TRACK,
+    dataset_record,
+    format_period,
+)
 from verify_lab.report.tables import to_display_columns
 from verify_lab.studies.halving_cycle.constants import (
-    BASELINE_SUFFIX,
     BET_DOWN,
     CALENDAR_SPLIT_STEP_MONTHS,
     CALENDAR_SPLITS,
     COL_AVG_BUY_PRICE,
     COL_AVG_SELL_PRICE,
-    COL_BASELINE_NON_OVERLAPPING,
     COL_CYCLE_COUNT,
     COL_CYCLE_RETURN_TEMPLATE,
     COL_CYCLE_WORST_TEMPLATE,
@@ -124,14 +134,12 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_MONTHS_SINCE_HALVING,
     COL_MVRV,
     COL_MVRV_Z,
-    COL_NON_OVERLAPPING,
     COL_PI_CYCLE,
     COL_PREVIOUS_VALUE,
     COL_SIGNAL_MEANING,
     COL_SPLIT_FILL_CLOSE,
     COL_STOP_FILL_PRICE,
     COL_STOP_LINE_LOW,
-    COL_TICKER,
     COL_ZERO_VOLUME,
     COLUMN_LABELS,
     CYCLE_RETURN_LABEL_TEMPLATE,
@@ -168,7 +176,6 @@ from verify_lab.studies.halving_cycle.constants import (
     KEY_BLOCK_TIME,
     KEY_DATE,
     KEY_ENTRY_MONTHS,
-    KEY_EXCLUDED_COUNT,
     KEY_HALVINGS,
     KEY_HEIGHT,
     KEY_HOLD_MONTHS,
@@ -184,7 +191,6 @@ from verify_lab.studies.halving_cycle.constants import (
     PI_CYCLE_LONG_MULTIPLIER,
     PI_CYCLE_LONG_WINDOW,
     PI_CYCLE_SHORT_WINDOW,
-    PROBABILITY_COLUMNS,
     RSI_DECIMALS,
     RSI_WINDOW,
     SPLIT_BUY_BOOK_LEVELS,
@@ -235,8 +241,6 @@ logger = get_logger(__name__)
 PUBLICATION_LAG_DAYS = 1
 
 # `summary.json` 의 측정 칸 — 무엇을 어떤 규칙으로 쟀나
-KEY_PERMUTATION_REPEATS = "permutation_repeats"
-KEY_PERMUTATION_SEED = "permutation_seed"
 KEY_BASELINE_START = "baseline_start"
 KEY_REFERENCE = "reference"
 KEY_FILE = "file"
@@ -1613,7 +1617,7 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
             table,
             labels,
             percent_columns=[column for column in percent if column in table.columns],
-            probability_columns=[column for column in PROBABILITY_COLUMNS if column in table.columns],
+            probability_columns=[column for column in MEASURE_PROBABILITY_COLUMNS if column in table.columns],
         )
         for field, table in tables.items()
         if not table.empty

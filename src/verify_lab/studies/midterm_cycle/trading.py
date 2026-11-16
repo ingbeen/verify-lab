@@ -77,7 +77,7 @@ from verify_lab.execution.constants import (
     stop_level_value,
 )
 from verify_lab.execution.periods import period_rows, to_summary_frame
-from verify_lab.execution.run_summary import build_run_summary
+from verify_lab.execution.run_summary import KEY_TARGETS, build_run_summary
 from verify_lab.execution.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
 from verify_lab.execution.trade_rows import trade_columns
 from verify_lab.measure.constants import (
@@ -97,7 +97,7 @@ from verify_lab.report.constants import (
     DISPLAY_UP_RATE,
     PERCENT_DECIMALS,
 )
-from verify_lab.report.run_summary import dataset_record
+from verify_lab.report.run_summary import KEY_EXCLUDED_COUNT, dataset_record
 from verify_lab.studies.midterm_cycle.constants import (
     BET_DOWN,
     COL_CYCLE_POSITION,
@@ -147,7 +147,6 @@ from verify_lab.studies.midterm_cycle.constants import (
     EXIT_MONTH,
     KEY_ENTRY_COUNT,
     KEY_ENTRY_MONTH,
-    KEY_EXCLUDED_COUNT,
     KEY_EXIT_MONTH,
     KEY_LABEL,
     MAX_TRANCHES,
@@ -182,7 +181,6 @@ logger = get_logger(__name__)
 # `summary.json` 의 `rule` 안 — 무엇을 어떤 규칙으로 돌렸나.
 # **최상위 키와 비용 표기는 `execution/run_summary.py` 가 소유한다**
 KEY_STOP_LEVELS = "stop_levels"
-KEY_TARGETS = "targets"
 KEY_DIRECTION = "direction"
 KEY_SPLIT_METHODS = "split_methods"
 KEY_FALLBACKS = "fallbacks"

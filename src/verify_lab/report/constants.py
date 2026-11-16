@@ -7,6 +7,42 @@
 규칙을 따른다 — 수익률·비율 같은 백분율은 2자리, 우연확률 같은 확률은 4자리다.
 """
 
+from verify_lab.measure.constants import (
+    BASELINE_SUFFIX,
+    COL_BASELINE_NON_OVERLAPPING,
+    COL_EXCLUDED_COUNT,
+    COL_FORWARD_RETURN,
+    COL_JUDGEABLE,
+    COL_MEAN_RATE_CONFLICT,
+    COL_NON_OVERLAPPING,
+    COL_SIGNAL_COUNT,
+)
+from verify_lab.measure.statistics import (
+    COL_BASELINE_SAMPLE_COUNT,
+    COL_DOWN_RATE_P_VALUE,
+    COL_LOSS_RATE,
+    COL_LOSS_RATE_EXCESS,
+    COL_MAX,
+    COL_MEAN,
+    COL_MEAN_EXCESS,
+    COL_MEAN_P_VALUE,
+    COL_MEDIAN,
+    COL_MEDIAN_EXCESS,
+    COL_MEDIAN_P_VALUE,
+    COL_MIN,
+    COL_NEGATIVE_COUNT,
+    COL_NEGATIVE_MEAN,
+    COL_POSITIVE_COUNT,
+    COL_POSITIVE_MEAN,
+    COL_SAMPLE_COUNT,
+    COL_SIGNAL_SAMPLE_COUNT,
+    COL_STD,
+    COL_TEST_NOTE,
+    COL_UP_RATE_P_VALUE,
+    COL_WIN_RATE,
+    COL_WIN_RATE_EXCESS,
+)
+
 # ============================================================
 # 표시용 레이블 (measure 의 COL_* 에 대응)
 # ============================================================
@@ -88,6 +124,85 @@ DISPLAY_DIRECTION = "방향"
 # 기준선 값은 측정 격자의 집계표(`excess.csv` · `측정.csv`)가 담고, 왜 판정에서 뺐는지는
 # 루트 `CLAUDE.md` 「기준선을 넘지 못하는 것은 탈락 사유가 아닙니다」가 SoT 다
 DISPLAY_SCREEN = "1차 판정"
+
+# 기준선 값 칸의 머리에 붙이는 말
+BASELINE_PREFIX = "기준선 "
+
+# ============================================================
+# 측정 표의 칸 → 한글 이름과 단위
+# ============================================================
+
+# 원칙에 없지만 매매법 여럿이 같은 짝을 써서 공유 계층이 가짐 (2026-11-16 사용자 결정).
+# 매매법은 자기 칸의 짝을 이 사전 위에 더함 — 표마다 칸 구성이 달라 사전은 상위집합
+
+# `summarize` 가 내는 집계 칸 — 기준선 쪽(접미사) 짝도 이 목록에서 만듦
+_SUMMARY_LABELS = (
+    (COL_SIGNAL_COUNT, DISPLAY_SIGNAL_COUNT),
+    (COL_EXCLUDED_COUNT, DISPLAY_EXCLUDED),
+    (COL_SAMPLE_COUNT, DISPLAY_SAMPLE_COUNT),
+    (COL_MEAN, DISPLAY_MEAN),
+    (COL_MEDIAN, DISPLAY_MEDIAN),
+    (COL_WIN_RATE, DISPLAY_UP_RATE),
+    (COL_LOSS_RATE, DISPLAY_DOWN_RATE),
+    (COL_MAX, DISPLAY_MAX),
+    (COL_MIN, DISPLAY_MIN),
+    (COL_STD, DISPLAY_STD),
+    (COL_POSITIVE_MEAN, DISPLAY_POSITIVE_MEAN),
+    (COL_NEGATIVE_MEAN, DISPLAY_NEGATIVE_MEAN),
+    (COL_POSITIVE_COUNT, DISPLAY_POSITIVE_COUNT),
+    (COL_NEGATIVE_COUNT, DISPLAY_NEGATIVE_COUNT),
+)
+
+MEASURE_COLUMN_LABELS = {
+    **dict(_SUMMARY_LABELS),
+    COL_MEAN_RATE_CONFLICT: DISPLAY_MEAN_RATE_CONFLICT,
+    COL_JUDGEABLE: DISPLAY_JUDGEABLE,
+    COL_NON_OVERLAPPING: DISPLAY_NON_OVERLAPPING,
+    COL_BASELINE_NON_OVERLAPPING: f"{BASELINE_PREFIX}{DISPLAY_NON_OVERLAPPING}",
+    **{f"{column}{BASELINE_SUFFIX}": f"{BASELINE_PREFIX}{label}" for column, label in _SUMMARY_LABELS},
+    COL_SIGNAL_SAMPLE_COUNT: DISPLAY_SIGNAL_SAMPLE,
+    COL_BASELINE_SAMPLE_COUNT: DISPLAY_BASELINE_SAMPLE,
+    COL_MEAN_EXCESS: DISPLAY_MEAN_DIFF,
+    COL_MEDIAN_EXCESS: DISPLAY_MEDIAN_DIFF,
+    COL_WIN_RATE_EXCESS: DISPLAY_UP_RATE_DIFF,
+    COL_LOSS_RATE_EXCESS: DISPLAY_DOWN_RATE_DIFF,
+    COL_MEAN_P_VALUE: DISPLAY_MEAN_P_VALUE,
+    COL_MEDIAN_P_VALUE: DISPLAY_MEDIAN_P_VALUE,
+    COL_UP_RATE_P_VALUE: DISPLAY_UP_RATE_P_VALUE,
+    COL_DOWN_RATE_P_VALUE: DISPLAY_DOWN_RATE_P_VALUE,
+    COL_TEST_NOTE: DISPLAY_TEST_NOTE,
+}
+
+# 비율(0 ~ 1)로 들어와 백분율로 내보낼 측정 칸 — 기준선 · 차이 칸이 하나라도 빠지면 헤더는 (%) 인데 값이 비율로 남음
+_RATE_COLUMNS = (
+    COL_MEAN,
+    COL_MEDIAN,
+    COL_WIN_RATE,
+    COL_LOSS_RATE,
+    COL_MAX,
+    COL_MIN,
+    COL_STD,
+    COL_POSITIVE_MEAN,
+    COL_NEGATIVE_MEAN,
+)
+
+MEASURE_PERCENT_COLUMNS = (
+    *_RATE_COLUMNS,
+    *(f"{column}{BASELINE_SUFFIX}" for column in _RATE_COLUMNS),
+    COL_MEAN_EXCESS,
+    COL_MEDIAN_EXCESS,
+    COL_WIN_RATE_EXCESS,
+    COL_LOSS_RATE_EXCESS,
+    COL_FORWARD_RETURN,
+)
+
+# 확률로 들어와 자릿수만 맞출 측정 칸 — 우연확률은 비율이 아니라 100 을 곱하지 않음
+MEASURE_PROBABILITY_COLUMNS = (
+    COL_MEAN_P_VALUE,
+    COL_MEDIAN_P_VALUE,
+    COL_UP_RATE_P_VALUE,
+    COL_DOWN_RATE_P_VALUE,
+)
 
 # ============================================================
 # 단위와 자릿수

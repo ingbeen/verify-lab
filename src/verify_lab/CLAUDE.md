@@ -151,7 +151,10 @@ def find_events(df: pd.DataFrame) -> pd.Series:
 **정의가 하나뿐인 것은 공유 계층에 두지 않습니다** — 「어느 매매법의 값이 기본값인가」라는 문제만
 새로 생깁니다. 두 벌인 것도 세 번째가 올 때까지 각자의 패키지에 둡니다 — 배수형 어휘(방식 라벨·분해 항목,
 `futures_leverage`↔`leverage_tracking` — 두 조사는 지금 코드가 없고 각 조사 문서 「재현 방법」으로 되살린다)가 그 예입니다. **세 번째가 와서 공유 계층에 있는 것이 거래내역의 공통 여덟 칸**
-(`execution/trade_rows.py`)입니다 — 올릴 때는 그것을 쓰던 매매법을 다시 돌려 산출물이 바이트 단위로 같은지 봅니다(아래 「올릴 때는 산출물이 바뀌지 않았음을 바이트로 확인합니다」).
+(`execution/trade_rows.py`)과 **측정 표의 칸 토큰 · 이름표 · 단위 목록**(`measure/constants.py` 의 종목 · 기준선 접미사 · 비중첩 칸,
+`report/constants.py` 의 `MEASURE_COLUMN_LABELS` · `MEASURE_PERCENT_COLUMNS` · `MEASURE_PROBABILITY_COLUMNS`) · **요약 키**(`report/run_summary.py` 의
+무작위 뽑기 반복 수 · 시드 · 제외 건수, `execution/run_summary.py` 의 대상별 기록)입니다 — 매매법은 자기 칸의 짝만 그 위에 더합니다.
+올릴 때는 그것을 쓰던 매매법을 다시 돌려 산출물이 바이트 단위로 같은지 봅니다(아래 「올릴 때는 산출물이 바뀌지 않았음을 바이트로 확인합니다」).
 **개수는 판단 기준이 아닙니다**(위 문단). 억지로 올리면 `studies/constants.py` 라는 새 공통 계층이 생기고,
 「무엇이 여기 들어오는가」의 기준을 세울 근거가 아직 없습니다.
 
@@ -337,7 +340,7 @@ studies/<매매법>/          ← 그 매매법의 전부. 등급이 바뀌어�
 
 **한 파일에서만 쓰는 값은 그 파일 상단에 둡니다** (「상수 관리」 그대로).
 **두 파일이 쓰면 그 패키지의 `constants.py` 로 올립니다** — 측정과 체결이 같은 것을 세는
-`KEY_ENTRY_COUNT`·`KEY_EXCLUDED_COUNT` 가 그 예입니다.
+`KEY_ENTRY_COUNT`(중간선거_사이클)가 그 예입니다. **세 번째 매매법이 같은 값을 쓰면 공유 계층으로 올립니다**(위 「원칙에 없는 것은 「세 번째가 올 때」 정합니다」) — 제외 건수 `KEY_EXCLUDED_COUNT` 는 그렇게 올라가 `report/run_summary.py` 가 갖습니다.
 
 | 항목 | 확정 | 왜 |
 | --- | --- | --- |

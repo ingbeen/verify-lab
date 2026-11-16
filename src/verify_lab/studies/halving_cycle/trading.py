@@ -47,13 +47,13 @@ from verify_lab.execution.constants import (
     stop_level_value,
 )
 from verify_lab.execution.periods import period_rows, to_summary_frame
-from verify_lab.execution.run_summary import build_run_summary
+from verify_lab.execution.run_summary import KEY_TARGETS, build_run_summary
 from verify_lab.execution.trade_fill import TradeResult, resolve_positions, simulate_scheduled_trade
 from verify_lab.execution.trade_rows import trade_columns, trade_columns_from
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_EXIT_DATE, MIN_SAMPLE_PER_CELL, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_DOWN, DIRECTION_UP
 from verify_lab.report.constants import DATE_FORMAT, PERCENT_DECIMALS
-from verify_lab.report.run_summary import dataset_record
+from verify_lab.report.run_summary import KEY_EXCLUDED_COUNT, dataset_record
 from verify_lab.studies.halving_cycle.constants import (
     BET_DOWN,
     CALENDAR_SPLIT_STEP_MONTHS,
@@ -75,7 +75,6 @@ from verify_lab.studies.halving_cycle.constants import (
     KEY_BLOCK_TIME,
     KEY_DATE,
     KEY_ENTRY_MONTHS,
-    KEY_EXCLUDED_COUNT,
     KEY_HALVINGS,
     KEY_HEIGHT,
     KEY_LABEL,
@@ -102,7 +101,6 @@ _T = TypeVar("_T")
 # **최상위 키와 비용 표기는 `execution/run_summary.py` 가 소유한다**
 KEY_EXIT_MONTHS = "exit_months"
 KEY_STOP_LEVELS = "stop_levels"
-KEY_TARGETS = "targets"
 KEY_DIRECTION = "direction"
 KEY_HARD_FORKS = "hard_forks"
 KEY_PRICE_DATE = "price_date"
@@ -589,7 +587,6 @@ __all__ = [
     "KEY_OUTSIDE_CYCLE_COUNT",
     "KEY_SPLIT_TARGETS",
     "KEY_STOP_SOLD_COUNT",
-    "KEY_TARGETS",
     "TradingOutputs",
     "run_halving_cycle_trading",
 ]

@@ -31,11 +31,15 @@ from verify_lab.data.crosscheck import COL_DIFF_RATE, COL_PRIMARY, COL_SECONDARY
 from verify_lab.execution.constants import NO_STOP_LABEL
 from verify_lab.execution.run_summary import KEY_DATASETS, KEY_ROW_COUNTS
 from verify_lab.measure.constants import (
+    BASELINE_SUFFIX,
+    COL_BASELINE_NON_OVERLAPPING,
     COL_EXCLUDED_COUNT,
     COL_EXCLUDED_REASON,
     COL_FORWARD_RETURN,
     COL_JUDGEABLE,
+    COL_NON_OVERLAPPING,
     COL_SIGNAL_COUNT,
+    COL_TICKER,
     JUDGEABLE_NO,
     REASON_NONE,
 )
@@ -49,10 +53,8 @@ from verify_lab.measure.statistics import (
 from verify_lab.report.run_summary import KEY_TRACK
 from verify_lab.studies.halving_cycle import runner as runner_module
 from verify_lab.studies.halving_cycle.constants import (
-    BASELINE_SUFFIX,
     CALENDAR_SPLIT_STEP_MONTHS,
     CALENDAR_SPLITS,
-    COL_BASELINE_NON_OVERLAPPING,
     COL_CALENDAR_YEAR,
     COL_CYCLE_COUNT,
     COL_ENTRY_MONTHS,
@@ -62,12 +64,10 @@ from verify_lab.studies.halving_cycle.constants import (
     COL_HOLD_RETURNS,
     COL_INDICATOR_SIGNAL,
     COL_JUDGMENT_DATE,
-    COL_NON_OVERLAPPING,
     COL_POSITION_RETURN,
     COL_SIGNAL_MEANING,
     COL_SPLIT_DEADLINE,
     COL_SPLIT_FILL_DATE,
-    COL_TICKER,
     COL_VALUE_DAY,
     DATASETS,
     ENTRY_MONTHS,

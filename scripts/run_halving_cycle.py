@@ -52,6 +52,7 @@ from verify_lab.execution.run_summary import KEY_ROW_COUNTS, merge_run_summary
 from verify_lab.measure.screening import SCREEN_CANDIDATE
 from verify_lab.measure.statistics import DEFAULT_RANDOM_SEED, DEFAULT_REPEAT_COUNT
 from verify_lab.report.constants import (
+    BASELINE_PREFIX,
     DISPLAY_DOWN_RATE,
     DISPLAY_EXCLUDED,
     DISPLAY_EXCLUDED_REASON,
@@ -67,7 +68,6 @@ from verify_lab.report.constants import (
 from verify_lab.report.tables import print_dataframe
 from verify_lab.report.writer import create_run_directory, save_run_summary, save_table
 from verify_lab.studies.halving_cycle.constants import (
-    BASELINE_PREFIX,
     DATASETS,
     DISPLAY_CALENDAR_YEAR,
     DISPLAY_CYCLE_COUNT,

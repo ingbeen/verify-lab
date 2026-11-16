@@ -32,6 +32,13 @@ from verify_lab.common_constants import COL_DATE
 # `studies` 도 `execution` 도 이미 `report` 에 의존한다
 KEY_TRACK: Final = "track"
 
+# 측정이 쓴 무작위 뽑기 대조의 반복 수 · 시드 — 매매법 여럿이 같은 키를 씀 (2026-11-16 사용자 결정)
+KEY_PERMUTATION_REPEATS: Final = "permutation_repeats"
+KEY_PERMUTATION_SEED: Final = "permutation_seed"
+
+# 대상별 기록의 제외 건수 — 측정 · 체결 요약이 함께 씀 (표본 보존 · `tests/test_output_contract.py` 가 키 이름을 고정)
+KEY_EXCLUDED_COUNT: Final = "excluded_count"
+
 # ============================================================
 # 데이터셋 한 줄의 키
 # ============================================================

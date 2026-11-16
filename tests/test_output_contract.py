@@ -69,6 +69,7 @@ from verify_lab.execution.run_summary import (
     KEY_NOTES,
     KEY_ROW_COUNTS,
     KEY_RULE,
+    KEY_TARGETS,
 )
 from verify_lab.measure.constants import JUDGEABLE_NO
 from verify_lab.report.constants import (
@@ -86,11 +87,9 @@ from verify_lab.report.run_summary import (
     KEY_TRACK,
 )
 from verify_lab.studies.halving_cycle.constants import Dataset as HalvingCycleDataset
-from verify_lab.studies.halving_cycle.trading import KEY_TARGETS as HALVING_CYCLE_KEY_TARGETS
 from verify_lab.studies.halving_cycle.trading import TradingOutputs as HalvingCycleOutputs
 from verify_lab.studies.halving_cycle.trading import run_halving_cycle_trading
 from verify_lab.studies.midterm_cycle.constants import Dataset as MidtermCycleDataset
-from verify_lab.studies.midterm_cycle.trading import KEY_TARGETS as MIDTERM_CYCLE_KEY_TARGETS
 from verify_lab.studies.midterm_cycle.trading import TradingOutputs as MidtermCycleOutputs
 from verify_lab.studies.midterm_cycle.trading import run_midterm_cycle_trading
 from verify_lab.tracks import KIND_METHOD, tracks_of_kind
@@ -361,7 +360,7 @@ METHOD_SPECS = {
         summary_tail=(),
         trade_axis=AXIS_MIDTERM_CYCLE_TRADES,
         trade_tail=(),
-        targets_key=MIDTERM_CYCLE_KEY_TARGETS,
+        targets_key=KEY_TARGETS,
     ),
     "halving_cycle": MethodSpec(
         fixture="halving_cycle_outputs",
@@ -369,7 +368,7 @@ METHOD_SPECS = {
         summary_tail=(),
         trade_axis=AXIS_HALVING_CYCLE_TRADES,
         trade_tail=TAIL_HALVING_CYCLE_TRADES,
-        targets_key=HALVING_CYCLE_KEY_TARGETS,
+        targets_key=KEY_TARGETS,
     ),
 }
 

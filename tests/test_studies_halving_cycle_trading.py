@@ -42,7 +42,7 @@ from verify_lab.execution.constants import (
     PERIOD_ALL,
     PERIODS,
 )
-from verify_lab.execution.run_summary import KEY_RULE
+from verify_lab.execution.run_summary import KEY_RULE, KEY_TARGETS
 from verify_lab.measure.constants import COL_EXCLUDED_REASON, COL_EXIT_DATE, COL_FORWARD_RETURN, REASON_NONE
 from verify_lab.measure.screening import DIRECTION_UP, SCREEN_EXCLUDED, SCREEN_NOT_JUDGED
 from verify_lab.measure.statistics import COL_MEAN, COL_SAMPLE_COUNT, COL_WIN_RATE
@@ -75,7 +75,6 @@ from verify_lab.studies.halving_cycle.trading import (
     KEY_OUTSIDE_CYCLE_COUNT,
     KEY_SPLIT_TARGETS,
     KEY_STOP_SOLD_COUNT,
-    KEY_TARGETS,
     TradingOutputs,
     run_halving_cycle_trading,
 )

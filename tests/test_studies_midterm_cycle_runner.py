@@ -32,8 +32,10 @@ from verify_lab.common_constants import (
     PRICE_DECIMALS,
 )
 from verify_lab.measure.constants import (
+    COL_BASELINE_NON_OVERLAPPING,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
+    COL_NON_OVERLAPPING,
     JUDGEABLE_NO,
     JUDGEABLE_YES,
 )
@@ -41,9 +43,7 @@ from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_UP
 from verify_lab.measure.statistics import COL_SAMPLE_COUNT
 from verify_lab.studies.midterm_cycle import runner as midterm_runner
 from verify_lab.studies.midterm_cycle.constants import (
-    COL_BASELINE_NON_OVERLAPPING,
     COL_CYCLE_POSITION,
-    COL_NON_OVERLAPPING,
     CYCLE_POSITIONS,
     DATASETS,
     Dataset,

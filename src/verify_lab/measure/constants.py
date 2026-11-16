@@ -118,3 +118,20 @@ COL_HOLD_DAYS = "hold_days"
 # 사용자가 차트로 직접 대조하는 원자료 (측정의 원칙 8)
 COL_ENTRY_CLOSE = "entry_close"
 COL_EXIT_CLOSE = "exit_close"
+
+# ============================================================
+# 측정 표의 공통 칸
+# ============================================================
+
+# 원칙에 없는 칸이지만 매매법 여럿이 같은 값을 써서 공유 계층이 가짐 (2026-11-16 사용자 결정).
+# 표시 이름은 `report/constants.py` 의 `MEASURE_COLUMN_LABELS` 가 가짐
+
+# 측정 표의 종목 칸 — 표시 이름은 매매 계층의 `DISPLAY_TICKER`
+COL_TICKER = "ticker"
+
+# 기준선 집계를 신호 집계와 나란히 놓을 때 붙이는 접미사
+BASELINE_SUFFIX = "_baseline"
+
+# 겹치지 않게 고를 수 있는 구간의 최대 개수 — 산식은 `statistics.max_non_overlapping`
+COL_NON_OVERLAPPING = "NonOverlappingCount"
+COL_BASELINE_NON_OVERLAPPING = f"{COL_NON_OVERLAPPING}{BASELINE_SUFFIX}"

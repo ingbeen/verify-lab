@@ -28,11 +28,15 @@ from verify_lab.common_constants import COL_DATE
 from verify_lab.data.loader import load_close_series, load_market_csv
 from verify_lab.execution.trade_fill import resolve_positions
 from verify_lab.measure.constants import (
+    BASELINE_SUFFIX,
+    COL_BASELINE_NON_OVERLAPPING,
     COL_EXCLUDED_REASON,
     COL_HOLD_DAYS,
     COL_HORIZON,
     COL_JUDGEABLE,
     COL_MEAN_RATE_CONFLICT,
+    COL_NON_OVERLAPPING,
+    COL_TICKER,
     REASON_NONE,
 )
 from verify_lab.measure.screening import COL_DIRECTION, DIRECTION_DOWN, DIRECTION_UP
@@ -58,15 +62,18 @@ from verify_lab.measure.statistics import (
     summarize,
     yes_no,
 )
-from verify_lab.report.run_summary import KEY_TRACK, dataset_record
+from verify_lab.report.constants import MEASURE_PERCENT_COLUMNS, MEASURE_PROBABILITY_COLUMNS
+from verify_lab.report.run_summary import (
+    KEY_EXCLUDED_COUNT,
+    KEY_PERMUTATION_REPEATS,
+    KEY_PERMUTATION_SEED,
+    KEY_TRACK,
+    dataset_record,
+)
 from verify_lab.report.tables import to_display_columns
 from verify_lab.studies.midterm_cycle.constants import (
-    BASELINE_SUFFIX,
     BET_DOWN,
-    COL_BASELINE_NON_OVERLAPPING,
     COL_CYCLE_POSITION,
-    COL_NON_OVERLAPPING,
-    COL_TICKER,
     COLUMN_LABELS,
     CYCLE_POSITIONS,
     DATASETS,
@@ -77,12 +84,9 @@ from verify_lab.studies.midterm_cycle.constants import (
     HORIZON_POOLED,
     KEY_ENTRY_COUNT,
     KEY_ENTRY_MONTH,
-    KEY_EXCLUDED_COUNT,
     KEY_EXIT_MONTH,
     KEY_POSITIONS,
     OUTPUT_FILES,
-    PERCENT_COLUMNS,
-    PROBABILITY_COLUMNS,
     TRACK_NAME,
     Dataset,
 )
@@ -96,8 +100,6 @@ from verify_lab.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-KEY_PERMUTATION_REPEATS = "permutation_repeats"
-KEY_PERMUTATION_SEED = "permutation_seed"
 KEY_DATASETS = "datasets"
 KEY_ROW_COUNTS = "row_counts"
 KEY_IS_INDEX = "is_index"
@@ -457,8 +459,8 @@ def display_tables(outputs: StudyOutputs) -> dict[str, pd.DataFrame]:
     table = to_display_columns(
         outputs.statistics,
         COLUMN_LABELS,
-        percent_columns=[column for column in PERCENT_COLUMNS if column in outputs.statistics.columns],
-        probability_columns=[column for column in PROBABILITY_COLUMNS if column in outputs.statistics.columns],
+        percent_columns=[column for column in MEASURE_PERCENT_COLUMNS if column in outputs.statistics.columns],
+        probability_columns=[column for column in MEASURE_PROBABILITY_COLUMNS if column in outputs.statistics.columns],
     )
 
     return {FIELD_STATISTICS: table}

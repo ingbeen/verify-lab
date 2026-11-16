@@ -58,6 +58,9 @@ KEY_ROW_COUNTS: Final = "row_counts"
 KEY_COST: Final = "cost"
 KEY_NOTES: Final = "notes"
 
+# `rule` 안의 대상별 기록 목록 — 매매법 여럿이 같은 키를 씀 (2026-11-16 사용자 결정)
+KEY_TARGETS: Final = "targets"
+
 # 한 실행이 측정과 체결을 함께 내므로 요약도 한 벌이다. **두 벌을 평평하게 합치지 않고**
 # 이 두 칸 아래로 나눠 담는다 — `datasets`·`rule`·`notes` 가 같은 이름인데 다른 것을 가리킨다
 KEY_MEASURE: Final = "measure"
