@@ -86,10 +86,6 @@ from verify_lab.report.run_summary import (
     KEY_DATASET_TICKER,
     KEY_TRACK,
 )
-from verify_lab.studies.drawdown_tiers.constants import Dataset as DrawdownTiersDataset
-from verify_lab.studies.drawdown_tiers.constants import IndicatorFiles as DrawdownTiersIndicatorFiles
-from verify_lab.studies.drawdown_tiers.trading import TradingOutputs as DrawdownTiersOutputs
-from verify_lab.studies.drawdown_tiers.trading import run_drawdown_tiers_trading
 from verify_lab.studies.halving_cycle.constants import Dataset as HalvingCycleDataset
 from verify_lab.studies.halving_cycle.trading import TradingOutputs as HalvingCycleOutputs
 from verify_lab.studies.halving_cycle.trading import run_halving_cycle_trading
@@ -185,13 +181,6 @@ INDEX_LABEL = "합성 지수"
 # 매매법 고유 컬럼 — 맨 뒤에 붙는다. 반감기_사이클의 거래내역에만 있다
 # 원본가에 없는 하드포크 몫 — 체결마다 청산가가 달라 체결마다 잰다
 TAIL_HALVING_CYCLE_TRADES = ("하드포크 몫(%p)",)
-
-# 하락_단계_매수 — 성적표는 지표 · 단계 · 보유 기간, **거래내역은 판정일이 더 붙는다**(진입일이 판정일 다음 거래일이라
-# 날짜만으로 신호가 언제 났는지 읽히지 않는다). 끝에는 **사건**(성적표 — 신호가 든 하락장 수)과 **하락장 시작일**(거래내역)
-AXIS_DRAWDOWN_TIERS = ("지표", "단계", "보유(거래일)")
-AXIS_DRAWDOWN_TIERS_TRADES = ("지표", "단계", "보유(거래일)", "판정일")
-TAIL_DRAWDOWN_TIERS = ("사건",)
-TAIL_DRAWDOWN_TIERS_TRADES = ("하락장 시작일",)
 
 # 사건 번호를 넘기는 매매법만 내는 컬럼. 손으로 박는다(머리말)
 EVENT_COLUMN = "사건"
@@ -373,14 +362,6 @@ METHOD_SPECS = {
         trade_tail=(),
         targets_key=KEY_TARGETS,
     ),
-    "drawdown_tiers": MethodSpec(
-        fixture="drawdown_tiers_outputs",
-        summary_axis=AXIS_DRAWDOWN_TIERS,
-        summary_tail=TAIL_DRAWDOWN_TIERS,
-        trade_axis=AXIS_DRAWDOWN_TIERS_TRADES,
-        trade_tail=TAIL_DRAWDOWN_TIERS_TRADES,
-        targets_key=KEY_TARGETS,
-    ),
     "halving_cycle": MethodSpec(
         fixture="halving_cycle_outputs",
         summary_axis=AXIS_HALVING_CYCLE,
@@ -395,9 +376,7 @@ METHOD_SPECS = {
 _BY_METHOD = pytest.mark.parametrize("slug", sorted(METHOD_SPECS))
 
 
-def _outputs(
-    request: pytest.FixtureRequest, slug: str
-) -> MidtermCycleOutputs | HalvingCycleOutputs | DrawdownTiersOutputs:
+def _outputs(request: pytest.FixtureRequest, slug: str) -> MidtermCycleOutputs | HalvingCycleOutputs:
     """그 매매법의 실행 결과를 픽스처에서 꺼낸다.
 
     Args:
@@ -516,98 +495,6 @@ def _halving_cycle_dataset(directory: Path) -> HalvingCycleDataset:
         price_decimals=PRICE_DECIMALS,
         is_judged=True,
     )
-
-
-@pytest.fixture(scope="module")
-def drawdown_tiers_outputs(tmp_path_factory: pytest.TempPathFactory) -> DrawdownTiersOutputs:
-    """손으로 짠 하락장 둘 · VIX 급등 둘 · 공포탐욕지수 급락 둘로 **인자 없이** 돈 하락_단계_매수 결과.
-
-    **다른 매매법의 합성 시세(무작위 등락)를 쓰지 않는다** — −50% 낙폭 · VIX 60 · 공포탐욕지수 5 같은 깊은 단계가
-    무작위로는 나오지 않아 칸이 비고, 빈 칸은 「판정 안 함」이라 「전체 행에서는 실제로 판정한다」를 검사하지 못한다.
-    모든 단계가 가장 긴 보유 기간까지 체결되도록 신호를 앞쪽에 둔다. 지수를 함께 넣어 `손절불가` 를 검사한다.
-    """
-    datasets, files = _drawdown_tiers_inputs(tmp_path_factory.mktemp("drawdown_tiers"))
-    return run_drawdown_tiers_trading(datasets, indicator_files=files)
-
-
-# 하락_단계_매수 합성 경로의 꺾이는 점 (위치, 종가) — 첫 하락장 200 → 90 (−55%), 두 번째 210 → 184 (−12.4%)
-DRAWDOWN_TIERS_KNOTS = ((0, 100.0), (150, 200.0), (300, 90.0), (500, 210.0), (550, 184.0), (620, 220.0))
-DRAWDOWN_TIERS_LAST_CLOSE = 300.0
-
-# VIX · 공포탐욕지수 (시작 위치, 끝 위치, 값). VIX 는 하루 ±200% 를 넘지 않게 두 계단으로 오른다
-DRAWDOWN_TIERS_VIX = ((250, 251, 30.0), (251, 260, 65.0), (260, 261, 30.0), (530, 535, 31.0))
-DRAWDOWN_TIERS_FEAR_GREED = ((255, 265, 3.0), (535, 540, 18.0))
-
-
-def _drawdown_tiers_inputs(directory: Path) -> tuple[tuple[DrawdownTiersDataset, ...], DrawdownTiersIndicatorFiles]:
-    """하락_단계_매수의 합성 ETF · 합성 지수와 지표 파일 둘을 쓴다.
-
-    Args:
-        directory: 파일을 쓸 폴더
-
-    Returns:
-        ((합성 ETF, 합성 지수), 지표 파일)
-    """
-    days = pd.bdate_range(SYNTHETIC_START, SYNTHETIC_END)
-    positions, values = zip(*DRAWDOWN_TIERS_KNOTS, (len(days) - 1, DRAWDOWN_TIERS_LAST_CLOSE), strict=True)
-    closes = np.interp(np.arange(len(days)), positions, values)
-    opens = np.concatenate([[closes[0]], closes[:-1]])
-    dates = days.strftime("%Y-%m-%d")
-
-    def write(name: str, scale: float, spread: float) -> None:
-        pd.DataFrame(
-            {
-                COL_DATE: dates,
-                COL_OPEN: np.round(opens * scale, PRICE_DECIMALS),
-                COL_HIGH: np.round(np.maximum(opens, closes) * scale * (1 + spread), PRICE_DECIMALS),
-                COL_LOW: np.round(np.minimum(opens, closes) * scale * (1 - spread), PRICE_DECIMALS),
-                COL_CLOSE: np.round(closes * scale, PRICE_DECIMALS),
-                COL_VOLUME: 1_000_000,
-            }
-        ).to_csv(directory / MARKET_FILE_TEMPLATE.format(ticker=name), index=False)
-
-    def stepped(base: float, steps: tuple[tuple[int, int, float], ...]) -> np.ndarray:
-        series = np.full(len(days), base)
-        for start, end, value in steps:
-            series[start:end] = value
-        return series
-
-    write("SYN", 1.0, 0.01)
-    # **지수의 고가 · 저가를 크게 벌린다** — 로더가 종가만 남기는지가 계약이라, 흘리면 값으로 드러나게
-    write("^SYNIDX", 0.1, 0.5)
-    vix = stepped(15.0, DRAWDOWN_TIERS_VIX)
-    pd.DataFrame({COL_DATE: dates, COL_OPEN: vix, COL_HIGH: vix, COL_LOW: vix, COL_CLOSE: vix, COL_VOLUME: 0}).to_csv(
-        directory / "^SYNVIX_raw.csv", index=False
-    )
-    pd.DataFrame({COL_DATE: dates, COL_VALUE: stepped(60.0, DRAWDOWN_TIERS_FEAR_GREED)}).to_csv(
-        directory / "SYN_fear_greed.csv", index=False
-    )
-
-    etf = DrawdownTiersDataset(
-        ticker="SYN",
-        label="합성 ETF",
-        symbol="SYN",
-        signal_symbol="SYN",
-        directory=directory,
-        file_template=MARKET_FILE_TEMPLATE,
-        price_column=COL_CLOSE,
-        price_decimals=PRICE_DECIMALS,
-        is_index=False,
-    )
-    index = DrawdownTiersDataset(
-        ticker="SYNIDX",
-        label=INDEX_LABEL,
-        symbol="^SYNIDX",
-        signal_symbol="^SYNIDX",
-        directory=directory,
-        file_template=MARKET_FILE_TEMPLATE,
-        price_column=COL_VALUE,
-        price_decimals=PRICE_DECIMALS,
-        is_index=True,
-    )
-    files = DrawdownTiersIndicatorFiles(vix=directory / "^SYNVIX_raw.csv", fear_greed=directory / "SYN_fear_greed.csv")
-
-    return (etf, index), files
 
 
 def _midterm_cycle_datasets(directory: Path) -> tuple[MidtermCycleDataset, MidtermCycleDataset]:
@@ -1645,7 +1532,6 @@ class TestPriceBasis:
         ("halving_cycle", "BTCUSD"),  # Bitstamp BTC/USD — 코인에는 분배금이 없다
         ("midterm_cycle", "GSPC"),  # S&P 500 지수 — 지수에는 분배금이 없다(가격지수)
         ("midterm_cycle", "IXIC"),  # 나스닥 종합 지수 — 같은 이유
-        ("drawdown_tiers", "GSPC"),  # S&P 500 지수 — 가격지수라 분배금이 없다
     }
 
     @_BY_METHOD

@@ -212,7 +212,7 @@ def load_market_csv(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHAN
     return df
 
 
-def load_close_series(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CHANGE_RATE) -> pd.DataFrame:
+def load_close_series(path: Path) -> pd.DataFrame:
     """시세 CSV 를 읽어 종가 하나짜리 계열(`Date`, `Value`)로 돌려준다.
 
     지수처럼 **고가 · 저가를 믿을 수 없는 시세**에 쓴다 — 미국 지수 사본은 옛 구간의 고가 · 저가가
@@ -221,8 +221,6 @@ def load_close_series(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CH
 
     Args:
         path: 시세 CSV 경로
-        max_daily_change_rate: 데이터 오류로 볼 일간 변동 임계 (비율). 정상 변동 폭이 다른 계열은
-            그 계열을 읽는 매매법이 자기 값을 넘긴다
 
     Returns:
         날짜 오름차순의 날짜 · 값 두 컬럼 DataFrame. 값은 종가다
@@ -231,7 +229,7 @@ def load_close_series(path: Path, *, max_daily_change_rate: float = MAX_DAILY_CH
         FileNotFoundError: 파일이 없는 경우
         ValueError: `load_market_csv` 가 거부하는 모든 경우
     """
-    df = load_market_csv(path, max_daily_change_rate=max_daily_change_rate)
+    df = load_market_csv(path)
 
     return df[[COL_DATE, COL_CLOSE]].rename(columns={COL_CLOSE: COL_VALUE})
 

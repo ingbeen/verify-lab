@@ -95,9 +95,9 @@ TRACKS: Final = (
     # 그 매매법의 `규칙.md` §1 이다(달력 매달 분할 + 저점 이탈). 체결은 확정 규칙 행과 비교용 일시 격자
     # (진입 × 청산, 무손절)의 맨몸 측정이다(그 매매법 `설계.md` 결정 61 · 63)
     Track("halving_cycle", "반감기_사이클", GRADE_TRADING, KIND_METHOD),
-    # 미국 주식이 크게 빠졌을 때(낙폭 · VIX · 공포탐욕지수의 단계) 분할 매수를 시작하는 신호를 재는 매매법.
-    # 맨몸 격자만 재는 중이라 검증 등급이다 — 분할 · 비중 · 청산 규칙은 결과를 본 뒤 정한다
-    Track("drawdown_tiers", "하락_단계_매수", GRADE_STUDY, KIND_METHOD),
+    # 낙폭 · VIX · 공포탐욕지수의 단계가 아무 날과 구별되지 않아 조사로 내림(2026-11-17 사용자 결정) — 실행 코드가 없어 종류도 성질 조사
+    # 근거와 되살리는 절차는 `docs/조사/하락_단계_매수.md` 「재현 방법」
+    Track("drawdown_tiers", "하락_단계_매수", GRADE_SURVEY, KIND_PROPERTY),
     # 아래 셋은 성질 조사를 끝내 실행 코드가 없다(2026-10-16 사용자 결정). 줄을 남기는 것은 되살렸을 때
     # 산출물이 같은 자리에 쌓이게 하려는 것이다 — 근거와 되살리는 절차는 `docs/조사/<한글 이름>.md` 「재현 방법」
     Track("usdkrw_equivalence", "원달러_ETF_등가성", GRADE_SURVEY, KIND_PROPERTY),

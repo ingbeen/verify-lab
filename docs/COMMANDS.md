@@ -64,15 +64,6 @@ BROWSER=true poetry run python scripts/chart_halving_cycle.py               # �
 
 선행 조건은 「데이터 받기」로 받은 사본 넷(`BTCUSD_raw.csv` · Coin Metrics 셋)이다.
 
-### 하락_단계_매수
-
-```bash
-poetry run python scripts/run_drawdown_tiers.py                             # 낙폭 · VIX · 공포탐욕지수 단계 × 보유 기간의 맨몸 격자 측정과 무손절 체결 — SPY · DIA · QQQ · S&P 500 지수 (기본값)
-poetry run python scripts/run_drawdown_tiers.py --repeats 5000 --seed 42    # 무작위 뽑기 대조의 반복 수·시드
-```
-
-선행 조건은 「데이터 받기」로 받은 사본 여섯(SPY · DIA · QQQ 수정주가 · `^GSPC_raw.csv` · `^VIX_raw.csv` · `fear_greed_daily.csv`)이다.
-
 ---
 
 ## 시세를 다시 받은 뒤 다시 돌리는 순서
@@ -94,6 +85,5 @@ poetry run python scripts/run_drawdown_tiers.py --repeats 5000 --seed 42    # �
   set -e
   poetry run python scripts/run_midterm_cycle.py
   poetry run python scripts/run_halving_cycle.py
-  poetry run python scripts/run_drawdown_tiers.py
 )
 ```
