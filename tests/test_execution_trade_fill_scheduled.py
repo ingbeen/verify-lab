@@ -552,7 +552,7 @@ class TestResolvePositions:
 
     def test_거래일에_없는_날짜가_있으면_내부_불변조건_위반이다(self) -> None:
         """
-        목적: **이 계획서가 막으려는 사고 그 자체**를 고정한다.
+        목적: **이 가드가 막으려는 사고 그 자체**를 고정한다.
 
         `get_indexer` 가 `-1` 을 돌려주는데 그것을 검사하지 않으면 음수 위치가
         `simulate_scheduled_trade` 로 흘러간다.

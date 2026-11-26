@@ -1,14 +1,18 @@
-"""품질 검증 스크립트의 출력 파싱 (`validate_project.py`)
+"""품질 검증 스크립트의 출력 파싱과 단계 연결 (`validate_project.py`)
 
 **파서가 조용히 틀리면 아무도 모른다.** 도구의 출력 형식이 바뀌어도 종료코드로 성패는
-갈리지만 개수는 그럴듯한 숫자로 남고, 그 숫자가 계획서의 품질 검증 기록에 그대로 옮겨진다.
+갈리지만 개수는 그럴듯한 숫자로 남고, 그 숫자가 작업 보고의 품질 검증 줄에 그대로 옮겨진다.
 그래서 「세지 못했다」가 숫자로 덮이지 않는 것을 여기서 고정한다.
 
 `validate_project.py` 는 패키지가 아니라 저장소 루트의 스크립트라 경로로 직접 읽어 온다.
 """
 
+import ast
 import importlib.util
+import json
 import sys
+from collections.abc import Callable
+from pathlib import Path
 from types import ModuleType
 
 import pytest
@@ -248,3 +252,96 @@ class TestPytestParsing:
         Then: 아무것도 나오지 않는다
         """
         assert _pytest_counts("무언가 크게 잘못됐다") is None
+
+
+def _write_copy_and_result(tmp_path: Path, *, copy_rows: int, result_rows: int) -> tuple[Path, Path]:
+    manifest = tmp_path / "manifest.json"
+    entry = {"첫날": "1993-01-29", "끝날": "2026-11-10", "행 수": copy_rows}
+    manifest.write_text(json.dumps({"파일": {"SPY_adjusted.csv": entry}}, ensure_ascii=False), encoding="utf-8")
+    folder = tmp_path / "results" / "매매" / "중간선거_사이클"
+    folder.mkdir(parents=True)
+    record = {"file": "SPY_adjusted.csv", "period": "1993-01-29 ~ 2026-11-10", "rows": result_rows}
+    (folder / "summary.json").write_text(json.dumps({"measure": {"datasets": [record]}}), encoding="utf-8")
+    return tmp_path / "results", manifest
+
+
+def test_copy_check_passes_when_results_match_the_copy(tmp_path: Path) -> None:
+    results, manifest = _write_copy_and_result(tmp_path, copy_rows=8504, result_rows=8504)
+
+    assert validate_project.run_copy_check(results, manifest) == (True, 0)
+
+
+def test_copy_check_fails_with_the_mismatch_count(tmp_path: Path) -> None:
+    results, manifest = _write_copy_and_result(tmp_path, copy_rows=8504, result_rows=8503)
+
+    assert validate_project.run_copy_check(results, manifest) == (False, 1)
+
+
+def test_copy_check_fails_without_a_count_when_the_manifest_cannot_be_read(tmp_path: Path) -> None:
+    results, _ = _write_copy_and_result(tmp_path, copy_rows=8504, result_rows=8504)
+
+    assert validate_project.run_copy_check(results, tmp_path / "missing.json") == (False, None)
+
+
+def test_copy_check_fails_without_a_count_when_the_manifest_has_an_unexpected_shape(tmp_path: Path) -> None:
+    results, manifest = _write_copy_and_result(tmp_path, copy_rows=8504, result_rows=8504)
+    manifest.write_text(json.dumps({"파일": []}), encoding="utf-8")
+
+    assert validate_project.run_copy_check(results, manifest) == (False, None)
+
+
+def _record_step(calls: list[str], name: str, result: tuple[object, ...]) -> Callable[..., tuple[object, ...]]:
+    def step(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+        calls.append(name)
+        return result
+
+    return step
+
+
+def _run_main_with_fake_steps(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], *, copies: tuple[bool, int | None]
+) -> tuple[int, list[str]]:
+    calls: list[str] = []
+    monkeypatch.setattr(validate_project, "run_ruff", _record_step(calls, "ruff", (True, 0)))
+    monkeypatch.setattr(validate_project, "run_pyright", _record_step(calls, "pyright", (True, 0)))
+    monkeypatch.setattr(validate_project, "run_pytest", _record_step(calls, "pytest", (True, 1, 0, 0, 0)))
+    monkeypatch.setattr(validate_project, "run_copy_check", _record_step(calls, "copies", copies))
+    monkeypatch.setattr(sys, "argv", ["validate_project.py", *argv])
+
+    exit_code = validate_project.main()
+
+    return exit_code, calls
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        ([], ["ruff", "pyright", "pytest", "copies"]),
+        (["--only-lint"], ["ruff"]),
+        (["--only-pyright"], ["pyright"]),
+        (["--only-tests"], ["pytest"]),
+        (["--cov"], ["pytest"]),
+    ],
+)
+def test_copy_check_runs_only_in_the_full_run(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], expected: list[str]
+) -> None:
+    _, calls = _run_main_with_fake_steps(monkeypatch, argv, copies=(True, 0))
+
+    assert calls == expected
+
+
+def test_failed_copy_check_fails_the_full_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    exit_code, _ = _run_main_with_fake_steps(monkeypatch, [], copies=(False, 1))
+
+    assert exit_code == 1
+
+
+def test_script_does_not_import_the_package_at_the_top() -> None:
+    tree = ast.parse((BASE_DIR / "validate_project.py").read_text(encoding="utf-8"))
+
+    top_modules = {alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names} | {
+        node.module or "" for node in tree.body if isinstance(node, ast.ImportFrom)
+    }
+
+    assert not any(module.split(".")[0] == "verify_lab" for module in top_modules)

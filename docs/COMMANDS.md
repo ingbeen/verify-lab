@@ -13,10 +13,10 @@
 ## 품질 검증
 
 ```bash
-poetry run python validate_project.py                # Ruff + PyRight + Pytest. 통과 기준은 failed=0 skipped=0
+poetry run python validate_project.py                # Ruff + PyRight + Pytest + 사본 대조. 통과 기준은 failed=0 skipped=0 · 사본 어긋남 0
 poetry run python validate_project.py --only-tests   # --only-lint · --only-pyright 도 같은 모양
 poetry run python validate_project.py --cov          # 커버리지 포함
-poetry run black .                                   # 포맷 적용 (계획서의 마지막 Phase 에서만)
+poetry run black .                                   # 포맷 적용 (작업을 마칠 때 — 품질 검증 전에)
 ```
 
 > **`passed` 수는 기준이 아닙니다** — 코드를 지우면 테스트도 함께 줄어듭니다. 판단이 필요하면 직전 실행과 비교하고,

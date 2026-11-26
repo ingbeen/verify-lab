@@ -942,7 +942,7 @@ class TestReportLabelOwnership:
         상태로 되돌아가지 않게 하고, **새 재정의가 조용히 늘어나는 것**을 막는다.
 
         검사는 **부분집합**이다. 허용목록에 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다 —
-        막으면 다음 계획서가 중복을 줄일 때마다 이 테스트가 실패한다.
+        막으면 다음 작업이 중복을 줄일 때마다 이 테스트가 실패한다.
 
         Given: `report/constants.py` 의 `DISPLAY_*` 문자열 전부
         When: 같은 문자열을 정의하는 다른 파일을 찾는다
@@ -1555,7 +1555,7 @@ class TestDirectionNameOwnership:
 # (`docs/조사/선물_대_레버리지_ETF.md` 「재현 방법」).
 #
 # **여기 적힌 자리가 나중에 통합돼 사라지는 것은 막지 않는다**(부분집합 검사) —
-# 막으면 중복을 줄이는 계획서마다 이 테스트가 실패한다.
+# 막으면 중복을 줄이는 작업마다 이 테스트가 실패한다.
 _KNOWN_LABEL_DUPLICATES: dict[str, frozenset[str]] = {
     "방향": frozenset({"verify_lab/report/constants.py", "verify_lab/execution/constants.py"}),
 }

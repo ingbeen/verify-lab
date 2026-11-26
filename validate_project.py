@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-통합 품질 검증 스크립트 (Ruff + PyRight + Pytest)
+통합 품질 검증 스크립트 (Ruff + PyRight + Pytest + 사본 대조)
 
 프로젝트의 모든 품질 검증을 단일 진입점으로 실행합니다.
 AI가 실행하고 로그를 읽어 문제를 수정할 수 있도록 명확한 출력을 제공합니다.
 
 사용법:
-    poetry run python validate_project.py                # 전체 실행 (Ruff + PyRight + Pytest)
+    poetry run python validate_project.py                # 전체 실행 (Ruff + PyRight + Pytest + 사본 대조)
     poetry run python validate_project.py --only-lint    # Ruff만 실행
     poetry run python validate_project.py --only-pyright # PyRight만 실행
     poetry run python validate_project.py --only-tests   # Pytest만 실행
@@ -17,6 +17,7 @@ import argparse
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 # 개수를 파싱하지 못했을 때의 표기.
 #
@@ -62,7 +63,7 @@ def format_count(count: int | None) -> str:
     """개수를 사람이 읽는 표기로 바꿉니다.
 
     **단위를 붙이지 않습니다** — `passed=1126` 처럼 단위 없이 쓰는 자리가 있고,
-    그 표기는 계획서의 품질 검증 기록에 그대로 옮겨진다.
+    그 표기는 작업 보고의 품질 검증 줄에 그대로 옮겨진다.
 
     Args:
         count: 파싱한 개수. 파싱하지 못했으면 None
@@ -210,14 +211,38 @@ def run_pytest(with_coverage: bool = False) -> tuple[bool, int | None, int | Non
     return success, passed, failed, skipped, errors
 
 
+def run_copy_check(results_dir: Path | None = None, manifest_path: Path | None = None) -> tuple[bool, int | None]:
+    try:
+        from verify_lab.common_constants import MARKET_MANIFEST_PATH, RESULTS_DIR
+        from verify_lab.report.copy_check import copy_check
+
+        check = copy_check(results_dir or RESULTS_DIR, manifest_path or MARKET_MANIFEST_PATH)
+    except Exception as error:
+        print(f"[FAIL] 사본 매니페스트나 결과 요약을 읽지 못했습니다: {type(error).__name__}: {error}")
+        return False, None
+
+    mismatches = check.mismatches
+    if not mismatches:
+        print(f"[OK] 결과 요약 {check.summaries}개의 데이터셋 기록 {check.records}개가 받은 사본의 파일 · 기간 · 행 수와 맞습니다" " — 값은 대조하지 않습니다")
+        return True, 0
+
+    for mismatch in mismatches:
+        print(f"  {mismatch.summary.parent.name}: {mismatch.file} — 결과 {mismatch.result} / 사본 {mismatch.copy}")
+    print(
+        f"[FAIL] 결과 {len(mismatches)}건이 받은 사본과 어긋납니다 — 그 사본을 읽는 매매법을 인자 없이 다시 돌립니다"
+        "(docs/COMMANDS.md 「시세를 다시 받은 뒤 다시 돌리는 순서」)"
+    )
+    return False, len(mismatches)
+
+
 def parse_args() -> argparse.Namespace:
     """명령행 인자를 파싱합니다."""
     parser = argparse.ArgumentParser(
-        description="통합 품질 검증 스크립트 (Ruff + PyRight + Pytest)",
+        description="통합 품질 검증 스크립트 (Ruff + PyRight + Pytest + 사본 대조)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 사용 예시:
-  poetry run python validate_project.py                # 전체 실행 (Ruff + PyRight + Pytest)
+  poetry run python validate_project.py                # 전체 실행 (Ruff + PyRight + Pytest + 사본 대조)
   poetry run python validate_project.py --only-lint    # Ruff만 실행
   poetry run python validate_project.py --only-pyright # PyRight만 실행
   poetry run python validate_project.py --only-tests   # Pytest만 실행
@@ -272,12 +297,14 @@ def main() -> int:
         should_run_lint = False
         should_run_pyright = False
         should_run_tests = True
+        should_run_copies = False
     else:
         is_only_mode = args.only_lint or args.only_pyright or args.only_tests
 
         should_run_lint = args.only_lint or not is_only_mode
         should_run_pyright = args.only_pyright or not is_only_mode
         should_run_tests = args.only_tests or not is_only_mode
+        should_run_copies = not is_only_mode
 
     tools = []
     if should_run_lint:
@@ -286,6 +313,8 @@ def main() -> int:
         tools.append("PyRight")
     if should_run_tests:
         tools.append("Pytest")
+    if should_run_copies:
+        tools.append("사본 대조")
     title = f"프로젝트 품질 검증 ({' + '.join(tools)})"
 
     print("\n" + "=" * 80)
@@ -312,6 +341,12 @@ def main() -> int:
         section_num += 1
         pytest_success, passed, failed, skipped, errors = run_pytest(with_coverage=args.cov)
         results["pytest"] = (pytest_success, passed, failed, skipped, errors)
+
+    if should_run_copies:
+        print_section(f"{section_num}. 받은 사본 ↔ 커밋되는 결과 대조")
+        section_num += 1
+        copies_success, copies_count = run_copy_check()
+        results["copies"] = (copies_success, copies_count)
 
     print_section("최종 결과")
 
@@ -344,6 +379,13 @@ def main() -> int:
         if errors != 0:
             counts += f", errors={format_count(errors)}"
         print(f"Pytest:  {'[OK] 통과' if pytest_success else '[FAIL] 실패'} ({counts})")
+
+    if "copies" in results:
+        copies_success, copies_count = results["copies"]
+        total_errors += copies_count or 0
+        has_unknown |= copies_count is None
+        all_success &= copies_success
+        print(f"사본:    {'[OK] 통과' if copies_success else f'[FAIL] 실패 (어긋남: {format_count(copies_count)}건)'}")
 
     # 세지 못한 항목이 있으면 합계를 단정하지 않는다 — 「모른다」를 숫자로 덮으면
     # 도구 출력 형식이 바뀐 것과 실제로 그만큼인 것이 구별되지 않는다

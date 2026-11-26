@@ -81,7 +81,8 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
     고를 여지를 남기면 결과를 보고 고르게 됩니다.
     **수정주가의 한계 셋을 결과 문서에 적습니다.** ① 분배금을 지급일에 전액 다시 샀다고 보므로 원천징수만큼 낙관적입니다
     ② 새 분배금이 생길 때마다 과거 가격 전체가 다시 조정돼 **다시 받으면 모든 행이 바뀝니다**
-    ③ 국내 ETF 는 KRX 가 수정주가를 최근 3,000거래일만 줘 그 앞을 잴 수 없습니다.
+    ③ 국내 ETF 의 수정주가가 덮는 기간 — quant-data 가 KRX 기준가로 만들고(그 저장소 `docs/research/시세_받기_판정.md` Q14),
+    어디까지 덮는지는 받은 사본의 매니페스트(파일별 기간)가 말합니다.
     지수와 BTC 는 분배금이 없어 기준이 하나입니다.
     **조사 등급은 잰 당시 기준의 기록으로 둡니다** — 대부분 원본가로 쟀고 문서 머리말이 그 기준을 밝힙니다.
     원본가로 잰 조사는 배당락이 보유 구간에 들어가면 **그 사실과 규모를 적습니다** — 방향에 따라 왜곡이 반대로 가서,
@@ -228,14 +229,6 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 ---
 
-## 계획서 규약 — 이 프로젝트의 설정 (CRITICAL)
-
-- **config 의 `evidence_home` 은 폴더 하나만 말합니다.** 그 안에서 무엇이 어느 문서의 어느 절로
-  가는지는 [.claude/rules/docs.md](.claude/rules/docs.md) 「계획서」 절이 SoT입니다 — 설계 결정과
-  탈락안은 `설계.md`, 측정 결과와 판정은 `결과.md`, 계층 계약은 `src/verify_lab/CLAUDE.md` 로 갈립니다.
-
----
-
 ## 세션 시작 규칙
 
 **진입 순서는 [.claude/rules/session-bootstrap.md](.claude/rules/session-bootstrap.md) 가 정합니다**(매 세션 조건 없이 로드).
@@ -262,11 +255,11 @@ verify-lab은 **검증되지 않은 매매법이 통계적으로 의미가 있�
 
 | 폴더 | 무엇 · 상세 |
 | --- | --- |
-| `.claude/rules/` | 경로별 자동 로드 규칙 (계획서 훅·스킬은 전역 `~/.claude/`) |
+| `.claude/rules/` | 경로별 자동 로드 규칙 |
 | `src/verify_lab/` | 패키지 — 계층과 계약은 [src/verify_lab/CLAUDE.md](src/verify_lab/CLAUDE.md) |
 | `scripts/` | CLI 스크립트 — [scripts/CLAUDE.md](scripts/CLAUDE.md) |
 | `tests/` | 테스트 — [tests/CLAUDE.md](tests/CLAUDE.md) |
-| `docs/` | `COMMANDS.md` · 등급 폴더(`검증/` · `매매/` · `조사/`) · `plans/` — 배치는 `.claude/rules/docs.md` |
+| `docs/` | `COMMANDS.md` · 등급 폴더(`검증/` · `매매/` · `조사/`) — 배치는 `.claude/rules/docs.md` |
 | `reference/` | 읽기 전용 참고 자료 — [reference/README.md](reference/README.md) |
 | `storage/` | quant-data 가 내보낸 시세 사본 · 실행 결과 · 판단용 차트 — git 동기화 범위는 `src/verify_lab/CLAUDE.md` 「데이터 저장 규칙」 |
 
@@ -336,13 +329,11 @@ quant-data 를 다룰 때는 그 저장소의 `CLAUDE.md` 를 먼저 `Read` 로 
 
 **사본을 다시 내보냈으면 그 사본을 읽는 매매법을 전부 인자 없이 다시 돌려 함께 커밋합니다**(순서는 [docs/COMMANDS.md](docs/COMMANDS.md)
 「시세를 다시 받은 뒤 다시 돌리는 순서」). 일부만 돌리면 커밋된
-결과가 커밋된 사본과 어긋나는데 예외는 나지 않습니다 — `[실측] 2026-11-12` QQQ 를 다시 받은 뒤(2026-11-06) 중간선거_사이클을
-돌리지 않아, 커밋된 결과가 그 전 시세로 남아 있었습니다(QQQ 행 44 — `docs/매매/중간선거_사이클/결과.md` 재실행 기록).
+결과가 커밋된 사본과 어긋납니다 — 품질 검증(`validate_project.py`)이 사본의 매니페스트와 각 결과 `summary.json` 의 데이터셋 기록(파일 · 기간 · 행 수)을
+맞대 어긋나면 실패합니다. 값은 견주지 않아, 기간 · 행 수가 같고 값만 바뀐 재내보내기(옛 끝날로 다시 받기 · 가공만 다시)는 잡지 못합니다. `[실측] 2026-11-12` 그 검사가 없던 때 QQQ 를 다시 받은 뒤(2026-11-06) 중간선거_사이클을
+돌리지 않아, 커밋된 결과가 그 전 시세로 남았는데 예외는 나지 않았습니다(QQQ 행 44 — `docs/매매/중간선거_사이클/결과.md` 재실행 기록).
 
-**결과 비교 중일 때 quant-data 갱신 · 내보내기를 함부로 다시 돌리지 않습니다.** 데이터가 갱신되면
-결과 변화의 원인이 코드 변경인지 데이터 추가인지 분리할 수 없게 됩니다.
-
-**막지는 않되 흔적을 남깁니다.** 무엇을 어디에 적는지는 [.claude/rules/docs.md](.claude/rules/docs.md)
+**다시 내보냈으면 흔적을 남깁니다**(언제 돌릴지는 quant-data `CLAUDE.md`). 무엇을 어디에 적는지는 [.claude/rules/docs.md](.claude/rules/docs.md)
 「수치를 적을 때는 데이터 기간을 함께 적는다」가 SoT 입니다.
 
 ---

@@ -23,6 +23,7 @@ STORAGE_DIR: Final = BASE_DIR / "storage"
 # quant-data 사본(목록 · 매니페스트 포함)을 받는 폴더 — 손으로 고치지 않고 결과와 함께 커밋
 # 시세와 값 하나짜리 계열이 섞여 있어 어느 로더로 읽을지는 매매법의 대상 정의가 정함
 MARKET_DIR: Final = STORAGE_DIR / "market"
+MARKET_MANIFEST_PATH: Final = MARKET_DIR / "quant_data_manifest.json"
 
 # 검증 산출물. **매매법당 한 폴더**이고 재실행이 그 자리를 덮는다. git 으로 동기화하는 것은
 # diff 가 「재실행이 숫자를 바꿨는가」를 알려주는 유일한 신호이기 때문이다

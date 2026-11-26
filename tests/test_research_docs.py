@@ -1,6 +1,6 @@
 """결과 문서(`docs/<등급>/<이름>/결과.md` · `docs/조사/<이름>.md`)의 「모양」 계약을 검사한다.
 
-결과 문서는 이 저장소의 최종 산출물이자 그 검증의 진입점이다. 계획서가 삭제되고 산출물 폴더가
+결과 문서는 이 저장소의 최종 산출물이자 그 검증의 진입점이다. 산출물 폴더가
 비워져도 이 문서 하나로 "무엇을 어떻게 재서 어떤 결론이 나왔는지"가 재구성돼야 한다.
 
 작성 규칙은 `.claude/rules/research.md` 가 SoT이고, 그중 **기계가 채점할 수 있는 항목만** 여기서 고정한다.
@@ -58,9 +58,6 @@ FORBIDDEN_PREFIX = "RESEARCH_"
 
 # 머리말에 반드시 있어야 하는 표기. 기간이 없는 수치는 나중에 맞는지 판별할 수 없다.
 DATA_PERIOD_TOKEN = "데이터 기간"
-
-# 계획서는 주기적으로 삭제되는 임시 산출물이라 살아있는 문서가 가리키면 안 된다.
-PLAN_REFERENCE = re.compile(r"docs/plans|plans/PLAN_")
 
 # 글롭으로 해석해야 하는 경로에 들어가는 문자
 GLOB_CHARS = "*?["
@@ -202,20 +199,6 @@ def _missing_inline_paths(section: str, root: Path) -> list[str]:
     return [raw for raw in _inline_path_candidates(section) if not _path_exists(root, raw)]
 
 
-def _plan_references(text: str) -> list[str]:
-    """계획서를 가리키는 링크와 인라인 경로를 모은다.
-
-    Args:
-        text: 문서 본문
-
-    Returns:
-        list[str]: 계획서 참조 목록
-    """
-    found = [raw for raw in MARKDOWN_LINK.findall(text) if PLAN_REFERENCE.search(raw)]
-    found += [code for code in INLINE_CODE.findall(text) if PLAN_REFERENCE.search(code)]
-    return found
-
-
 def _document_id(path: Path) -> str:
     """파라미터화된 테스트의 표시 이름을 만든다.
 
@@ -336,25 +319,6 @@ def test_related_inline_paths_resolve(doc: Path) -> None:
         f"「관련 파일」 표가 없는 경로를 가리킵니다: {doc.name}\n"
         + "\n".join(f"  - {raw}" for raw in missing)
         + f"\n  코드를 지웠다면 그 행을 묘비 표기로 바꿉니다 (허용 낱말: {', '.join(TOMBSTONE_WORDS)})"
-    )
-
-
-@pytest.mark.parametrize("doc", RESULT_DOCS, ids=_document_id)
-def test_no_plan_references(doc: Path) -> None:
-    """
-    목적: 살아있는 문서가 임시 산출물을 가리키지 않음을 고정한다.
-
-    계획서는 사용자가 주기적으로 전부 삭제하므로 링크가 반드시 깨진다.
-
-    Given: 결과 문서 본문 전체
-    When: 계획서를 가리키는 링크와 인라인 경로를 찾는다
-    Then: 하나도 없다
-    """
-    found = _plan_references(doc.read_text(encoding="utf-8"))
-    assert not found, (
-        f"계획서(docs/plans/)를 참조합니다: {doc.name}\n"
-        + "\n".join(f"  - {raw}" for raw in found)
-        + "\n  계획서는 주기적으로 삭제되는 임시 산출물이라 참조가 깨집니다"
     )
 
 
@@ -516,16 +480,3 @@ def test_non_path_inline_code_is_ignored(fake_root: Path) -> None:
     section = "| 데이터 수집 | `--series usdkrw_close` · `docs/<등급>/<매매법>/설계.md` |"
 
     assert _inline_path_candidates(section) == []
-
-
-def test_plan_reference_is_detected() -> None:
-    """
-    목적: 계획서 참조를 잡는지 고정한다.
-
-    Given: 계획서를 링크·인라인으로 가리키는 합성 문서
-    When: 참조를 찾는다
-    Then: 둘 다 보고된다
-    """
-    text = "본문 [계획서](../plans/PLAN_sample.md) 와 `docs/plans/PLAN_other.md` 를 가리킨다"
-
-    assert _plan_references(text) == ["../plans/PLAN_sample.md", "docs/plans/PLAN_other.md"]

@@ -9,7 +9,6 @@ AI 모델이 없는 파일을 찾거나 있는 파일을 놓친다. 이 프로�
 - INDEX에 적힌 경로가 실재하는가 (죽은 링크 차단)
 - 실재하는 문서가 INDEX에 등록됐는가 (누락 차단) · 진입에 필요한 핵심 문서가 링크됐는가
 - 세션 시작 규칙이 조건 없이 로드되는가 (진입 경로 보장)
-- 계획서 폴더가 비어도 남는가 (계획서 게이트 유지)
 - 걷어낸 문서가 되살아나지 않았는가 (「앞으로의 계획」·개인 운용 상태 재유입 차단)
 - 조사 등급 아래에 폴더가 없는가 (조사 문서는 한 장)
 """
@@ -26,10 +25,9 @@ INDEX_PATH = PROJECT_ROOT / "docs" / "INDEX.md"
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 # INDEX 등록 의무에서 제외하는 경로.
-# plans/ 는 주기적으로 삭제되는 임시 산출물이고, 나머지는 git 구조 유지용 빈 파일이다.
+# `.gitkeep` 은 git 구조 유지용 빈 파일이다.
 REGISTRATION_EXEMPT = (
     "docs/INDEX.md",  # 자기 자신
-    "docs/plans/",
     ".gitkeep",
 )
 
@@ -38,10 +36,6 @@ REGISTERED_DIRS = ("docs", "reference")
 
 # 세션 시작마다 조건 없이 로드되는 규칙. 여기에 진입 순서가 있다.
 BOOTSTRAP_RULE_PATH = PROJECT_ROOT / ".claude" / "rules" / "session-bootstrap.md"
-
-# 계획서 폴더를 비워도 남겨야 하는 파일.
-# 폴더가 사라지면 계획서 게이트 훅이 규약 미채택으로 보고 조용히 꺼진다.
-PLANS_KEEPER_PATH = PROJECT_ROOT / "docs" / "plans" / ".gitkeep"
 
 # 조사 등급 문서 폴더. **조사는 언제나 한 장이라 이 아래에 폴더를 두지 않는다** — 끝난 조사라
 # 설계와 결과를 나눠 둘 이유가 없다(`.claude/rules/docs.md` 「배치는 «등급» 축이다」)
@@ -199,19 +193,6 @@ def test_bootstrap_rule_loads_unconditionally() -> None:
         "조건부로 바뀌어 첫 작업 전에 로드되지 않습니다:\n"
         f"  - {BOOTSTRAP_RULE_PATH.relative_to(PROJECT_ROOT)}"
     )
-
-
-def test_plans_folder_keeper_exists() -> None:
-    """
-    목적: 계획서 폴더가 비어도 유지된다는 계약을 고정한다.
-
-    폴더가 사라지면 계획서 게이트 훅이 규약 미채택으로 판정해 조용히 꺼진다.
-
-    Given: docs/plans/
-    When: .gitkeep 을 찾는다
-    Then: 파일이 존재한다
-    """
-    assert PLANS_KEEPER_PATH.is_file(), "docs/plans/.gitkeep 이 없습니다. 계획서를 전부 비우면 폴더가 사라져 " "계획서 게이트가 꺼집니다"
 
 
 def test_survey_grade_has_no_folders() -> None:

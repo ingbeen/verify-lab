@@ -4,7 +4,7 @@
 > 여기에 요약을 두면 원문과 두 벌이 되고 한쪽이 낡습니다.
 >
 > 진입 순서의 SoT 는 [../.claude/rules/session-bootstrap.md](../.claude/rules/session-bootstrap.md) 입니다.
-> `docs/`·`reference/` 에 파일을 더하거나 지우면 이 지도도 고칩니다(`docs/plans/` 는 예외) —
+> `docs/`·`reference/` 에 파일을 더하거나 지우면 이 지도도 고칩니다 —
 > `tests/test_index.py` 가 링크 실재와 등록 누락을 양방향으로 검사합니다.
 
 ---
@@ -19,14 +19,13 @@
 | [../src/verify_lab/CLAUDE.md](../src/verify_lab/CLAUDE.md) | 계층 분리 · 절대 원칙 · 계층 간 계약 · 산출물 계약 | `src/verify_lab/` 를 Read 할 때 |
 | [../scripts/CLAUDE.md](../scripts/CLAUDE.md) | CLI 계층 책임 · 인자 정책 | `scripts/` 를 Read 할 때 |
 | [../tests/CLAUDE.md](../tests/CLAUDE.md) | 필수 테스트 · 허용오차 · 파일 격리 | `tests/` 를 Read 할 때 |
-| [../.claude/rules/docs.md](../.claude/rules/docs.md) | 문서 종류와 수명 · 시제 · 게이트 값을 적지 않는 규약 · 계획서 승격 | `docs/**` 를 Read 할 때 |
+| [../.claude/rules/docs.md](../.claude/rules/docs.md) | 살아있는 문서의 역할 · 시제 · 게이트 값을 적지 않는 규약 · 남길 자리 | `docs/**` 를 Read 할 때 |
 | [../.claude/rules/research.md](../.claude/rules/research.md) | 결과 문서 형식 | `docs/{검증,매매,조사}/**` 를 Read 할 때 |
 | [../.claude/rules/trading.md](../.claude/rules/trading.md) | 매매 규칙 계층의 예외와 제약 · 요청 시 넣는 비용 값 | `docs/{검증,매매,조사}/**` · `src/verify_lab/{execution,studies}/**` 를 Read 할 때 |
 | [../.claude/rules/reference.md](../.claude/rules/reference.md) | reference 폴더 읽기 전용 | `reference/**` 를 Read 할 때 |
 | [../.claude/rules/charts.md](../.claude/rules/charts.md) | 판단용 차트 — 눈으로 보는 확인 · plotly 함정 · 설명 블록을 두지 않는다 | `scripts/chart_*.py` · `src/verify_lab/studies/**/chart*` 를 Read 할 때 |
 | `~/.claude/rules/python.md` (전역 — 저장소 밖이라 링크하지 않음) | 파이썬 코딩 표준 · 반올림 · 로깅 | `**/*.py` 를 Read 할 때 |
 | `~/.claude/rules/python-tests.md` (전역) | 테스트 공통 규칙 | 테스트 파일(`tests/**` · `test_*.py` · `conftest.py`)을 Read 할 때 |
-| `~/.claude/skills/impl-plan/SKILL.md` (전역) | 계획서 절차 | `/impl-plan` 호출 |
 
 경로 규칙은 **`Read` 도구로 열 때만** 주입됩니다 — 셸로 읽으면 따라오지 않습니다(전역 `CLAUDE.md` 「경로 한정 규칙과 하위 `CLAUDE.md` 는 «`Read` 도구»로 열 때만 실린다」). `paths:` 를 고치거나 문서를 다른 폴더로 옮기면 주입을 실측으로 다시 확인합니다 — 경로가 어긋나면 규칙이 조용히 안 걸립니다.
 
@@ -102,7 +101,6 @@ ECOS 프로브는 각 조사 문서의 「재현 방법」에 있습니다. pykr
 | 문서 | 담당 |
 | --- | --- |
 | [COMMANDS.md](COMMANDS.md) | 실행 명령어 |
-| [DEFERRED_FINDINGS.md](DEFERRED_FINDINGS.md) | 코드 리뷰에서 미룬 지적 — 판단 대기열 |
 | [../README.md](../README.md) | 사람용 소개 |
 | [../reference/README.md](../reference/README.md) | 참고 원본(읽기 전용)의 파일별 용도 |
 
@@ -110,5 +108,3 @@ reference 의 나머지 파일: [데이터처리_설계원칙.md](../reference/�
 [test_examples/event_study_test_example.py](../reference/test_examples/event_study_test_example.py) ·
 [test_examples/conftest_example.py](../reference/test_examples/conftest_example.py) ·
 [test_examples/conftest_qbt_example.py](../reference/test_examples/conftest_qbt_example.py)
-
-계획서(`docs/plans/`)는 임시 산출물이라 이 지도에 등록하지 않습니다.
